@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-12-101-lite-12-101-workbench-actions-remain-explicit-callback-intents-385-A1",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/lib/workbenchInteractions.test.ts",
+    "name": "LITE-12-101 workbench actions remain explicit callback intents",
+    "line": 15,
+    "expression": "assert.deepEqual(calls, ['agent:agent_1', 'conversation:conv_1', 'create']);",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

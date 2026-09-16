@@ -1,0 +1,90 @@
+[
+  {
+    "id": "LITE-00-013-wfi-10-every-template-compiles-492-A1",
+    "requirementId": "LITE-00-013",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(payload.stages.length, template.stages.length, template.key);",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-013-wfi-10-every-template-compiles-492-A2",
+    "requirementId": "LITE-00-013",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 145,
+    "expression": "assert.ok(payload.stages.every(stage => stage.agentRole !== null), template.key);",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-493-A1",
+    "requirementId": "LITE-01-011",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-04 optional security review",
+    "line": 61,
+    "expression": "assert.equal(payload.stages.length, 4);",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-493-A2",
+    "requirementId": "LITE-01-011",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-04 optional security review",
+    "line": 62,
+    "expression": "assert.equal(payload.stages[3].key, 'security-review');",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-493-A3",
+    "requirementId": "LITE-01-011",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-04 optional security review",
+    "line": 63,
+    "expression": "assert.equal(payload.stages[3].agentRole, 'mimo');",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-493-A4",
+    "requirementId": "LITE-01-011",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-04 optional security review",
+    "line": 64,
+    "expression": "assert.deepEqual(payload.stages[3].dependsOn, ['review']);",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-wfi-10-every-template-compiles-494-A1",
+    "requirementId": "LITE-09-015",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(payload.stages.length, template.stages.length, template.key);",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-wfi-10-every-template-compiles-494-A2",
+    "requirementId": "LITE-09-015",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 145,
+    "expression": "assert.ok(payload.stages.every(stage => stage.agentRole !== null), template.key);",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

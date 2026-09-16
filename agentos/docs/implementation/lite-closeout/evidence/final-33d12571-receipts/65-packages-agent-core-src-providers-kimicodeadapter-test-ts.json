@@ -1,0 +1,358 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/providers/kimiCodeAdapter.test.ts"
+    ]
+  },
+  "cwd": "packages/agent-core",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/assertions.json",
+      "sha256": "f69aecb8163fd02a4295f0e052982dcd5203c3cbb25c9c2dbbc2d580fc346601"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/execution.json",
+      "sha256": "bf0b5797341841b2eeb7958a342299cf643ca41f15843b3e26effafe6fb6b0a8"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/stdout.txt",
+      "sha256": "821dfdaa67c2898920360fc7a4ced9d14c18e503c4248e5bbbac4f31dbb37568"
+    }
+  ],
+  "counts": {
+    "passed": 21,
+    "failed": 0,
+    "skipped": 0,
+    "total": 21
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A1",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 400,
+      "expression": "expect(types).toContain('assistant.message');",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A2",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 401,
+      "expression": "expect(types).toContain('tool.started');",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A3",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 402,
+      "expression": "expect(types).toContain('tool.completed');",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A4",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 403,
+      "expression": "expect(types).toContain('usage');",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A5",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 404,
+      "expression": "expect([...first.events, ...done.events].find(event => event.type === 'usage')).toMatchObject({ provider: 'kimicode' });",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-398-A6",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 408,
+      "expression": "expect([...malformed.events, ...malformedDone.events]).toEqual(expect.arrayContaining([",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-399-A1",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+      "line": 383,
+      "expression": "expect(result.authentication).toBe('unknown');",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-014-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-399-A2",
+      "requirementId": "LITE-01-014",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+      "line": 384,
+      "expression": "expect(result.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);",
+      "clause": "unknown Provider details do not become invented facts;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A1",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 112,
+      "expression": "expect(result.valid).toBe(true);",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A2",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 113,
+      "expression": "expect(result.executableResolved).toBe('C:/tools/kimi.exe');",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A3",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 114,
+      "expression": "expect(result.cliVersion).toBe('0.23.5');",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A4",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 115,
+      "expression": "expect(result.authentication).toBe('authenticated');",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A5",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 116,
+      "expression": "expect(result.errors).toEqual([]);",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-400-A6",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 117,
+      "expression": "expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A1",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 112,
+      "expression": "expect(result.valid).toBe(true);",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A2",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 113,
+      "expression": "expect(result.executableResolved).toBe('C:/tools/kimi.exe');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A3",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 114,
+      "expression": "expect(result.cliVersion).toBe('0.23.5');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A4",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 115,
+      "expression": "expect(result.authentication).toBe('authenticated');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A5",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 116,
+      "expression": "expect(result.errors).toEqual([]);",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-401-A6",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+      "line": 117,
+      "expression": "expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A1",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 400,
+      "expression": "expect(types).toContain('assistant.message');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A2",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 401,
+      "expression": "expect(types).toContain('tool.started');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A3",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 402,
+      "expression": "expect(types).toContain('tool.completed');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A4",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 403,
+      "expression": "expect(types).toContain('usage');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A5",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 404,
+      "expression": "expect([...first.events, ...done.events].find(event => event.type === 'usage')).toMatchObject({ provider: 'kimicode' });",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-402-A6",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+      "line": 408,
+      "expression": "expect([...malformed.events, ...malformedDone.events]).toEqual(expect.arrayContaining([",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-403-A1",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+      "line": 383,
+      "expression": "expect(result.authentication).toBe('unknown');",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-403-A2",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+      "line": 384,
+      "expression": "expect(result.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

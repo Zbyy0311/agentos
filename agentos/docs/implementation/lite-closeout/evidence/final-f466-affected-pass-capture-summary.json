@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "generatedAt": "2026-09-16T02:26:00.686Z",
+  "jobCount": 1,
+  "cleanReceipts": 1,
+  "results": [
+    {
+      "label": "artifact",
+      "kind": "tap",
+      "requirementIds": [
+        "LITE-07-104"
+      ],
+      "sourceFile": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "src/services/ArtifactCompletionService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "src/services/ArtifactCompletionService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "buildExitCode": 0,
+      "receipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact.json",
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact.json\",\"counts\":{\"passed\":15,\"failed\":0,\"skipped\":0},\"assertions\":9}",
+      "buildStderr": ""
+    }
+  ]
+}

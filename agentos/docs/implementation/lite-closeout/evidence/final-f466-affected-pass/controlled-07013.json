@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-07-013-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-07013\\source"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/execution.json",
+      "sha256": "d71d41293db97449e8bf801e7d06d27094cf66fb38a7686f216d4b446ebf4032"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/source/receipts.json",
+      "sha256": "d9c6fb77ae747aaa4c8a91a04b731f48ff5b00173ef12f23abacbe1ef9f59006"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/stdout.txt",
+      "sha256": "7e75ff81c764c85be2347db65ce03275a863e870e173844fdcb97278352c7c72"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/source/receipts.json",
+  "counts": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S0713-RESOLVE-01",
+      "requirementId": "LITE-07-013",
+      "actual": {
+        "rankedSelectsEntry": true,
+        "rankedSnapshotFlag": false,
+        "rankedDurableColumn": 0,
+        "degradedSelectsEntry": true,
+        "degradedSnapshotFlag": true,
+        "degradedDurableColumn": 1,
+        "snapshotsDiffer": true,
+        "sameSelectionEitherWay": true
+      },
+      "expected": {
+        "rankedSelectsEntry": true,
+        "rankedSnapshotFlag": false,
+        "rankedDurableColumn": 0,
+        "degradedSelectsEntry": true,
+        "degradedSnapshotFlag": true,
+        "degradedDurableColumn": 1,
+        "snapshotsDiffer": true,
+        "sameSelectionEitherWay": true
+      },
+      "file": "scripts/verify-lite-07-013-candidate-evidence.mjs",
+      "name": "the real Run context path records whether its retrieval ran degraded, per snapshot",
+      "expression": "expect('LITE-07-013', 'S0713-RESOLVE-01', 'the real Run context path records whether its retrieval ran degraded, per snapshot',",
+      "line": 120,
+      "outcome": "passed"
+    },
+    {
+      "id": "S0713-RESOLVE-02",
+      "requirementId": "LITE-07-013",
+      "actual": {
+        "degradedReadBack": true,
+        "rankedReadBack": false,
+        "degradedContextMatchesItsOwnSelection": true,
+        "contextTextEqualsPersisted": true,
+        "eventsWritten": 2,
+        "outboxMatchesEvents": true
+      },
+      "expected": {
+        "degradedReadBack": true,
+        "rankedReadBack": false,
+        "degradedContextMatchesItsOwnSelection": true,
+        "contextTextEqualsPersisted": true,
+        "eventsWritten": 2,
+        "outboxMatchesEvents": true
+      },
+      "file": "scripts/verify-lite-07-013-candidate-evidence.mjs",
+      "name": "the flag survives the production read path and the injected text is unaffected by it",
+      "expression": "expect('LITE-07-013', 'S0713-RESOLVE-02', 'the flag survives the production read path and the injected text is unaffected by it',",
+      "line": 135,
+      "outcome": "passed"
+    },
+    {
+      "id": "S0713-DEFAULT-01",
+      "requirementId": "LITE-07-013",
+      "actual": {
+        "column": {
+          "name": "retrieval_degraded",
+          "type": "INTEGER",
+          "notNull": 1,
+          "defaultValue": "0"
+        },
+        "nonDegradedRows": 1,
+        "totalSnapshots": 2
+      },
+      "expected": {
+        "column": {
+          "name": "retrieval_degraded",
+          "type": "INTEGER",
+          "notNull": 1,
+          "defaultValue": "0"
+        },
+        "nonDegradedRows": 1,
+        "totalSnapshots": 2
+      },
+      "file": "scripts/verify-lite-07-013-candidate-evidence.mjs",
+      "name": "the stored flag is a non-null boolean column defaulting to the non-degraded value",
+      "expression": "expect('LITE-07-013', 'S0713-DEFAULT-01', 'the stored flag is a non-null boolean column defaulting to the non-degraded value',",
+      "line": 157,
+      "outcome": "passed"
+    }
+  ]
+}

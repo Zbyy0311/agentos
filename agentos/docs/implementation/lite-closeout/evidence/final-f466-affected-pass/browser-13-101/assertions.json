@@ -1,0 +1,156 @@
+[
+  {
+    "id": "LITE-13-101-BROWSER-01",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser page identity and selected conversation",
+    "line": 63,
+    "expression": "assert.equal(await page.title(), 'AgentOS');",
+    "clause": "The page identity and selected Conversation are the actual Inspector entry context.",
+    "whyDirect": "The browser test opens the running workbench, reads the rendered page identity, and selects the named persisted Conversation by its data-conversation id.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-02",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser page identity and selected conversation",
+    "line": 64,
+    "expression": "assert.equal(page.url(), URL);",
+    "clause": "The tested page is the forward runtime entry route.",
+    "whyDirect": "The assertion reads the live browser URL after navigation rather than inferring the route from source.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-03",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser page identity and selected conversation",
+    "line": 65,
+    "expression": "assert.equal(selected?.id, TARGET_ID);",
+    "clause": "The rendered Inspector is tied to the selected Conversation.",
+    "whyDirect": "The assertion compares the selected DOM row id with the fixture Conversation id used by the persisted compaction projection.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-04",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser renders the Run Inspector compaction section",
+    "line": 69,
+    "expression": "assert.match(inspectorText, /COMPACTION/);",
+    "clause": "The Run Inspector renders a Compaction explanation section.",
+    "whyDirect": "The assertion reads the visible Run Inspector text after the live page has loaded the persisted projection.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-05",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser renders the Run Inspector compaction section",
+    "line": 70,
+    "expression": "assert.match(inspectorText, /adopted by/i);",
+    "clause": "The rendered section explains who adopted the summary.",
+    "whyDirect": "The assertion requires the adoption label in the actual Inspector DOM, not only in a component source fixture.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-06",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains trigger policy and budget",
+    "line": 74,
+    "expression": "assert.match(inspectorText, /policy\\s+lite-v1/i);",
+    "clause": "The policy version used by this Compaction is displayed.",
+    "whyDirect": "The assertion reads the policy field from the rendered Inspector and requires the persisted Lite v1 label.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-07",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains trigger policy and budget",
+    "line": 75,
+    "expression": "assert.match(inspectorText, /trigger\\s+1872\\s+\\/\\s+2000\\s+tokens/i);",
+    "clause": "The trigger value and threshold are displayed.",
+    "whyDirect": "The assertion checks the live rendered trigger budget pair from the persisted fixture, including both actual value and threshold.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-08",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains trigger policy and budget",
+    "line": 76,
+    "expression": "assert.match(inspectorText, /budget source\\s+lite-v1-fallback/i);",
+    "clause": "The budget source is displayed.",
+    "whyDirect": "The assertion requires the budget-source field in the visible Inspector rather than inferring the estimator from code.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-09",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains trigger policy and budget",
+    "line": 77,
+    "expression": "assert.match(inspectorText, /estimator\\s+lite-v1-chars4/i);",
+    "clause": "The budget estimator version is displayed.",
+    "whyDirect": "The assertion reads the estimator field from the rendered read model and verifies the concrete estimator version.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-10",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains source summary attempts and adoption snapshots",
+    "line": 81,
+    "expression": "assert.match(inspectorText, /source\\s+3 messages\\s+·\\s+msg_/i);",
+    "clause": "The bounded source message range is displayed.",
+    "whyDirect": "The assertion reads the live source count and message identifiers rendered by the Inspector.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-11",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains source summary attempts and adoption snapshots",
+    "line": 82,
+    "expression": "assert.match(inspectorText, /summary\\s+用户提供了三条历史消息/iu);",
+    "clause": "The persisted summary is displayed.",
+    "whyDirect": "The assertion checks the actual summary text returned by the live Run Inspector, not merely the presence of a summary component.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-12",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains source summary attempts and adoption snapshots",
+    "line": 83,
+    "expression": "assert.match(inspectorText, /attempts\\s+1/i);",
+    "clause": "The attempt count is displayed.",
+    "whyDirect": "The assertion reads the persisted attempt count from the visible Compaction block.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-13",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser explains source summary attempts and adoption snapshots",
+    "line": 84,
+    "expression": "assert.match(inspectorText, /adopted by\\s+snapshot\\s+snapshot_/i);",
+    "clause": "The actual Snapshot references that adopted the Compaction are displayed.",
+    "whyDirect": "The assertion requires the concrete persisted Snapshot identifiers in the rendered Inspector.",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-101-BROWSER-14",
+    "requirementId": "LITE-13-101",
+    "file": "scripts/verify-lite-13-101-browser.test.mjs",
+    "name": "LITE-13-101 browser has no unexplained application errors",
+    "line": 88,
+    "expression": "assert.deepEqual(requestFailures, []);",
+    "clause": "The accepted page path has no unexplained application errors.",
+    "whyDirect": "The browser test records console, page, HTTP 5xx and non-expected request failures while separately recording the one expected stale-request abort.",
+    "outcome": "passed"
+  }
+]

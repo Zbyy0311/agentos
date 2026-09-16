@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "scripts/verify-lite-13-101-browser.test.mjs"
+    ]
+  },
+  "cwd": ".",
+  "rawExitCode": 1,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

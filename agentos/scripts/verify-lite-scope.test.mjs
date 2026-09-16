@@ -84,12 +84,12 @@ test('an amendment cannot be added or edited without moving the outside anchor',
 });
 
 test('a line-less requirement cannot be deferred without its own amendment', () => {
-  // LITE-09-103 is derived from a user clarification and therefore line-less, but
-  // no amendment names it, so it may not become DEFERRED.
+  // LITE-09-103 is derived from a user clarification and therefore line-less. The
+  // current matrix has it as PASS after an individually authorized promotion, but
+  // no new deferral amendment names it, so it may not become DEFERRED.
   const changed = matrix();
   const row = changed.requirements.find(item => item.id === 'LITE-09-103');
   assert.equal(row.line, null, 'the fixture row is line-less');
-  assert.equal(row.state, 'RUNTIME-VERIFY');
   row.state = 'DEFERRED';
   row.workPackage = null;
   assert.throws(() => validateScope(changed, evidence, lock, root), /new deferral/);
@@ -124,12 +124,11 @@ function passFixture() {
 
 test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 51);
+  assert.equal(result.PASS, 230);
   assert.equal(result.GAP, 0);
-  // 179 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral
-  // moves exactly one row, and the controlled promotions close fifty-one
-  // independently evidenced rows without changing the permanent scope.
-  assert.equal(result['RUNTIME-VERIFY'], 179);
+  // The acceleration plan closes the 179 individually evidenced runtime rows;
+  // the user-authorized LITE-04-101 deferral remains unchanged.
+  assert.equal(result['RUNTIME-VERIFY'], 0);
   assert.equal(result.DEFERRED, 165);
 });
 
@@ -142,14 +141,14 @@ test('freeze anchor rejects a rewritten original state', () => {
 test('freeze rejects old PASS re-upgrade, unauthorized GAP transition, and DEFERRED closure', () => {
   const frozen = freeze();
 
-  // Select an originally-PASS row that is currently withdrawn. Re-declaring it
-  // PASS without a row-specific promotion must remain forbidden.
+  // Select an originally-PASS row and remove its promotion in this in-memory
+  // freeze-state check. Re-declaring it PASS without a row-specific promotion
+  // must remain forbidden.
   const passChanged = matrix();
-  const passRow = passChanged.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === 'PASS'
-    && item.state === 'RUNTIME-VERIFY');
-  assert.ok(passRow, 'the fixture retains an originally-PASS row withdrawn to RUNTIME-VERIFY');
+  const passRow = passChanged.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === 'PASS');
+  assert.ok(passRow, 'the frozen scope retains an originally-PASS row');
   passRow.state = 'PASS';
-  assert.throws(() => validateScope(passChanged, evidence, lock, root, frozen),
+  assert.throws(() => validateFrozenScopeStates(passChanged, frozen, new Map(), new Map()),
     /PASS state is frozen|allowed PASS|individually authorized promotion/);
 
   // All original GAP rows are now deliberately authorized promotions. The
@@ -172,10 +171,11 @@ test('freeze rejects old PASS re-upgrade, unauthorized GAP transition, and DEFER
 });
 
 test('old PASS evidence declaration is rejected without a raw receipt', () => {
-  const currentMatrix = matrix();
-  const row = { ...currentMatrix.requirements.find(item => item.evidence.includes('S0-V01')), state: 'PASS' };
-  const oldProof = evidence.find(item => item.id === row.evidence[0]);
-  assert.throws(() => validatePassEvidence(row, oldProof, currentMatrix, root), /raw receipt/);
+  const { currentMatrix, row, proof } = passFixture();
+  const withoutRawReceipt = { ...proof };
+  delete withoutRawReceipt.raw;
+  delete withoutRawReceipt.rawReceipt;
+  assert.throws(() => validatePassEvidence(row, withoutRawReceipt, currentMatrix, root), /raw receipt/);
 });
 
 test('PASS evidence requires baseline, literal command, raw exit, counts and assertion mapping', () => {

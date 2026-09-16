@@ -1,0 +1,178 @@
+[
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A1",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 50,
+    "expression": "assert.equal(rejected.status, 400);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A2",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 51,
+    "expression": "assert.deepEqual(await rejected.json(), { error: 'Memory content is unsafe to persist' });",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A3",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 52,
+    "expression": "assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memories').get() as { n: number }).n, 0);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A4",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 53,
+    "expression": "assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_fts').get() as { n: number }).n, 0);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A5",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 54,
+    "expression": "assert.equal(existsSync(join(root, 'agent-memory')), false, 'unsafe content must be rejected before file creation');",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A6",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 61,
+    "expression": "assert.equal(safeResponse.status, 201);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A7",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 67,
+    "expression": "assert.deepEqual(listed.memories, []);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-81-A8",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 68,
+    "expression": "assert.equal((await fetch(`${base}/workspace-a/memories/${safe.memory.id}`)).status, 404);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A1",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 50,
+    "expression": "assert.equal(rejected.status, 400);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A2",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 51,
+    "expression": "assert.deepEqual(await rejected.json(), { error: 'Memory content is unsafe to persist' });",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A3",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 52,
+    "expression": "assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memories').get() as { n: number }).n, 0);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A4",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 53,
+    "expression": "assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_fts').get() as { n: number }).n, 0);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A5",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 54,
+    "expression": "assert.equal(existsSync(join(root, 'agent-memory')), false, 'unsafe content must be rejected before file creation');",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A6",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 61,
+    "expression": "assert.equal(safeResponse.status, 201);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A7",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 67,
+    "expression": "assert.deepEqual(listed.memories, []);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-legacy-memory-rejects-unsafe-writes-and-hides-unsafe-his-82-A8",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memories.test.ts",
+    "name": "LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text",
+    "line": 68,
+    "expression": "assert.equal((await fetch(`${base}/workspace-a/memories/${safe.memory.id}`)).status, 404);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

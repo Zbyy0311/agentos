@@ -1,0 +1,316 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:DCUX-S03 reconnect resumes from the durable cursor and resyncs|DCUX-P02 task and run modes map to distinct explicit actions|DCUX-C01 the client targets the forward runtime surface with correct paths)",
+      "src/lib/directConversation.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/assertions.json",
+      "sha256": "1a95d453907041745e107704727b263de42f6f832bd9e9fdea1bdbedb6e87117"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/execution.json",
+      "sha256": "13f9b0893cc771baa4440659906b033d6ccf24d8bb5e996466e17dc8baa7f889"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/stdout.txt",
+      "sha256": "0ebb33a303d19c8ce1968f015be6d1d28234fb9138e38be9ed6b864013d7afa9"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A1",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 44,
+      "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A2",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 46,
+      "expression": "assert.equal(m.snapshot.phase, 'reconnecting');",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A3",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 47,
+      "expression": "assert.equal(m.resumeCursor(), 2);",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A4",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 50,
+      "expression": "assert.equal(m.snapshot.phase, 'resyncing');",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A5",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 51,
+      "expression": "assert.equal(m.snapshot.text, 'abc');",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370-A6",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 53,
+      "expression": "assert.equal(m.snapshot.terminal, true);",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A1",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 44,
+      "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A2",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 46,
+      "expression": "assert.equal(m.snapshot.phase, 'reconnecting');",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A3",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 47,
+      "expression": "assert.equal(m.resumeCursor(), 2);",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A4",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 50,
+      "expression": "assert.equal(m.snapshot.phase, 'resyncing');",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A5",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 51,
+      "expression": "assert.equal(m.snapshot.text, 'abc');",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371-A6",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 53,
+      "expression": "assert.equal(m.snapshot.terminal, true);",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372-A1",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 143,
+      "expression": "if (task.valid) assert.equal(task.action.kind, 'create-task');",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372-A2",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 144,
+      "expression": "if (run.valid) assert.equal(run.action.kind, 'start-run');",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372-A3",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 146,
+      "expression": "assert.notEqual(task.action.kind, run.action.kind);",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372-A4",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 147,
+      "expression": "assert.equal(actionCreatesWork(task.action), true);",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372-A5",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 148,
+      "expression": "assert.equal(actionCreatesWork(run.action), true);",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A1",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 106,
+      "expression": "assert.ok(urls.some(u => u.includes('/api/workspaces/workspace-a/runtime')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A2",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 107,
+      "expression": "assert.ok(calls.some(c => c.url === 'http://127.0.0.1:3000/api/workspaces/workspace-a/agents'));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A3",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 108,
+      "expression": "assert.ok(calls.some(c => c.method === 'POST' && c.url.endsWith('/conversations/conv_1/messages')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A4",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 109,
+      "expression": "assert.ok(calls.some(c => c.url.includes('/messages/msg_1/checkpoints?afterCursor=2')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A5",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 110,
+      "expression": "assert.ok(calls.some(c => c.method === 'POST' && c.url.endsWith('/messages/msg_1/create-task')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A6",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 111,
+      "expression": "assert.ok(calls.some(c => c.method === 'POST' && c.url.endsWith('/messages/msg_1/start-run')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373-A7",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 112,
+      "expression": "assert.ok(calls.some(c => c.url.endsWith('/conversations/conv_1/turns')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

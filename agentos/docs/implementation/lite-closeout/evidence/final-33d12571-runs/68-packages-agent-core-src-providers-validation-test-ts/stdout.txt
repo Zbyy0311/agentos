@@ -1,0 +1,17 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/agent-core
+
+ ✓ src/providers/validation.test.ts > ProviderValidationService > fails closed for disabled and archived configurations without probing 2ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > reports executable discovery and version failures with stable codes 3ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > rejects an unregistered frozen adapter version instead of silently selecting another version 1ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > freezes a persisted Kimi configuration without adapterVersion to builtin.kimicode@1.0.0 1ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > keeps persisted Kimi compatibility on 1.0.0 when Registry also contains 1.1.0 1ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > fails closed for missing-version adapters without an explicit compatibility freeze 0ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > preserves auth states, reports capability/output mismatches, and never emits generic validation failed 3ms
+ ✓ src/providers/validation.test.ts > ProviderValidationService > normalizes adapter exceptions into a stable internal provider error 0ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  10:11:38
+   Duration  304ms (transform 123ms, setup 0ms, import 157ms, tests 11ms, environment 0ms)
+

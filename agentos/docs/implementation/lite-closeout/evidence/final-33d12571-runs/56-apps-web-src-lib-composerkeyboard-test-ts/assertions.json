@@ -1,0 +1,134 @@
+[
+  {
+    "id": "LITE-12-014-lite-12-014-enter-submits-while-shift-enter-and-ime-composition-stay-local-366-A1",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 Enter submits while Shift+Enter and IME composition stay local",
+    "line": 10,
+    "expression": "assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: false, canSend: true }), 'send');",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-enter-submits-while-shift-enter-and-ime-composition-stay-local-366-A2",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 Enter submits while Shift+Enter and IME composition stay local",
+    "line": 11,
+    "expression": "assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: true, canSend: true }), 'newline');",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-enter-submits-while-shift-enter-and-ime-composition-stay-local-366-A3",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 Enter submits while Shift+Enter and IME composition stay local",
+    "line": 12,
+    "expression": "assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: false, isComposing: true, canSend: true }), 'ignore');",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-enter-submits-while-shift-enter-and-ime-composition-stay-local-366-A4",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 Enter submits while Shift+Enter and IME composition stay local",
+    "line": 13,
+    "expression": "assert.equal(resolveComposerKeyAction({ key: 'Escape', shiftKey: false, canSend: true }), 'ignore');",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-367-A1",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 24,
+    "expression": "assert.equal(sends, 1);",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-367-A2",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 25,
+    "expression": "assert.equal(prevented, 1);",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-367-A3",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 26,
+    "expression": "assert.equal(focused, 1);",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-disabled-submit-does-not-invoke-the-send-callback-368-A1",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 disabled submit does not invoke the send callback",
+    "line": 33,
+    "expression": "assert.equal(sends, 0);",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-014-lite-12-014-disabled-submit-does-not-invoke-the-send-callback-368-A2",
+    "requirementId": "LITE-12-014",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 disabled submit does not invoke the send callback",
+    "line": 34,
+    "expression": "assert.equal(focused, 0);",
+    "clause": "keyboard core flow and stable focus;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-369-A1",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 24,
+    "expression": "assert.equal(sends, 1);",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-369-A2",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 25,
+    "expression": "assert.equal(prevented, 1);",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-014-keyboard-submit-prevents-the-browser-newline-and-restores-composer-f-369-A3",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/lib/composerKeyboard.test.ts",
+    "name": "LITE-12-014 keyboard submit prevents the browser newline and restores composer focus",
+    "line": 26,
+    "expression": "assert.equal(focused, 1);",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

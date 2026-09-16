@@ -1,0 +1,92 @@
+TAP version 13
+# browser screenshot=C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-13-101-qa\\wide-after.png
+# browser expected-aborts=0
+# Subtest: LITE-13-101 browser page identity and selected conversation
+not ok 1 - LITE-13-101 browser page identity and selected conversation
+  ---
+  duration_ms: 1510.3693
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:62:1'
+  failureType: 'hookFailed'
+  error: |-
+    page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime", waiting until "domcontentloaded"[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:37:14)
+  ...
+# Subtest: LITE-13-101 browser renders the Run Inspector compaction section
+not ok 2 - LITE-13-101 browser renders the Run Inspector compaction section
+  ---
+  duration_ms: 0.5154
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:68:1'
+  failureType: 'hookFailed'
+  error: |-
+    page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime", waiting until "domcontentloaded"[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:37:14)
+  ...
+# Subtest: LITE-13-101 browser explains trigger policy and budget
+not ok 3 - LITE-13-101 browser explains trigger policy and budget
+  ---
+  duration_ms: 0.1194
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:73:1'
+  failureType: 'hookFailed'
+  error: |-
+    page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime", waiting until "domcontentloaded"[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:37:14)
+  ...
+# Subtest: LITE-13-101 browser explains source summary attempts and adoption snapshots
+not ok 4 - LITE-13-101 browser explains source summary attempts and adoption snapshots
+  ---
+  duration_ms: 0.0617
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:80:1'
+  failureType: 'hookFailed'
+  error: |-
+    page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime", waiting until "domcontentloaded"[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:37:14)
+  ...
+# Subtest: LITE-13-101 browser has no unexplained application errors
+not ok 5 - LITE-13-101 browser has no unexplained application errors
+  ---
+  duration_ms: 0.0645
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:87:1'
+  failureType: 'hookFailed'
+  error: |-
+    page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:3125/workspace/browser-fixture-ws/runtime", waiting until "domcontentloaded"[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:37:14)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 0
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1999.6759

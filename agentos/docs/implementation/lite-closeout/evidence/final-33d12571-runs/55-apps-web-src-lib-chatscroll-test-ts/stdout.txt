@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: only auto-anchors an already-following stream
+ok 1 - only auto-anchors an already-following stream
+  ---
+  duration_ms: 0.4663
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 171.8432

@@ -1,0 +1,667 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-16T03:30:24.919Z",
+  "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "rule": "Historical PASS evidence is reused only when every production implementation path has an empty diff from its prior promotion baseline to the current frozen baseline. Changed paths are re-captured.",
+  "rows": [
+    {
+      "requirementId": "LITE-07-003",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-007",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-013",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-102",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-105",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-106",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/managers/WorkspaceManager.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-109",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-09-102",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-104",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-105",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-106",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-108",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-109",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-110",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-13-002",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-13-003",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-13-015",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-02-014",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-02-015",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-03-018",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-13-008",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-09-107",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-104",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ConversationService.ts",
+        "apps/server/src/store/SqliteStore.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/web/src/components/memory/MemoryReviewQueue.tsx"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-108",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "packages/shared/src/types/mf5-workspace-events.ts",
+        "apps/server/src/services/WorkspaceEventContextAuthority.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-09-010",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-013",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-101",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts",
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/store/TurnContextSnapshotRepository.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-107",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-13-101",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/ConversationCompactionInspector.ts",
+        "apps/server/src/services/RuntimeInspector.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/services/RuntimeInspector.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-001",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-002",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-004",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryCandidateRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-006",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-008",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryCandidateRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-009",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-010",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-011",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/store/MemoryCandidateRepository.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-07-101",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "changedImplementationFiles": [
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "decision": "recaptured-current-baseline",
+      "reason": "The implementation path changed or this row was deliberately re-captured; the current clean receipt replaces the old proof."
+    },
+    {
+      "requirementId": "LITE-09-001",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-002",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-005",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-006",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-012",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-09-018",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-11-001",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-02-001",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-07-103",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/MemoryRuntimeEventEmitter.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-08-005",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-08-006",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    },
+    {
+      "requirementId": "LITE-08-007",
+      "priorPromotionBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "currentBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "changedImplementationFiles": [],
+      "decision": "reused-historical-evidence",
+      "reason": "The production implementation paths have an empty diff from the prior promotion baseline to the frozen current baseline; the historical raw receipt remains valid and is reused explicitly."
+    }
+  ],
+  "counts": {
+    "reusedHistoricalEvidence": 30,
+    "recapturedCurrentBaseline": 21,
+    "nonEmptyImplementationDiffs": 17
+  }
+}

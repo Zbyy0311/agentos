@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/ConversationCompactionTrigger.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/assertions.json",
+      "sha256": "0194c435f658d8a3d07234587105f16775cc8eb6b208c192f661c873d7c10d38"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/execution.json",
+      "sha256": "234586f61cc95968e432758066214bed50d92abce7d67077c28c8a12db4db5e9"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/stdout.txt",
+      "sha256": "3d3265ae4d2d73ef9df455fd1a4b80b90cb27c8b4340659c773e6a1803988737"
+    }
+  ],
+  "counts": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "total": 10
+  },
+  "assertionCoverage": [
+    {
+      "id": "CMP-TRIGGER-EXPIRED-RETRY",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+      "line": 220,
+      "expression": "assert.equal(stored.status, 'retry-pending');",
+      "clause": "A persisted expired running lease is moved to retry-pending before another attempt.",
+      "whyDirect": "The trigger test seeds a durable running task with an expired lease, invokes the production trigger, and reads the stored task status.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-EXPIRED-CODE",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+      "line": 221,
+      "expression": "assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');",
+      "clause": "Lease recovery records the durable expired-lease reason.",
+      "whyDirect": "The test reads the persisted failure code after the production trigger reclaims the old lease and asserts the canonical code.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-EXPIRED-CONTINUES",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+      "line": 223,
+      "expression": "assert.ok(captured.input, 'the trigger must continue after reclaiming');",
+      "clause": "An expired lease does not permanently block the next bounded attempt.",
+      "whyDirect": "The production trigger test observes that the engine actually receives a new attempt after the expired task is reclaimed.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-LIVE-NO-DUPLICATE",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger never steals a live lease",
+      "line": 242,
+      "expression": "assert.equal(captured.input, undefined, 'a live attempt must not be duplicated');",
+      "clause": "An unexpired lease blocks a duplicate compaction attempt.",
+      "whyDirect": "The trigger test seeds a live persisted lease and directly verifies that the production trigger does not call the engine a second time.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-LIVE-STATE",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger never steals a live lease",
+      "line": 246,
+      "expression": "assert.equal(stored.status, 'running');",
+      "clause": "A live lease remains running rather than being reclaimed speculatively.",
+      "whyDirect": "The test reads the durable compaction row after trigger evaluation and observes that the existing running state is unchanged.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-LIVE-OWNER",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger never steals a live lease",
+      "line": 247,
+      "expression": "assert.equal(stored.lease_owner, 'compaction-engine');",
+      "clause": "The existing lease owner is preserved while its lease is live.",
+      "whyDirect": "The assertion reads the persisted lease owner after the production trigger and verifies no ownership takeover occurred.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-RESTART-RECLAIM",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger re-evaluates the durable lease after a store restart",
+      "line": 220,
+      "expression": "assert.equal(stored.status, 'retry-pending');",
+      "clause": "After the SQLite store is closed and reopened, persisted expired work is recovered as retry-pending.",
+      "whyDirect": "The named test closes the real SQLite store, opens it again, invokes the production trigger, and reads the durable task status after recovery.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-RESTART-CODE",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger re-evaluates the durable lease after a store restart",
+      "line": 221,
+      "expression": "assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');",
+      "clause": "Restart recovery preserves the explicit expired-lease disposition.",
+      "whyDirect": "The restarted trigger test reads the persisted failure code and directly verifies that recovery is based on the stored lease state.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-TRIGGER-RESTART-CONTINUES",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      "name": "S6 trigger re-evaluates the durable lease after a store restart",
+      "line": 275,
+      "expression": "assert.ok(captured.input, 'restart recovery must continue after reclaiming');",
+      "clause": "The restarted trigger can continue the bounded attempt after reclaiming expired work.",
+      "whyDirect": "The test observes an actual engine input after the store restart and lease recovery, proving the restart path does not silently discard the retry.",
+      "outcome": "passed"
+    }
+  ]
+}

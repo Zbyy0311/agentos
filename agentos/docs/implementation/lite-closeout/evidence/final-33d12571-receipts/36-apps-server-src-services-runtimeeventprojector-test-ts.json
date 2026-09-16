@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry)",
+      "src/services/RuntimeEventProjector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/assertions.json",
+      "sha256": "c4de65981eca7b1bbeb68d4c8f07aa34707cd63306380c44c58e97fcd4642466"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/execution.json",
+      "sha256": "e4ee0b6c2cb7e063f91b22bf4ebea13839c29cd35e00ca3f3a1372db0c5b3be6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/stdout.txt",
+      "sha256": "3cd53824618789e46d15a5fe79959a25e4334c7971b0bded988361ec40347e8a"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A1",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 25,
+      "expression": "assert.deepEqual(projected.map(event => event.type), [",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A2",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 33,
+      "expression": "assert.equal(projected.every(event => event.workspaceId === context.workspaceId && event.runId === context.runId && event.executionId === context.executionId && event.agentId === context.agentId), true);",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A3",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 34,
+      "expression": "assert.deepEqual(projected[2]!.payload, { callId: 'call-1', toolName: 'read_file', summary: 'token=[REDACTED]' });",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A4",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 35,
+      "expression": "assert.deepEqual(projected[3]!.payload, { callId: 'call-1', toolName: 'read_file', success: true, summary: '完成', outputPreview: 'Bearer [REDACTED]' });",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A5",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 36,
+      "expression": "assert.equal(projected.length, events.length);",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247-A6",
+      "requirementId": "LITE-03-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 37,
+      "expression": "assert.equal(projected.some(event => (event.type as string) === 'provider.telemetry'), false);",
+      "clause": "provider mapping fidelity and no invented telemetry;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A1",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 25,
+      "expression": "assert.deepEqual(projected.map(event => event.type), [",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A2",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 33,
+      "expression": "assert.equal(projected.every(event => event.workspaceId === context.workspaceId && event.runId === context.runId && event.executionId === context.executionId && event.agentId === context.agentId), true);",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A3",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 34,
+      "expression": "assert.deepEqual(projected[2]!.payload, { callId: 'call-1', toolName: 'read_file', summary: 'token=[REDACTED]' });",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A4",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 35,
+      "expression": "assert.deepEqual(projected[3]!.payload, { callId: 'call-1', toolName: 'read_file', success: true, summary: '完成', outputPreview: 'Bearer [REDACTED]' });",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A5",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 36,
+      "expression": "assert.equal(projected.length, events.length);",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248-A6",
+      "requirementId": "LITE-04-012",
+      "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+      "line": 37,
+      "expression": "assert.equal(projected.some(event => (event.type as string) === 'provider.telemetry'), false);",
+      "clause": "no invented provider telemetry appears in canonical Events.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

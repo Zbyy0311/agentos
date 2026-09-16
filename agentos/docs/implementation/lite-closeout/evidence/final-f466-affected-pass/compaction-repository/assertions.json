@@ -1,0 +1,101 @@
+[
+  {
+    "id": "CMP-REPO-TIMEOUT",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: policy rows are immutable and versioned",
+    "line": 66,
+    "expression": "assert.equal(fx.policy.timeoutMs, 120_000);",
+    "clause": "The Lite v1 persisted policy records the 120 second compaction timeout.",
+    "whyDirect": "The repository test reads the actual policy row used by compaction and directly asserts its timeout value.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-AUTO-RETRIES",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: policy rows are immutable and versioned",
+    "line": 67,
+    "expression": "assert.equal(fx.policy.maxAutomaticRetries, 1);",
+    "clause": "The Lite v1 persisted policy allows one automatic retry.",
+    "whyDirect": "The repository test reads the actual immutable policy record and directly asserts the retry bound.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-STALE-RECLAIMED",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+    "line": 90,
+    "expression": "assert.equal(reclaimed.status, 'retry-pending');",
+    "clause": "Reclaiming an expired lease advances the durable task out of running.",
+    "whyDirect": "The repository test invokes the real lease-reclaim transaction and asserts the resulting persisted state before attempting stale publication.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-STALE-PUBLISH-REJECTED",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+    "line": 91,
+    "expression": "assert.throws(() => inTransaction(fx.db, () => fx.compactions.publishWithinTransaction({",
+    "clause": "A holder using the old running version cannot publish after lease reclamation.",
+    "whyDirect": "The named repository test attempts publication with the old holder and pre-reclaim version and requires the production repository's COMPACTION_CONFLICT assertion.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-STALE-STATE",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+    "line": 97,
+    "expression": "assert.equal(stored.status, 'retry-pending');",
+    "clause": "Rejected stale publication leaves the reclaimed task retry-pending.",
+    "whyDirect": "The test reads the canonical compaction row after the stale publish attempt and verifies the durable state did not regress to published.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-STALE-NO-SUMMARY",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+    "line": 98,
+    "expression": "assert.equal(stored.summary, null);",
+    "clause": "A rejected stale publisher cannot write a summary.",
+    "whyDirect": "The repository test directly observes the summary column after the rejected stale publication and confirms no stale result was persisted.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-SINGLE-RUNNING",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+    "line": 116,
+    "expression": "assert.throws(() => inTransaction(fx.db, () => fx.compactions.claimRunningWithinTransaction({",
+    "clause": "A second running compaction for one Conversation is rejected by the durable uniqueness fence.",
+    "whyDirect": "The repository test creates a second task for the same Conversation and directly asserts the production claim transaction rejects the competing holder.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-RETRY-ATTEMPT-2",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+    "line": 161,
+    "expression": "assert.equal(runningRetry.attempts, 2);",
+    "clause": "The durable retry transition increments the attempt number exactly once.",
+    "whyDirect": "The repository test reclaims the first running task, claims its retry, and reads the persisted attempt count.",
+    "outcome": "passed"
+  },
+  {
+    "id": "CMP-REPO-RETRIES-EXHAUSTED",
+    "requirementId": "LITE-09-107",
+    "file": "apps/server/src/store/CompactionRepository.test.ts",
+    "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+    "line": 167,
+    "expression": "assert.equal(failed.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');",
+    "clause": "The durable task records retry exhaustion as a terminal failure.",
+    "whyDirect": "The repository test performs the terminal failure transition after the second attempt and directly reads the canonical failure code.",
+    "outcome": "passed"
+  }
+]

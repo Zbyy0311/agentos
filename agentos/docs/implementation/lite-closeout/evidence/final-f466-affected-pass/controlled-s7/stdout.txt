@@ -1,0 +1,2 @@
+S7_CANDIDATE_EVIDENCE: passed
+  receipts=12 passed=12 failed=0

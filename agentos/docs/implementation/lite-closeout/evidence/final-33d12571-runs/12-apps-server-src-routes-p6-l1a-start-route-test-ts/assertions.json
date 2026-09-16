@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-11-009-lite-11-009-a-forced-read-only-start-request-creates-no-admission-authority-88-A1",
+    "requirementId": "LITE-11-009",
+    "file": "apps/server/src/routes/p6-l1a-start-route.test.ts",
+    "name": "LITE-11-009 a forced READ_ONLY start request creates no admission authority",
+    "line": 103,
+    "expression": "assert.equal(res.status, 202);",
+    "clause": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-009-lite-11-009-a-forced-read-only-start-request-creates-no-admission-authority-88-A2",
+    "requirementId": "LITE-11-009",
+    "file": "apps/server/src/routes/p6-l1a-start-route.test.ts",
+    "name": "LITE-11-009 a forced READ_ONLY start request creates no admission authority",
+    "line": 107,
+    "expression": "assert.equal(admissions.count, 0);",
+    "clause": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-009-lite-11-009-a-forced-read-only-start-request-creates-no-admission-authority-88-A3",
+    "requirementId": "LITE-11-009",
+    "file": "apps/server/src/routes/p6-l1a-start-route.test.ts",
+    "name": "LITE-11-009 a forced READ_ONLY start request creates no admission authority",
+    "line": 110,
+    "expression": "assert.deepEqual(fx.drives, []);",
+    "clause": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

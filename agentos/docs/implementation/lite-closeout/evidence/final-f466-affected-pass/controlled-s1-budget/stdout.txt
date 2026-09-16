@@ -1,0 +1,2 @@
+S1_BUDGET_CANDIDATE_EVIDENCE: passed
+  receipts=9 passed=9 failed=0

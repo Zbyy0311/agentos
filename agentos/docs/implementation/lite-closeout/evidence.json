@@ -1319,8 +1319,14 @@
     "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07003-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07003-controlled.json",
-    "result": { "passed": 9, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-003"],
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-003"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly executes production exact/replay convergence, owner isolation, near-duplicate review and source-authority refusal assertions; it does not claim Provider invocation."
   },
@@ -1331,8 +1337,15 @@
     "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s1-budget-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-controlled.json",
-    "result": { "passed": 9, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-007", "LITE-07-109"],
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-007",
+      "LITE-07-109"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly executes actual injected-text pricing, count/Scope/category/diversity/truncation, fixed-clock eligibility and degraded retrieval assertions."
   },
@@ -1343,8 +1356,14 @@
     "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07013-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07013-controlled.json",
-    "result": { "passed": 3, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-013"],
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-013"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly drives ranked and degraded production retrieval and reads the persisted context snapshot flag and event/Outbox result."
   },
@@ -1355,8 +1374,14 @@
     "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07102-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07102-controlled.json",
-    "result": { "passed": 7, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-102"],
+    "result": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-102"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly observes terminal-trigger boundedness, replay idempotency, startup repair and non-terminal refusal; it does not claim raw Provider output."
   },
@@ -1367,8 +1392,22 @@
     "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s6-controlled.json",
-    "result": { "passed": 39, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-105", "LITE-09-104", "LITE-09-105", "LITE-09-106", "LITE-09-107", "LITE-09-108", "LITE-09-109", "LITE-09-110", "LITE-13-101"],
+    "result": {
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110",
+      "LITE-13-101"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; gpt-5.6-luna summarizer route; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly covers persisted Lite compaction policy, summary/source integrity, retry and stale-source guards, canonical AgentOS summary exclusion of native-provider rows, and the read-model Inspector assertions; browser rendering is recorded separately."
   },
@@ -1379,8 +1418,16 @@
     "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-exec-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s5-execution-controlled.json",
-    "result": { "passed": 6, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-101", "LITE-09-013", "LITE-09-102"],
+    "result": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-101",
+      "LITE-09-013",
+      "LITE-09-102"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly observes pre-call snapshot persistence, Provider input binding, Agent isolation and modifying-authority refusal/retry with a recording runner; it does not claim model output quality."
   },
@@ -1391,8 +1438,16 @@
     "command": "node --import tsx ../../scripts/verify-lite-s5-group-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-group-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s5-group-controlled.json",
-    "result": { "passed": 9, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-010", "LITE-09-101", "LITE-09-013"],
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-010",
+      "LITE-09-101",
+      "LITE-09-013"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly observes mention/@all selection, serial/D3-off behavior, contention refusal, per-Agent snapshots and frozen Provider context through the production group driver with a recording runner."
   },
@@ -1403,8 +1458,16 @@
     "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s7-run\\candidate",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s7-controlled.json",
-    "result": { "passed": 12, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-106", "LITE-07-107", "LITE-07-108"],
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-106",
+      "LITE-07-107",
+      "LITE-07-108"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
     "limitation": "The final-main controlled receipt directly follows a selected UTF-8 Markdown file through preview, bounded split, confirmation, idempotent repeat/versioning, owner isolation and canonical source Event checks without mutating the source file."
   },
@@ -1415,8 +1478,16 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/runtime-inspector-controlled.json",
-    "result": { "passed": 12, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-13-002", "LITE-13-003", "LITE-13-015"],
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-13-002",
+      "LITE-13-003",
+      "LITE-13-015"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps the named production Inspector identity, process DTO and read-only assertions; it is not browser acceptance."
   },
@@ -1427,8 +1498,18 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/recovery-controlled.json",
-    "result": { "passed": 67, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-00-007", "LITE-02-014", "LITE-02-015", "LITE-03-018", "LITE-13-008"],
+    "result": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-00-007",
+      "LITE-02-014",
+      "LITE-02-015",
+      "LITE-03-018",
+      "LITE-13-008"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps the production MISSING/MISMATCH/SAME/UNKNOWN recovery dispositions and no-reattach boundary; it does not claim live Provider execution."
   },
@@ -1439,8 +1520,14 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-controlled.json",
-    "result": { "passed": 15, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt starts with a real local node:test subprocess and directly maps the production Collector/HTTP/review/Entry source chain; it does not claim a live model Provider invocation."
   },
@@ -1451,8 +1538,14 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-service-controlled.json",
-    "result": { "passed": 8, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-107"],
+    "result": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps bounded automatic retry and explicit-retry service behavior; the companion trigger and repository receipts cover lease recovery and stale publication."
   },
@@ -1463,8 +1556,14 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionTrigger.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-trigger-controlled.json",
-    "result": { "passed": 10, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-107"],
+    "result": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps expired/live/restarted lease behavior and bounded trigger continuation; it does not claim a live Provider invocation."
   },
@@ -1475,8 +1574,14 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/CompactionRepository.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-repository-controlled.json",
-    "result": { "passed": 4, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-107"],
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps the persisted Lite v1 policy, one-running-holder fence, lease version transitions and stale publication rejection."
   },
@@ -1487,8 +1592,14 @@
     "command": "node --test --test-concurrency=1 --test-reporter=tap scripts/verify-lite-13-101-browser.test.mjs",
     "cwd": ".",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/browser-13-101/browser-13-101.json",
-    "result": { "passed": 5, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-13-101"],
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-13-101"
+    ],
     "environment": "Windows; Node v24.18.0; Chrome; 1600x900 wide runtime workbench; browser plugin unavailable so Playwright/Chrome fallback was used; production implementation baseline c517fbd8; final main c844633e contains only closeout changes after c517; tracked checkout unchanged during capture",
     "limitation": "The durable browser TAP receipt directly checks the forward runtime page, selected persisted Conversation, rendered Run Inspector Compaction explanation, policy/budget/source/summary/attempt/adoption fields and unexplained-error absence. One net::ERR_ABORTED from a superseded Conversation-selection request is recorded as expected; no screenshot is required for the assertion evidence."
   },
@@ -1499,7 +1610,11 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-runtime-tap/receipt.json",
-    "result": { "passed": 11, "failed": 0, "skipped": 0 },
+    "result": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
     "requirementIds": [
       "LITE-00-002",
       "LITE-02-001",
@@ -1518,8 +1633,16 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationBridgeService.test.ts src/routes/canonicalRunStream.test.ts src/services/GroupSpeakerResolver.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/store/SqliteStore.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-adjacent-tap/receipt.json",
-    "result": { "passed": 97, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-002", "LITE-09-012", "LITE-09-018"],
+    "result": {
+      "passed": 97,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-002",
+      "LITE-09-012",
+      "LITE-09-018"
+    ],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps production group budget/stop/loop-guard termination and secret-excluding history search. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
   },
@@ -1530,8 +1653,14 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationTurnDriver.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/turn-driver-tap/receipt.json",
-    "result": { "passed": 14, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-006"],
+    "result": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-006"
+    ],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps durable streamed checkpoints, ordered replay and final Message/Turn states. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
   },
@@ -1542,7 +1671,11 @@
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/memory-contracts-tap/receipt.json",
-    "result": { "passed": 133, "failed": 0, "skipped": 0 },
+    "result": {
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0
+    },
     "requirementIds": [
       "LITE-07-001",
       "LITE-07-002",
@@ -1564,7 +1697,11 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-ad113198/approval-tap/receipt.json",
-    "result": { "passed": 14, "failed": 0, "skipped": 0 },
+    "result": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
     "requirementIds": [
       "LITE-07-103",
       "LITE-08-005",
@@ -1573,5 +1710,2089 @@
     ],
     "environment": "Windows; Node v24.18.0; final main ad113198; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps accepted/denied approval effects, original-Run pause/resume and restart recovery, CAS competition/replay, stale/expired rejection, pre-spawn expiry revalidation, candidate creation/event emission, and rollback. It is final-main evidence for these four rows; real Provider CLI execution remains separately governed by LITE-04-101."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-001",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss) src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-10-015"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-002",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:Migration 012 checksum, order, repeat run and existing idempotency data are stable|all Migration 012 foreign keys and integrity checks pass) src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-015",
+      "LITE-06-008",
+      "LITE-10-002",
+      "LITE-10-014",
+      "LITE-10-017"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-003",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:L1B-13 two MODIFYING \\+ GRANTED rows in one Workspace rejected by DB fence) src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-008",
+      "LITE-01-008",
+      "LITE-02-003",
+      "LITE-06-001",
+      "LITE-08-013",
+      "LITE-09-003",
+      "LITE-09-014",
+      "LITE-10-009",
+      "LITE-11-008",
+      "LITE-13-011"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-004",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P2 Migration Registry contains exactly the registered migrations in contract order|LITE-10-001 fresh install and supported upgrade both apply the complete registry) src/migrations/M2MigrationRegistryAcceptance.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-015",
+      "LITE-06-008",
+      "LITE-10-001",
+      "LITE-10-002",
+      "LITE-10-014",
+      "LITE-10-017"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-005",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P5A-R06/R09/R12 Events returns the raw bounded page in strict sequence order|P5A-R13 Events preserves unknown wire records without Registry consumption wrappers|P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details|LITE-04-011 / P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details) src/routes/canonicalRunEvents.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/05-apps-server-src-routes-canonicalrunevents-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-005",
+      "LITE-02-007",
+      "LITE-02-010",
+      "LITE-02-011",
+      "LITE-02-017",
+      "LITE-03-004",
+      "LITE-03-005",
+      "LITE-03-006",
+      "LITE-03-009",
+      "LITE-03-011",
+      "LITE-03-013",
+      "LITE-03-019",
+      "LITE-04-011",
+      "LITE-08-009",
+      "LITE-10-007",
+      "LITE-11-006",
+      "LITE-11-007",
+      "LITE-13-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-006",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C afterSequence-only cursor replays strictly greater durable sequences|P5C live durable commits after subscribe are delivered exactly once with the persisted id|LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once) src/routes/canonicalRunStream.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/06-apps-server-src-routes-canonicalrunstream-test-ts.json",
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-004",
+      "LITE-00-005",
+      "LITE-02-009",
+      "LITE-02-010",
+      "LITE-03-009",
+      "LITE-03-010",
+      "LITE-03-011",
+      "LITE-03-019",
+      "LITE-04-005",
+      "LITE-11-004",
+      "LITE-11-006",
+      "LITE-11-007",
+      "LITE-13-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-007",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-00-002 Conversation and Message records survive a restart and a reconnect|LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run) src/routes/conversationRuntime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/07-apps-server-src-routes-conversationruntime-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-001",
+      "LITE-00-002",
+      "LITE-01-003",
+      "LITE-01-015",
+      "LITE-09-004",
+      "LITE-09-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-008",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-06-011 the Git surface observes only and its wording claims no ownership) src/routes/git.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/08-apps-server-src-routes-git-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-011",
+      "LITE-03-017",
+      "LITE-06-005",
+      "LITE-06-006",
+      "LITE-06-011"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-009",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text) src/routes/memories.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/09-apps-server-src-routes-memories-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-010",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink) src/routes/memoryRuntime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/10-apps-server-src-routes-memoryruntime-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-011",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering|P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body|P5D already-terminal Run cannot regress through public active cancellation) src/routes/operations.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/11-apps-server-src-routes-operations-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-11-005",
+      "LITE-13-010"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-012",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-11-009 a forced READ_ONLY start request creates no admission authority) src/routes/p6-l1a-start-route.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/12-apps-server-src-routes-p6-l1a-start-route-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-11-009"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-013",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event|P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body|P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT|P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201) src/routes/runLifecycle.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/13-apps-server-src-routes-runlifecycle-test-ts.json",
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-005",
+      "LITE-02-002",
+      "LITE-02-012",
+      "LITE-03-015",
+      "LITE-10-004",
+      "LITE-10-008",
+      "LITE-11-002",
+      "LITE-11-003",
+      "LITE-11-005",
+      "LITE-11-010",
+      "LITE-13-010"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-014",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:returns run list and aggregated details with workspace isolation and capped limit) src/routes/runs.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/14-apps-server-src-routes-runs-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-11-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-015",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-08-012: a browser disconnect decides nothing; only the explicit decision does) src/routes/runtimeApprovals.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/15-apps-server-src-routes-runtimeapprovals-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-08-008",
+      "LITE-08-011",
+      "LITE-08-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-016",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation|LITE-13-009 the Inspector is read-only and carries no process control field|LITE-13-013 the Inspector projection exposes no secret material and a frozen key set) src/routes/runtimeInspector.redaction.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/16-apps-server-src-routes-runtimeinspector-redaction-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-011",
+      "LITE-13-007",
+      "LITE-13-009",
+      "LITE-13-013"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-017",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:GET /runs/:runId/inspector returns the redacted projection for a canonical Run) src/routes/runtimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/17-apps-server-src-routes-runtimeinspector-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-001",
+      "LITE-13-006",
+      "LITE-13-011",
+      "LITE-13-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-018",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references|CR6-A3 the q filter never searches message bodies \\(secrets excluded from search\\)) src/services/AgentHistoryService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/18-apps-server-src-services-agenthistoryservice-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-013",
+      "LITE-09-103",
+      "LITE-11-011",
+      "LITE-12-013"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-019",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:ApprovalRegistry revokes grants idempotently) src/services/ApprovalRegistry.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/19-apps-server-src-services-approvalregistry-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-08-015",
+      "LITE-11-013"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-020",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:CR5S-03 reaching the total cap exhausts the interaction with a stable reason) src/services/BoundedGroupService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/20-apps-server-src-services-boundedgroupservice-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-013",
+      "LITE-09-015"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-021",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-09-008 / CR4P-02 a retried Event projection converges on one existing Conversation card|LITE-09-008 / CR4P-08 a duplicate projection key is detected and then converges) src/services/ConversationProjectionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/21-apps-server-src-services-conversationprojectionservice-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-008"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-022",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:preserves distinct first/final HEAD SHAs across a real commit boundary) src/services/GitObservationCollector.integration.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/22-apps-server-src-services-gitobservationcollector-integration-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-011",
+      "LITE-03-017",
+      "LITE-06-005",
+      "LITE-06-006",
+      "LITE-06-011"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-023",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class) src/services/GroupSpeakerResolver.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/23-apps-server-src-services-groupspeakerresolver-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-013",
+      "LITE-09-015"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-024",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P2C-2A Run queued -> starting emits run\\.dequeued with service timestamp|P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure) src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-02-006",
+      "LITE-02-017",
+      "LITE-03-002",
+      "LITE-03-003",
+      "LITE-03-004",
+      "LITE-03-005",
+      "LITE-06-008",
+      "LITE-10-006"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-025",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P2C-2B every Event and Outbox position rolls back the composite transaction) src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-005",
+      "LITE-02-007",
+      "LITE-02-011",
+      "LITE-02-017",
+      "LITE-03-004",
+      "LITE-03-005",
+      "LITE-03-006",
+      "LITE-10-007"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-026",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:N=0 writes only run\\.created with sequence 1 and next sequence 2|N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event|idempotency replay returns the stored result without adding Events or Outboxes) src/services/m3-p2c2c-run-graph-creation.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-02-005",
+      "LITE-02-007",
+      "LITE-10-008"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-027",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue) src/services/m3-p6-integrated-verification.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/27-apps-server-src-services-m3-p6-integrated-verification-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-05-008",
+      "LITE-09-007",
+      "LITE-13-014"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-028",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:MF4I-01 resolve persists a snapshot and returns bounded context|MF4I-02 resolve is idempotent per run scope|MF4I-07 later entry edits do not rewrite the snapshot) src/services/MemoryContextResolver.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/28-apps-server-src-services-memorycontextresolver-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-010",
+      "LITE-01-012",
+      "LITE-07-005",
+      "LITE-07-014"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-029",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row) src/services/MemoryRetrievalService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/29-apps-server-src-services-memoryretrievalservice-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-030",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox) src/services/MemoryRuntimeEventEmitter.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/30-apps-server-src-services-memoryruntimeeventemitter-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-031",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event|M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events|M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence) src/services/OutboxPublisher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/31-apps-server-src-services-outboxpublisher-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-005",
+      "LITE-02-007",
+      "LITE-02-008",
+      "LITE-02-011",
+      "LITE-02-017",
+      "LITE-03-004",
+      "LITE-03-005",
+      "LITE-03-006",
+      "LITE-03-007",
+      "LITE-03-008",
+      "LITE-10-007"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-032",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once|L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn|LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once|LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute|LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available|LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once) src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-006",
+      "LITE-00-009",
+      "LITE-01-009",
+      "LITE-01-010",
+      "LITE-02-004",
+      "LITE-02-011",
+      "LITE-02-013",
+      "LITE-02-016",
+      "LITE-04-002",
+      "LITE-04-008",
+      "LITE-04-010",
+      "LITE-05-007",
+      "LITE-06-002",
+      "LITE-06-003",
+      "LITE-06-004",
+      "LITE-06-009",
+      "LITE-08-001",
+      "LITE-08-002",
+      "LITE-08-003",
+      "LITE-08-008",
+      "LITE-08-010",
+      "LITE-08-011",
+      "LITE-08-012",
+      "LITE-08-014",
+      "LITE-09-011",
+      "LITE-10-011",
+      "LITE-13-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-033",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts|LITE-04-002 Mock Provider auth failure fails closed before claim|LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice|LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence|LITE-04-002 Mock Provider process crash \\(non-zero termination\\) maps to failed Session and exited Process evidence) src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-002"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-034",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings) src/services/RunReplayService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/34-apps-server-src-services-runreplayservice-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-005",
+      "LITE-02-010",
+      "LITE-03-009",
+      "LITE-03-011",
+      "LITE-03-019",
+      "LITE-11-006",
+      "LITE-11-007",
+      "LITE-13-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-035",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry) src/services/RuntimeArtifactCollector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/35-apps-server-src-services-runtimeartifactcollector-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-03-014",
+      "LITE-06-007"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-036",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry) src/services/RuntimeEventProjector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/36-apps-server-src-services-runtimeeventprojector-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-03-012",
+      "LITE-04-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-037",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state|LITE-01-006 Run and Process records remain independently queryable|LITE-12-010 unknown or unavailable admission is projected as modifying|LITE-12-010 only complete verified enforcement is presented as read-only|INSP-05 events are ordered and bounded|LITE-13-102 Inspector projects canonical operation identity and version for actions) src/services/RuntimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/37-apps-server-src-services-runtimeinspector-test-ts.json",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-003",
+      "LITE-00-010",
+      "LITE-01-006",
+      "LITE-01-007",
+      "LITE-01-012",
+      "LITE-07-005",
+      "LITE-07-014",
+      "LITE-08-004",
+      "LITE-10-003",
+      "LITE-12-010",
+      "LITE-13-001",
+      "LITE-13-005",
+      "LITE-13-006",
+      "LITE-13-011",
+      "LITE-13-012",
+      "LITE-13-102"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-038",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation|P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically|TaskRunService captures four Legacy stages on initial and retry with latest lineage|LITE-01-004 a Task supports zero Runs and then multiple independent Runs|LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability) src/services/TaskRunService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/38-apps-server-src-services-taskrunservice-test-ts.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-004",
+      "LITE-01-005",
+      "LITE-01-011",
+      "LITE-02-002",
+      "LITE-02-012",
+      "LITE-03-015",
+      "LITE-10-004",
+      "LITE-10-005",
+      "LITE-10-008",
+      "LITE-11-002",
+      "LITE-11-003",
+      "LITE-11-010"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-039",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives) src/services/WorkflowTemplateService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/39-apps-server-src-services-workflowtemplateservice-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-101",
+      "LITE-09-017"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-040",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:L1D-U09 an active MODIFYING admission blocks every later request|LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial) src/services/WorkspaceAdmissionAuthority.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/40-apps-server-src-services-workspaceadmissionauthority-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-008",
+      "LITE-00-009",
+      "LITE-01-008",
+      "LITE-01-009",
+      "LITE-01-010",
+      "LITE-02-003",
+      "LITE-02-004",
+      "LITE-04-008",
+      "LITE-06-001",
+      "LITE-06-002",
+      "LITE-06-003",
+      "LITE-06-004",
+      "LITE-08-013",
+      "LITE-09-003",
+      "LITE-09-011",
+      "LITE-09-014",
+      "LITE-10-009",
+      "LITE-10-011",
+      "LITE-11-008",
+      "LITE-13-011",
+      "LITE-13-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-041",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:T31 initial Run has parentRunId null and rootRunId equal to its own id|T32 retry Run keeps the parent/root chain) src/store/__tests__/RunRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/41-apps-server-src-store-tests-runrepository-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-001",
+      "LITE-10-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-042",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:createEntityId produces prefix_ulid format) src/store/Identity.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/42-apps-server-src-store-identity-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-001",
+      "LITE-10-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-043",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row) src/store/MemoryCandidateRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/43-apps-server-src-store-memorycandidaterepository-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-044",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 secret-like Snapshot payload leaves no Snapshot sink rows) src/store/MemoryContextSnapshotRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-045",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-07-012/LITE-10-016 secret-like Entry text leaves no Entry or FTS row) src/store/MemoryEntryRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/45-apps-server-src-store-memoryentryrepository-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-012",
+      "LITE-10-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-046",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:Workspace\\.agents projected fields match Provider Configuration after update|LITE-04-004 switching a Provider preserves the Agent identity and durable History) src/store/SqliteStore.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/46-apps-server-src-store-sqlitestore-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-001",
+      "LITE-01-002",
+      "LITE-04-004",
+      "LITE-09-004",
+      "LITE-09-009"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-047",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "pnpm exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction) src/taskRecovery.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/47-apps-server-src-taskrecovery-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-05-011"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-048",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:GRP-01 the interaction is visibly bounded with progress meters) src/components/chat/BoundedGroupView.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/48-apps-web-src-components-chat-boundedgroupview-test-tsx.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-009"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-049",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-12-007 the empty state is named, never rendered as a blank surface|LITE-12-007 the error state is an announced alert, not silence|LITE-12-007 every state renders without throwing, so no state is unreachable) src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-007",
+      "LITE-12-101"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-050",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-12-101 the workbench exposes Agent selection and Conversation creation controls) src/components/chat/DirectConversationWorkbench.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/50-apps-web-src-components-chat-directconversationworkbench-test-tsx.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-101"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-051",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:GRP-canvas: the group canvas mounts with a composer and the budget controls) src/components/chat/GroupConversationCanvas.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-009"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-052",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state) src/components/chat/RunInspectorPanel.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/52-apps-web-src-components-chat-runinspectorpanel-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-005"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-053",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration|LITE-12-010 unknown or unavailable read-only enforcement renders modifying|LITE-13-102 Inspector action controls are exposed only through callbacks) src/components/chat/RuntimeInspectorView.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-08-004",
+      "LITE-12-010",
+      "LITE-12-011",
+      "LITE-12-012",
+      "LITE-13-006",
+      "LITE-13-102"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-054",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:SHELL-01 wide mode renders all four columns with landmarks|SHELL-05 reduced motion collapses panel transitions to zero|SHELL-07 dark and light themes emit their own token values) src/components/layout/WorkbenchShell.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/54-apps-web-src-components-layout-workbenchshell-test-tsx.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-012",
+      "LITE-12-001",
+      "LITE-12-002",
+      "LITE-12-003",
+      "LITE-12-004"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-055",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:only auto-anchors an already-following stream) src/lib/chatScroll.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/55-apps-web-src-lib-chatscroll-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-005",
+      "LITE-12-006"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-056",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-12-014 Enter submits while Shift\\+Enter and IME composition stay local|LITE-12-014 keyboard submit prevents the browser newline and restores composer focus|LITE-12-014 disabled submit does not invoke the send callback) src/lib/composerKeyboard.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/56-apps-web-src-lib-composerkeyboard-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-014",
+      "LITE-12-101"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-057",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:DCUX-S03 reconnect resumes from the durable cursor and resyncs|DCUX-P02 task and run modes map to distinct explicit actions|DCUX-C01 the client targets the forward runtime surface with correct paths) src/lib/directConversation.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/57-apps-web-src-lib-directconversation-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-005",
+      "LITE-12-006",
+      "LITE-12-008",
+      "LITE-12-015"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-058",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-09-008 projects repeated streaming chunks for one execution into one timeline card) src/lib/executionTimeline.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/58-apps-web-src-lib-executiontimeline-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-008",
+      "LITE-12-005",
+      "LITE-12-006"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-059",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:HS-05 only labelled entries are searchable \\(no content search, secrets excluded\\)|HS-V01 the view renders the filter set, grouped results, and canonical links) src/lib/historySearch.test.tsx",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/59-apps-web-src-lib-historysearch-test-tsx.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-013",
+      "LITE-11-011",
+      "LITE-12-013"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-060",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-13-102 Inspector client encodes the workspace and Run route|LITE-13-102 Inspector client uses versioned action APIs and idempotency keys) src/lib/runtimeInspectorClient.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/60-apps-web-src-lib-runtimeinspectorclient-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-102"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-061",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-12-101 workbench actions remain explicit callback intents) src/lib/workbenchInteractions.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/61-apps-web-src-lib-workbenchinteractions-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-12-101"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-062",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-12-016 no web module implements a deferred product surface|LITE-12-016 the workspace shells expose no deferred product entry point) src/liteScopeBoundary.test.ts",
+    "cwd": "apps/web",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/62-apps-web-src-litescopeboundary-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-08-015",
+      "LITE-11-013",
+      "LITE-12-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-063",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/capabilityDeclaration.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts.json",
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-007",
+      "LITE-06-004"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-064",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/codexProviderAdapter.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/64-packages-agent-core-src-providers-codexprovideradapter-test-ts.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-001",
+      "LITE-04-003"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-065",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/kimiCodeAdapter.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/65-packages-agent-core-src-providers-kimicodeadapter-test-ts.json",
+    "result": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-01-014",
+      "LITE-04-001",
+      "LITE-04-003"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-066",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/opencodeProviderAdapter.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts.json",
+    "result": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-001",
+      "LITE-04-003"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-067",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/providerErrorRetryability.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/67-packages-agent-core-src-providers-providererrorretryability-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-006"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-068",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/providers/validation.test.ts",
+    "cwd": "packages/agent-core",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/68-packages-agent-core-src-providers-validation-test-ts.json",
+    "result": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-010",
+      "LITE-08-003",
+      "LITE-08-010"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-069",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/durable-coordinator.test.ts",
+    "cwd": "packages/process-runtime",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/69-packages-process-runtime-src-durable-coordinator-test-ts.json",
+    "result": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-005",
+      "LITE-01-009",
+      "LITE-03-013",
+      "LITE-03-014",
+      "LITE-04-011",
+      "LITE-05-010",
+      "LITE-08-009",
+      "LITE-10-013"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-070",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/node-driver.test.ts",
+    "cwd": "packages/process-runtime",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/70-packages-process-runtime-src-node-driver-test-ts.json",
+    "result": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-006",
+      "LITE-01-007",
+      "LITE-02-011",
+      "LITE-02-013",
+      "LITE-05-001",
+      "LITE-05-002",
+      "LITE-05-003",
+      "LITE-05-004",
+      "LITE-05-005",
+      "LITE-05-006",
+      "LITE-05-007",
+      "LITE-05-009",
+      "LITE-05-012",
+      "LITE-10-003",
+      "LITE-10-010",
+      "LITE-10-012"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-071",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "vitest",
+    "command": "pnpm exec vitest run --reporter=verbose src/p6-m3b-windows-birth-identity.test.ts",
+    "cwd": "packages/process-runtime",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts.json",
+    "result": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-05-001",
+      "LITE-05-002",
+      "LITE-05-003",
+      "LITE-05-004",
+      "LITE-05-005",
+      "LITE-05-006",
+      "LITE-05-007",
+      "LITE-05-009",
+      "LITE-05-012",
+      "LITE-10-010",
+      "LITE-10-012"
+    ],
+    "environment": "Windows; Vitest; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-072",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-03-001 rejects illegal payloads and missing Stage envelope association|LITE-03-001 maps envelope and payload failures to distinct stable errors) ../../packages/shared/m3-runtime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/72-packages-shared-m3-runtime-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-03-001"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-073",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:LITE-03-016 Memory selection Events expose bounded explanation fields) ../../packages/shared/mf5-memory-events.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/73-packages-shared-mf5-memory-events-test-ts.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-03-016"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-074",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:L1A-05 READ_ONLY \\+ no enforcement -> MODIFYING|L1A-10 READ_ONLY \\+ verified technical denial \\+ no side effects -> READ_ONLY|LITE-04-009 capability and intent claims fail closed unless technical denial is verified) ../../packages/shared/p6-l1a-admission.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/74-packages-shared-p6-l1a-admission-test-ts.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-009",
+      "LITE-01-010",
+      "LITE-02-004",
+      "LITE-04-008",
+      "LITE-04-009",
+      "LITE-06-002",
+      "LITE-06-003",
+      "LITE-06-004",
+      "LITE-09-011",
+      "LITE-10-011",
+      "LITE-11-009",
+      "LITE-13-012"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-075",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability|L1C-M1-04 GitCommandPort accepts only structured read families) ../../packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/75-packages-shared-p6-l1c-git-observation-contract-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-03-014",
+      "LITE-06-007",
+      "LITE-06-010"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-DIRECT-076",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern (?:WFI-10 every template compiles|WFI-04 optional security review) ../../packages/shared/wf-template-instantiation.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/76-packages-shared-wf-template-instantiation-test-ts.json",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-00-013",
+      "LITE-01-011",
+      "LITE-09-015"
+    ],
+    "environment": "Windows; node:test; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; literal named-test invocation",
+    "limitation": "This proof maps every declared requirement to concrete assert/expect calls in the named test bodies and preserves the original raw receipt. It is not a real Provider or browser invocation unless separately identified below."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-ARTIFACT",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact.json",
+    "result": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-BROWSER-13-101",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --test --test-concurrency=1 --test-reporter=tap scripts/verify-lite-13-101-browser.test.mjs",
+    "cwd": ".",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/browser-13-101.json",
+    "result": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-101"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-COMPACTION-REPOSITORY",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/CompactionRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository.json",
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-COMPACTION-SERVICE",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service.json",
+    "result": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-COMPACTION-TRIGGER",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionTrigger.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger.json",
+    "result": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-CONTROLLED-07003",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-07003\\source",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003.json",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-003"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-CONTROLLED-07013",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-07013\\source",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-013"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-CONTROLLED-S1-BUDGET",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-s1-budget\\source",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget.json",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-007",
+      "LITE-07-109"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-CONTROLLED-S7",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-s7\\source",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-106",
+      "LITE-07-107",
+      "LITE-07-108"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-MEMORY-CANDIDATE",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryCandidateRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate.json",
+    "result": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-002",
+      "LITE-07-004",
+      "LITE-07-011"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-MEMORY-CONTEXT",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/MemoryContextResolver.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context.json",
+    "result": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-008"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-MEMORY-RETRIEVAL",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/MemoryRetrievalService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval.json",
+    "result": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-001"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-MEMORY-RUNTIME",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/memoryRuntime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime.json",
+    "result": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-001",
+      "LITE-07-009",
+      "LITE-07-101"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-RECOVERY",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery.json",
+    "result": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-008"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-AFFECTED-RUNTIME-INSPECTOR",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector.json",
+    "result": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-13-002",
+      "LITE-13-003",
+      "LITE-13-015"
+    ],
+    "environment": "Windows; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09; affected old-PASS receipt recaptured on the current code",
+    "limitation": "This receipt is used only to re-anchor an old PASS whose implementation path was changed or whose current clean evidence is being made explicit. It preserves the exact raw execution and does not broaden the requirement."
+  },
+  {
+    "id": "S9-ACCEL-33D-PROVIDER-CODEX",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "runtime-verification",
+    "provider": "codex",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: current-machine Codex gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real codex CLI; explicit model gpt-5.6-luna; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "limitation": "This is a local real-completion receipt using explicit model gpt-5.6-luna. It does not prove hosted-CI reproducibility and does not change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-ACCEL-33D-PROVIDER-KIMI",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "runtime-verification",
+    "provider": "kimi",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: current-machine Kimi gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-provider/kimi/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real kimi CLI; explicit model opencodex/gpt-5.6-luna; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "limitation": "This is a local real-completion receipt using explicit model opencodex/gpt-5.6-luna. It does not prove hosted-CI reproducibility and does not change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-ACCEL-33D-PROVIDER-OPENCODE",
+    "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "kind": "runtime-verification",
+    "provider": "opencode",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: real OpenCode completes src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-33d12571-provider/opencode/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real opencode CLI; explicit model opencode/big-pickle; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+    "limitation": "This is a local real-completion receipt using opencode/big-pickle because deepseek/deepseek-v4-flash returned 402 Insufficient Balance. It does not prove hosted-CI reproducibility, OpenCode cancellation, or change the separately authorized LITE-04-101 DEFERRED state."
   }
 ]
