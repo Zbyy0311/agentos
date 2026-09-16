@@ -453,8 +453,6 @@ test('LITE-13-102 Inspector projects canonical operation identity and version fo
   try {
     const operation = fx.operations.create({ workspaceId: WS, runId: RUN, type: 'run.start' });
     const projection = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
-    assert.deepEqual(projection.operations, [{
-      operationId: operation.id, type: 'run.start', status: 'queued', version: 1,
-    }]);
+    assert.deepEqual(projection.operations, [{ operationId: operation.id, type: 'run.start', status: 'queued', version: 1 }]);
   } finally { fx.close(); }
 });

@@ -11,6 +11,18 @@ import {
 
 const CANCELLABLE_OPERATION_STATUSES = new Set(['queued', 'running', 'waiting_approval', 'paused']);
 
+/**
+ * Refreshes the Inspector with the latest server-bounded projection.
+ * The client must replace the previous projection instead of appending any
+ * events or rows to it, so a long-lived panel cannot grow without bound.
+ */
+export function replaceInspectorProjection(
+  _previous: InspectorProjectionDto | null,
+  next: InspectorProjectionDto,
+): InspectorProjectionDto {
+  return next;
+}
+
 export function RunInspectorPanel(props: {
   readonly workspaceId: string;
   readonly apiBase: string;
@@ -75,7 +87,9 @@ function InspectorRequest(props: {
     setProjection(null);
     setError(null);
     void client.inspectRun(props.runId, controller.signal).then(next => {
-      if (!controller.signal.aborted) setProjection(next);
+      if (!controller.signal.aborted) {
+        setProjection(previous => replaceInspectorProjection(previous, next));
+      }
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Inspector unavailable');
     });
