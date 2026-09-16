@@ -70,12 +70,7 @@ test('LITE-12-016 the workspace shells expose no deferred product entry point', 
   ]) {
     const source = readFileSync(file, 'utf8');
     for (const surface of DEFERRED_SURFACES) {
-      assert.equal(
-        surface.pattern.test(source),
-        false,
-        `${surface.label} must not appear in ${relative(webSrc, file)}`,
-      );
+      assert.equal(surface.pattern.test(source), false, `${surface.label} must not appear in ${relative(webSrc, file)}`);
     }
   }
 });
-

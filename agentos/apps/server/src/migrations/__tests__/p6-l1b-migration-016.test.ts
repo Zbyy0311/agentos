@@ -392,6 +392,7 @@ test('L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence'
       () => insertRow(db, 'workspace_admissions', admissionRow({ id: 'adm_2', request_order: 2, state: 'GRANTED', granted_at: NOW })),
       /UNIQUE constraint failed/,
     );
+    assert.equal(count(db, "SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'"), 1);
   } finally { db.close(); }
 });
 
