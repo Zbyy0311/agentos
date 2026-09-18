@@ -6,7 +6,7 @@ import { DirectConversationWorkbench } from '@/components/chat/DirectConversatio
 import { RunInspectorPanel } from '@/components/chat/RunInspectorPanel';
 import { useDirectConversation } from '@/lib/useDirectConversation';
 import { useApi } from '@/lib/useApi';
-import type { UiTheme } from '@/lib/uiFoundation';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 /**
  * Direct Conversation UX page (forward Conversation runtime).
@@ -19,6 +19,7 @@ export default function DirectConversationPage() {
   const params = useParams();
   const workspaceId = typeof params.id === 'string' ? params.id : '';
   const { API_BASE } = useApi();
+  const { theme } = useTheme();
   const state = useDirectConversation(workspaceId, API_BASE);
   const [viewportWidth, setViewportWidth] = useState(1600);
 
@@ -30,7 +31,6 @@ export default function DirectConversationPage() {
   }, []);
 
   const active = state.conversations.find(c => c.id === state.activeConversationId);
-  const theme: UiTheme = 'dark';
   const runIds = [...new Set(state.messages.flatMap(message =>
     message.conversationId === state.activeConversationId && message.runId ? [message.runId] : []))].reverse();
   const createConversation = () => { void state.createConversation(); };
@@ -44,11 +44,11 @@ export default function DirectConversationPage() {
         apiBase={API_BASE} runIds={runIds} theme={theme} />}
       toolbar={(
         <>
-          <span data-agentos="workspace-breadcrumb" aria-label="Workspace breadcrumb">
-            Workspace / {state.activeConversationId ?? workspaceId}
+          <span data-agentos="workspace-breadcrumb" aria-label="工作区路径">
+            工作区 / {state.activeConversationId ?? workspaceId}
           </span>
           <span role="status" data-agentos="runtime-status">
-            Runtime · {state.stream.phase}
+            运行时 · {state.stream.phase}
           </span>
           <button
             type="button"
@@ -56,7 +56,7 @@ export default function DirectConversationPage() {
             onClick={createConversation}
             disabled={state.agents.length === 0}
           >
-            New Conversation
+            新建会话
           </button>
         </>
       )}

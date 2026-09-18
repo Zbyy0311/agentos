@@ -55,7 +55,7 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
     </div>
 
     <div className="mt-8 border-t ui-border pt-5">
-      <div className="workspace-nav-label signal-section-label mb-2 flex items-center justify-between px-2"><span>GROUPS</span><button type="button" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
+      <div className="workspace-nav-label signal-section-label mb-2 flex items-center justify-between px-2"><span>GROUPS</span><button type="button" aria-label="创建协作群聊" title="创建协作群聊" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
       <div className="space-y-1">
         {groups.map(group => <button type="button" key={group.id} aria-label={group.title} title={group.title} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-button w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="workspace-group-copy ml-1">{group.title}</span></button>)}
         {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}

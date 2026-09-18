@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AgentModelOption, AgentPermission, AgentProfile, AgentProvider, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import { ModalShell } from '@/components/feedback/ModalShell';
 
 interface AgentEditorProps {
   agent: AgentProfile;
@@ -44,9 +45,8 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
   const togglePermission = (permission: AgentPermission) => setPermissions(current => current.includes(permission) ? current.filter(item => item !== permission) : [...current, permission]);
   const source = agent.capability?.modelSource;
 
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
-    <form onSubmit={event => { event.preventDefault(); submit(); }} className="ui-panel-raised max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
-      <div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs font-medium tracking-[0.16em] ui-accent">AGENT PROFILE</p><h2 className="mt-2 text-lg font-semibold ui-text">编辑 Agent 身份</h2><p className="mt-1 text-sm ui-muted">默认模型用于未指定单次覆盖的消息。</p></div><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
+  return <ModalShell title="编辑 Agent 身份" eyebrow="AGENT PROFILE" description="默认模型用于未指定单次覆盖的消息。" onClose={onClose} size="lg" footer={<div className="flex justify-end gap-3"><button type="button" onClick={onClose} className="ui-button-secondary rounded-xl px-4 py-2 text-sm">取消</button><button type="submit" form="agent-editor-form" disabled={saving || !roleTitle.trim() || !systemPrompt.trim() || permissions.length === 0} className="ui-button-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed">{saving ? '保存中…' : '保存'}</button></div>}>
+    <form id="agent-editor-form" onSubmit={event => { event.preventDefault(); submit(); }}>
       <div className="space-y-4">
         <label className="block text-sm ui-text-soft">显示名称<input value={name} onChange={event => setName(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none" /></label>
         <label className="block text-sm ui-text-soft">职责<input value={roleTitle} onChange={event => setRoleTitle(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none" /></label>
@@ -62,7 +62,6 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
         <fieldset><legend className="mb-2 text-sm ui-text-soft">权限</legend><div className="flex flex-wrap gap-2">{permissionOptions.map(option => <label key={option.value} className={`cursor-pointer rounded-xl border px-3 py-2 text-xs transition ${permissions.includes(option.value) ? 'border-[var(--app-accent)] bg-[var(--app-accent-soft)] ui-text' : 'ui-border ui-muted hover:border-[var(--app-border-strong)]'}`}><input className="sr-only" type="checkbox" checked={permissions.includes(option.value)} onChange={() => togglePermission(option.value)} />{option.label}</label>)}</div></fieldset>
         <label className="ui-panel flex items-center justify-between rounded-xl border px-3 py-3 text-sm ui-text-soft"><span>启用此 Agent</span><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} className="accent-[var(--app-accent)]" /></label>
       </div>
-      <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onClose} className="ui-button-secondary rounded-xl px-4 py-2 text-sm">取消</button><button disabled={saving || !roleTitle.trim() || !systemPrompt.trim() || permissions.length === 0} className="ui-button-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed">{saving ? '保存中…' : '保存'}</button></div>
     </form>
-  </div>;
+  </ModalShell>;
 }

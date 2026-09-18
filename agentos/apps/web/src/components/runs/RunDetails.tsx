@@ -5,6 +5,7 @@ import { getRunDurationMs, getRunFailureReason, normalizeRunDetails } from '@/li
 import { ArtifactShelf } from './ArtifactShelf';
 import { RunTaskTree } from './RunTaskTree';
 import { ExecutionArchive } from './ExecutionArchive';
+import { ModalShell } from '@/components/feedback/ModalShell';
 
 interface RunDetailsProps {
   details: AgentRunDetails;
@@ -22,12 +23,7 @@ export function RunDetails({ details: sourceDetails, apiBase, onClose, onGenerat
   const details = normalizeRunDetails(sourceDetails);
   const duration = getRunDurationMs(details);
   const failureReason = getRunFailureReason(details);
-  return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/50 p-6" role="dialog" aria-modal="true" aria-label="本次执行详情">
-    <section className="ui-panel max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border p-6 shadow-[var(--app-shadow)]">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div><div className="text-[11px] tracking-[0.16em] ui-dim">RUN DETAILS</div><h2 className="mt-1 text-lg font-semibold ui-text">本次执行详情</h2></div>
-        <div className="flex items-center gap-2"><button type="button" onClick={() => onGenerateCandidates?.(details.run.id)} disabled={details.run.status !== 'completed' || generatingCandidates} className="ui-button-ghost rounded-lg px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">{generatingCandidates ? '生成中…' : '生成记忆候选'}</button><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
-      </div>
+  return <ModalShell title="本次执行详情" eyebrow="RUN DETAILS" onClose={onClose} size="lg" headerActions={<button type="button" onClick={() => onGenerateCandidates?.(details.run.id)} disabled={details.run.status !== 'completed' || generatingCandidates} className="ui-button-ghost rounded-lg px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">{generatingCandidates ? '生成中…' : '生成记忆候选'}</button>}>
       <div className="space-y-6 text-sm">
         <section><h3 className="mb-2 font-medium ui-text">运行模式与工作区策略</h3><div className="grid gap-1 text-xs ui-text-soft"><div>Intent：{details.run.intent ?? 'execute'}</div>{details.run.runtimePolicy ? <><div>Workspace：{details.run.runtimePolicy.workspaceWrite ? '可写' : '只读'}</div><div>Network：{details.run.runtimePolicy.networkPolicy}</div><div>Tool：{details.run.runtimePolicy.toolPolicy}</div><div>Enforcement：{details.run.runtimePolicy.enforcement}</div></> : <div>旧 Run 未记录策略快照</div>}</div></section>
         <section><h3 className="mb-2 font-medium ui-text">原始需求</h3><p className="whitespace-pre-wrap rounded-xl bg-[var(--app-surface-soft)] p-3 leading-6 ui-text-soft">{details.sourceMessage.content || '（仅包含附件）'}</p></section>
@@ -43,6 +39,5 @@ export function RunDetails({ details: sourceDetails, apiBase, onClose, onGenerat
         <section><h3 className="mb-2 font-medium ui-text">使用的项目记忆</h3>{details.usedMemories.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.usedMemories.map(memory => <li key={memory.memoryId}>{memory.memoryId} · {memory.injectedCharacters} 字符</li>)}</ul> : <p className="ui-dim">本次未使用项目记忆</p>}</section>
         <section><h3 className="mb-2 font-medium ui-text">应用的交互偏好</h3>{details.preferenceApplications.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.preferenceApplications.map(application => <li key={application.projectionId}>{application.resolvedValue} · {application.injectedCharacters} 字符</li>)}</ul> : <p className="ui-dim">本次未注入交互偏好</p>}</section>
       </div>
-    </section>
-  </div>;
+  </ModalShell>;
 }

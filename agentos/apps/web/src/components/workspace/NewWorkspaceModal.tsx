@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ModalShell } from '@/components/feedback/ModalShell';
 
 interface NewWorkspaceModalProps {
   onClose: () => void;
@@ -23,12 +24,8 @@ export function NewWorkspaceModal({ onClose, onCreate }: NewWorkspaceModalProps)
     onClose();
   };
 
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
-    <form onSubmit={handleSubmit} className="ui-panel-raised w-full max-w-lg rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div><p className="text-xs font-medium tracking-[0.16em] ui-accent">NEW WORKSPACE</p><h2 className="mt-2 text-xl font-semibold ui-text">建立一个新的工作区</h2><p className="mt-1 text-sm ui-muted">为本地项目准备独立的 Agent 上下文。</p></div>
-        <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button>
-      </div>
+  return <ModalShell title="建立一个新的工作区" eyebrow="NEW WORKSPACE" description="为本地项目准备独立的 Agent 上下文。" onClose={onClose} size="md" footer={<div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="ui-button-secondary rounded-xl px-4 py-2.5 text-sm">取消</button><button type="submit" form="workspace-form" disabled={submitting || !name.trim() || !rootPath.trim()} className="ui-button-primary rounded-xl px-4 py-2.5 text-sm font-medium">{submitting ? '创建中…' : '创建工作区'}</button></div>}>
+    <form id="workspace-form" onSubmit={handleSubmit}>
       <div className="space-y-4">
         <label className="block text-sm ui-text-soft">名称<input autoFocus type="text" value={name} onChange={event => setName(event.target.value)} placeholder="例如：agentos" className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 text-sm outline-none" /></label>
         <label className="block text-sm ui-text-soft">本地目录<input type="text" value={rootPath} onChange={event => setRootPath(event.target.value)} placeholder="E:\\projects\\my-project" className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 text-sm outline-none" /></label>
@@ -39,10 +36,6 @@ export function NewWorkspaceModal({ onClose, onCreate }: NewWorkspaceModalProps)
           </div>
         </fieldset>
       </div>
-      <div className="mt-7 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="ui-button-secondary rounded-xl px-4 py-2.5 text-sm">取消</button>
-        <button type="submit" disabled={submitting || !name.trim() || !rootPath.trim()} className="ui-button-primary rounded-xl px-4 py-2.5 text-sm font-medium">{submitting ? '创建中…' : '创建工作区'}</button>
-      </div>
     </form>
-  </div>;
+  </ModalShell>;
 }

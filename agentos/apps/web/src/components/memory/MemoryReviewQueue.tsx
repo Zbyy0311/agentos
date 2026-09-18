@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '@/lib/useApi';
+import { ModalShell } from '@/components/feedback/ModalShell';
+import { StatusNotice } from '@/components/feedback/StatusNotice';
 
 /**
  * MF-5 forward Memory Candidate review queue (12-UI-Architecture section 14).
@@ -85,17 +87,10 @@ export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueuePro
   };
 
   return (
-    <div className="fixed inset-0 z-[90] bg-[var(--app-surface)] p-6" data-agentos="memory-review-queue">
-      <div className="mx-auto flex h-full max-w-5xl flex-col">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] tracking-[0.16em] ui-dim">MEMORY REVIEW</div>
-            <h2 className="mt-1 text-xl font-semibold ui-text">记忆候选审查</h2>
-          </div>
-          <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-3 py-2 text-sm">关闭</button>
-        </div>
-        {error && <p className="mb-3 rounded-lg border border-[var(--app-danger)]/30 p-3 text-sm text-[var(--app-danger)]">{error}</p>}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+    <ModalShell title="记忆候选审查" eyebrow="MEMORY REVIEW" description="审查结果受版本保护；合并时必须指定当前工作区内的正式记忆。" onClose={onClose} size="lg">
+      <div className="space-y-4" data-agentos="memory-review-queue">
+        {error && <StatusNotice tone="error" title="记忆审查失败">{error}</StatusNotice>}
+        <div className="space-y-4">
           {candidates.length === 0
             ? <div className="ui-panel rounded-2xl border p-8 text-center text-sm ui-dim">暂无待审查候选</div>
             : candidates.map(candidate => (
@@ -145,6 +140,6 @@ export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueuePro
             ))}
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

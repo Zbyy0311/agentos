@@ -23,7 +23,7 @@ import { consumeSseResponse, UnexpectedStreamEndError } from './streamReconnect'
 export interface DirectConversationControllerOptions {
   readonly client: DirectConversationClient;
   readonly onState?: (state: ConversationStreamState) => void;
-  readonly onMessages?: (messages: readonly ForwardMessage[]) => void;
+  readonly onMessages?: (messages: readonly ForwardMessage[], conversationId: string) => void;
   readonly onError?: (error: Error) => void;
 }
 
@@ -44,7 +44,7 @@ export class DirectConversationController {
 
   async loadMessages(conversationId: string): Promise<readonly ForwardMessage[]> {
     const { messages } = await this.options.client.listMessages(conversationId);
-    this.options.onMessages?.(messages);
+    this.options.onMessages?.(messages, conversationId);
     return messages;
   }
 

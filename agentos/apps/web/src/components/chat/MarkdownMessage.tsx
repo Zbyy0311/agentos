@@ -1,7 +1,7 @@
 'use client';
 
 import type { ComponentPropsWithoutRef } from 'react';
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import remarkGfm from 'remark-gfm';
@@ -34,10 +34,30 @@ function isSameOriginArtifact(value: string, apiBase: string): boolean {
 
 function CodeBlock({ inline, className, children, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
   const language = /language-(\w+)/.exec(className ?? '')?.[1];
-  const value = String(children).replace(/\n$/, '');
-  if (inline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
+  const rawValue = String(children);
+  const value = rawValue.replace(/\n$/, '');
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // react-markdown v9 does not consistently provide `inline` for every
+  // paragraph-level code node. The newline heuristic keeps those nodes as
+  // inline <code>, preventing a block <div> from being nested inside <p>.
+  const isInline = inline ?? (!className && !rawValue.endsWith('\n'));
+  if (isInline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
   if (language === 'diff' || language === 'patch') return <DiffBlock content={value} />;
-  return <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: '0.75rem', padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)' }}>{value}</SyntaxHighlighter>;
+  const lineCount = value.split('\n').length;
+  const collapsible = lineCount > 24;
+  const copy = async () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+  const code = <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: '0.75rem', padding: lineCount <= 2 ? '0.5rem 0.65rem' : '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)' }}>{value}</SyntaxHighlighter>;
+  return <div className={`markdown-code-block ${lineCount <= 2 ? 'markdown-code-compact' : ''}`}>
+    <div className="markdown-code-toolbar"><span>{language ?? '代码'}{collapsible ? ` · ${lineCount} 行` : ''}</span><button type="button" onClick={() => void copy()}>{copied ? '已复制' : '复制'}</button></div>
+    <div className={collapsible && !expanded ? 'markdown-code-collapsed' : undefined}>{code}</div>
+    {collapsible && <button type="button" className="markdown-code-toggle" aria-expanded={expanded} onClick={() => setExpanded(current => !current)}>{expanded ? '收起代码' : '展开全部代码'}</button>}
+  </div>;
 }
 
 export function MarkdownMessage({ content, apiBase = '' }: MarkdownMessageProps) {

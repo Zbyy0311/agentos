@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { AgentEvent, AgentExecution, AgentPresence, AgentProfile, AgentRun, AgentRunDetails, Conversation, ConversationMember, ConversationMessage, ExecutionEvent, ExecutionStatus, GroupDispatchMode, RunIntent, RunStep, RuntimeArtifact, ThinkingEffort, Workspace } from '@agentos/shared';
 import { AgentList } from '@/components/chat/AgentList';
 import { AgentEditor } from '@/components/chat/AgentEditor';
@@ -44,7 +44,7 @@ type ResizePanel = 'workspace' | 'history';
 type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; cleanup: () => void };
 
 const PANEL_RESIZE_HANDLE_WIDTH = 8;
-const CHAT_MIN_WIDTH = 360;
+const CHAT_MIN_WIDTH = 560;
 const PANEL_WIDTH_RANGES: Record<ResizePanel, { min: number; max: number }> = {
   workspace: { min: 180, max: 360 },
   history: { min: 180, max: 420 },
@@ -79,6 +79,7 @@ function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
 export default function WorkspacePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = typeof params.id === 'string' ? params.id : null;
   const { API_BASE, request } = useApi();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -139,6 +140,7 @@ export default function WorkspacePage() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState<number>();
   const [historyPanelWidth, setHistoryPanelWidth] = useState<number>();
+  const [mobilePanel, setMobilePanel] = useState<'history' | 'inspector' | null>(() => searchParams.get('panel') === 'runtime' ? 'inspector' : null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef<string>();
@@ -149,6 +151,10 @@ export default function WorkspacePage() {
   const activeResizeRef = useRef<ActivePanelResize | null>(null);
   const toastIdRef = useRef(0);
   const typewriterRef = useRef(new TypewriterQueue());
+  const mobileDrawerRef = useRef<HTMLElement>(null);
+  const conversationDetailsRequestRef = useRef(0);
+  const settingsSaveTimerRef = useRef<number | undefined>();
+  const settingsSaveVersionRef = useRef(0);
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
   const activeConversationId = getActiveConversationId({ selectedGroupId, selectedDirectConversationId });
@@ -166,9 +172,31 @@ export default function WorkspacePage() {
     const timer = window.setInterval(() => {
       const character = typewriterRef.current.drainOne();
       if (character) setStreamingContent(current => current + character);
-    }, 12);
+    }, 33);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (mobilePanel === null) return;
+    const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const drawer = mobileDrawerRef.current;
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    drawer?.querySelector<HTMLElement>(selector)?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setMobilePanel(null); return; }
+      if (event.key !== 'Tab' || !drawer) return;
+      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(selector)).filter(item => item.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('keydown', onKeyDown); document.body.style.overflow = previousOverflow; previousActive?.focus(); };
+  }, [mobilePanel]);
 
   const pushToast = useCallback((tone: ToastTone, message: string) => {
     const id = `toast-${Date.now()}-${toastIdRef.current++}`;
@@ -254,19 +282,36 @@ export default function WorkspacePage() {
     } : undefined);
     setComposerModel(settings.model);
     setComposerThinkingEffort(settings.thinkingEffort);
-  }, [activeComposerConversation?.id, activeComposerConversation?.model, activeComposerConversation?.thinkingEffort, selectedAgent]);
+  }, [activeComposerConversation, activeComposerConversation?.id, activeComposerConversation?.model, activeComposerConversation?.thinkingEffort, selectedAgent]);
 
-  const persistConversationSettings = useCallback(async (conversationId: string, model: string | undefined, thinkingEffort: ThinkingEffort): Promise<Conversation> => {
+  const persistConversationSettings = useCallback(async (conversationId: string, model: string | undefined, thinkingEffort: ThinkingEffort, version?: number): Promise<Conversation> => {
     if (!workspaceId) throw new Error('Workspace is unavailable');
     const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/settings`, {
       method: 'PATCH',
       body: { model: model ?? null, thinkingEffort },
     });
     const update = (current: Conversation[]) => current.map(conversation => conversation.id === result.conversation.id ? result.conversation : conversation);
-    setConversations(update);
-    setGroups(update);
+    if (version === undefined || version === settingsSaveVersionRef.current) {
+      setConversations(update);
+      setGroups(update);
+    }
     return result.conversation;
   }, [request, workspaceId]);
+
+  const scheduleConversationSettingsSave = useCallback((conversationId: string, model: string | undefined, thinkingEffort: ThinkingEffort) => {
+    const version = ++settingsSaveVersionRef.current;
+    if (settingsSaveTimerRef.current !== undefined) window.clearTimeout(settingsSaveTimerRef.current);
+    settingsSaveTimerRef.current = window.setTimeout(() => {
+      settingsSaveTimerRef.current = undefined;
+      void persistConversationSettings(conversationId, model, thinkingEffort, version).catch(saveError => {
+        if (version === settingsSaveVersionRef.current) notifyError(saveError, '保存会话设置失败');
+      });
+    }, 250);
+  }, [notifyError, persistConversationSettings]);
+
+  useEffect(() => () => {
+    if (settingsSaveTimerRef.current !== undefined) window.clearTimeout(settingsSaveTimerRef.current);
+  }, []);
 
   const handleComposerModelChange = useCallback((model: string | undefined) => {
     const efforts = getThinkingEfforts(selectedAgent, model);
@@ -275,16 +320,16 @@ export default function WorkspacePage() {
     setComposerModel(model);
     setComposerThinkingEffort(nextThinkingEffort);
     if (activeConversationId && !isGroupConversation) {
-      void persistConversationSettings(activeConversationId, model, nextThinkingEffort).catch(saveError => notifyError(saveError, '保存会话设置失败'));
+      scheduleConversationSettingsSave(activeConversationId, model, nextThinkingEffort);
     }
-  }, [activeConversationId, composerThinkingEffort, isGroupConversation, notifyError, persistConversationSettings, selectedAgent]);
+  }, [activeConversationId, composerThinkingEffort, isGroupConversation, scheduleConversationSettingsSave, selectedAgent]);
 
   const handleComposerThinkingEffortChange = useCallback((thinkingEffort: ThinkingEffort) => {
     setComposerThinkingEffort(thinkingEffort);
     if (activeConversationId && !isGroupConversation) {
-      void persistConversationSettings(activeConversationId, composerModel, thinkingEffort).catch(saveError => notifyError(saveError, '保存会话设置失败'));
+      scheduleConversationSettingsSave(activeConversationId, composerModel, thinkingEffort);
     }
-  }, [activeConversationId, composerModel, isGroupConversation, notifyError, persistConversationSettings]);
+  }, [activeConversationId, composerModel, isGroupConversation, scheduleConversationSettingsSave]);
 
   const handleFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -318,6 +363,8 @@ export default function WorkspacePage() {
 
   const loadConversationDetails = useCallback(async (conversationId: string) => {
     if (!workspaceId) return;
+    const requestId = ++conversationDetailsRequestRef.current;
+    const isCurrent = () => requestId === conversationDetailsRequestRef.current && getActiveConversationId({ selectedGroupId, selectedDirectConversationId }) === conversationId;
     const [messageResult, executionResult, runResult] = await Promise.all([
       request<{ messages: ConversationMessage[] }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/messages`),
       request<{ executions: Array<AgentExecution & { events: ExecutionEvent[] }> }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/executions`),
@@ -327,6 +374,7 @@ export default function WorkspacePage() {
     const latestRunDetails = latestRun
       ? await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${latestRun.id}`)
       : undefined;
+    if (!isCurrent()) return;
     const activeRun = selectActiveRunExecutions(executionResult.executions, runResult.runs);
     setMessages(messageResult.messages.map(message => ({
       ...message,
@@ -352,14 +400,15 @@ export default function WorkspacePage() {
     setActiveRunId(activeRun.runId);
     setActiveWaitingQuestion(runResult.runs[0]?.waitingQuestion);
     setActiveArtifacts(latestRunDetails?.artifacts ?? []);
-  }, [API_BASE, agents, request, workspaceId]);
+  }, [API_BASE, agents, request, selectedDirectConversationId, selectedGroupId, workspaceId]);
 
   const loadConversations = useCallback(async (agentId: string) => {
     if (!workspaceId) return;
+    conversationDetailsRequestRef.current += 1;
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     const result = await request<{ conversations: Conversation[] }>(`/api/workspaces/${workspaceId}/conversations?agentId=${encodeURIComponent(agentId)}`);
     setConversations(result.conversations);
     setSelectedDirectConversationId(result.conversations[0]?.id ?? null);
-    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
   }, [request, workspaceId]);
 
   const loadGroups = useCallback(async () => {
@@ -652,7 +701,7 @@ export default function WorkspacePage() {
       abortRef.current = null;
       streamRunIdRef.current = undefined;
     }
-  }, [API_BASE, activeRunId, activeStatus, attachments, composerModel, composerThinkingEffort, createConversation, draft, loadConversationDetails, loadConversations, loadGroups, loadPresence, mentionedAgentIds, notifyError, pushToast, selectedAgent, selectedConversation, selectedGroupId, sending, workspaceId]);
+  }, [API_BASE, activeRunId, activeStatus, attachments, composerModel, composerThinkingEffort, createConversation, draft, loadConversationDetails, loadConversations, loadGroups, loadPresence, mentionedAgentIds, notifyError, pushToast, runIntent, selectedAgent, selectedConversation, selectedGroupId, sending, workspaceId]);
 
   useEffect(() => {
     if (sending || drainingQueueRef.current || pendingQueueRef.current.length === 0) return;
@@ -761,19 +810,32 @@ export default function WorkspacePage() {
     const group = groups.find(item => item.id === groupId);
     if (!group) return;
     if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
+    conversationDetailsRequestRef.current += 1;
     setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
   }, [groups, selectedGroupId]);
+
+  const selectDirectConversation = useCallback((conversationId: string) => {
+    conversationDetailsRequestRef.current += 1;
+    setSelectedDirectConversationId(conversationId);
+    setSelectedGroupId(null);
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+  }, []);
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
 
-  return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
-    <AgentList panelWidth={workspacePanelWidth} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />
+  return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell relative flex h-screen min-w-0 overflow-hidden">
+    <AgentList panelWidth={workspacePanelWidth} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { conversationDetailsRequestRef.current += 1; setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />
     <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
-    <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
+    <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : selectDirectConversation} onContextMenu={openContextMenu} />
     <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
      <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
     <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} />
+    <div className="workspace-mobile-panel-actions" aria-label="工作区面板">
+      <button type="button" aria-label="打开会话历史" onClick={() => setMobilePanel('history')}>会话</button>
+      <button type="button" aria-label="打开运行详情" onClick={() => setMobilePanel('inspector')}>运行详情</button>
+    </div>
+    {mobilePanel !== null && <div className="runtime-mobile-drawer-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMobilePanel(null); }}><section ref={mobileDrawerRef} tabIndex={-1} className="runtime-mobile-drawer" role="dialog" aria-modal="true" aria-label={mobilePanel === 'history' ? '会话历史' : '运行详情'}><header className="runtime-mobile-drawer-header"><span>{mobilePanel === 'history' ? '会话历史' : '运行详情'}</span><button type="button" aria-label="关闭面板" onClick={() => setMobilePanel(null)}>关闭</button></header><div className="runtime-mobile-drawer-body">{mobilePanel === 'history' ? <ConversationHistory title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { setMobilePanel(null); if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={id => { setMobilePanel(null); if (selectedGroupId) selectGroup(id); else selectDirectConversation(id); }} onContextMenu={openContextMenu} /> : <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} onEdit={() => { setMobilePanel(null); setEditingAgent(true); }} onOpenRunDetails={runId => { setMobilePanel(null); void openRunDetails(runId); }} />}</div></section></div>}
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
      {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
      {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}

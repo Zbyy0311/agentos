@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { WorkbenchShell } from '../layout/WorkbenchShell';
+import { WorkspaceSurface } from '../layout/WorkspaceSurface';
 import { ConversationRuntimeView } from '../chat/ConversationRuntimeView';
 import { GroupConversationCanvas } from '../chat/GroupConversationCanvas';
 import type { UiTheme } from '../../lib/uiFoundation';
@@ -104,7 +104,7 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
   const conversationsColumn = (
     <div style={{ padding: UI_SPACING_BASE_PX }}>
       <ColumnHeader
-        title="Conversations"
+        title="会话"
         action={(
           <button
             type="button"
@@ -186,7 +186,7 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
 
   const inspectorColumn = (
     <div style={{ padding: UI_SPACING_BASE_PX * 2, color: 'var(--text-secondary)', fontSize: 12 }}>
-      <ColumnHeader title="Runtime" />
+      <ColumnHeader title="运行详情" />
       <dl style={{ margin: 0, display: 'grid', rowGap: UI_SPACING_BASE_PX }}>
         <div><dt style={{ color: 'var(--text-tertiary)' }}>stream</dt><dd style={{ margin: 0 }}>{props.stream.phase}</dd></div>
         <div><dt style={{ color: 'var(--text-tertiary)' }}>cursor</dt><dd style={{ margin: 0 }}>{props.stream.lastCursor}</dd></div>
@@ -196,15 +196,15 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
   );
 
   return (
-    <WorkbenchShell
-      theme={props.theme}
-      viewportWidth={props.viewportWidth}
-      {...(props.toolbar === undefined ? {} : { toolbar: props.toolbar })}
-      {...(props.reducedMotion === undefined ? {} : { reducedMotion: props.reducedMotion })}
-      agents={agentsColumn}
-      conversations={conversationsColumn}
-      canvas={canvasColumn}
-      inspector={props.inspector ?? inspectorColumn}
-    />
+    <WorkspaceSurface model={{
+      theme: props.theme,
+      viewportWidth: props.viewportWidth,
+      ...(props.toolbar === undefined ? {} : { toolbar: props.toolbar }),
+      ...(props.reducedMotion === undefined ? {} : { reducedMotion: props.reducedMotion }),
+      agents: agentsColumn,
+      conversations: conversationsColumn,
+      canvas: canvasColumn,
+      inspector: props.inspector ?? inspectorColumn,
+    }} />
   );
 }

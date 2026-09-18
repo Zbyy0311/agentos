@@ -11,6 +11,12 @@ test('renders GFM markdown and fenced code without exposing raw HTML', () => {
   assert.doesNotMatch(html, /<script>/i);
 });
 
+test('renders inline code as code without nesting block markup in a paragraph', () => {
+  const html = renderToStaticMarkup(<MarkdownMessage content="Use `npm test` before submitting." />);
+  assert.match(html, /<p>Use <code[^>]*>npm test<\/code> before submitting\.<\/p>/);
+  assert.doesNotMatch(html, /<p>[\s\S]*<div class="markdown-code-block"/);
+});
+
 test('blocks javascript links and external images but allows same-origin artifacts', () => {
   const html = renderToStaticMarkup(<MarkdownMessage apiBase="http://localhost:3000" content={'[bad](javascript:alert(1))\n\n![remote](https://evil.test/a.png)\n\n![artifact](http://localhost:3000/api/workspaces/w/artifacts/a/content)'} />);
   assert.doesNotMatch(html, /javascript:/i);

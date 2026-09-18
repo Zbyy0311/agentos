@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   directConversationClient,
   type DirectConversationClient,
@@ -40,11 +40,19 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const activeConversationRef = useRef<string | null>(null);
+  const streamConversationRef = useRef<string | null>(null);
 
   const controller = useMemo(() => new DirectConversationController({
     client,
-    onState: setStream,
-    onMessages: items => setMessages([...items]),
+    onState: next => {
+      if (activeConversationRef.current === streamConversationRef.current) setStream(next);
+    },
+    onMessages: (items, conversationId) => {
+      // The controller may resolve an older request after the user has moved
+      // to another Conversation. Never let that response repaint the canvas.
+      if (activeConversationRef.current === conversationId) setMessages([...items]);
+    },
   }), [client]);
 
   useEffect(() => {
@@ -80,16 +88,24 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   }, [apiBase, workspaceId]);
 
   useEffect(() => {
+    activeConversationRef.current = activeConversationId;
     if (activeConversationId === null) return;
     let cancelled = false;
     setError(undefined);
+    setMessages([]);
+    setStream(IDLE_STREAM);
+    streamConversationRef.current = null;
     controller.loadMessages(activeConversationId).catch(e => {
-      if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      if (!cancelled && activeConversationRef.current === activeConversationId) setError(e instanceof Error ? e.message : String(e));
     });
     return () => { cancelled = true; };
   }, [activeConversationId, controller]);
 
   const selectConversation = useCallback((id: string) => {
+    activeConversationRef.current = id;
+    streamConversationRef.current = null;
+    setMessages([]);
+    setStream(IDLE_STREAM);
     setActiveConversationId(id);
   }, []);
 
@@ -117,16 +133,19 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
 
   const send = useCallback(async () => {
     if (activeConversationId === null || content.trim().length === 0) return;
+    const conversationId = activeConversationId;
+    activeConversationRef.current = conversationId;
+    streamConversationRef.current = conversationId;
     setSending(true);
     setError(undefined);
     try {
-      await controller.send(activeConversationId, { mode, content });
+      await controller.send(conversationId, { mode, content });
       setContent('');
-      await controller.loadMessages(activeConversationId);
+      if (activeConversationRef.current === conversationId) await controller.loadMessages(conversationId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (activeConversationRef.current === conversationId) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setSending(false);
+      if (activeConversationRef.current === conversationId) setSending(false);
     }
   }, [controller, activeConversationId, mode, content]);
 

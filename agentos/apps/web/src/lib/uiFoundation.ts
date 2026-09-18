@@ -330,10 +330,30 @@ export function uiCssVariables(theme: UiTheme): Record<string, string> {
     '--accent-default': tokens.accentDefault,
     '--accent-hover': tokens.accentHover,
     '--accent-pressed': tokens.accentPressed,
+    // Temporary bridge for the branded workspace surface. Keeping the aliases
+    // at the token boundary lets the forward runtime share the same theme
+    // without maintaining a second dark-only palette.
+    '--app-bg': tokens.surfaceBase,
+    '--app-surface': tokens.surfaceSubtle,
+    '--app-surface-raised': tokens.surfaceRaised,
+    '--app-surface-soft': tokens.surfaceOverlay,
+    '--app-text': tokens.textPrimary,
+    '--app-text-soft': tokens.textSecondary,
+    '--app-muted': tokens.textTertiary,
+    '--app-dim': tokens.textDisabled,
+    '--app-border': tokens.borderSubtle,
+    '--app-border-strong': tokens.borderStrong,
+    '--app-accent': tokens.accentDefault,
+    '--app-accent-strong': tokens.accentHover,
+    '--app-accent-soft': tokens.surfaceSelected,
   };
   for (const [status, color] of Object.entries(tokens.status)) {
     out[`--status-${status}`] = color;
   }
+  out['--app-info'] = tokens.status.running;
+  out['--app-success'] = tokens.status.success;
+  out['--app-warning'] = tokens.status.warning;
+  out['--app-danger'] = tokens.status.danger;
   return out;
 }
 
