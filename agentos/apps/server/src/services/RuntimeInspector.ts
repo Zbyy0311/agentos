@@ -385,7 +385,12 @@ function readEnforcementEvidence(json: string | null): ParsedEnforcementEvidence
       readonly status?: unknown;
       readonly evidence?: { readonly status?: unknown; readonly source?: unknown; readonly boundaryId?: unknown; readonly qualificationId?: unknown };
     };
-    const evidence = value.evidence ?? value;
+    const evidence = (value.evidence ?? value) as {
+      readonly status?: unknown;
+      readonly source?: unknown;
+      readonly boundaryId?: unknown;
+      readonly qualificationId?: unknown;
+    };
     const status = typeof evidence.status === 'string'
       && (ADMISSION_ENFORCEMENT_STATUSES as readonly string[]).includes(evidence.status)
       ? evidence.status as WorkspaceWriteDenialStatus

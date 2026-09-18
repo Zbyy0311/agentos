@@ -33,6 +33,10 @@ const MAX_BYTES: Record<RuntimeArtifactType, number> = {
   image: 10 * 1024 * 1024,
   archive: 100 * 1024 * 1024,
   manifest: 1024 * 1024,
+  // MF-2 review/test Artifact trigger (PR #142): review and test Artifacts are
+  // report-class — bounded text, never a binary.
+  review: 1024 * 1024,
+  test: 1024 * 1024,
 };
 
 export class RuntimeArtifactService {

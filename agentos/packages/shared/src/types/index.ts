@@ -359,7 +359,10 @@ export interface PendingRunDecision {
   resolvedAt?: string;
 }
 
-export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest';
+// 'review' and 'test' are additive (PR #142, MF-2 review/test Artifact trigger);
+// existing consumers pattern-matching on the older set are unaffected because
+// the union is only ever read, never enumerated exhaustively.
+export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest' | 'review' | 'test';
 
 export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; }
 export interface WorktreeRecoveryBundle { trackedPatchArtifactId: string; untrackedArchiveArtifactId: string; manifestArtifactId: string; entryCount: number; }
