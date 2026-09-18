@@ -32,6 +32,15 @@ function discoveryInput(cliCommand: string, role: AgentRole, fallbackModels = [f
   };
 }
 
+function isolatedOpenCodeEnv(root: string, overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return {
+    USERPROFILE: root,
+    APPDATA: root,
+    XDG_CONFIG_HOME: root,
+    ...overrides,
+  };
+}
+
 test('normalizes a model option without exposing unsupported thinking levels', () => {
   const result = normalizeModelOption({
     id: 'gpt-5.6-luna',
@@ -140,7 +149,7 @@ test('reads OpenCode CLI JSON array output', async () => {
   const root = createFixtureRoot();
   try {
     const result = await new CliModelDiscovery({
-      env: { AGENTOS_OPENCODE_MODELS_FILE: join(root, 'missing-opencode.json') },
+      env: isolatedOpenCodeEnv(root, { AGENTOS_OPENCODE_MODELS_FILE: join(root, 'missing-opencode.json') }),
       execFile: async () => ({
         stdout: JSON.stringify([{ id: 'openai/gpt-5.5', name: 'GPT-5.5' }]),
         stderr: '',
@@ -158,7 +167,7 @@ test('reads the plain model listing emitted by OpenCode 1.17', async () => {
   const root = createFixtureRoot();
   try {
     const result = await new CliModelDiscovery({
-      env: { AGENTOS_OPENCODE_MODELS_FILE: join(root, 'missing-opencode.json') },
+      env: isolatedOpenCodeEnv(root, { AGENTOS_OPENCODE_MODELS_FILE: join(root, 'missing-opencode.json') }),
       execFile: async (_command, args) => {
         if (args.includes('--json')) throw new Error('unknown option --json');
         return { stdout: 'opencode/big-pickle\nkimi-for-coding/k2p6\n', stderr: '' };
@@ -175,7 +184,7 @@ test('reads the plain model listing emitted by OpenCode 1.17', async () => {
 test('returns fallback when OpenCode is unavailable', async () => {
   const root = createFixtureRoot();
   try {
-    const result = await new CliModelDiscovery({ env: { USERPROFILE: root, PATH: '' } }).discover({
+    const result = await new CliModelDiscovery({ env: isolatedOpenCodeEnv(root, { PATH: '' }) }).discover({
       ...discoveryInput('opencode', 'opencode'),
       fallbackModels: [fallbackModel('fallback/opencode')],
     });
@@ -184,6 +193,51 @@ test('returns fallback when OpenCode is unavailable', async () => {
     assert.equal(result.stale, true);
     assert.equal(result.models[0].id, 'fallback/opencode');
     assert.match(result.warning ?? '', /OpenCode/i);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('reads OpenCode JSONC config with comments and trailing commas', async () => {
+  const root = createFixtureRoot();
+  try {
+    const configFile = join(root, 'opencode.json');
+    writeFileSync(configFile, `{
+      /* OpenCode accepts JSONC comments. */
+      "provider": {
+        "openai": {
+          "models": {
+            "gpt-5.6": { "name": "GPT-5.6", },
+          },
+        },
+      },
+    }`, 'utf8');
+    const result = await new CliModelDiscovery({
+      env: isolatedOpenCodeEnv(root, { AGENTOS_OPENCODE_MODELS_FILE: configFile }),
+    }).discover(discoveryInput('opencode', 'opencode'));
+
+    assert.equal(result.source, 'config');
+    assert.deepEqual(result.models.map(model => model.id), ['openai/gpt-5.6']);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('ignores an invalid OpenCode config and continues with CLI discovery', async () => {
+  const root = createFixtureRoot();
+  try {
+    const configFile = join(root, 'opencode.json');
+    writeFileSync(configFile, '{ "provider": { invalid } }', 'utf8');
+    const result = await new CliModelDiscovery({
+      env: isolatedOpenCodeEnv(root, { AGENTOS_OPENCODE_MODELS_FILE: configFile }),
+      execFile: async () => ({
+        stdout: JSON.stringify([{ id: 'openai/gpt-5.5', name: 'GPT-5.5' }]),
+        stderr: '',
+      }),
+    }).discover(discoveryInput('opencode', 'opencode'));
+
+    assert.equal(result.source, 'live');
+    assert.deepEqual(result.models.map(model => model.id), ['openai/gpt-5.5']);
   } finally {
     cleanup(root);
   }

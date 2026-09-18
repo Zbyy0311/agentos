@@ -210,9 +210,15 @@ export class CliModelDiscovery implements ModelDiscoveryService {
   ): Promise<Pick<ModelDiscoveryResult, 'models' | 'source'>> {
     for (const configFile of openCodeConfigCandidates(this.env)) {
       if (!existsSync(configFile)) continue;
-      const payload = parseJson(await readFile(configFile, 'utf8'));
-      const models = normalizeModels(parseOpenCodePayload(payload, fallbackThinkingEfforts));
-      if (models.length > 0) return { models, source: 'config' };
+      try {
+        const payload = parseJson(await readFile(configFile, 'utf8'));
+        const models = normalizeModels(parseOpenCodePayload(payload, fallbackThinkingEfforts));
+        if (models.length > 0) return { models, source: 'config' };
+      } catch {
+        // An optional config must not prevent live CLI discovery. OpenCode
+        // accepts JSONC in practice, and an unrelated malformed candidate
+        // should be ignored before trying the provider command.
+      }
     }
 
     const options = {
@@ -326,7 +332,75 @@ function openCodeConfigCandidates(env: NodeJS.ProcessEnv): string[] {
 }
 
 function parseJson(content: string): unknown {
-  return JSON.parse(content) as unknown;
+  return JSON.parse(removeTrailingCommas(removeJsonComments(content))) as unknown;
+}
+
+/** Parse the JSONC accepted by OpenCode without adding a runtime dependency. */
+function removeJsonComments(content: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const current = content[index];
+    const next = content[index + 1];
+    if (inString) {
+      result += current;
+      if (escaped) escaped = false;
+      else if (current === '\\') escaped = true;
+      else if (current === '"') inString = false;
+      continue;
+    }
+    if (current === '"') {
+      inString = true;
+      result += current;
+      continue;
+    }
+    if (current === '/' && next === '/') {
+      index += 2;
+      while (index < content.length && content[index] !== '\n' && content[index] !== '\r') index += 1;
+      if (index < content.length) result += content[index];
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      index += 2;
+      while (index < content.length && !(content[index] === '*' && content[index + 1] === '/')) {
+        if (content[index] === '\n' || content[index] === '\r') result += content[index];
+        index += 1;
+      }
+      if (index < content.length) index += 1;
+      continue;
+    }
+    result += current;
+  }
+  return result;
+}
+
+function removeTrailingCommas(content: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const current = content[index];
+    if (inString) {
+      result += current;
+      if (escaped) escaped = false;
+      else if (current === '\\') escaped = true;
+      else if (current === '"') inString = false;
+      continue;
+    }
+    if (current === '"') {
+      inString = true;
+      result += current;
+      continue;
+    }
+    if (current === ',') {
+      let lookahead = index + 1;
+      while (/\s/.test(content[lookahead] ?? '')) lookahead += 1;
+      if (content[lookahead] === '}' || content[lookahead] === ']') continue;
+    }
+    result += current;
+  }
+  return result;
 }
 
 function asRecord(value: unknown): JsonRecord | undefined {

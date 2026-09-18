@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -123,7 +123,7 @@ async function fixture(options: {
     stages,
     cleanup() {
       try { db.close(); } catch { /* best effort */ }
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },
   };
 }
@@ -366,11 +366,12 @@ test('[M27-P3-T005] Source preflight runs under acquired-and-released Ownership 
     // A junctioned workspace directory escaping the source root is rejected.
     const fxJunction = await fixture();
     const outside = mkdtempSync(join(tmpdir(), 'agentos-m27-p3-outside-'));
+    const junctionPath = join(fxJunction.root, 'workspace', 'ws-junction');
     try {
       mkdirSync(join(outside, '.agentos'), { recursive: true });
       writeFileSync(join(outside, '.agentos', 'tasks.json'), JSON.stringify({ tasks: [task('escaped')] }));
       mkdirSync(join(fxJunction.root, 'workspace'), { recursive: true });
-      symlinkSync(outside, join(fxJunction.root, 'workspace', 'ws-junction'), 'junction');
+      symlinkSync(outside, junctionPath, 'junction');
       await assert.rejects(
         () => fxJunction.service.run(runInput(fxJunction, 'ws-junction')),
         (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_TASK_SOURCE_NOT_READABLE',
@@ -379,6 +380,11 @@ test('[M27-P3-T005] Source preflight runs under acquired-and-released Ownership 
       assert.equal(countRows(fxJunction.db, 'legacy_data_migrations'), 0);
       assert.equal(countRows(fxJunction.db, 'legacy_task_items'), 0);
     } finally {
+      try {
+        unlinkSync(junctionPath);
+      } catch {
+        // The fixture may fail before the junction is created.
+      }
       rmSync(outside, { recursive: true, force: true });
       fxJunction.cleanup();
     }

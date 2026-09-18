@@ -35,6 +35,25 @@ function createFailingEventBus(): EventBus {
   return new EventBus(() => { throw new Error('event persistence unavailable'); });
 }
 
+function cleanupManagerWorktrees(manager: WorktreeManager): void {
+  for (const lease of manager.listLeases()) {
+    const record = manager.getRecord(lease.id);
+    if (!record) continue;
+    try {
+      execFileSync('git', ['-C', record.workspaceRoot, 'worktree', 'remove', '--force', record.absolutePath], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } catch {
+      // Best effort; the retrying directory removal below handles leftovers.
+    }
+  }
+}
+
+function cleanupDirectory(path: string): void {
+  rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 test('persists public status events and the final direct-agent reply', async () => {
   const root = createProjectRoot();
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
@@ -560,8 +579,9 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
   const originalWorktreeMode = process.env.AGENTOS_WORKTREE_MODE;
   let store: SqliteStore | undefined;
   const worktreeRoot = mkdtempSync(join(tmpdir(), 'agentos-isolated-root-'));
+  const manager = new WorktreeManager(worktreeRoot);
   try {
-    execFileSync('git', ['init', '-q', root]);
+    execFileSync('git', ['-c', 'core.symlinks=false', 'init', '-q', root]);
     execFileSync('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
     execFileSync('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
     writeFileSync(join(root, '.gitignore'), '.agentos/\n');
@@ -576,7 +596,6 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
       { conversationId: 'isolated-group', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-19T00:00:00.000Z' },
       { conversationId: 'isolated-group', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-19T00:00:00.000Z' },
     ]);
-    const manager = new WorktreeManager(worktreeRoot);
     const service = new ConversationService(store, undefined, new RuntimeArtifactService(store, root), undefined, manager);
     const result = await service.sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'isolated-group', content: '隔离执行测试' });
     const leases = manager.listLeases();
@@ -593,8 +612,9 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK; else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
     if (originalWorktreeMode === undefined) delete process.env.AGENTOS_WORKTREE_MODE; else process.env.AGENTOS_WORKTREE_MODE = originalWorktreeMode;
     store?.close();
-    rmSync(root, { recursive: true, force: true });
-    rmSync(worktreeRoot, { recursive: true, force: true });
+    cleanupManagerWorktrees(manager);
+    cleanupDirectory(root);
+    cleanupDirectory(worktreeRoot);
   }
 });
 

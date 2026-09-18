@@ -8,9 +8,29 @@ import { join } from 'node:path';
 import { WorktreeManager } from '../services/WorktreeManager.js';
 import { createWorktreeRoutes } from './worktrees.js';
 
+function cleanupManagerWorktrees(manager: WorktreeManager): void {
+  for (const lease of manager.listLeases()) {
+    const record = manager.getRecord(lease.id);
+    if (!record) continue;
+    try {
+      execFileSync('git', ['-C', record.workspaceRoot, 'worktree', 'remove', '--force', record.absolutePath], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } catch {
+      // The test cleanup remains best effort; the retrying directory removal
+      // below handles already-reconciled or already-removed worktrees.
+    }
+  }
+}
+
+function cleanupDirectory(path: string): void {
+  rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 function repo(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-worktree-route-'));
-  execFileSync('git', ['init', '-q', root]);
+  execFileSync('git', ['-c', 'core.symlinks=false', 'init', '-q', root]);
   execFileSync('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
   execFileSync('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
   writeFileSync(join(root, 'README.md'), 'base');
@@ -52,8 +72,9 @@ test('worktree routes keep path private and require clean/confirmed cleanup gate
     assert.equal(missingBundle.status, 409);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
-    rmSync(root, { recursive: true, force: true });
-    rmSync(worktreeRoot, { recursive: true, force: true });
+    cleanupManagerWorktrees(manager);
+    cleanupDirectory(root);
+    cleanupDirectory(worktreeRoot);
   }
 });
 
@@ -78,7 +99,8 @@ test('worktree cleanup requires a terminal Run before recovery confirmation', as
     assert.equal((await response.json()).code, 'run_terminal_required');
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
-    rmSync(root, { recursive: true, force: true });
-    rmSync(worktreeRoot, { recursive: true, force: true });
+    cleanupManagerWorktrees(manager);
+    cleanupDirectory(root);
+    cleanupDirectory(worktreeRoot);
   }
 });
