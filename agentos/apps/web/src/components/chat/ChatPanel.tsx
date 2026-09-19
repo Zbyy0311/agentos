@@ -278,6 +278,8 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
+  const composerResizingRef = useRef(false);
+  const composerResizeFrameRef = useRef<number | null>(null);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_MIN_HEIGHT);
   const headerGlassRef = useLiquidGlass<HTMLElement>('chat-header');
   const composerGlassRef = useLiquidGlass<HTMLDivElement>('composer');
@@ -307,6 +309,13 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   }, [chromeEl]);
   const wasNearBottomRef = useRef(true);
   useEffect(() => {
+    return () => {
+      if (composerResizeFrameRef.current !== null) window.cancelAnimationFrame(composerResizeFrameRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (composerResizingRef.current) return;
     if (!wasNearBottomRef.current) return;
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messages, streamingContent, activeEvents, activeRuntimeEvents]);
@@ -314,21 +323,36 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   const startComposerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    composerResizingRef.current = true;
     composerResizeRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: composerHeight };
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'auto';
   };
 
   const moveComposerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const resize = composerResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
-    setComposerHeight(clampComposerHeight(resize.startHeight + resize.startY - event.clientY));
+    const clientY = event.clientY;
+    if (composerResizeFrameRef.current !== null) window.cancelAnimationFrame(composerResizeFrameRef.current);
+    composerResizeFrameRef.current = window.requestAnimationFrame(() => {
+      composerResizeFrameRef.current = null;
+      setComposerHeight(clampComposerHeight(resize.startHeight + resize.startY - clientY));
+    });
   };
 
   const finishComposerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (composerResizeRef.current?.pointerId !== event.pointerId) return;
+    const resize = composerResizeRef.current;
+    if (composerResizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(composerResizeFrameRef.current);
+      composerResizeFrameRef.current = null;
+    }
+    setComposerHeight(clampComposerHeight(resize.startHeight + resize.startY - event.clientY));
     composerResizeRef.current = null;
+    composerResizingRef.current = false;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (scrollRef.current) scrollRef.current.style.scrollBehavior = '';
   };
 
   const handleComposerResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
