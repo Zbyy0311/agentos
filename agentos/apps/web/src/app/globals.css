@@ -349,8 +349,8 @@ input:focus-visible {
 }
 
 .signal-message-user {
-  width: min(80%, 760px);
-  max-width: 760px;
+  width: fit-content;
+  max-width: min(80%, 760px);
 }
 
 .signal-message-row,

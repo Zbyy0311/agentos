@@ -371,7 +371,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
     </header>
 
     {target.kind === 'none' ? <div className="signal-empty m-6 grid flex-1 place-items-center px-6 text-center" style={{ marginTop: chromeTop + 24 }}><div className="relative z-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
-      <div ref={scrollRef} onScroll={event => { wasNearBottomRef.current = isNearBottom(event.currentTarget); }} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="message-content-column mx-auto max-w-[70rem] min-w-0 space-y-2 sm:space-y-3">
+      <div ref={scrollRef} onScroll={event => { wasNearBottomRef.current = isNearBottom(event.currentTarget); }} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="message-content-column mx-auto max-w-[70rem] min-w-0 space-y-3">
         {messages.length === 0 && !streamingContent && <div className="signal-empty px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始协作。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
         {messages.length > 100 && <VirtualMessageList messages={messages} scrollElementRef={scrollRef} renderMessage={renderMessage} />}
         {messages.length <= 100 && messages.map(renderMessage)}
