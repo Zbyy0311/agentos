@@ -55,7 +55,6 @@ interface ChatPanelProps {
   onRunIntentChange?(value: RunIntent): void;
   onSend(): void;
   onCancel(): void;
-  onEditGroup?(): void;
   mentionedAgentIds?: string[];
   onMentionedAgentIdsChange?(agentIds: string[]): void;
 }
@@ -234,7 +233,7 @@ function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: Visi
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onEditGroup, mentionedAgentIds = [], onMentionedAgentIdsChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })) }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, mentionedAgentIds = [], onMentionedAgentIdsChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })) }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -321,7 +320,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
     <div className="ambient-backdrop" aria-hidden="true" />
     <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-3 top-3 z-10 flex min-h-[4.25rem] items-center justify-between rounded-2xl border ui-border px-5 py-3">
       <div className="min-w-0"><div className="mb-1 flex items-center gap-2 signal-section-label"><span className={`h-1.5 w-1.5 rounded-full ${sending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} />ACTIVE SESSION</div><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1>{target.kind !== 'none' && <p className="mt-1 text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
-      <div className="flex items-center gap-3">{isGroup && onEditGroup && <button type="button" onClick={onEditGroup} className="rounded-lg border ui-border bg-[color-mix(in_srgb,var(--app-surface-raised)_72%,transparent)] px-3 py-1.5 text-xs font-medium ui-text-soft transition hover:border-[var(--app-accent)] hover:text-[var(--app-text)]">编辑群聊</button>}{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
+      <div className="flex items-center gap-3">{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
     </header>
 
     {target.kind === 'none' ? <div className="signal-empty m-6 grid flex-1 place-items-center px-6 text-center" style={{ marginTop: chromeTop + 24 }}><div className="relative z-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
