@@ -8,6 +8,7 @@
 
 - 基线：`35cb39d9`（`feat(web): prioritize workspace canvas layout`）。
 - 实施分支：`codex/liquid-glass-v2`。
+- 实施提交：`44171b10`（`feat(web): complete workspace UI refinement`）。
 - 预览地址：`http://localhost:3001/workspace/ws_01M2W2YS5C45WVPW30SQW25HJ3`。
 - 浏览器验收：Browser 插件当前不可用，按前端测试技能要求使用 Playwright 1.55 + 本机 Chrome：`C:\Program Files\Google\Chrome\Application\chrome.exe`。
 - 截图目录：`C:\Users\Administrator\.codex\visualizations\2026\09\19\01a0b7ea-4ff1-7fd0-85f9-30d8a74647c7`。
@@ -68,6 +69,7 @@
 - `pnpm --filter @agentos/web test`：**228 passed, 0 failed**。
 - `pnpm --filter @agentos/web exec tsc --noEmit`：PASS。
 - `pnpm --filter @agentos/web build`：PASS；`/workspace/[id]` 323 kB，First Load JS 414 kB；`/runtime` 路由正常生成。
+- `/workspace/[id]/runtime` 真实浏览器 smoke：HTTP 200、页面无横向溢出；空运行态的空 alert 为既有页面状态语义，不是构建错误。
 - `git diff --check`：PASS。
 - `prefers-reduced-motion: reduce`：浏览器实测匹配，动画/过渡计算为 `0.00001s`，动画只运行一次。
 - WebGL context：库选项集中限制在 6 个实例预算以内，单实例 DPR 上限为 2；未进行 DevTools 级长时间 FPS 基准。

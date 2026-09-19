@@ -2,6 +2,8 @@
 
 状态：R4 数据正确性工程验收通过；真实 Provider 新 Run 和人工 Visual Gate 仍待补验。
 
+实施提交：`44171b10`（与共享 workspace page/ChatPanel wiring 一起交付；投影核心、组件和测试保持独立文件边界）。本次未创建或自动合并 PR。
+
 ## 原则
 
 Runtime Projection 只消费已有结构化 Run/Execution/Event/Step/File/Artifact 数据。模型 Markdown 是可读原文，不是执行事实来源；页面不会因为模型写出“测试通过”就覆盖服务端的 failed/cancelled/waiting 状态。
