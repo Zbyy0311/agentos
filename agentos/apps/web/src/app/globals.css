@@ -379,6 +379,16 @@ input:focus-visible {
   background: transparent;
 }
 
+/* The mention row floats over scrolling messages without its own material,
+   so it needs a mostly-solid frosted plate to stay readable. */
+.mention-picker-bar {
+  border: 1px solid color-mix(in srgb, var(--app-border) 80%, transparent);
+  border-radius: 0.9rem;
+  padding: 0.35rem 0.6rem;
+  background: color-mix(in srgb, var(--app-surface-raised) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
 .toast-item[data-liquid-glass='webgl'] {
   background: color-mix(in srgb, var(--app-surface-raised) 28%, transparent);
 }
