@@ -1,6 +1,7 @@
 'use client';
 
 import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
+import { SelectField } from '../controls/SelectField';
 import type { UiTheme } from '../../lib/uiFoundation';
 import {
   HISTORY_KINDS,
@@ -97,19 +98,7 @@ export function HistorySearchView(props: HistorySearchViewProps) {
         <FilterInput label="q" value={filters.q ?? ''} placeholder="titles only" onChange={value => (value ? set({ q: value }) : clear('q'))} />
         <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11, color: 'var(--text-tertiary)' }}>
           kind
-          <select
-            aria-label="kind"
-            data-filter="kind"
-            value={filters.kind ?? ''}
-            onChange={event => (event.target.value ? set({ kind: event.target.value as HistoryKind }) : clear('kind'))}
-            style={{
-              border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
-              backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)', padding: UI_SPACING_BASE_PX,
-            }}
-          >
-            <option value="">all</option>
-            {HISTORY_KINDS.map(kind => <option key={kind} value={kind}>{kind}</option>)}
-          </select>
+          <span data-filter="kind" style={{ display: 'contents' }}><SelectField size="sm" ariaLabel="kind" value={filters.kind ?? ''} options={[{ value: '', label: 'all' }, ...HISTORY_KINDS.map(kind => ({ value: kind, label: kind }))]} onChange={value => (value ? set({ kind: value as HistoryKind }) : clear('kind'))} /></span>
         </label>
         <FilterInput label="status" value={filters.status ?? ''} onChange={value => (value ? set({ status: value }) : clear('status'))} />
         <FilterInput label="conversationId" value={filters.conversationId ?? ''} onChange={value => (value ? set({ conversationId: value }) : clear('conversationId'))} />

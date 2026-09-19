@@ -42,3 +42,11 @@
 
 - 推远端建 PR,浏览器人工复核深浅主题滚动折射手感。
 - 玻璃参数(tint/frost/refraction)如有手感偏好,集中在 `apps/web/src/lib/glass.ts` 调整。
+
+## 验收后跟进(2026-09-19 同日的浏览器评审意见)
+
+- 去除输入区上方重复的运行模式行,并把 ChatPanel → ComposerControls 的 runIntent 全链路接通(原先输入框内选择器是空操作摆设)。
+- 右侧面板支持拖拽调宽;松手宽度低于 200px 自动收起,右缘留 20px「执行状态」竖条一键恢复拖拽前宽度。
+- 修复悬浮层改造打断的输入框容器查询(原位置选择器失效导致窄列堆叠),改为 .signal-composer 具名容器查询。
+- 全项目原生 select 统一收敛:新增 components/controls/SelectField.tsx 自定义下拉(与应用主题一致的 listbox),替换 AgentEditor(3)、GroupCreator(2)、GroupEditor(3)、ExecutionArchive、MemoryList、MemoryEditor、HistorySearchView 共 11 处;composer 的「模式」选择器同步改为共享 Picker。剩余 RunInspectorPanel 为测试专用调试组件,不在产品面内,未改。
+- AgentEditor 测试断言同步从原生 value 属性改为自定义下拉的 aria-label + 选中标签。

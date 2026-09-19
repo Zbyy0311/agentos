@@ -21,7 +21,9 @@ test('shows provider and CLI command as separate agent identity fields', async (
   );
 
   assert.match(markup, /Provider/);
-  assert.match(markup, /value="opencode"/);
+  // Custom SelectField renders the selected provider label, not a native select value attribute.
+  assert.match(markup, /aria-label="Provider"/);
+  assert.match(markup, />OpenCode</);
   assert.match(markup, /C:\/tools\/opencode-wrapper\.cmd/);
   assert.match(markup, /职责仍单独/);
   assert.match(markup, /配置：opencode；实际：codex/);
