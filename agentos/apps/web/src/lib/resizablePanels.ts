@@ -22,3 +22,18 @@ export function getResizablePanelWidth({ proposed, panelMin, panelMax, available
   const effectiveMax = Math.max(panelMin, Math.min(panelMax, maxForChat));
   return Math.min(effectiveMax, Math.max(panelMin, proposed));
 }
+
+/** Inspector drag floor: the narrowest width shown while dragging before collapse. */
+export const INSPECTOR_DRAG_FLOOR = 160;
+
+/** Release the inspector drag below this width and the panel collapses. */
+export const INSPECTOR_COLLAPSE_THRESHOLD = 200;
+
+export function shouldCollapseInspector(proposedWidth: number): boolean {
+  return proposedWidth < INSPECTOR_COLLAPSE_THRESHOLD;
+}
+
+/** Inspector sits on the right edge: dragging left widens it, so the delta is inverted. */
+export function getInspectorProposedWidth(startWidth: number, startX: number, clientX: number): number {
+  return startWidth - (clientX - startX);
+}

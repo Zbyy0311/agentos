@@ -843,8 +843,38 @@ body.resizing-panels {
   user-select: none;
 }
 
+.inspector-expand-strip {
+  display: flex;
+  width: 28px;
+  flex: 0 0 28px;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 0;
+  border: 0;
+  border-left: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-surface) 78%, var(--app-bg));
+  color: var(--app-dim);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.inspector-expand-strip:hover,
+.inspector-expand-strip:focus-visible {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+}
+
+.inspector-expand-strip-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  writing-mode: vertical-rl;
+}
+
 @media (max-width: 1180px) {
-  .inspector-sidebar {
+  .inspector-sidebar,
+  .panel-resize-handle-inspector,
+  .inspector-expand-strip {
     display: none;
   }
 }
