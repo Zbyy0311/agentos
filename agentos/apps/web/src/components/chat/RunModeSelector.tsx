@@ -102,7 +102,7 @@ export function RunModeSelector({ value, disabled, onChange }: RunModeSelectorPr
           setOpen(true);
         }
       }}
-      className="run-mode-trigger ui-button-ghost inline-flex min-w-[4.5rem] items-center justify-between gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-soft)] px-2.5 py-1.5 text-left text-xs ui-text transition hover:border-[var(--app-border-strong)] focus-visible:border-[var(--app-accent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+      className="run-mode-trigger ui-button-ghost inline-flex min-w-[4.5rem] items-center justify-between gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-left text-xs ui-text transition focus-visible:border-[var(--app-accent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span className="font-medium">{modeLabels[selected.value]}</span>
       <span aria-hidden="true" className={`text-[11px] ui-dim transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
