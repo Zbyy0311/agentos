@@ -51,7 +51,7 @@ export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = 
   const summary = summarizeExecutionInspector({ status, startedAt: elapsedStartedAt, completedAt: elapsedCompletedAt, events, runtimeEvents });
   const permissions = agent?.permissions ?? [];
 
-  return <aside data-signal-inspector className="inspector-sidebar signal-inspector ui-panel w-64 shrink-0 overflow-y-auto border-l px-4 py-5" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
+  return <aside data-signal-inspector data-layout-panel="inspector" className="inspector-sidebar signal-inspector ui-panel w-64 shrink-0 overflow-y-auto border-l px-4 py-5" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-6 flex items-center justify-between"><div><div className="signal-section-label mb-1">RUN STATUS</div><h2 className="text-sm font-semibold ui-text">执行状态</h2></div>{agent && <button type="button" onClick={onEdit} className="ui-button-ghost rounded-lg px-2 py-1 text-xs">编辑身份</button>}</div>
     {groupTitle ? <Identity title={groupTitle} subtitle="群聊协作" mark="群" /> : agent ? <>
       <Identity title={agent.name} subtitle={agent.roleTitle} mark={agent.name.slice(0, 1)} />

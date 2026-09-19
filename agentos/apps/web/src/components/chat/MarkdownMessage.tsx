@@ -44,7 +44,18 @@ function CodeBlock({ inline, className, children, node: _node, ...props }: Compo
   const value = String(children).replace(/\n$/, '');
   if (isInline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
   if (language === 'diff' || language === 'patch') return <DiffBlock content={value} />;
-  return <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: '0.75rem', padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)' }}>{value}</SyntaxHighlighter>;
+  return <CodeBlockSurface language={language} value={value} />;
+}
+
+function CodeBlockSurface({ language, value }: { language?: string; value: string }) {
+  const [wrapped, setWrapped] = React.useState(false);
+  return <div className="markdown-code-block max-w-full overflow-hidden rounded-xl border ui-border">
+    <div className="flex items-center justify-between border-b ui-border px-3 py-1.5 text-[10px] ui-dim">
+      <span>{language ?? 'code'}</span>
+      <button type="button" aria-pressed={wrapped} aria-label={wrapped ? '关闭代码换行' : '开启代码换行'} onClick={() => setWrapped(current => !current)} className="ui-button-ghost rounded px-1.5 py-0.5">{wrapped ? '滚动' : '换行'}</button>
+    </div>
+    <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
+  </div>;
 }
 
 function MarkdownPre({ children }: { children?: React.ReactNode }) {

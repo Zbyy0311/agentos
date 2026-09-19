@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { AgentEvent, AgentExecution, AgentPresence, AgentProfile, AgentRun, AgentRunDetails, Conversation, ConversationMember, ConversationMessage, ExecutionEvent, ExecutionStatus, GroupDispatchMode, RunIntent, RunStep, RuntimeArtifact, ThinkingEffort, Workspace } from '@agentos/shared';
 import { AgentList } from '@/components/chat/AgentList';
@@ -13,6 +13,7 @@ import { ConversationContextMenu } from '@/components/chat/ConversationContextMe
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ConversationHistory } from '@/components/chat/ConversationHistory';
 import { ExecutionInspector } from '@/components/chat/ExecutionInspector';
+import { WorkspacePanelOverlay } from '@/components/layout/WorkspacePanelOverlay';
 import { useApi } from '@/lib/useApi';
 import { getActiveConversationId, shouldResetGroupView } from '@/lib/conversationSelection';
 import { getNextConversationId } from '@/lib/conversationActions';
@@ -21,7 +22,8 @@ import { getDoneExecution } from '@/lib/streamDoneExecution';
 import { MAX_RECONNECT_ATTEMPTS, TerminalStreamError, StreamHttpError, UnexpectedStreamEndError, consumeSseResponse, getReconnectDelay, retryWithExponentialBackoff, shouldReconnect } from '@/lib/streamReconnect';
 import { canSendMessage, fileToImageDraft, validateImageDrafts, type ImageDraft } from '@/lib/imageAttachments';
 import { getComposerSendIntent, preserveDraftAfterSendFailure } from '@/lib/composerInteraction';
-import { getInspectorProposedWidth, getResizablePanelWidth, INSPECTOR_DRAG_FLOOR, shouldCollapseInspector } from '@/lib/resizablePanels';
+import { getInspectorProposedWidth, getResizablePanelWidth } from '@/lib/resizablePanels';
+import { DEFAULT_WORKSPACE_LAYOUT, WORKSPACE_LAYOUT_THRESHOLDS, WORKSPACE_LAYOUT_WIDTHS, normalizeWorkspaceLayout, panelCollapseThreshold, panelIsDocked, panelWidthRange, resolveEffectiveWorkspaceLayout, workspaceLayoutStorageKey, type EffectiveWorkspaceLayout, type WorkspaceLayoutPanel, type WorkspaceLayoutPreferences } from '@/lib/workspaceLayout';
 import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
 import { RunDetails } from '@/components/runs/RunDetails';
 import { MemoryPanel } from '@/components/memory/MemoryPanel';
@@ -41,22 +43,25 @@ type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: st
 type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
 type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; run?: AgentRun; message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; runtime?: AgentEvent; runStep?: RunStep; eventId?: string; sequence?: number; error?: string };
 type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
-type ResizePanel = 'workspace' | 'history' | 'inspector';
+type ResizePanel = WorkspaceLayoutPanel;
+type OverlayPanel = WorkspaceLayoutPanel | null;
 type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; lastProposed?: number; cleanup: () => void };
 
-const PANEL_RESIZE_HANDLE_WIDTH = 8;
-const CHAT_MIN_WIDTH = 360;
-const PANEL_WIDTH_RANGES: Record<ResizePanel, { min: number; max: number }> = {
-  workspace: { min: 180, max: 360 },
-  history: { min: 180, max: 420 },
-  inspector: { min: 240, max: 520 },
-};
+const PANEL_RESIZE_HANDLE_WIDTH = WORKSPACE_LAYOUT_WIDTHS.handle;
 
-function PanelResizeHandle({ panel, width, onPointerDown }: { panel: ResizePanel; width?: number; onPointerDown(panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>): void }) {
-  const range = PANEL_WIDTH_RANGES[panel];
+function chatMinimumForViewport(viewportWidth: number): number {
+  return viewportWidth >= WORKSPACE_LAYOUT_THRESHOLDS.compactViewport
+    ? WORKSPACE_LAYOUT_THRESHOLDS.desktopChatMinimum
+    : 0;
+}
+
+function PanelResizeHandle({ panel, width, onPointerDown, onKeyDown }: { panel: ResizePanel; width?: number; onPointerDown(panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>): void; onKeyDown(panel: ResizePanel, event: ReactKeyboardEvent<HTMLDivElement>): void }) {
+  const range = panelWidthRange(panel);
   const label = panel === 'workspace' ? '调整工作区导航栏宽度' : panel === 'history' ? '调整会话历史栏宽度' : '调整执行状态面板宽度';
-  const defaultWidth = panel === 'workspace' ? 240 : 256;
-  return <div data-panel-resize={panel} role="separator" aria-orientation="vertical" aria-label={label} aria-valuemin={range.min} aria-valuemax={range.max} aria-valuenow={Math.round(width ?? defaultWidth)} className={`panel-resize-handle panel-resize-handle-${panel}`} onPointerDown={event => onPointerDown(panel, event)} />;
+  const defaultWidth = panelWidthRange(panel).min;
+  const actualWidth = Math.round(width ?? defaultWidth);
+  const announcedWidth = Math.max(range.min, actualWidth);
+  return <div data-panel-resize={panel} role="separator" tabIndex={0} aria-orientation="vertical" aria-label={label} aria-valuemin={range.min} aria-valuemax={range.max} aria-valuenow={announcedWidth} aria-valuetext={actualWidth < range.min ? '图标栏（64px）' : `${actualWidth}px`} className={`panel-resize-handle panel-resize-handle-${panel}`} onPointerDown={event => onPointerDown(panel, event)} onKeyDown={event => onKeyDown(panel, event)} />;
 }
 
 function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -145,11 +150,12 @@ export default function WorkspacePage() {
   const [showMemories, setShowMemories] = useState(false);
   const [showMemoryReview, setShowMemoryReview] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [workspacePanelWidth, setWorkspacePanelWidth] = useState<number>();
-  const [historyPanelWidth, setHistoryPanelWidth] = useState<number>();
-  const [inspectorPanelWidth, setInspectorPanelWidth] = useState<number>();
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [layoutPreferences, setLayoutPreferences] = useState<WorkspaceLayoutPreferences>(DEFAULT_WORKSPACE_LAYOUT);
+  const [layoutViewportWidth, setLayoutViewportWidth] = useState(1440);
+  const [layoutReady, setLayoutReady] = useState(false);
+  const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
+  const layoutStorageWorkspaceRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef<string>();
   const streamCursorRef = useRef(0);
@@ -171,6 +177,53 @@ export default function WorkspacePage() {
   const historyTitle = selectedGroupId ? '群聊' : selectedAgent?.name ?? '会话';
   const composerModelOptions = getModelOptions(selectedAgent);
   const composerThinkingEfforts = getThinkingEfforts(selectedAgent, composerModel ?? selectedAgent?.model);
+  const effectiveLayout = useMemo<EffectiveWorkspaceLayout>(() => resolveEffectiveWorkspaceLayout({
+    viewportWidth: layoutViewportWidth,
+    preferences: layoutPreferences,
+    historyAvailable: !selectedGroupId,
+  }), [layoutPreferences, layoutViewportWidth, selectedGroupId]);
+
+  useEffect(() => {
+    if (!layoutRef.current) return undefined;
+    const updateWidth = () => setLayoutViewportWidth(Math.round(layoutRef.current?.getBoundingClientRect().width ?? window.innerWidth));
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(layoutRef.current);
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    layoutStorageWorkspaceRef.current = null;
+    setLayoutReady(false);
+    try {
+      const stored = window.localStorage.getItem(workspaceLayoutStorageKey(workspaceId));
+      setLayoutPreferences(stored ? normalizeWorkspaceLayout(JSON.parse(stored) as unknown) : DEFAULT_WORKSPACE_LAYOUT);
+    } catch {
+      setLayoutPreferences(DEFAULT_WORKSPACE_LAYOUT);
+    } finally {
+      layoutStorageWorkspaceRef.current = workspaceId;
+      setLayoutReady(true);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !layoutReady || layoutStorageWorkspaceRef.current !== workspaceId) return;
+    try {
+      window.localStorage.setItem(workspaceLayoutStorageKey(workspaceId), JSON.stringify(layoutPreferences));
+    } catch {
+      // Browser storage can be unavailable in privacy mode; layout remains in memory.
+    }
+  }, [layoutPreferences, layoutReady, workspaceId]);
+
+  useEffect(() => {
+    if (!overlayPanel) return;
+    if (panelIsDocked(effectiveLayout, overlayPanel)) setOverlayPanel(null);
+  }, [effectiveLayout, overlayPanel]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -199,10 +252,25 @@ export default function WorkspacePage() {
   }, [pushToast]);
 
   const getPanelWidth = useCallback((panel: ResizePanel) => {
-    const selector = panel === 'workspace' ? '.workspace-sidebar' : panel === 'history' ? '.history-sidebar' : '.inspector-sidebar';
-    const width = layoutRef.current?.querySelector<HTMLElement>(selector)?.getBoundingClientRect().width;
-    return width && width > 0 ? width : panel === 'workspace' ? 240 : 256;
+    if (panel === 'workspace') return effectiveLayout.workspaceMode === 'compact' ? WORKSPACE_LAYOUT_WIDTHS.compactRail : layoutPreferences.workspaceWidth;
+    return panel === 'history' ? layoutPreferences.historyWidth : layoutPreferences.inspectorWidth;
+  }, [effectiveLayout.workspaceMode, layoutPreferences.historyWidth, layoutPreferences.inspectorWidth, layoutPreferences.workspaceWidth]);
+
+  const updateLayoutPreferences = useCallback((update: (current: WorkspaceLayoutPreferences) => WorkspaceLayoutPreferences) => {
+    setLayoutPreferences(current => {
+      const next = update(current);
+      return current.focusMode ? { ...next, focusMode: false, focusRestore: undefined } : next;
+    });
   }, []);
+
+  const otherDockedPanelWidth = useCallback((panel: ResizePanel) => {
+    const widths = {
+      workspace: effectiveLayout.workspaceMode === 'compact' ? WORKSPACE_LAYOUT_WIDTHS.compactRail : effectiveLayout.workspaceWidth,
+      history: effectiveLayout.historyVisible ? effectiveLayout.historyWidth : 0,
+      inspector: effectiveLayout.inspectorVisible ? effectiveLayout.inspectorWidth : 0,
+    } satisfies Record<ResizePanel, number>;
+    return Object.entries(widths).reduce((total, [key, width]) => key === panel ? total : total + width, 0);
+  }, [effectiveLayout.historyWidth, effectiveLayout.historyVisible, effectiveLayout.inspectorWidth, effectiveLayout.inspectorVisible, effectiveLayout.workspaceMode, effectiveLayout.workspaceWidth]);
 
   const stopResize = useCallback(() => {
     activeResizeRef.current?.cleanup();
@@ -220,37 +288,34 @@ export default function WorkspacePage() {
       const layout = layoutRef.current;
       if (!layout) return;
       const layoutWidth = layout.getBoundingClientRect().width;
-      if (panel === 'inspector') {
-        const proposed = getInspectorProposedWidth(activeResize.startWidth, activeResize.startX, moveEvent.clientX);
-        activeResize.lastProposed = proposed;
-        setInspectorPanelWidth(getResizablePanelWidth({
-          proposed,
-          panelMin: INSPECTOR_DRAG_FLOOR,
-          panelMax: PANEL_WIDTH_RANGES.inspector.max,
-          availableWidth: layoutWidth,
-          otherPanelWidth: getPanelWidth('workspace') + getPanelWidth('history'),
-          handleWidth: PANEL_RESIZE_HANDLE_WIDTH * 3,
-          chatMinWidth: CHAT_MIN_WIDTH,
-        }));
-        return;
-      }
-      const inspectorWidth = layout.querySelector<HTMLElement>('.inspector-sidebar')?.getBoundingClientRect().width ?? 0;
+      const proposed = panel === 'inspector'
+        ? getInspectorProposedWidth(activeResize.startWidth, activeResize.startX, moveEvent.clientX)
+        : activeResize.startWidth + moveEvent.clientX - activeResize.startX;
+      activeResize.lastProposed = proposed;
+      const range = panelWidthRange(panel);
       const nextWidth = getResizablePanelWidth({
-        proposed: activeResize.startWidth + moveEvent.clientX - activeResize.startX,
-        panelMin: PANEL_WIDTH_RANGES[panel].min,
-        panelMax: PANEL_WIDTH_RANGES[panel].max,
-        availableWidth: layoutWidth - inspectorWidth,
-        otherPanelWidth: getPanelWidth(panel === 'workspace' ? 'history' : 'workspace'),
-        handleWidth: PANEL_RESIZE_HANDLE_WIDTH * 2,
-        chatMinWidth: CHAT_MIN_WIDTH,
+        proposed: Math.max(range.min, proposed),
+        panelMin: range.min,
+        panelMax: range.max,
+        availableWidth: layoutWidth,
+        otherPanelWidth: otherDockedPanelWidth(panel),
+        handleWidth: effectiveLayout.handleCount * PANEL_RESIZE_HANDLE_WIDTH,
+        chatMinWidth: chatMinimumForViewport(layoutWidth),
       });
-      if (panel === 'workspace') setWorkspacePanelWidth(nextWidth);
-      else setHistoryPanelWidth(nextWidth);
+      updateLayoutPreferences(current => {
+        const next = { ...current, focusMode: false, focusRestore: undefined };
+        if (panel === 'workspace') return { ...next, workspaceWidth: nextWidth, workspaceMode: proposed >= panelCollapseThreshold(panel) ? 'full' : current.workspaceMode };
+        if (panel === 'history') return { ...next, historyWidth: nextWidth };
+        return { ...next, inspectorWidth: nextWidth };
+      });
     };
     const finish = () => {
-      if (panel === 'inspector' && activeResize.lastProposed !== undefined && shouldCollapseInspector(activeResize.lastProposed)) {
-        setInspectorPanelWidth(activeResize.startWidth);
-        setInspectorCollapsed(true);
+      if (activeResize.lastProposed !== undefined && activeResize.lastProposed < panelCollapseThreshold(panel)) {
+        updateLayoutPreferences(current => {
+          if (panel === 'workspace') return { ...current, workspaceMode: 'compact', workspaceWidth: activeResize.startWidth, focusMode: false, focusRestore: undefined };
+          if (panel === 'history') return { ...current, historyOpen: false, historyWidth: activeResize.startWidth, focusMode: false, focusRestore: undefined };
+          return { ...current, inspectorOpen: false, inspectorWidth: activeResize.startWidth, focusMode: false, focusRestore: undefined };
+        });
       }
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', finish);
@@ -271,7 +336,39 @@ export default function WorkspacePage() {
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', finish);
     window.addEventListener('pointercancel', finish);
-  }, [getPanelWidth, stopResize]);
+  }, [effectiveLayout.handleCount, getPanelWidth, otherDockedPanelWidth, stopResize, updateLayoutPreferences]);
+
+  const handleResizeKeyDown = useCallback((panel: ResizePanel, event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const range = panelWidthRange(panel);
+    if (event.key === 'Home') {
+      event.preventDefault();
+      updateLayoutPreferences(current => panel === 'workspace'
+        ? { ...current, workspaceMode: 'compact' }
+        : panel === 'history'
+          ? { ...current, historyOpen: false }
+          : { ...current, inspectorOpen: false });
+      return;
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      updateLayoutPreferences(current => panel === 'workspace'
+        ? { ...current, workspaceMode: 'full', workspaceWidth: range.max }
+        : panel === 'history'
+          ? { ...current, historyOpen: true, historyWidth: range.max }
+          : { ...current, inspectorOpen: true, inspectorWidth: range.max });
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const direction = panel === 'inspector'
+      ? event.key === 'ArrowLeft' ? 16 : -16
+      : event.key === 'ArrowRight' ? 16 : -16;
+    updateLayoutPreferences(current => {
+      if (panel === 'workspace') return { ...current, workspaceMode: 'full', workspaceWidth: Math.min(range.max, Math.max(range.min, current.workspaceWidth + direction)) };
+      if (panel === 'history') return { ...current, historyOpen: true, historyWidth: Math.min(range.max, Math.max(range.min, current.historyWidth + direction)) };
+      return { ...current, inspectorOpen: true, inspectorWidth: Math.min(range.max, Math.max(range.min, current.inspectorWidth + direction)) };
+    });
+  }, [updateLayoutPreferences]);
 
   useEffect(() => () => stopResize(), [stopResize]);
 
@@ -791,22 +888,109 @@ export default function WorkspacePage() {
     if (!group) return;
     if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
     setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setOverlayPanel(null);
   }, [groups, selectedGroupId]);
+
+  const closeOverlayPanel = useCallback(() => {
+    const panel = overlayPanel;
+    setOverlayPanel(null);
+    if (panel) window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-layout-toggle="${panel}"]`)?.focus());
+  }, [overlayPanel]);
+
+  const toggleLayoutPanel = useCallback((panel: WorkspaceLayoutPanel) => {
+    if (panel === 'history' && selectedGroupId) return;
+    if (panel === 'workspace' && overlayPanel === 'workspace') {
+      setOverlayPanel(null);
+      return;
+    }
+
+    const currentlyVisible = overlayPanel === panel || panelIsDocked(effectiveLayout, panel);
+    const candidate: WorkspaceLayoutPreferences = panel === 'workspace'
+      ? { ...layoutPreferences, workspaceMode: currentlyVisible ? 'compact' : 'full' }
+      : panel === 'history'
+        ? { ...layoutPreferences, historyOpen: !currentlyVisible }
+        : { ...layoutPreferences, inspectorOpen: !currentlyVisible };
+    const next = layoutPreferences.focusMode ? { ...candidate, focusMode: false, focusRestore: undefined } : candidate;
+    setLayoutPreferences(next);
+
+    if (currentlyVisible) {
+      setOverlayPanel(null);
+      return;
+    }
+    const nextLayout = resolveEffectiveWorkspaceLayout({ viewportWidth: layoutViewportWidth, preferences: next, historyAvailable: !selectedGroupId });
+    setOverlayPanel(panelIsDocked(nextLayout, panel) ? null : panel);
+  }, [effectiveLayout, layoutPreferences, layoutViewportWidth, overlayPanel, selectedGroupId]);
+
+  const toggleFocusMode = useCallback(() => {
+    setLayoutPreferences(current => {
+      if (current.focusMode && current.focusRestore) {
+        return { ...current.focusRestore, focusMode: false, focusRestore: undefined };
+      }
+      const focusRestore: Omit<WorkspaceLayoutPreferences, 'focusMode' | 'focusRestore'> = {
+        version: 2,
+        workspaceMode: current.workspaceMode,
+        workspaceWidth: current.workspaceWidth,
+        historyOpen: current.historyOpen,
+        historyWidth: current.historyWidth,
+        inspectorOpen: current.inspectorOpen,
+        inspectorWidth: current.inspectorWidth,
+      };
+      return { ...current, workspaceMode: 'compact', historyOpen: false, inspectorOpen: false, focusMode: true, focusRestore };
+    });
+    setOverlayPanel(null);
+  }, []);
+
+  useEffect(() => {
+    const handleLayoutShortcut = (event: KeyboardEvent) => {
+      if (event.isComposing || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const key = event.key.toLowerCase();
+      if (key === 'b' && !event.shiftKey) {
+        event.preventDefault();
+        toggleLayoutPanel('history');
+      } else if (key === 'l' && event.shiftKey) {
+        event.preventDefault();
+        toggleLayoutPanel('inspector');
+      }
+    };
+    window.addEventListener('keydown', handleLayoutShortcut);
+    return () => window.removeEventListener('keydown', handleLayoutShortcut);
+  }, [toggleLayoutPanel]);
+
+  const selectAgent = useCallback((agentId: string) => {
+    setSelectedAgentId(agentId);
+    setSelectedGroupId(null);
+    setSelectedDirectConversationId(null);
+    setError('');
+    setOverlayPanel(null);
+  }, []);
+
+  const renderAgentPanel = (compact: boolean, panelWidth?: number) => <AgentList panelWidth={panelWidth} compact={compact} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={selectAgent} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId ?? '')}/runtime`)} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />;
+  const renderHistoryPanel = (panelWidth?: number) => <ConversationHistory panelWidth={panelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={setSelectedDirectConversationId} onContextMenu={openContextMenu} />;
+  const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
 
   return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
-    <AgentList panelWidth={workspacePanelWidth} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/runtime`)} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />
-    <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
-    {!selectedGroupId && <>
-      <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={setSelectedDirectConversationId} onContextMenu={openContextMenu} />
-      <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
+    {renderAgentPanel(effectiveLayout.workspaceMode === 'compact', effectiveLayout.workspaceMode === 'compact' ? WORKSPACE_LAYOUT_WIDTHS.compactRail : layoutPreferences.workspaceWidth)}
+    <PanelResizeHandle panel="workspace" width={effectiveLayout.workspaceWidth} onPointerDown={handleResizePointerDown} onKeyDown={handleResizeKeyDown} />
+    {effectiveLayout.historyVisible && !selectedGroupId && <>
+      {renderHistoryPanel(layoutPreferences.historyWidth)}
+      <PanelResizeHandle panel="history" width={layoutPreferences.historyWidth} onPointerDown={handleResizePointerDown} onKeyDown={handleResizeKeyDown} />
     </>}
-     <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} />
-    {!inspectorCollapsed && <PanelResizeHandle panel="inspector" width={inspectorPanelWidth} onPointerDown={handleResizePointerDown} />}
-    {!inspectorCollapsed && <ExecutionInspector panelWidth={inspectorPanelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />}
-    {inspectorCollapsed && <button type="button" className="inspector-expand-strip" aria-label="展开执行状态面板" title="展开执行状态面板" onClick={() => setInspectorCollapsed(false)}><span aria-hidden="true" className="inspector-expand-strip-arrow" /><span className="inspector-expand-strip-label">执行状态</span></button>}
+    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} layoutControls={{ workspaceMode: effectiveLayout.workspaceMode, historyAvailable: !selectedGroupId, historyVisible: effectiveLayout.historyVisible, inspectorVisible: effectiveLayout.inspectorVisible, focusMode: layoutPreferences.focusMode, onToggleWorkspace: () => toggleLayoutPanel('workspace'), onToggleHistory: () => toggleLayoutPanel('history'), onToggleInspector: () => toggleLayoutPanel('inspector'), onToggleFocus: toggleFocusMode }} />
+    {effectiveLayout.inspectorVisible && <>
+      <PanelResizeHandle panel="inspector" width={layoutPreferences.inspectorWidth} onPointerDown={handleResizePointerDown} onKeyDown={handleResizeKeyDown} />
+      {renderInspectorPanel(layoutPreferences.inspectorWidth)}
+    </>}
+    {overlayPanel && <WorkspacePanelOverlay panel={overlayPanel} onClose={closeOverlayPanel}>
+      {overlayPanel === 'workspace' && renderAgentPanel(false)}
+      {overlayPanel === 'history' && renderHistoryPanel()}
+      {overlayPanel === 'inspector' && renderInspectorPanel()}
+    </WorkspacePanelOverlay>}
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
      {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
      {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} title={editingGroup.title} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}

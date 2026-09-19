@@ -18,6 +18,18 @@ import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string; runtimeEvent?: AgentEvent };
 
+export interface ChatLayoutControls {
+  workspaceMode: 'full' | 'compact';
+  historyAvailable: boolean;
+  historyVisible: boolean;
+  inspectorVisible: boolean;
+  focusMode: boolean;
+  onToggleWorkspace(): void;
+  onToggleHistory(): void;
+  onToggleInspector(): void;
+  onToggleFocus(): void;
+}
+
 interface ChatPanelProps {
   agentName?: string;
   roleTitle?: string;
@@ -57,6 +69,7 @@ interface ChatPanelProps {
   onCancel(): void;
   mentionedAgentIds?: string[];
   onMentionedAgentIdsChange?(agentIds: string[]): void;
+  layoutControls?: ChatLayoutControls;
 }
 
 const statusLabels: Partial<Record<ExecutionStatus, string>> = {
@@ -233,7 +246,7 @@ function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: Visi
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, mentionedAgentIds = [], onMentionedAgentIdsChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })) }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, mentionedAgentIds = [], onMentionedAgentIdsChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -318,13 +331,19 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
   return <main data-signal-chat className="signal-chat flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
     <div className="ambient-backdrop" aria-hidden="true" />
-    <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-3 top-3 z-10 flex min-h-[4.25rem] items-center justify-between rounded-2xl border ui-border px-5 py-3">
-      <div className="min-w-0"><div className="mb-1 flex items-center gap-2 signal-section-label"><span className={`h-1.5 w-1.5 rounded-full ${sending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} />ACTIVE SESSION</div><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1>{target.kind !== 'none' && <p className="mt-1 text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
-      <div className="flex items-center gap-3">{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
+    <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-3 top-3 z-10 flex min-h-[4.25rem] items-center justify-between gap-3 rounded-2xl border ui-border px-5 py-3">
+      <div className="min-w-0 flex-1"><div className="mb-1 flex items-center gap-2 signal-section-label"><span className={`h-1.5 w-1.5 rounded-full ${sending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} />ACTIVE SESSION</div><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1>{target.kind !== 'none' && <p className="mt-1 truncate text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
+      <div className="flex shrink-0 items-center gap-2">{layoutControls && <div className="chat-layout-controls" role="group" aria-label="工作区布局">
+        <button type="button" data-layout-toggle="workspace" aria-label={layoutControls.workspaceMode === 'compact' ? '展开 Agent 导航' : '收起 Agent 导航'} title={layoutControls.workspaceMode === 'compact' ? '展开 Agent 导航' : '收起 Agent 导航'} aria-pressed={layoutControls.workspaceMode === 'compact'} onClick={layoutControls.onToggleWorkspace} className="chat-layout-toggle ui-button-ghost"
+        ><span aria-hidden="true">{layoutControls.workspaceMode === 'compact' ? '›' : '‹'}</span><span className="chat-layout-toggle-label">导航</span></button>
+        {layoutControls.historyAvailable && <button type="button" data-layout-toggle="history" aria-label={layoutControls.historyVisible ? '收起会话列表' : '打开会话列表'} title={layoutControls.historyVisible ? '收起会话列表' : '打开会话列表'} aria-pressed={!layoutControls.historyVisible} onClick={layoutControls.onToggleHistory} className="chat-layout-toggle ui-button-ghost"><span aria-hidden="true">▤</span><span className="chat-layout-toggle-label">会话</span></button>}
+        <button type="button" data-layout-toggle="inspector" aria-label={layoutControls.inspectorVisible ? '收起执行状态面板' : '打开执行状态面板'} title={layoutControls.inspectorVisible ? '收起执行状态面板' : '打开执行状态面板'} aria-pressed={!layoutControls.inspectorVisible} onClick={layoutControls.onToggleInspector} className="chat-layout-toggle ui-button-ghost"><span aria-hidden="true">◧</span><span className="chat-layout-toggle-label">状态</span></button>
+        <button type="button" data-layout-toggle="focus" aria-label={layoutControls.focusMode ? '退出专注模式' : '进入专注模式'} title={layoutControls.focusMode ? '退出专注模式' : '进入专注模式'} aria-pressed={layoutControls.focusMode} onClick={layoutControls.onToggleFocus} className={`chat-layout-toggle ui-button-ghost ${layoutControls.focusMode ? 'ui-selected' : ''}`}><span aria-hidden="true">✦</span><span className="chat-layout-toggle-label">专注</span></button>
+      </div>}{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
     </header>
 
     {target.kind === 'none' ? <div className="signal-empty m-6 grid flex-1 place-items-center px-6 text-center" style={{ marginTop: chromeTop + 24 }}><div className="relative z-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
-      <div ref={scrollRef} onScroll={event => { wasNearBottomRef.current = isNearBottom(event.currentTarget); }} className="signal-chat-scroll flex-1 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="mx-auto max-w-4xl space-y-5">
+      <div ref={scrollRef} onScroll={event => { wasNearBottomRef.current = isNearBottom(event.currentTarget); }} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="mx-auto max-w-[70rem] min-w-0 space-y-5">
         {messages.length === 0 && !streamingContent && <div className="signal-empty px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始协作。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
         {messages.length > 100 && <VirtualMessageList messages={messages} scrollElementRef={scrollRef} renderMessage={renderMessage} />}
         {messages.length <= 100 && messages.map(message => {
@@ -344,7 +363,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
       <div ref={bindChromeRef} className="signal-chat-chrome">
       {isGroup && onMentionedAgentIdsChange && <MentionPicker agents={agents} selectedAgentIds={mentionedAgentIds} disabled={sending} onChange={onMentionedAgentIdsChange} />}
-      <div className="signal-composer-shell border-t ui-border px-4 py-4 sm:px-6"><div ref={composerGlassRef} className="signal-composer mx-auto max-w-4xl rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-3 transition focus-within:border-[var(--app-accent)]" onPaste={event => { const imageFiles = Array.from(event.clipboardData.items).filter(isImageClipboardItem).map(item => item.getAsFile()).filter((file): file is File => Boolean(file)); if (imageFiles.length > 0) { event.preventDefault(); onFiles(imageFiles); } }}>
+      <div className="signal-composer-shell border-t ui-border px-4 py-4 sm:px-6"><div ref={composerGlassRef} className="signal-composer mx-auto max-w-[70rem] min-w-0 rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-3 transition focus-within:border-[var(--app-accent)]" onPaste={event => { const imageFiles = Array.from(event.clipboardData.items).filter(isImageClipboardItem).map(item => item.getAsFile()).filter((file): file is File => Boolean(file)); if (imageFiles.length > 0) { event.preventDefault(); onFiles(imageFiles); } }}>
         <button type="button" role="slider" data-testid="composer-resize-handle" className="composer-resize-handle" aria-label="调整输入框高度" aria-controls="message-input" aria-orientation="vertical" aria-valuemin={COMPOSER_MIN_HEIGHT} aria-valuemax={COMPOSER_MAX_HEIGHT} aria-valuenow={composerHeight} aria-valuetext={`${composerHeight}px`} onPointerDown={startComposerResize} onPointerMove={moveComposerResize} onPointerUp={finishComposerResize} onPointerCancel={finishComposerResize} onKeyDown={handleComposerResizeKeyDown}><span aria-hidden="true" /></button>
         <textarea id="message-input" aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} placeholder={sending ? `正在运行——输入补充指示，回车加入队列${queuedMessageCount ? `（已排队 ${queuedMessageCount} 条）` : ''}` : activeStatus === 'waiting_user' ? '补充信息…' : target.kind === 'group' ? '' : `向 ${target.label} 发送消息…`} className="w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none focus-visible:outline-none placeholder:ui-dim" style={{ height: `${composerHeight}px` }} />
         {validationError && <div role="alert" className="ui-error mt-2 rounded-lg border px-2.5 py-1.5 text-xs">{validationError}</div>}
