@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 export interface CompactSelectOption {
   readonly value: string;
@@ -129,7 +130,7 @@ export function CompactSelect({ label, value, options, disabled = false, ariaLab
       role="listbox"
       aria-label={`${label}选项`}
       style={menuPosition ? { left: menuPosition.left, width: menuPosition.width, top: menuPosition.top, bottom: menuPosition.bottom } : undefined}
-      className="compact-select-menu ui-panel-raised fixed z-[60] w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border p-1.5 shadow-[var(--app-shadow)]"
+      className={`compact-select-menu ui-panel-raised fixed ${uiLayerClass('mediaPreview')} w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border p-1.5 shadow-[var(--app-shadow)]`}
       data-positioned={menuPosition ? 'true' : 'false'}
     >
       <div className="px-2.5 py-1.5 text-[10px] font-medium tracking-[0.08em] ui-dim">选择{label}</div>

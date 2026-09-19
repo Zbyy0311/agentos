@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { uiLayerClass } from '@/lib/uiLayers';
 import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 
 interface GroupRenameModalProps {
@@ -12,7 +13,7 @@ interface GroupRenameModalProps {
 export function GroupRenameModal({ title: initialTitle, saving, entityLabel = '群聊', onClose, onSave }: GroupRenameModalProps) {
   const [title, setTitle] = useState(initialTitle);
   const glassRef = useLiquidGlass<HTMLFormElement>('modal');
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
+  return <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
     <form ref={glassRef} onSubmit={event => { event.preventDefault(); onSave(title); }} className="glass-dialog ui-panel-raised w-full max-w-md rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
       <div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-medium tracking-[0.16em] ui-accent">RENAME</p><h2 className="mt-2 text-lg font-semibold ui-text">编辑{entityLabel}名称</h2></div><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
       <label className="block text-sm ui-text-soft">{entityLabel}名称<input autoFocus value={title} onChange={event => setTitle(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2 outline-none" /></label>

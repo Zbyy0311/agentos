@@ -27,4 +27,5 @@ test('shows provider and CLI command as separate agent identity fields', async (
   assert.match(markup, /C:\/tools\/opencode-wrapper\.cmd/);
   assert.match(markup, /职责仍单独/);
   assert.match(markup, /配置：opencode；实际：codex/);
+  assert.match(markup, /ui-layer-editor/);
 });

@@ -25,7 +25,28 @@
   --app-grid-line: rgba(255, 255, 255, 0.035);
   --app-glow: rgba(210, 103, 59, 0.16);
   --ambient-glow-secondary: rgba(94, 138, 130, 0.12);
+  --layer-content: 10;
+  --layer-local-menu: 50;
+  --layer-workspace-overlay: 80;
+  --layer-context-menu: 85;
+  --layer-run-details: 90;
+  --layer-workspace-surface: 95;
+  --layer-editor: 105;
+  --layer-confirmation: 110;
+  --layer-media-preview: 120;
+  --layer-toast: 130;
 }
+
+.ui-layer-content { z-index: 10; }
+.ui-layer-local-menu { z-index: 50; }
+.ui-layer-workspace-overlay { z-index: 80; }
+.ui-layer-context-menu { z-index: 85; }
+.ui-layer-run-details { z-index: 90; }
+.ui-layer-workspace-surface { z-index: 95; }
+.ui-layer-editor { z-index: 105; }
+.ui-layer-confirmation { z-index: 110; }
+.ui-layer-media-preview { z-index: 120; }
+.ui-layer-toast { z-index: 130; }
 
 html[data-theme='light'] {
   --app-bg: #f0eee9;
@@ -1133,7 +1154,7 @@ body.resizing-panels {
 
 .workspace-panel-overlay {
   position: fixed;
-  z-index: 80;
+  z-index: var(--layer-workspace-overlay);
   inset: 0;
 }
 

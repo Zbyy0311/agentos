@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getAdjacentImageId } from '@/lib/imageAttachments';
 import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 export interface ImagePreviewItem {
   id: string;
@@ -53,7 +54,7 @@ export function ImagePreviewModal({ items, selectedId, onClose, onSelect }: Imag
   };
 
   return <div
-    className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4"
+    className={`fixed inset-0 ${uiLayerClass('mediaPreview')} flex items-center justify-center bg-black/75 p-4`}
     role="dialog"
     aria-modal="true"
     aria-label={`图片预览：${selectedItem.name}`}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { uiLayerClass } from '@/lib/uiLayers';
 import type { AgentProfile, CollaborationRole, ConversationMember, GroupDispatchMode, ThinkingEffort } from '@agentos/shared';
 import { getGroupMemberModelOptions, getGroupMemberThinkingEfforts, THINKING_EFFORT_LABELS } from '../../lib/groupMemberSettings';
 import { CompactSelect } from './CompactSelect';
@@ -78,7 +79,7 @@ export function GroupEditor({ agents, members, title: initialTitle, dispatchMode
   });
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm">
+    <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm`}>
       <div role="dialog" aria-modal="true" aria-labelledby="group-editor-title" className="ui-panel-raised max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
         <div className="ui-modal-sticky-header flex items-start justify-between gap-4">
           <div><p className="text-xs font-medium tracking-[0.16em] ui-accent">GROUP EDITOR</p><h2 id="group-editor-title" className="mt-2 text-lg font-semibold ui-text">编辑群聊</h2><p className="mt-1 text-sm ui-muted">群聊名称、调度策略和成员参数在这里统一管理。</p></div>

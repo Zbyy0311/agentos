@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { RunIntent } from '@agentos/shared';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 interface RunModeSelectorProps {
   value: RunIntent;
@@ -107,7 +108,7 @@ export function RunModeSelector({ value, disabled, onChange }: RunModeSelectorPr
       <span className="font-medium">{modeLabels[selected.value]}</span>
       <span aria-hidden="true" className={`text-[11px] ui-dim transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
     </button>
-    {open && <div id={menuId} ref={menuRef} role="listbox" aria-label="运行模式选项" style={menuPosition ? { left: menuPosition.left, bottom: menuPosition.bottom, width: menuPosition.width } : undefined} className="run-mode-menu ui-panel-raised fixed z-50 rounded-xl border p-1.5 shadow-[var(--app-shadow)]" data-positioned={menuPosition ? 'true' : 'false'}>
+    {open && <div id={menuId} ref={menuRef} role="listbox" aria-label="运行模式选项" style={menuPosition ? { left: menuPosition.left, bottom: menuPosition.bottom, width: menuPosition.width } : undefined} className={`run-mode-menu ui-panel-raised fixed ${uiLayerClass('mediaPreview')} rounded-xl border p-1.5 shadow-[var(--app-shadow)]`} data-positioned={menuPosition ? 'true' : 'false'}>
       <div className="px-2.5 py-1.5">
         <div className="text-xs font-semibold ui-text">运行模式</div>
         <div className="mt-0.5 text-[10px] ui-dim">决定本次消息的处理边界</div>

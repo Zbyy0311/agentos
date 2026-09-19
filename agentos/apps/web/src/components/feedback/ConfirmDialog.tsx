@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 interface ConfirmDialogProps {
   eyebrow?: string;
@@ -66,7 +67,7 @@ export function ConfirmDialog({
     if (event.target === event.currentTarget && !busy) onClose();
   };
 
-  return <div className="ui-modal-backdrop fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6" onMouseDown={handleBackdropMouseDown}>
+  return <div className={`ui-modal-backdrop fixed inset-0 ${uiLayerClass('confirmation')} flex items-center justify-center p-4 sm:p-6`} onMouseDown={handleBackdropMouseDown}>
     <div
       role="alertdialog"
       aria-modal="true"

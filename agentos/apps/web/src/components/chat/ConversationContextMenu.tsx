@@ -1,5 +1,6 @@
 import type { Conversation } from '@agentos/shared';
 import { getContextMenuPosition } from '@/lib/conversationActions';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 interface ConversationContextMenuProps {
   conversation: Conversation;
@@ -31,7 +32,7 @@ export function ConversationContextMenu({ conversation, clientX, clientY, onRena
     role="menu"
     aria-label={`${conversation.title} 会话操作`}
     onMouseDown={event => event.stopPropagation()}
-    className="ui-panel-raised fixed z-[60] w-48 overflow-hidden rounded-xl border p-1.5 shadow-[var(--app-shadow)]"
+    className={`ui-panel-raised fixed ${uiLayerClass('contextMenu')} w-48 overflow-hidden rounded-xl border p-1.5 shadow-[var(--app-shadow)]`}
     style={{ left, top }}
   >
     {conversation.type === 'group' && onEditGroup ? <button type="button" role="menuitem" onClick={() => run(onEditGroup)} className="ui-button-ghost w-full rounded-lg px-3 py-2 text-left text-sm">

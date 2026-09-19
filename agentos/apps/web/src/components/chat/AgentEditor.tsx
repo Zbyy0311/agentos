@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CompactSelect } from './CompactSelect';
 import type { AgentModelOption, AgentPermission, AgentProfile, AgentProvider, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 interface AgentEditorProps {
   agent: AgentProfile;
@@ -45,7 +46,7 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
   const togglePermission = (permission: AgentPermission) => setPermissions(current => current.includes(permission) ? current.filter(item => item !== permission) : [...current, permission]);
   const source = agent.capability?.modelSource;
 
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
+  return <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
     <form onSubmit={event => { event.preventDefault(); submit(); }} className="ui-panel-raised max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
       <div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs font-medium tracking-[0.16em] ui-accent">AGENT PROFILE</p><h2 className="mt-2 text-lg font-semibold ui-text">编辑 Agent 身份</h2><p className="mt-1 text-sm ui-muted">默认模型用于未指定单次覆盖的消息。</p></div><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
       <div className="space-y-4">

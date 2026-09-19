@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { uiLayerClass } from '@/lib/uiLayers';
 import type { ThinkingEffort } from '@agentos/shared';
 import type { ForwardConversationMember } from '../../lib/directConversationClient';
 import { getGroupMemberModelOptions, getGroupMemberThinkingEfforts, THINKING_EFFORT_LABELS } from '../../lib/groupMemberSettings';
@@ -71,7 +72,7 @@ export function RuntimeGroupSettings(props: RuntimeGroupSettingsProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
+    <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
       <form
         role="dialog"
         aria-modal="true"

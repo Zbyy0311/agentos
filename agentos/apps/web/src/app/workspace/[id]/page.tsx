@@ -605,6 +605,7 @@ export default function WorkspacePage() {
   const openRunDetails = useCallback(async (runId: string) => {
     if (!workspaceId) return;
     const requestedConversationId = activeConversationId;
+    setOverlayPanel(null);
     try {
       const details = await loadRunDetails(runId);
       if (!requestedConversationId || activeConversationId !== requestedConversationId || !projectRuntimeResult(details, { workspaceId, conversationId: requestedConversationId, runId })) return;
@@ -880,6 +881,7 @@ export default function WorkspacePage() {
 
   const openGroupEditor = useCallback(async (conversation: Conversation) => {
     if (!workspaceId || conversation.type !== 'group') return;
+    setOverlayPanel(null);
     try {
       const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/members`);
       setEditingGroup(result.conversation);
@@ -1001,9 +1003,14 @@ export default function WorkspacePage() {
     setOverlayPanel(null);
   }, []);
 
-  const renderAgentPanel = (compact: boolean, panelWidth?: number) => <AgentList panelWidth={panelWidth} compact={compact} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={selectAgent} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId ?? '')}/runtime`)} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />;
+  const openEditorLayer = useCallback((open: () => void) => {
+    setOverlayPanel(null);
+    open();
+  }, []);
+
+  const renderAgentPanel = (compact: boolean, panelWidth?: number) => <AgentList panelWidth={panelWidth} compact={compact} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={selectAgent} onSelectGroup={selectGroup} onCreateGroup={() => openEditorLayer(() => setCreatingGroup(true))} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId ?? '')}/runtime`)} onOpenMemories={() => openEditorLayer(() => setShowMemories(true))} onOpenPreferences={() => openEditorLayer(() => setShowPreferences(true))} onOpenMemoryReview={() => openEditorLayer(() => setShowMemoryReview(true))} />;
   const renderHistoryPanel = (panelWidth?: number) => <ConversationHistory panelWidth={panelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={setSelectedDirectConversationId} onContextMenu={openContextMenu} />;
-  const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} runHistory={conversationRuns} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
+  const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} runHistory={conversationRuns} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => { setOverlayPanel(null); setEditingAgent(true); }} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
