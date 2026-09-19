@@ -21,7 +21,7 @@ import { getDoneExecution } from '@/lib/streamDoneExecution';
 import { MAX_RECONNECT_ATTEMPTS, TerminalStreamError, StreamHttpError, UnexpectedStreamEndError, consumeSseResponse, getReconnectDelay, retryWithExponentialBackoff, shouldReconnect } from '@/lib/streamReconnect';
 import { canSendMessage, fileToImageDraft, validateImageDrafts, type ImageDraft } from '@/lib/imageAttachments';
 import { getComposerSendIntent, preserveDraftAfterSendFailure } from '@/lib/composerInteraction';
-import { getResizablePanelWidth } from '@/lib/resizablePanels';
+import { getInspectorProposedWidth, getResizablePanelWidth, INSPECTOR_DRAG_FLOOR, shouldCollapseInspector } from '@/lib/resizablePanels';
 import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
 import { RunDetails } from '@/components/runs/RunDetails';
 import { MemoryPanel } from '@/components/memory/MemoryPanel';
@@ -41,20 +41,22 @@ type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: st
 type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
 type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; run?: AgentRun; message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; runtime?: AgentEvent; runStep?: RunStep; eventId?: string; sequence?: number; error?: string };
 type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
-type ResizePanel = 'workspace' | 'history';
-type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; cleanup: () => void };
+type ResizePanel = 'workspace' | 'history' | 'inspector';
+type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; lastProposed?: number; cleanup: () => void };
 
 const PANEL_RESIZE_HANDLE_WIDTH = 8;
 const CHAT_MIN_WIDTH = 360;
 const PANEL_WIDTH_RANGES: Record<ResizePanel, { min: number; max: number }> = {
   workspace: { min: 180, max: 360 },
   history: { min: 180, max: 420 },
+  inspector: { min: 240, max: 520 },
 };
 
 function PanelResizeHandle({ panel, width, onPointerDown }: { panel: ResizePanel; width?: number; onPointerDown(panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>): void }) {
   const range = PANEL_WIDTH_RANGES[panel];
-  const label = panel === 'workspace' ? '调整工作区导航栏宽度' : '调整会话历史栏宽度';
-  return <div data-panel-resize={panel} role="separator" aria-orientation="vertical" aria-label={label} aria-valuemin={range.min} aria-valuemax={range.max} aria-valuenow={Math.round(width ?? (panel === 'workspace' ? 240 : 256))} className={`panel-resize-handle panel-resize-handle-${panel}`} onPointerDown={event => onPointerDown(panel, event)} />;
+  const label = panel === 'workspace' ? '调整工作区导航栏宽度' : panel === 'history' ? '调整会话历史栏宽度' : '调整执行状态面板宽度';
+  const defaultWidth = panel === 'workspace' ? 240 : 256;
+  return <div data-panel-resize={panel} role="separator" aria-orientation="vertical" aria-label={label} aria-valuemin={range.min} aria-valuemax={range.max} aria-valuenow={Math.round(width ?? defaultWidth)} className={`panel-resize-handle panel-resize-handle-${panel}`} onPointerDown={event => onPointerDown(panel, event)} />;
 }
 
 function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -145,6 +147,8 @@ export default function WorkspacePage() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState<number>();
   const [historyPanelWidth, setHistoryPanelWidth] = useState<number>();
+  const [inspectorPanelWidth, setInspectorPanelWidth] = useState<number>();
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const layoutRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamRunIdRef = useRef<string>();
@@ -195,7 +199,7 @@ export default function WorkspacePage() {
   }, [pushToast]);
 
   const getPanelWidth = useCallback((panel: ResizePanel) => {
-    const selector = panel === 'workspace' ? '.workspace-sidebar' : '.history-sidebar';
+    const selector = panel === 'workspace' ? '.workspace-sidebar' : panel === 'history' ? '.history-sidebar' : '.inspector-sidebar';
     const width = layoutRef.current?.querySelector<HTMLElement>(selector)?.getBoundingClientRect().width;
     return width && width > 0 ? width : panel === 'workspace' ? 240 : 256;
   }, []);
@@ -216,6 +220,20 @@ export default function WorkspacePage() {
       const layout = layoutRef.current;
       if (!layout) return;
       const layoutWidth = layout.getBoundingClientRect().width;
+      if (panel === 'inspector') {
+        const proposed = getInspectorProposedWidth(activeResize.startWidth, activeResize.startX, moveEvent.clientX);
+        activeResize.lastProposed = proposed;
+        setInspectorPanelWidth(getResizablePanelWidth({
+          proposed,
+          panelMin: INSPECTOR_DRAG_FLOOR,
+          panelMax: PANEL_WIDTH_RANGES.inspector.max,
+          availableWidth: layoutWidth,
+          otherPanelWidth: getPanelWidth('workspace') + getPanelWidth('history'),
+          handleWidth: PANEL_RESIZE_HANDLE_WIDTH * 3,
+          chatMinWidth: CHAT_MIN_WIDTH,
+        }));
+        return;
+      }
       const inspectorWidth = layout.querySelector<HTMLElement>('.inspector-sidebar')?.getBoundingClientRect().width ?? 0;
       const nextWidth = getResizablePanelWidth({
         proposed: activeResize.startWidth + moveEvent.clientX - activeResize.startX,
@@ -230,6 +248,10 @@ export default function WorkspacePage() {
       else setHistoryPanelWidth(nextWidth);
     };
     const finish = () => {
+      if (panel === 'inspector' && activeResize.lastProposed !== undefined && shouldCollapseInspector(activeResize.lastProposed)) {
+        setInspectorPanelWidth(activeResize.startWidth);
+        setInspectorCollapsed(true);
+      }
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', finish);
       window.removeEventListener('pointercancel', finish);
@@ -781,7 +803,9 @@ export default function WorkspacePage() {
     <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
     <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
      <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onEditGroup={isGroupConversation && selectedConversation ? () => { void openGroupEditor(selectedConversation); } : undefined} />
-    <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />
+    {!inspectorCollapsed && <PanelResizeHandle panel="inspector" width={inspectorPanelWidth} onPointerDown={handleResizePointerDown} />}
+    {!inspectorCollapsed && <ExecutionInspector panelWidth={inspectorPanelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />}
+    {inspectorCollapsed && <button type="button" className="inspector-expand-strip" aria-label="展开执行状态面板" title="展开执行状态面板" onClick={() => setInspectorCollapsed(false)}><span aria-hidden="true" className="inspector-expand-strip-arrow" /><span className="inspector-expand-strip-label">执行状态</span></button>}
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
      {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
      {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} title={editingGroup.title} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}

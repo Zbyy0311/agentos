@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 
 interface NewWorkspaceModalProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ export function NewWorkspaceModal({ onClose, onCreate }: NewWorkspaceModalProps)
   const [readme, setReadme] = useState(true);
   const [docs, setDocs] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const glassRef = useLiquidGlass<HTMLFormElement>('modal');
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -24,7 +26,7 @@ export function NewWorkspaceModal({ onClose, onCreate }: NewWorkspaceModalProps)
   };
 
   return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
-    <form onSubmit={handleSubmit} className="ui-panel-raised w-full max-w-lg rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
+    <form ref={glassRef} onSubmit={handleSubmit} className="glass-dialog ui-panel-raised w-full max-w-lg rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div><p className="text-xs font-medium tracking-[0.16em] ui-accent">NEW WORKSPACE</p><h2 className="mt-2 text-xl font-semibold ui-text">建立一个新的工作区</h2><p className="mt-1 text-sm ui-muted">为本地项目准备独立的 Agent 上下文。</p></div>
         <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button>

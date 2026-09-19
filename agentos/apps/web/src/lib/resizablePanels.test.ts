@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampPanelWidth, getResizablePanelWidth } from './resizablePanels.ts';
+import { clampPanelWidth, getInspectorProposedWidth, getResizablePanelWidth, INSPECTOR_COLLAPSE_THRESHOLD, shouldCollapseInspector } from './resizablePanels.ts';
 
 test('clamps a panel width to its configured range', () => {
   assert.equal(clampPanelWidth(120, { min: 180, max: 360 }), 180);
@@ -13,4 +13,15 @@ test('keeps the chat area above its minimum while resizing', () => {
 
 test('keeps an in-range width unchanged', () => {
   assert.equal(getResizablePanelWidth({ proposed: 280, panelMin: 180, panelMax: 360, availableWidth: 980, otherPanelWidth: 256, handleWidth: 8, chatMinWidth: 420 }), 280);
+});
+
+test('inspector drag inverts the pointer delta for the right-edge panel', () => {
+  assert.equal(getInspectorProposedWidth(256, 800, 700), 356);
+  assert.equal(getInspectorProposedWidth(256, 800, 900), 156);
+});
+
+test('collapses the inspector only below the threshold', () => {
+  assert.equal(shouldCollapseInspector(INSPECTOR_COLLAPSE_THRESHOLD - 1), true);
+  assert.equal(shouldCollapseInspector(INSPECTOR_COLLAPSE_THRESHOLD), false);
+  assert.equal(shouldCollapseInspector(320), false);
 });

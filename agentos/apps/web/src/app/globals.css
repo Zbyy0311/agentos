@@ -24,6 +24,7 @@
   --app-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
   --app-grid-line: rgba(255, 255, 255, 0.035);
   --app-glow: rgba(210, 103, 59, 0.16);
+  --ambient-glow-secondary: rgba(94, 138, 130, 0.12);
 }
 
 html[data-theme='light'] {
@@ -48,6 +49,7 @@ html[data-theme='light'] {
   --app-shadow: 0 18px 45px rgba(45, 42, 35, 0.14);
   --app-grid-line: rgba(32, 39, 41, 0.055);
   --app-glow: rgba(180, 82, 50, 0.1);
+  --ambient-glow-secondary: rgba(117, 111, 77, 0.1);
 }
 
 * {
@@ -114,15 +116,21 @@ input:focus-visible {
   background: var(--app-bg);
 }
 
-.signal-page::before {
+/* Liquid glass ambient field. It must be a real element with a real
+   background: the glass auto-backdrop repaint cannot capture pseudo-elements,
+   so the grid/glow layer lives here instead of on .signal-page::before. */
+.ambient-backdrop {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px), linear-gradient(var(--app-grid-line) 1px, transparent 1px), radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem);
-  background-size: 48px 48px, 48px 48px, auto;
-  content: '';
-  opacity: 0.6;
   pointer-events: none;
+  background-image:
+    radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem),
+    radial-gradient(circle at 14% 82%, var(--ambient-glow-secondary), transparent 32rem),
+    linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--app-grid-line) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  opacity: 0.65;
 }
 
 .signal-header {
@@ -338,6 +346,45 @@ input:focus-visible {
 
 .signal-composer {
   box-shadow: 0 18px 50px color-mix(in srgb, #000 25%, transparent);
+}
+
+.signal-chat {
+  position: relative;
+  isolation: isolate;
+}
+
+.signal-chat-chrome {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+}
+
+/* Liquid glass mode: the element's own fill steps back so the refracted
+   backdrop reads through. Without WebGL2 (fallback) the pre-glass solid or
+   blurred look stays in place, so no fallback-specific rules are needed. */
+.signal-chat-header[data-liquid-glass='webgl'],
+.signal-header[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface) 22%, transparent);
+  backdrop-filter: none;
+}
+
+.signal-composer[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
+}
+
+.signal-composer-shell:has(.signal-composer[data-liquid-glass='webgl']) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.toast-item[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 28%, transparent);
+}
+
+.glass-dialog[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
 }
 
 .composer-resize-handle {
@@ -943,8 +990,47 @@ body.resizing-panels {
   user-select: none;
 }
 
+.inspector-expand-strip {
+  display: flex;
+  width: 20px;
+  flex: 0 0 20px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.75rem 0;
+  border: 0;
+  border-left: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-surface) 78%, var(--app-bg));
+  color: var(--app-dim);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.inspector-expand-strip:hover,
+.inspector-expand-strip:focus-visible {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+}
+
+.inspector-expand-strip-arrow {
+  width: 6px;
+  height: 6px;
+  border-bottom: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.inspector-expand-strip-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+}
+
 @media (max-width: 1180px) {
-  .inspector-sidebar {
+  .inspector-sidebar,
+  .panel-resize-handle-inspector,
+  .inspector-expand-strip {
     display: none;
   }
 }
@@ -1015,20 +1101,36 @@ body.resizing-panels {
   }
 }
 
-main > div.border-t > div {
+/* The composer is the layout container: its width depends on the chat column,
+   not the viewport, so responsiveness must be container-based. */
+.signal-composer {
   container-type: inline-size;
 }
 
+@container (max-width: 560px) {
+  .signal-composer .composer-hint {
+    display: none;
+  }
+}
+
 @container (max-width: 460px) {
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 {
+  .signal-composer .composer-action-row {
     flex-wrap: wrap;
+    row-gap: 0.5rem;
   }
 
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 > div.ml-auto {
+  .signal-composer .composer-action-row > div.ml-auto {
     width: 100%;
     max-width: 100%;
     margin-left: 0;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+
+  .signal-composer .composer-controls {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
   }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ToastItem } from '@/lib/uiFeedback';
+import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 
 const EXIT_DURATION_MS = 180;
 
@@ -12,6 +13,7 @@ type ToastTimers = { exitTimer: number; dismissTimer?: number };
 
 export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
   const [exiting, setExiting] = useState<Set<string>>(() => new Set());
+  const glassRef = useLiquidGlass<HTMLDivElement>('toast', { targets: '.toast-item' });
   const timersRef = useRef(new Map<string, ToastTimers>());
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
 
   if (toasts.length === 0) return null;
 
-  return <div className="pointer-events-none fixed bottom-6 right-6 z-[80] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" data-toast-stack>
+  return <div ref={glassRef} className="pointer-events-none fixed bottom-6 right-6 z-[80] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" data-toast-stack>
     {toasts.map(toast => <article key={toast.id} role={toast.tone === 'error' ? 'alert' : 'status'} aria-live={toast.tone === 'error' ? 'assertive' : 'polite'} className={`toast-item toast-${toast.tone} pointer-events-auto ${exiting.has(toast.id) ? 'toast-exit' : 'toast-enter'}`}>
       <span className="min-w-0 flex-1">{toast.message}</span>
       <button type="button" aria-label="关闭通知" onClick={() => onDismiss(toast.id)} className="toast-dismiss shrink-0">×</button>

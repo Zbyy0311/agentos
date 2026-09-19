@@ -119,7 +119,7 @@ export function ComposerControls({ isGroup, modelOptions, model, thinkingEffort,
   const selectedModel = modelOptions.find(option => option.id === model);
   const modelPickerOptions: PickerOption[] = [{ value: '', label: '默认模型', detail: '使用当前 Agent 默认值' }, ...modelOptions.map(option => ({ value: option.id, label: option.label, detail: option.label !== option.id ? option.id : undefined }))];
 
-  return <div className="flex min-w-0 items-center gap-1.5">
+  return <div className="composer-controls flex min-w-0 items-center gap-1.5">
     <RunModeSelector value={runIntent} disabled={disabled} onChange={onRunIntentChange} />
     <Picker label="模型" ariaLabel="选择模型" value={model ?? ''} displayValue={selectedModel?.label ?? '默认模型'} options={modelPickerOptions} disabled={disabled} widthClass="max-w-[13rem]" onChange={value => onModelChange(value || undefined)} />
     <EffortPicker value={thinkingEffort} efforts={thinkingEfforts} disabled={disabled} onChange={onThinkingEffortChange} />
