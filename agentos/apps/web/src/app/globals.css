@@ -954,20 +954,36 @@ body.resizing-panels {
   }
 }
 
-main > div.border-t > div {
+/* The composer is the layout container: its width depends on the chat column,
+   not the viewport, so responsiveness must be container-based. */
+.signal-composer {
   container-type: inline-size;
 }
 
+@container (max-width: 560px) {
+  .signal-composer .composer-hint {
+    display: none;
+  }
+}
+
 @container (max-width: 460px) {
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 {
+  .signal-composer .composer-action-row {
     flex-wrap: wrap;
+    row-gap: 0.5rem;
   }
 
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 > div.ml-auto {
+  .signal-composer .composer-action-row > div.ml-auto {
     width: 100%;
     max-width: 100%;
     margin-left: 0;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+
+  .signal-composer .composer-controls {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
   }
 }
 
