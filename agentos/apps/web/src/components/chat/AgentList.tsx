@@ -34,7 +34,7 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
       </div>
       <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
       <div className="workspace-copy mt-1 text-xs leading-5 ui-muted">当前工作区的协作成员</div>
-      <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 rounded-lg border ui-border px-2.5 py-1.5 text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
+      <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
       {onOpenRuntime === undefined ? null : <button type="button" data-agentos="open-runtime-workbench" onClick={onOpenRuntime} className="mt-2 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs ui-button-ghost hover:border-[var(--app-accent)]">⚡ 运行时工作台</button>}
     </div>
 
@@ -63,6 +63,6 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
         {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}
       </div>
     </div>
-    <div className="mt-auto space-y-2"><button type="button" aria-label="打开交互与工作偏好" title="交互与工作偏好" onClick={onOpenPreferences} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">⚙</span> <span className="workspace-knowledge-label ml-1">交互偏好</span></button><button type="button" aria-label="打开项目知识" title="项目知识" onClick={onOpenMemories} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">📚</span> <span className="workspace-knowledge-label ml-1">项目知识</span></button>{onOpenMemoryReview === undefined ? null : <button type="button" aria-label="打开记忆候选审查" title="记忆候选审查" onClick={onOpenMemoryReview} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">🧠</span> <span className="workspace-knowledge-label ml-1">记忆审查</span></button>}</div>
+    <div className="mt-auto space-y-2 pt-4"><button type="button" aria-label="打开交互与工作偏好" title="交互与工作偏好" onClick={onOpenPreferences} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">⚙</span> <span className="workspace-knowledge-label ml-1">交互偏好</span></button><button type="button" aria-label="打开项目知识" title="项目知识" onClick={onOpenMemories} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">📚</span> <span className="workspace-knowledge-label ml-1">项目知识</span></button>{onOpenMemoryReview === undefined ? null : <button type="button" aria-label="打开记忆候选审查" title="记忆候选审查" onClick={onOpenMemoryReview} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">🧠</span> <span className="workspace-knowledge-label ml-1">记忆审查</span></button>}</div>
   </aside>;
 }
