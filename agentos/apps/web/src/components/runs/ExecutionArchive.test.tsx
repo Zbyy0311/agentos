@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentRunDetails } from '@agentos/shared';
-import { RunDetails } from './RunDetails.js';
+import { ExecutionArchive } from './ExecutionArchive.js';
 
 const details: AgentRunDetails = {
   run: {
@@ -34,15 +34,12 @@ const details: AgentRunDetails = {
   steps: [],
 };
 
-test('RunDetails keeps its action header sticky while details scroll', () => {
+test('ExecutionArchive separates compact filters into aligned rows', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
-  const markup = renderToStaticMarkup(
-    <RunDetails details={details} apiBase="http://localhost:4000" onClose={() => undefined} onGenerateCandidates={() => undefined} />,
-  );
+  const markup = renderToStaticMarkup(<ExecutionArchive details={details} />);
 
-  assert.match(markup, /ui-modal-sticky-header/);
-  assert.match(markup, /生成记忆候选/);
-  assert.match(markup, /关闭/);
-  assert.match(markup, /aria-label="Execution archive"/);
   assert.match(markup, /搜索执行档案/);
+  assert.match(markup, /全部类型/);
+  assert.match(markup, /flex h-8 items-center gap-1\.5/);
+  assert.doesNotMatch(markup, /<\/select>/);
 });
