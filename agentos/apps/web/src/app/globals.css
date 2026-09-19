@@ -1117,9 +1117,22 @@ body.resizing-panels {
   container-type: inline-size;
 }
 
-@container (max-width: 560px) {
+/* Auxiliary composer texts yield to the pickers: they only appear when the
+   composer has room, so the controls never wrap just because of them. */
+.signal-composer .composer-hint,
+.signal-composer .composer-source {
+  display: none;
+}
+
+@container (min-width: 560px) {
+  .signal-composer .composer-source {
+    display: inline;
+  }
+}
+
+@container (min-width: 760px) {
   .signal-composer .composer-hint {
-    display: none;
+    display: inline;
   }
 }
 

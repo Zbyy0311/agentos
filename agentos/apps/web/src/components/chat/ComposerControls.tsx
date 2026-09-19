@@ -123,6 +123,6 @@ export function ComposerControls({ isGroup, modelOptions, model, thinkingEffort,
     <RunModeSelector value={runIntent} disabled={disabled} onChange={onRunIntentChange} />
     <Picker label="模型" ariaLabel="选择模型" value={model ?? ''} displayValue={selectedModel?.label ?? '默认模型'} options={modelPickerOptions} disabled={disabled} widthClass="max-w-[13rem]" onChange={value => onModelChange(value || undefined)} />
     <EffortPicker value={thinkingEffort} efforts={thinkingEfforts} disabled={disabled} onChange={onThinkingEffortChange} />
-    {modelSource && <span className="hidden text-[10px] ui-dim xl:inline" title={`模型来源：${sourceLabels[modelSource]}`}>{sourceLabels[modelSource]}</span>}
+    {modelSource && <span className="composer-source text-[10px] ui-dim" title={`模型来源：${sourceLabels[modelSource]}`}>{sourceLabels[modelSource]}</span>}
   </div>;
 }
