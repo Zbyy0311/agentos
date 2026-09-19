@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-00-013-wfi-10-every-template-compiles-401",
+    "requirementId": "LITE-00-013",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(payload.stages.length, template.stages.length, template.key);",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-402",
+    "requirementId": "LITE-01-011",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-04 optional security review",
+    "line": 61,
+    "expression": "assert.equal(payload.stages.length, 4);",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-wfi-10-every-template-compiles-403",
+    "requirementId": "LITE-09-015",
+    "file": "packages/shared/wf-template-instantiation.test.ts",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(payload.stages.length, template.stages.length, template.key);",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

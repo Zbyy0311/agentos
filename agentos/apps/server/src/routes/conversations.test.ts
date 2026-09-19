@@ -57,10 +57,22 @@ test('creates a direct conversation and streams a persisted response', async () 
   const store = new SqliteStore(root);
   const app = express();
   const server = app.listen(0);
+  const discovery: ModelDiscoveryService = {
+    async discover(input) {
+      const isKimi = /kimi/i.test(input.cliCommand);
+      return {
+        cliKind: isKimi ? 'kimi' : 'codex',
+        models: isKimi
+          ? [{ id: 'kimi-code/kimi-for-coding-highspeed', label: 'K2.7 Code Highspeed', thinkingEfforts: ['auto'], defaultThinkingEffort: 'auto' }]
+          : [{ id: 'selected-codex-model', label: 'Selected Codex Model', thinkingEfforts: ['auto', 'high'], defaultThinkingEffort: 'auto' }],
+        source: 'live', stale: false, discoveredAt: new Date().toISOString(),
+      };
+    },
+  };
   try {
     process.env.AGENTOS_FORCE_MOCK = 'true';
     app.use(express.json());
-    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store)));
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store), discovery));
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
@@ -100,7 +112,7 @@ test('creates a direct conversation and streams a persisted response', async () 
 
     const unsupportedEffort = await fetch(`${baseUrl}/agents/kimi`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ thinkingEffort: 'high' }),
+      body: JSON.stringify({ model: 'kimi-code/kimi-for-coding-highspeed', thinkingEffort: 'high' }),
     });
     assert.equal(unsupportedEffort.status, 400);
 
@@ -545,6 +557,82 @@ test('keeps an initial Conversation execution alive after the client disconnects
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LITE-GROUP-032 legacy group create and edit persist member runtime settings', async () => {
+  const root = createProjectRoot();
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  const discovery: ModelDiscoveryService = {
+    async discover(input) {
+      return {
+        cliKind: input.role === 'kimi' ? 'kimi' : 'codex',
+        models: [
+          { id: 'model-a', label: 'Model A', thinkingEfforts: ['auto', 'high'], defaultThinkingEffort: 'high' },
+          { id: 'model-b', label: 'Model B', thinkingEfforts: ['auto', 'low'], defaultThinkingEffort: 'low' },
+        ],
+        source: 'live', stale: false, discoveredAt: '2026-09-16T00:00:00.000Z',
+      };
+    },
+  };
+  try {
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store), discovery));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
+    const baseUrl = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a`;
+    const createdResponse = await fetch(`${baseUrl}/conversations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'group', title: '旧版可配置群聊', dispatchMode: 'leader_route',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '规划', sequence: 10, model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先拆解任务' },
+          { agentId: 'kimi', roleKind: 'worker', roleTitle: '执行', sequence: 20, model: 'model-b', thinkingEffort: 'low', additionalInstructions: '输出验证步骤' },
+        ],
+      }),
+    });
+    assert.equal(createdResponse.status, 201);
+    const created = await createdResponse.json() as { conversation: { id: string; settingsVersion: number }; members: Array<{ agentId: string; roleTitle: string; model?: string; thinkingEffort?: string; additionalInstructions?: string }> };
+    assert.equal(created.conversation.settingsVersion, 1);
+    const groupMembers = created.members.filter(member => member.agentId === 'codex' || member.agentId === 'kimi');
+    assert.deepEqual(groupMembers.map(member => ({ agentId: member.agentId, roleTitle: member.roleTitle, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions })), [
+      { agentId: 'codex', roleTitle: '规划', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先拆解任务' },
+      { agentId: 'kimi', roleTitle: '执行', model: 'model-b', thinkingEffort: 'low', additionalInstructions: '输出验证步骤' },
+    ]);
+
+    const updatedResponse = await fetch(`${baseUrl}/conversations/${created.conversation.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedSettingsVersion: 1, dispatchMode: 'leader_route',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '新规划', sequence: 10, model: null, thinkingEffort: null, additionalInstructions: null },
+          { agentId: 'kimi', roleKind: 'worker', roleTitle: '新执行', sequence: 20, model: 'model-a', thinkingEffort: 'high', additionalInstructions: '只关注失败项' },
+        ],
+      }),
+    });
+    assert.equal(updatedResponse.status, 200);
+    const updated = await updatedResponse.json() as { conversation: { settingsVersion: number }; members: Array<{ agentId: string; model?: string; thinkingEffort?: string; additionalInstructions?: string }> };
+    assert.equal(updated.conversation.settingsVersion, 2);
+    assert.deepEqual(updated.members.filter(member => member.agentId === 'codex' || member.agentId === 'kimi').map(member => ({ agentId: member.agentId, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions })), [
+      { agentId: 'codex', model: undefined, thinkingEffort: undefined, additionalInstructions: undefined },
+      { agentId: 'kimi', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '只关注失败项' },
+    ]);
+
+    const staleResponse = await fetch(`${baseUrl}/conversations/${created.conversation.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedSettingsVersion: 1, members: [
+        { agentId: 'codex', roleKind: 'leader', roleTitle: '过期', sequence: 10 },
+        { agentId: 'kimi', roleKind: 'worker', roleTitle: '过期', sequence: 20 },
+      ] }),
+    });
+    assert.equal(staleResponse.status, 409);
+  } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     store.close();
     rmSync(root, { recursive: true, force: true });

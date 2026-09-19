@@ -5,6 +5,8 @@ import {
   directConversationClient,
   type DirectConversationClient,
   type ForwardConversation,
+  type ForwardConversationMember,
+  type GroupMemberSettingsUpdate,
   type ForwardMessage,
 } from './directConversationClient';
 import { DirectConversationController } from './directConversationController';
@@ -15,6 +17,13 @@ import type { AgentSummary } from '../components/chat/DirectConversationWorkbenc
 export interface RuntimeGroupCreateInput {
   readonly title: string;
   readonly memberAgentIds: readonly string[];
+  readonly members?: readonly {
+    readonly agentId: string;
+    readonly roleTitle?: string;
+    readonly model?: string;
+    readonly thinkingEffort?: 'auto' | 'low' | 'medium' | 'high' | 'max';
+    readonly additionalInstructions?: string;
+  }[];
 }
 
 /**
@@ -37,6 +46,8 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   );
   const [conversations, setConversations] = useState<ForwardConversation[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [groupMembers, setGroupMembers] = useState<ForwardConversationMember[]>([]);
+  const [groupSettingsSaving, setGroupSettingsSaving] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ForwardMessage[]>([]);
@@ -71,9 +82,7 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
     client.listAgents()
       .then(result => {
         if (cancelled) return;
-        const nextAgents = result.agents.filter(a => a.enabled !== false).map(a => ({
-          id: a.id, name: a.name, ...(a.status === undefined ? {} : { status: a.status }),
-        }));
+        const nextAgents = result.agents.filter(a => a.enabled !== false).map(a => ({ ...a }));
         setAgents(nextAgents);
         setActiveAgentId(current => current !== null && nextAgents.some(agent => agent.id === current)
           ? current
@@ -97,6 +106,19 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
     });
     return () => { cancelled = true; };
   }, [activeConversationId, controller]);
+
+  useEffect(() => {
+    const active = conversations.find(conversation => conversation.id === activeConversationId);
+    if (active?.kind !== 'group') {
+      setGroupMembers([]);
+      return;
+    }
+    let cancelled = false;
+    client.listMembers(active.id)
+      .then(result => { if (!cancelled) setGroupMembers(result.members); })
+      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [activeConversationId, client, conversations]);
 
   const selectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
@@ -143,6 +165,7 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
         replyMode: 'sequential',
         title,
         memberAgentIds,
+        ...(input.members === undefined ? {} : { members: input.members }),
       });
       setConversations(previous => [
         result.conversation,
@@ -155,6 +178,29 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
       return null;
     }
   }, [agents, client]);
+
+  const updateGroupMemberSettings = useCallback(async (members: readonly GroupMemberSettingsUpdate[]) => {
+    const active = conversations.find(conversation => conversation.id === activeConversationId);
+    if (active?.kind !== 'group') return false;
+    const expectedSettingsVersion = active.settingsVersion;
+    if (expectedSettingsVersion === undefined) {
+      setError('群聊设置版本不可用，请刷新页面后重试。');
+      return false;
+    }
+    setGroupSettingsSaving(true);
+    setError(undefined);
+    try {
+      const result = await client.updateGroupMemberSettings(active.id, expectedSettingsVersion, members);
+      setConversations(previous => previous.map(item => item.id === result.conversation.id ? result.conversation : item));
+      setGroupMembers(result.members);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setGroupSettingsSaving(false);
+    }
+  }, [activeConversationId, client, conversations]);
 
   const send = useCallback(async () => {
     if (activeConversationId === null || content.trim().length === 0) return;
@@ -172,8 +218,8 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   }, [controller, activeConversationId, mode, content]);
 
   return {
-    conversations, agents, activeAgentId, activeConversationId, messages, stream, mode, content, sending, error,
-    selectAgent, selectConversation, createConversation, createGroupConversation, setMode, setContent, send,
+    conversations, agents, activeAgentId, activeConversationId, groupMembers, groupSettingsSaving, messages, stream, mode, content, sending, error,
+    selectAgent, selectConversation, createConversation, createGroupConversation, updateGroupMemberSettings, setMode, setContent, send,
   };
 }
 

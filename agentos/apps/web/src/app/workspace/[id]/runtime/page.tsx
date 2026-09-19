@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { DirectConversationWorkbench } from '@/components/chat/DirectConversationWorkbench';
 import { RunInspectorPanel } from '@/components/chat/RunInspectorPanel';
 import { RuntimeGroupCreator, type RuntimeGroupCreateInput } from '@/components/chat/RuntimeGroupCreator';
+import { RuntimeGroupSettings, type RuntimeGroupMemberUpdate } from '@/components/chat/RuntimeGroupSettings';
 import { useDirectConversation } from '@/lib/useDirectConversation';
 import { useApi } from '@/lib/useApi';
 import type { UiTheme } from '@/lib/uiFoundation';
@@ -23,6 +24,7 @@ export default function DirectConversationPage() {
   const state = useDirectConversation(workspaceId, API_BASE);
   const [viewportWidth, setViewportWidth] = useState(1600);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(false);
 
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -39,6 +41,11 @@ export default function DirectConversationPage() {
   const createGroup = async (input: RuntimeGroupCreateInput) => {
     const created = await state.createGroupConversation(input);
     if (created !== null) setCreatingGroup(false);
+  };
+  const saveGroupSettings = async (members: readonly RuntimeGroupMemberUpdate[]) => {
+    const saved = await state.updateGroupMemberSettings(members);
+    if (saved) setEditingGroup(false);
+    return saved;
   };
 
   return (
@@ -65,6 +72,15 @@ export default function DirectConversationPage() {
             >
               New Conversation
             </button>
+            {active?.kind === 'group' && (
+              <button
+                type="button"
+                data-agentos="toolbar-group-settings"
+                onClick={() => setEditingGroup(true)}
+              >
+                群聊设置
+              </button>
+            )}
           </>
         )}
         viewportWidth={viewportWidth}
@@ -95,6 +111,16 @@ export default function DirectConversationPage() {
           {...(state.error === undefined ? {} : { error: state.error })}
           onClose={() => setCreatingGroup(false)}
           onCreate={createGroup}
+        />
+      )}
+      {editingGroup && active?.kind === 'group' && (
+        <RuntimeGroupSettings
+          agents={state.agents}
+          members={state.groupMembers}
+          saving={state.groupSettingsSaving}
+          {...(state.error === undefined ? {} : { error: state.error })}
+          onClose={() => setEditingGroup(false)}
+          onSave={saveGroupSettings}
         />
       )}
     </>

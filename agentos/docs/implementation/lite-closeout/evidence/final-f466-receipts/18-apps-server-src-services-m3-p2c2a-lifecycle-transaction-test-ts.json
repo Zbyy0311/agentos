@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P2C-2A Run queued -> starting emits run\\.dequeued with service timestamp|P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure)",
+      "src/services/m3-p2c2a-lifecycle-transaction.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/18-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/assertions.json",
+      "sha256": "426a12c67ad78a52a435b8738c8174a5ced1c44f652339aab6185adcf808b6c6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/18-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/execution.json",
+      "sha256": "d74dab458ee73df8a9cfe6e6e5a9e989787992718f50d9d3b10a25cf0ac5c4fe"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/18-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/18-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/18-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/stdout.txt",
+      "sha256": "a66685b6e13cce54a2e1ee157910a68076025b7172024b8feafadce78fab026b"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-02-006-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-112",
+      "requirementId": "LITE-02-006",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "transition-to-Event mappings remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-006-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-113",
+      "requirementId": "LITE-02-006",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "transition-to-Event mappings remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-017-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-114",
+      "requirementId": "LITE-02-017",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "failures preserve evidence and release authority only through committed transitions.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-017-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-115",
+      "requirementId": "LITE-02-017",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "failures preserve evidence and release authority only through committed transitions.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-002-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-116",
+      "requirementId": "LITE-03-002",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "immutable Event records;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-002-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-117",
+      "requirementId": "LITE-03-002",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "immutable Event records;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-003-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-118",
+      "requirementId": "LITE-03-003",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "strict unique per-Run ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-003-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-119",
+      "requirementId": "LITE-03-003",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "strict unique per-Run ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-004-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-120",
+      "requirementId": "LITE-03-004",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "atomic current state, Event, version, and Outbox writes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-004-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-121",
+      "requirementId": "LITE-03-004",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "atomic current state, Event, version, and Outbox writes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-005-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-122",
+      "requirementId": "LITE-03-005",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "exact multi-Event lifecycle ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-005-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-123",
+      "requirementId": "LITE-03-005",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "exact multi-Event lifecycle ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-124",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-125",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-006-p2c-2a-run-queued-starting-emits-run-dequeued-with-service-timestamp-126",
+      "requirementId": "LITE-10-006",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "line": 281,
+      "expression": "assert.equal(result.run.startedAt, undefined);",
+      "clause": "Event append-only and per-Run ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-006-p2c-2a-rollback-matrix-preserves-current-state-sequence-events-and-outbox-on-eve-127",
+      "requirementId": "LITE-10-006",
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+      "line": 915,
+      "expression": "assert.throws(() => failureCase.invoke(fixture), failureCase.name);",
+      "clause": "Event append-only and per-Run ordering;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-03-001 rejects illegal payloads and missing Stage envelope association|LITE-03-001 maps envelope and payload failures to distinct stable errors)",
+      "../../packages/shared/m3-runtime.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

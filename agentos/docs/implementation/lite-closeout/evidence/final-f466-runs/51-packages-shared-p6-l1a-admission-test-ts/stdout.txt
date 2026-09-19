@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: L1A-05 READ_ONLY + no enforcement -> MODIFYING
+ok 1 - L1A-05 READ_ONLY + no enforcement -> MODIFYING
+  ---
+  duration_ms: 0.6165
+  type: 'test'
+  ...
+# Subtest: L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY
+ok 2 - L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY
+  ---
+  duration_ms: 0.1181
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 144.7076

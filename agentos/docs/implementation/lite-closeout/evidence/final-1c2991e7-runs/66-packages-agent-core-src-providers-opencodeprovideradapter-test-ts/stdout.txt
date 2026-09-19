@@ -1,0 +1,16 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/agent-core
+
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > keeps a fixed manifest and only advertises documented low-level capabilities 1ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > discovers an executable without treating discovery as compatibility evidence 2ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > LITE-04-101: admits the qualified version using run help and constructs a bounded launch 1ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > fails closed when validation support is absent, so no launch plan is constructed 1ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > parses only bounded redacted assistant text and reports truncation 1ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > LITE-04-101: cancellation requires an accepted stop ticket and delegates owned process stopping 1ms
+ ✓ src/providers/opencodeProviderAdapter.test.ts > OpenCodeProviderAdapter > keeps provider environment values out of the launch environment and adapter free of native spawn 1ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  09:07:14
+   Duration  287ms (transform 108ms, setup 0ms, import 139ms, tests 9ms, environment 0ms)
+

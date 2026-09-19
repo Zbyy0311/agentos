@@ -1,0 +1,92 @@
+[
+  {
+    "id": "LITE-12-011-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-265",
+    "requirementId": "LITE-12-011",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-011-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-266",
+    "requirementId": "LITE-12-011",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-011-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-267",
+    "requirementId": "LITE-12-011",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-268",
+    "requirementId": "LITE-12-012",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-269",
+    "requirementId": "LITE-12-012",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-270",
+    "requirementId": "LITE-12-012",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-271",
+    "requirementId": "LITE-13-006",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-272",
+    "requirementId": "LITE-13-006",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-273",
+    "requirementId": "LITE-13-006",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

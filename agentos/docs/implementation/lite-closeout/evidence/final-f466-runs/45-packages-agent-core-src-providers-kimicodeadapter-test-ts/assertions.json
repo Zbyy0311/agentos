@@ -1,0 +1,68 @@
+[
+  {
+    "id": "LITE-01-014-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-317",
+    "requirementId": "LITE-01-014",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+    "line": 400,
+    "expression": "expect(types).toContain('assistant.message');",
+    "clause": "unknown Provider details do not become invented facts;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-014-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-318",
+    "requirementId": "LITE-01-014",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+    "line": 383,
+    "expression": "expect(result.authentication).toBe('unknown');",
+    "clause": "unknown Provider details do not become invented facts;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-319",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+    "line": 112,
+    "expression": "expect(result.valid).toBe(true);",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-validates-direct-kimicode-fixtures-without-emitting-the-forbidden-generic-valida-320",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error",
+    "line": 112,
+    "expression": "expect(result.valid).toBe(true);",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-parses-golden-malformed-unknown-and-usage-output-without-fabricating-provider-se-321",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics",
+    "line": 400,
+    "expression": "expect(types).toContain('assistant.message');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-fails-closed-to-unknown-for-timeout-spawn-unrelated-and-malformed-auth-evidence-322",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+    "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence",
+    "line": 383,
+    "expression": "expect(result.authentication).toBe('unknown');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

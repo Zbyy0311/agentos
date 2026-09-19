@@ -15,16 +15,19 @@ import type { AgentEvent } from '@agentos/shared';
 function createProjectRoot(options: {
   codex?: { cliCommand: string; cliArgs: string[] };
   kimi?: { cliCommand: string; cliArgs: string[] };
+  opencode?: { cliCommand: string; cliArgs: string[] };
 } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-conversation-service-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
+  const agents = [
+    { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: options.codex?.cliCommand ?? 'codex', cliArgs: options.codex?.cliArgs ?? [] },
+    { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: options.kimi?.cliCommand ?? 'kimi', cliArgs: options.kimi?.cliArgs ?? ['-p'] },
+    ...(options.opencode ? [{ id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: options.opencode.cliCommand, cliArgs: options.opencode.cliArgs }] : []),
+  ];
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({
     workspaces: [{
       id: 'workspace-a', name: 'Workspace A', rootPath: root, gitEnabled: true, memoryEnabled: true,
-      agents: [
-        { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: options.codex?.cliCommand ?? 'codex', cliArgs: options.codex?.cliArgs ?? [] },
-        { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: options.kimi?.cliCommand ?? 'kimi', cliArgs: options.kimi?.cliArgs ?? ['-p'] },
-      ],
+      agents,
       lastOpenedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
     }],
   }), 'utf-8');
@@ -427,11 +430,52 @@ test('runs group work through leader, member, and leader summary in order', asyn
     assert.deepEqual(result.executions.map(execution => execution.agentId), ['codex', 'kimi', 'codex']);
     assert.equal(new Set(result.executions.map(execution => execution.runId)).size, 1);
     assert.equal(store.listRuns('workspace-a', 'group-a').length, 1);
+    assert.deepEqual(store.listRuns('workspace-a', 'group-a')[0]?.groupRuntimeSettings, {
+      settingsVersion: 1,
+      members: [
+        { agentId: 'codex', roleTitle: '群主' },
+        { agentId: 'kimi', roleTitle: '执行工程师' },
+      ],
+    });
     assert.deepEqual(deliveredAgentIds, ['codex', 'kimi', 'codex']);
     assert.deepEqual(
       store.listMessages('workspace-a', 'group-a').map(message => message.senderAgentId ?? message.senderType),
       ['user', 'codex', 'kimi', 'codex'],
     );
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runs only the explicitly mentioned member in a mentioned-only group', async () => {
+  const root = createProjectRoot({ opencode: { cliCommand: 'opencode', cliArgs: ['run'] } });
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createGroupConversation({
+      id: 'group-mentioned-only', workspaceId: 'workspace-a', type: 'group', title: '指定成员', dispatchMode: 'mentioned_only',
+      createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z',
+    }, [
+      { conversationId: 'group-mentioned-only', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+      { conversationId: 'group-mentioned-only', agentId: 'opencode', roleTitle: '审查工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+    ]);
+
+    const result = await new ConversationService(store).sendGroupMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-mentioned-only', content: '只请 OpenCode 回复',
+      mentionedAgentIds: ['opencode'],
+    });
+
+    assert.deepEqual(result.executions.map(execution => execution.agentId), ['opencode']);
+    assert.deepEqual(store.listMessages('workspace-a', 'group-mentioned-only').map(message => message.senderAgentId ?? message.senderType), ['user', 'opencode']);
+    assert.equal(store.listRuns('workspace-a', 'group-mentioned-only')[0]?.status, 'completed');
+    assert.equal(store.getRunStep('workspace-a', result.executions[0]!.runId, 'group.agent.codex')?.status, 'skipped');
+    assert.equal(store.getRunStep('workspace-a', result.executions[0]!.runId, 'group.agent.opencode')?.status, 'completed');
+    assert.equal(store.getRunStep('workspace-a', result.executions[0]!.runId, 'group.summary')?.status, 'skipped');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
@@ -598,6 +642,40 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
   }
 });
 
+test('uses the generic Prompt contract for an availability probe without keyword-specific routing', async () => {
+  const genericPromptScript = "const p=process.argv.at(-1)||''; const generic=p.includes('你是 AgentOS 的通用协作 Agent。') && p.includes('不要把用户请求默认解释成编码、项目维护或文件修改任务') && p.includes('问候、在线确认、简单问答、解释、比较和方案讨论应直接完成'); console.log(generic ? 'ok' : '<!-- agentos-waiting-user: {\\\"question\\\":\\\"请提供群聊信息\\\"} -->')";
+  const root = createProjectRoot({
+    codex: { cliCommand: process.execPath, cliArgs: ['-e', genericPromptScript] },
+    kimi: { cliCommand: process.execPath, cliArgs: ['-e', genericPromptScript] },
+  });
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store = new SqliteStore(root);
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '群主', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.updateAgentProfile('workspace-a', 'kimi', { roleTitle: '执行工程师', systemPrompt: '执行修改。', permissions: ['read', 'write'], enabled: true });
+    store.createGroupConversation({ id: 'group-probe', workspaceId: 'workspace-a', type: 'group', title: '在线探测', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' }, [
+      { conversationId: 'group-probe', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+      { conversationId: 'group-probe', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+    ]);
+
+    const result = await new ConversationService(store).sendGroupMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-probe', content: '测试是否在线，只需要回复ok',
+    });
+
+    assert.equal(store.getRun('workspace-a', result.executions[0]!.runId)?.status, 'completed');
+    assert.deepEqual(result.executions.map(execution => execution.status), ['completed', 'completed', 'completed']);
+    assert.deepEqual(result.agentMessages.map(message => message.content.trim()), ['ok', 'ok', 'ok']);
+    assert.equal(result.agentMessages.some(message => message.senderType === 'system'), false);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('fails a group explicitly when an agent requests user input', async () => {
   const root = createProjectRoot({
     codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('<!-- agentos-waiting-user: {\\\"question\\\":\\\"请提供群聊信息\\\"} -->')"] },
@@ -624,6 +702,10 @@ test('fails a group explicitly when an agent requests user input', async () => {
     const run = store.listRuns('workspace-a', 'group-waiting')[0];
     assert.equal(run?.status, 'failed');
     assert.equal(run?.failureReason, '群聊暂不支持等待用户恢复');
+    const waitingMessage = store.listMessages('workspace-a', 'group-waiting')
+      .find(message => message.senderType === 'system');
+    assert.equal(waitingMessage?.senderAgentId, 'codex');
+    assert.equal(waitingMessage?.content, '等待补充信息：请提供群聊信息');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "LITE-12-011-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-270",
+    "requirementId": "LITE-12-011",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-011-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-271",
+    "requirementId": "LITE-12-011",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-011-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-272",
+    "requirementId": "LITE-12-011",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+    "clause": "Memory selection explanation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-273",
+    "requirementId": "LITE-12-012",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-274",
+    "requirementId": "LITE-12-012",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-012-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-275",
+    "requirementId": "LITE-12-012",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+    "clause": "Inspector parity with canonical data;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-276",
+    "requirementId": "LITE-13-006",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+    "line": 117,
+    "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-277",
+    "requirementId": "LITE-13-006",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+    "line": 137,
+    "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-278",
+    "requirementId": "LITE-13-006",
+    "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+    "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+    "line": 78,
+    "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

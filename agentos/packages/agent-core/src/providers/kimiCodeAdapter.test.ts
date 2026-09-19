@@ -250,6 +250,7 @@ describe('KimiCodeProviderAdapter', () => {
       workspaceRoot: 'C:/workspace/project',
       worktreePath: 'C:/workspace/project/.agentos/worktrees/run-1',
       prompt: 'Implement feature safely',
+      thinkingEffort: 'max',
       environment: { AGENTOS_KIMICODE_CLI: 'C:/env/kimi.exe', PATH: 'C:/safe', API_KEY: 'token-value' },
     });
 
@@ -267,6 +268,7 @@ describe('KimiCodeProviderAdapter', () => {
     expect(plan.args.filter(arg => arg === '--output-format')).toHaveLength(1);
     expect(plan.args).toContain('stream-json');
     expect(plan.args).toContain('Implement feature safely');
+    expect(plan.environment).toMatchObject({ KIMI_MODEL_THINKING_EFFORT: 'max' });
     expect(JSON.stringify(plan)).not.toContain('token-value');
     expect(JSON.stringify(plan)).not.toContain('api-key');
   });

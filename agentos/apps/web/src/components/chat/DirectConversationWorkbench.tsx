@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type { AgentCapability, ThinkingEffort } from '@agentos/shared';
 import { WorkbenchShell } from '../layout/WorkbenchShell';
 import { ConversationRuntimeView } from '../chat/ConversationRuntimeView';
 import { GroupConversationCanvas } from '../chat/GroupConversationCanvas';
@@ -23,6 +24,10 @@ export interface AgentSummary {
   readonly id: string;
   readonly name: string;
   readonly status?: string;
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly roleTitle?: string;
+  readonly capability?: AgentCapability;
 }
 
 export interface DirectConversationWorkbenchProps {

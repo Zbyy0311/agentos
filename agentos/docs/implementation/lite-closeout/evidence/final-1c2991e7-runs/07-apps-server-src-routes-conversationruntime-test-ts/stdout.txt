@@ -1,0 +1,33 @@
+TAP version 13
+# Subtest: LITE-00-002 Conversation and Message records survive a restart and a reconnect
+ok 1 - LITE-00-002 Conversation and Message records survive a restart and a reconnect
+  ---
+  duration_ms: 262.8646
+  type: 'test'
+  ...
+# COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+#     at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:122:69)
+#     at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:336:44)
+#     at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:678:35)
+#     at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)
+#     at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)
+#     at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)
+#     at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)
+#     at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15
+#     at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)
+#     at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)
+# Subtest: LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run
+ok 2 - LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run
+  ---
+  duration_ms: 213.0747
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 937.3831

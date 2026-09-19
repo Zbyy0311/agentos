@@ -12,6 +12,11 @@ interface MarkdownMessageProps {
   apiBase?: string;
 }
 
+// react-markdown 9.x does not consistently expose the legacy `inline` prop.
+// Keep the distinction at the Markdown tree boundary so inline code never
+// falls through to the block renderer (which would put a <div> inside <p>).
+const CodeBlockContext = React.createContext(false);
+
 function isSafeUrl(value: string): boolean {
   if (value.startsWith('/') || value.startsWith('#')) return true;
   try {
@@ -32,12 +37,18 @@ function isSameOriginArtifact(value: string, apiBase: string): boolean {
   }
 }
 
-function CodeBlock({ inline, className, children, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
+function CodeBlock({ inline, className, children, node: _node, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean; node?: unknown }) {
+  const insidePre = React.useContext(CodeBlockContext);
+  const isInline = inline ?? !insidePre;
   const language = /language-(\w+)/.exec(className ?? '')?.[1];
   const value = String(children).replace(/\n$/, '');
-  if (inline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
+  if (isInline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
   if (language === 'diff' || language === 'patch') return <DiffBlock content={value} />;
   return <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: '0.75rem', padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)' }}>{value}</SyntaxHighlighter>;
+}
+
+function MarkdownPre({ children }: { children?: React.ReactNode }) {
+  return <CodeBlockContext.Provider value>{children}</CodeBlockContext.Provider>;
 }
 
 export function MarkdownMessage({ content, apiBase = '' }: MarkdownMessageProps) {
@@ -46,6 +57,7 @@ export function MarkdownMessage({ content, apiBase = '' }: MarkdownMessageProps)
       remarkPlugins={[remarkGfm]}
       components={{
         code: CodeBlock,
+        pre: MarkdownPre,
         a: ({ href, children, ...props }) => {
           const safeHref = href && isSafeUrl(href) ? href : undefined;
           return safeHref ? <a href={safeHref} target="_blank" rel="noreferrer noopener" {...props}>{children}</a> : <span {...props}>{children}</span>;

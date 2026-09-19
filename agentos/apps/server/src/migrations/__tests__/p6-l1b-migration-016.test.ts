@@ -685,7 +685,7 @@ test('L1B-35 fresh database applies through 016 successfully', () => {
 test('016 fails closed on an incomplete 015 schema and is never recorded', () => {
   const db = freshDb();
   try {
-    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => !['014','015','016'].includes(m.id)))).run();
+    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id < '014'))).run();
     assert.throws(() => migration016.apply({ db: db as unknown as MinimalDatabaseSync }), /MIGRATION_PREREQUISITE_MISSING/);
     assert.throws(
       () => new MigrationRunner(db, new MigrationRegistry([migration016 as Migration])).run(),
@@ -1060,7 +1060,7 @@ test('L1B-R25 014-state DB + direct 016 fails closed with no partial DDL', () =>
   const ctx = fileDb();
   try {
     // Apply only 001..014 (registry filter excludes 015 and 016).
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => !['015', '016'].includes(m.id))), {
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id < '015')), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'backups')),
     }).run();
     assert.throws(

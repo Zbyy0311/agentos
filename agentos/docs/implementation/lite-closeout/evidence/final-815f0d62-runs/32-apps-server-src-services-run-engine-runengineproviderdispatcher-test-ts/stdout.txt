@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: RunEngineProviderDispatcher E2E
+    # Subtest: LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once
+    ok 1 - LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once
+      ---
+      duration_ms: 128.0361
+      type: 'test'
+      ...
+    # Subtest: LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute
+    ok 2 - LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute
+      ---
+      duration_ms: 64.1234
+      type: 'test'
+      ...
+    # Subtest: L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn
+    ok 3 - L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn
+      ---
+      duration_ms: 47.4008
+      type: 'test'
+      ...
+    # Subtest: LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available
+    ok 4 - LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available
+      ---
+      duration_ms: 122.6263
+      type: 'test'
+      ...
+    # Subtest: P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once
+    ok 5 - P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once
+      ---
+      duration_ms: 77.9857
+      type: 'test'
+      ...
+    1..5
+ok 1 - RunEngineProviderDispatcher E2E
+  ---
+  duration_ms: 441.3802
+  type: 'suite'
+  ...
+1..1
+# tests 5
+# suites 1
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 706.9291

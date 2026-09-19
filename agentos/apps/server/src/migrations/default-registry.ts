@@ -29,6 +29,9 @@ import { migration028 } from './migrations/028-lite-runtime-approval-requests.js
 import { migration029 } from './migrations/029-s6-conversation-compaction.js';
 import { migration030 } from './migrations/030-s7-explicit-markdown-import.js';
 import { migration031 } from './migrations/031-mf5-retrieval-degraded.js';
+import { migration032 } from './migrations/032-group-member-runtime-settings.js';
+import { migration033 } from './migrations/033-group-runtime-settings-run-snapshot.js';
+import { migration034 } from './migrations/034-thinking-effort-max.js';
 import type { Migration } from './types.js';
 
 /**
@@ -64,6 +67,12 @@ import type { Migration } from './types.js';
  * 026: MF-2 approval-decision persistence (durable approval decision record)
  * 027: MF-2 unique immutable Artifact completion with Candidate provenance
  * 028: Lite runtime approval request persistence and one-shot consumption
+ * 029: S6 Conversation Compaction
+ * 030: S7 explicit Markdown import
+ * 031: MF-5 degraded retrieval flag
+ * 032: CR-6 per-group-member runtime settings
+ * 033: CR-6 legacy group Run runtime-settings snapshot
+ * 034: provider-native max thinking effort for group members
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -97,4 +106,7 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration029,
   migration030,
   migration031,
+  migration032,
+  migration033,
+  migration034,
 ];

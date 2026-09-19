@@ -1,0 +1,122 @@
+[
+  {
+    "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-145",
+    "requirementId": "LITE-00-010",
+    "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+    "line": 105,
+    "expression": "assert.equal(",
+    "clause": "Memory selection is reproducible and explainable;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-010-mf4i-02-resolve-is-idempotent-per-run-scope-146",
+    "requirementId": "LITE-00-010",
+    "name": "MF4I-02 resolve is idempotent per run scope",
+    "line": 120,
+    "expression": "assert.equal(",
+    "clause": "Memory selection is reproducible and explainable;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-010-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-147",
+    "requirementId": "LITE-00-010",
+    "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+    "line": 204,
+    "expression": "assert.equal(",
+    "clause": "Memory selection is reproducible and explainable;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-148",
+    "requirementId": "LITE-01-012",
+    "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+    "line": 105,
+    "expression": "assert.equal(",
+    "clause": "Memory Context Snapshot records why entries were selected;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-012-mf4i-02-resolve-is-idempotent-per-run-scope-149",
+    "requirementId": "LITE-01-012",
+    "name": "MF4I-02 resolve is idempotent per run scope",
+    "line": 120,
+    "expression": "assert.equal(",
+    "clause": "Memory Context Snapshot records why entries were selected;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-012-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-150",
+    "requirementId": "LITE-01-012",
+    "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+    "line": 204,
+    "expression": "assert.equal(",
+    "clause": "Memory Context Snapshot records why entries were selected;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-151",
+    "requirementId": "LITE-07-005",
+    "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+    "line": 105,
+    "expression": "assert.equal(",
+    "clause": "FTS5 retrieval only inside allowed Scope;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-005-mf4i-02-resolve-is-idempotent-per-run-scope-152",
+    "requirementId": "LITE-07-005",
+    "name": "MF4I-02 resolve is idempotent per run scope",
+    "line": 120,
+    "expression": "assert.equal(",
+    "clause": "FTS5 retrieval only inside allowed Scope;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-005-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-153",
+    "requirementId": "LITE-07-005",
+    "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+    "line": 204,
+    "expression": "assert.equal(",
+    "clause": "FTS5 retrieval only inside allowed Scope;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-154",
+    "requirementId": "LITE-07-014",
+    "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+    "line": 105,
+    "expression": "assert.equal(",
+    "clause": "Provider receives only the selected Context.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-014-mf4i-02-resolve-is-idempotent-per-run-scope-155",
+    "requirementId": "LITE-07-014",
+    "name": "MF4I-02 resolve is idempotent per run scope",
+    "line": 120,
+    "expression": "assert.equal(",
+    "clause": "Provider receives only the selected Context.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-014-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-156",
+    "requirementId": "LITE-07-014",
+    "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+    "line": 204,
+    "expression": "assert.equal(",
+    "clause": "Provider receives only the selected Context.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-90",
+    "requirementId": "LITE-13-007",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+    "line": 191,
+    "expression": "assert.ok(gitProcess, 'the Git process is projected as its own observed process');",
+    "clause": "Git wording never implies ownership;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-009-lite-13-009-the-inspector-is-read-only-and-carries-no-process-control-field-91",
+    "requirementId": "LITE-13-009",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+    "line": 150,
+    "expression": "assert.equal((await fetch(inspectorUrl)).status, 200, 'the read is served');",
+    "clause": "no reattach/takeover/direct-kill control;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-92",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 113,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

@@ -1,0 +1,3376 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "matrixVersion": 24,
+  "generatedAt": "2026-09-16T01:11:45.337Z",
+  "sourceCount": 76,
+  "cleanReceipts": 76,
+  "results": [
+    {
+      "sourceFile": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss)",
+        "src/migrations/__tests__/m2-7-workspace-compatibility.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss)",
+            "src/migrations/__tests__/m2-7-workspace-compatibility.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:Migration 012 checksum, order, repeat run and existing idempotency data are stable|all Migration 012 foreign keys and integrity checks pass)",
+        "src/migrations/__tests__/m3-p2a-migration-012.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:Migration 012 checksum, order, repeat run and existing idempotency data are stable|all Migration 012 foreign keys and integrity checks pass)",
+            "src/migrations/__tests__/m3-p2a-migration-012.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":10}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:L1B-13 two MODIFYING \\+ GRANTED rows in one Workspace rejected by DB fence)",
+        "src/migrations/__tests__/p6-l1b-migration-016.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:L1B-13 two MODIFYING \\+ GRANTED rows in one Workspace rejected by DB fence)",
+            "src/migrations/__tests__/p6-l1b-migration-016.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":10}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P2 Migration Registry contains exactly the registered migrations in contract order|LITE-10-001 fresh install and supported upgrade both apply the complete registry)",
+        "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P2 Migration Registry contains exactly the registered migrations in contract order|LITE-10-001 fresh install and supported upgrade both apply the complete registry)",
+            "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":6}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/canonicalRunEvents.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P5A-R06/R09/R12 Events returns the raw bounded page in strict sequence order|P5A-R13 Events preserves unknown wire records without Registry consumption wrappers|P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details|LITE-04-011 / P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details)",
+        "src/routes/canonicalRunEvents.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/05-apps-server-src-routes-canonicalrunevents-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/05-apps-server-src-routes-canonicalrunevents-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P5A-R06/R09/R12 Events returns the raw bounded page in strict sequence order|P5A-R13 Events preserves unknown wire records without Registry consumption wrappers|P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details|LITE-04-011 / P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details)",
+            "src/routes/canonicalRunEvents.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/05-apps-server-src-routes-canonicalrunevents-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/05-apps-server-src-routes-canonicalrunevents-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":20}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C afterSequence-only cursor replays strictly greater durable sequences|P5C live durable commits after subscribe are delivered exactly once with the persisted id|LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once)",
+        "src/routes/canonicalRunStream.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/06-apps-server-src-routes-canonicalrunstream-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/06-apps-server-src-routes-canonicalrunstream-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C afterSequence-only cursor replays strictly greater durable sequences|P5C live durable commits after subscribe are delivered exactly once with the persisted id|LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once)",
+            "src/routes/canonicalRunStream.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/06-apps-server-src-routes-canonicalrunstream-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/06-apps-server-src-routes-canonicalrunstream-test-ts.json\",\"counts\":{\"passed\":4,\"failed\":0,\"skipped\":0},\"assertions\":22}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-00-002 Conversation and Message records survive a restart and a reconnect|LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run)",
+        "src/routes/conversationRuntime.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/07-apps-server-src-routes-conversationruntime-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/07-apps-server-src-routes-conversationruntime-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/07-apps-server-src-routes-conversationruntime-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-00-002 Conversation and Message records survive a restart and a reconnect|LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run)",
+            "src/routes/conversationRuntime.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/07-apps-server-src-routes-conversationruntime-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/07-apps-server-src-routes-conversationruntime-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":6}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/git.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-06-011 the Git surface observes only and its wording claims no ownership)",
+        "src/routes/git.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/08-apps-server-src-routes-git-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/08-apps-server-src-routes-git-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/08-apps-server-src-routes-git-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-06-011 the Git surface observes only and its wording claims no ownership)",
+            "src/routes/git.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/08-apps-server-src-routes-git-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/08-apps-server-src-routes-git-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":5}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/memories.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text)",
+        "src/routes/memories.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/09-apps-server-src-routes-memories-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/09-apps-server-src-routes-memories-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/09-apps-server-src-routes-memories-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsafe historical text)",
+            "src/routes/memories.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/09-apps-server-src-routes-memories-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/09-apps-server-src-routes-memories-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink)",
+        "src/routes/memoryRuntime.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/10-apps-server-src-routes-memoryruntime-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/10-apps-server-src-routes-memoryruntime-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/10-apps-server-src-routes-memoryruntime-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink)",
+            "src/routes/memoryRuntime.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/10-apps-server-src-routes-memoryruntime-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/10-apps-server-src-routes-memoryruntime-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/operations.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering|P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body|P5D already-terminal Run cannot regress through public active cancellation)",
+        "src/routes/operations.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/11-apps-server-src-routes-operations-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering|P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body|P5D already-terminal Run cannot regress through public active cancellation)",
+            "src/routes/operations.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/11-apps-server-src-routes-operations-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/p6-l1a-start-route.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-11-009 a forced READ_ONLY start request creates no admission authority)",
+        "src/routes/p6-l1a-start-route.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/12-apps-server-src-routes-p6-l1a-start-route-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-11-009 a forced READ_ONLY start request creates no admission authority)",
+            "src/routes/p6-l1a-start-route.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/12-apps-server-src-routes-p6-l1a-start-route-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event|P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body|P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT|P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201)",
+        "src/routes/runLifecycle.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/13-apps-server-src-routes-runlifecycle-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/13-apps-server-src-routes-runlifecycle-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/13-apps-server-src-routes-runlifecycle-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event|P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body|P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT|P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201)",
+            "src/routes/runLifecycle.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/13-apps-server-src-routes-runlifecycle-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/13-apps-server-src-routes-runlifecycle-test-ts.json\",\"counts\":{\"passed\":4,\"failed\":0,\"skipped\":0},\"assertions\":13}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/runs.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:returns run list and aggregated details with workspace isolation and capped limit)",
+        "src/routes/runs.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/14-apps-server-src-routes-runs-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/14-apps-server-src-routes-runs-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/14-apps-server-src-routes-runs-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:returns run list and aggregated details with workspace isolation and capped limit)",
+            "src/routes/runs.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/14-apps-server-src-routes-runs-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/14-apps-server-src-routes-runs-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/runtimeApprovals.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-08-012: a browser disconnect decides nothing; only the explicit decision does)",
+        "src/routes/runtimeApprovals.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/15-apps-server-src-routes-runtimeapprovals-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/15-apps-server-src-routes-runtimeapprovals-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-08-012: a browser disconnect decides nothing; only the explicit decision does)",
+            "src/routes/runtimeApprovals.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/15-apps-server-src-routes-runtimeapprovals-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/15-apps-server-src-routes-runtimeapprovals-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation|LITE-13-009 the Inspector is read-only and carries no process control field|LITE-13-013 the Inspector projection exposes no secret material and a frozen key set)",
+        "src/routes/runtimeInspector.redaction.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/16-apps-server-src-routes-runtimeinspector-redaction-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation|LITE-13-009 the Inspector is read-only and carries no process control field|LITE-13-013 the Inspector projection exposes no secret material and a frozen key set)",
+            "src/routes/runtimeInspector.redaction.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/16-apps-server-src-routes-runtimeinspector-redaction-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/routes/runtimeInspector.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:GET /runs/:runId/inspector returns the redacted projection for a canonical Run)",
+        "src/routes/runtimeInspector.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/17-apps-server-src-routes-runtimeinspector-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:GET /runs/:runId/inspector returns the redacted projection for a canonical Run)",
+            "src/routes/runtimeInspector.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/17-apps-server-src-routes-runtimeinspector-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/AgentHistoryService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references|CR6-A3 the q filter never searches message bodies \\(secrets excluded from search\\))",
+        "src/services/AgentHistoryService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/18-apps-server-src-services-agenthistoryservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/18-apps-server-src-services-agenthistoryservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/18-apps-server-src-services-agenthistoryservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references|CR6-A3 the q filter never searches message bodies \\(secrets excluded from search\\))",
+            "src/services/AgentHistoryService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/18-apps-server-src-services-agenthistoryservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/18-apps-server-src-services-agenthistoryservice-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":7}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/ApprovalRegistry.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:ApprovalRegistry revokes grants idempotently)",
+        "src/services/ApprovalRegistry.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/19-apps-server-src-services-approvalregistry-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/19-apps-server-src-services-approvalregistry-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/19-apps-server-src-services-approvalregistry-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:ApprovalRegistry revokes grants idempotently)",
+            "src/services/ApprovalRegistry.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/19-apps-server-src-services-approvalregistry-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/19-apps-server-src-services-approvalregistry-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:CR5S-03 reaching the total cap exhausts the interaction with a stable reason)",
+        "src/services/BoundedGroupService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/20-apps-server-src-services-boundedgroupservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/20-apps-server-src-services-boundedgroupservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/20-apps-server-src-services-boundedgroupservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:CR5S-03 reaching the total cap exhausts the interaction with a stable reason)",
+            "src/services/BoundedGroupService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/20-apps-server-src-services-boundedgroupservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/20-apps-server-src-services-boundedgroupservice-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/ConversationProjectionService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-09-008 / CR4P-02 a retried Event projection converges on one existing Conversation card|LITE-09-008 / CR4P-08 a duplicate projection key is detected and then converges)",
+        "src/services/ConversationProjectionService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/21-apps-server-src-services-conversationprojectionservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/21-apps-server-src-services-conversationprojectionservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-09-008 / CR4P-02 a retried Event projection converges on one existing Conversation card|LITE-09-008 / CR4P-08 a duplicate projection key is detected and then converges)",
+            "src/services/ConversationProjectionService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/21-apps-server-src-services-conversationprojectionservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/21-apps-server-src-services-conversationprojectionservice-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:preserves distinct first/final HEAD SHAs across a real commit boundary)",
+        "src/services/GitObservationCollector.integration.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/22-apps-server-src-services-gitobservationcollector-integration-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:preserves distinct first/final HEAD SHAs across a real commit boundary)",
+            "src/services/GitObservationCollector.integration.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/22-apps-server-src-services-gitobservationcollector-integration-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":5}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class)",
+        "src/services/GroupSpeakerResolver.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/23-apps-server-src-services-groupspeakerresolver-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class)",
+            "src/services/GroupSpeakerResolver.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/23-apps-server-src-services-groupspeakerresolver-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P2C-2A Run queued -> starting emits run\\.dequeued with service timestamp|P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure)",
+        "src/services/m3-p2c2a-lifecycle-transaction.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P2C-2A Run queued -> starting emits run\\.dequeued with service timestamp|P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure)",
+            "src/services/m3-p2c2a-lifecycle-transaction.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":16}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P2C-2B every Event and Outbox position rolls back the composite transaction)",
+        "src/services/m3-p2c2b-composite-lifecycle.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P2C-2B every Event and Outbox position rolls back the composite transaction)",
+            "src/services/m3-p2c2b-composite-lifecycle.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":8}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:N=0 writes only run\\.created with sequence 1 and next sequence 2|N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event|idempotency replay returns the stored result without adding Events or Outboxes)",
+        "src/services/m3-p2c2c-run-graph-creation.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:N=0 writes only run\\.created with sequence 1 and next sequence 2|N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event|idempotency replay returns the stored result without adding Events or Outboxes)",
+            "src/services/m3-p2c2c-run-graph-creation.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":9}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue)",
+        "src/services/m3-p6-integrated-verification.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/27-apps-server-src-services-m3-p6-integrated-verification-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue)",
+            "src/services/m3-p6-integrated-verification.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/27-apps-server-src-services-m3-p6-integrated-verification-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:MF4I-01 resolve persists a snapshot and returns bounded context|MF4I-02 resolve is idempotent per run scope|MF4I-07 later entry edits do not rewrite the snapshot)",
+        "src/services/MemoryContextResolver.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/28-apps-server-src-services-memorycontextresolver-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/28-apps-server-src-services-memorycontextresolver-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/28-apps-server-src-services-memorycontextresolver-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:MF4I-01 resolve persists a snapshot and returns bounded context|MF4I-02 resolve is idempotent per run scope|MF4I-07 later entry edits do not rewrite the snapshot)",
+            "src/services/MemoryContextResolver.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/28-apps-server-src-services-memorycontextresolver-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/28-apps-server-src-services-memorycontextresolver-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":12}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/MemoryRetrievalService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row)",
+        "src/services/MemoryRetrievalService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/29-apps-server-src-services-memoryretrievalservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/29-apps-server-src-services-memoryretrievalservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row)",
+            "src/services/MemoryRetrievalService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/29-apps-server-src-services-memoryretrievalservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/29-apps-server-src-services-memoryretrievalservice-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/MemoryRuntimeEventEmitter.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox)",
+        "src/services/MemoryRuntimeEventEmitter.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/30-apps-server-src-services-memoryruntimeeventemitter-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox)",
+            "src/services/MemoryRuntimeEventEmitter.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/30-apps-server-src-services-memoryruntimeeventemitter-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/OutboxPublisher.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event|M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events|M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence)",
+        "src/services/OutboxPublisher.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/31-apps-server-src-services-outboxpublisher-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/31-apps-server-src-services-outboxpublisher-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/31-apps-server-src-services-outboxpublisher-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event|M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events|M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence)",
+            "src/services/OutboxPublisher.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/31-apps-server-src-services-outboxpublisher-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/31-apps-server-src-services-outboxpublisher-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":14}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once|L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn|LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once|LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute|LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available|LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once)",
+        "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once|L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn|LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once|LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute|LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available|LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once)",
+            "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts.json\",\"counts\":{\"passed\":5,\"failed\":0,\"skipped\":0},\"assertions\":32}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts|LITE-04-002 Mock Provider auth failure fails closed before claim|LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice|LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence|LITE-04-002 Mock Provider process crash \\(non-zero termination\\) maps to failed Session and exited Process evidence)",
+        "src/services/run-engine/StageExecutionCoordinator.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts|LITE-04-002 Mock Provider auth failure fails closed before claim|LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice|LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence|LITE-04-002 Mock Provider process crash \\(non-zero termination\\) maps to failed Session and exited Process evidence)",
+            "src/services/run-engine/StageExecutionCoordinator.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts.json\",\"counts\":{\"passed\":5,\"failed\":0,\"skipped\":0},\"assertions\":5}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/RunReplayService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings)",
+        "src/services/RunReplayService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/34-apps-server-src-services-runreplayservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/34-apps-server-src-services-runreplayservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/34-apps-server-src-services-runreplayservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings)",
+            "src/services/RunReplayService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/34-apps-server-src-services-runreplayservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/34-apps-server-src-services-runreplayservice-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":8}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/RuntimeArtifactCollector.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry)",
+        "src/services/RuntimeArtifactCollector.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/35-apps-server-src-services-runtimeartifactcollector-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry)",
+            "src/services/RuntimeArtifactCollector.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/35-apps-server-src-services-runtimeartifactcollector-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/RuntimeEventProjector.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry)",
+        "src/services/RuntimeEventProjector.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/36-apps-server-src-services-runtimeeventprojector-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/36-apps-server-src-services-runtimeeventprojector-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry)",
+            "src/services/RuntimeEventProjector.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/36-apps-server-src-services-runtimeeventprojector-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/36-apps-server-src-services-runtimeeventprojector-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state|LITE-01-006 Run and Process records remain independently queryable|LITE-12-010 unknown or unavailable admission is projected as modifying|LITE-12-010 only complete verified enforcement is presented as read-only|INSP-05 events are ordered and bounded|LITE-13-102 Inspector projects canonical operation identity and version for actions)",
+        "src/services/RuntimeInspector.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/37-apps-server-src-services-runtimeinspector-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state|LITE-01-006 Run and Process records remain independently queryable|LITE-12-010 unknown or unavailable admission is projected as modifying|LITE-12-010 only complete verified enforcement is presented as read-only|INSP-05 events are ordered and bounded|LITE-13-102 Inspector projects canonical operation identity and version for actions)",
+            "src/services/RuntimeInspector.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/37-apps-server-src-services-runtimeinspector-test-ts.json\",\"counts\":{\"passed\":9,\"failed\":0,\"skipped\":0},\"assertions\":18}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/TaskRunService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation|P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically|TaskRunService captures four Legacy stages on initial and retry with latest lineage|LITE-01-004 a Task supports zero Runs and then multiple independent Runs|LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability)",
+        "src/services/TaskRunService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/38-apps-server-src-services-taskrunservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/38-apps-server-src-services-taskrunservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/38-apps-server-src-services-taskrunservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation|P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically|TaskRunService captures four Legacy stages on initial and retry with latest lineage|LITE-01-004 a Task supports zero Runs and then multiple independent Runs|LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability)",
+            "src/services/TaskRunService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/38-apps-server-src-services-taskrunservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/38-apps-server-src-services-taskrunservice-test-ts.json\",\"counts\":{\"passed\":5,\"failed\":0,\"skipped\":0},\"assertions\":21}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives)",
+        "src/services/WorkflowTemplateService.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/39-apps-server-src-services-workflowtemplateservice-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/39-apps-server-src-services-workflowtemplateservice-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives)",
+            "src/services/WorkflowTemplateService.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/39-apps-server-src-services-workflowtemplateservice-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/39-apps-server-src-services-workflowtemplateservice-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:L1D-U09 an active MODIFYING admission blocks every later request|LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial)",
+        "src/services/WorkspaceAdmissionAuthority.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/40-apps-server-src-services-workspaceadmissionauthority-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:L1D-U09 an active MODIFYING admission blocks every later request|LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial)",
+            "src/services/WorkspaceAdmissionAuthority.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/40-apps-server-src-services-workspaceadmissionauthority-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":21}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/__tests__/RunRepository.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:T31 initial Run has parentRunId null and rootRunId equal to its own id|T32 retry Run keeps the parent/root chain)",
+        "src/store/__tests__/RunRepository.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/41-apps-server-src-store-tests-runrepository-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/41-apps-server-src-store-tests-runrepository-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/41-apps-server-src-store-tests-runrepository-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:T31 initial Run has parentRunId null and rootRunId equal to its own id|T32 retry Run keeps the parent/root chain)",
+            "src/store/__tests__/RunRepository.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/41-apps-server-src-store-tests-runrepository-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/41-apps-server-src-store-tests-runrepository-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/Identity.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:createEntityId produces prefix_ulid format)",
+        "src/store/Identity.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/42-apps-server-src-store-identity-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/42-apps-server-src-store-identity-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/42-apps-server-src-store-identity-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:createEntityId produces prefix_ulid format)",
+            "src/store/Identity.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/42-apps-server-src-store-identity-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/42-apps-server-src-store-identity-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row)",
+        "src/store/MemoryCandidateRepository.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/43-apps-server-src-store-memorycandidaterepository-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row)",
+            "src/store/MemoryCandidateRepository.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/43-apps-server-src-store-memorycandidaterepository-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/MemoryContextSnapshotRepository.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 secret-like Snapshot payload leaves no Snapshot sink rows)",
+        "src/store/MemoryContextSnapshotRepository.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 secret-like Snapshot payload leaves no Snapshot sink rows)",
+            "src/store/MemoryContextSnapshotRepository.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/MemoryEntryRepository.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-07-012/LITE-10-016 secret-like Entry text leaves no Entry or FTS row)",
+        "src/store/MemoryEntryRepository.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/45-apps-server-src-store-memoryentryrepository-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/45-apps-server-src-store-memoryentryrepository-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/45-apps-server-src-store-memoryentryrepository-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-07-012/LITE-10-016 secret-like Entry text leaves no Entry or FTS row)",
+            "src/store/MemoryEntryRepository.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/45-apps-server-src-store-memoryentryrepository-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/45-apps-server-src-store-memoryentryrepository-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/store/SqliteStore.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:Workspace\\.agents projected fields match Provider Configuration after update|LITE-04-004 switching a Provider preserves the Agent identity and durable History)",
+        "src/store/SqliteStore.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/46-apps-server-src-store-sqlitestore-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:Workspace\\.agents projected fields match Provider Configuration after update|LITE-04-004 switching a Provider preserves the Agent identity and durable History)",
+            "src/store/SqliteStore.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/46-apps-server-src-store-sqlitestore-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":5}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/server/src/taskRecovery.test.ts",
+      "cwd": "apps/server",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction)",
+        "src/taskRecovery.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/47-apps-server-src-taskrecovery-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction)",
+            "src/taskRecovery.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/47-apps-server-src-taskrecovery-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:GRP-01 the interaction is visibly bounded with progress meters)",
+        "src/components/chat/BoundedGroupView.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/48-apps-web-src-components-chat-boundedgroupview-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:GRP-01 the interaction is visibly bounded with progress meters)",
+            "src/components/chat/BoundedGroupView.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/48-apps-web-src-components-chat-boundedgroupview-test-tsx.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-12-007 the empty state is named, never rendered as a blank surface|LITE-12-007 the error state is an announced alert, not silence|LITE-12-007 every state renders without throwing, so no state is unreachable)",
+        "src/components/chat/ConversationRuntimeView.asyncStates.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-12-007 the empty state is named, never rendered as a blank surface|LITE-12-007 the error state is an announced alert, not silence|LITE-12-007 every state renders without throwing, so no state is unreachable)",
+            "src/components/chat/ConversationRuntimeView.asyncStates.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-12-101 the workbench exposes Agent selection and Conversation creation controls)",
+        "src/components/chat/DirectConversationWorkbench.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/50-apps-web-src-components-chat-directconversationworkbench-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-12-101 the workbench exposes Agent selection and Conversation creation controls)",
+            "src/components/chat/DirectConversationWorkbench.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/50-apps-web-src-components-chat-directconversationworkbench-test-tsx.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:GRP-canvas: the group canvas mounts with a composer and the budget controls)",
+        "src/components/chat/GroupConversationCanvas.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:GRP-canvas: the group canvas mounts with a composer and the budget controls)",
+            "src/components/chat/GroupConversationCanvas.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/RunInspectorPanel.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state)",
+        "src/components/chat/RunInspectorPanel.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/52-apps-web-src-components-chat-runinspectorpanel-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state)",
+            "src/components/chat/RunInspectorPanel.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/52-apps-web-src-components-chat-runinspectorpanel-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration|LITE-12-010 unknown or unavailable read-only enforcement renders modifying|LITE-13-102 Inspector action controls are exposed only through callbacks)",
+        "src/components/chat/RuntimeInspectorView.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration|LITE-12-010 unknown or unavailable read-only enforcement renders modifying|LITE-13-102 Inspector action controls are exposed only through callbacks)",
+            "src/components/chat/RuntimeInspectorView.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx.json\",\"counts\":{\"passed\":5,\"failed\":0,\"skipped\":0},\"assertions\":12}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:SHELL-01 wide mode renders all four columns with landmarks|SHELL-05 reduced motion collapses panel transitions to zero|SHELL-07 dark and light themes emit their own token values)",
+        "src/components/layout/WorkbenchShell.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/54-apps-web-src-components-layout-workbenchshell-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:SHELL-01 wide mode renders all four columns with landmarks|SHELL-05 reduced motion collapses panel transitions to zero|SHELL-07 dark and light themes emit their own token values)",
+            "src/components/layout/WorkbenchShell.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/54-apps-web-src-components-layout-workbenchshell-test-tsx.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":15}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/chatScroll.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:only auto-anchors an already-following stream)",
+        "src/lib/chatScroll.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/55-apps-web-src-lib-chatscroll-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:only auto-anchors an already-following stream)",
+            "src/lib/chatScroll.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/55-apps-web-src-lib-chatscroll-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/composerKeyboard.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-12-014 Enter submits while Shift\\+Enter and IME composition stay local|LITE-12-014 keyboard submit prevents the browser newline and restores composer focus|LITE-12-014 disabled submit does not invoke the send callback)",
+        "src/lib/composerKeyboard.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/56-apps-web-src-lib-composerkeyboard-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/56-apps-web-src-lib-composerkeyboard-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/56-apps-web-src-lib-composerkeyboard-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-12-014 Enter submits while Shift\\+Enter and IME composition stay local|LITE-12-014 keyboard submit prevents the browser newline and restores composer focus|LITE-12-014 disabled submit does not invoke the send callback)",
+            "src/lib/composerKeyboard.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/56-apps-web-src-lib-composerkeyboard-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/56-apps-web-src-lib-composerkeyboard-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/directConversation.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:DCUX-S03 reconnect resumes from the durable cursor and resyncs|DCUX-P02 task and run modes map to distinct explicit actions|DCUX-C01 the client targets the forward runtime surface with correct paths)",
+        "src/lib/directConversation.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/57-apps-web-src-lib-directconversation-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:DCUX-S03 reconnect resumes from the durable cursor and resyncs|DCUX-P02 task and run modes map to distinct explicit actions|DCUX-C01 the client targets the forward runtime surface with correct paths)",
+            "src/lib/directConversation.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/57-apps-web-src-lib-directconversation-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/executionTimeline.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-09-008 projects repeated streaming chunks for one execution into one timeline card)",
+        "src/lib/executionTimeline.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/58-apps-web-src-lib-executiontimeline-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/58-apps-web-src-lib-executiontimeline-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/58-apps-web-src-lib-executiontimeline-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-09-008 projects repeated streaming chunks for one execution into one timeline card)",
+            "src/lib/executionTimeline.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/58-apps-web-src-lib-executiontimeline-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/58-apps-web-src-lib-executiontimeline-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/historySearch.test.tsx",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:HS-05 only labelled entries are searchable \\(no content search, secrets excluded\\)|HS-V01 the view renders the filter set, grouped results, and canonical links)",
+        "src/lib/historySearch.test.tsx"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/59-apps-web-src-lib-historysearch-test-tsx.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:HS-05 only labelled entries are searchable \\(no content search, secrets excluded\\)|HS-V01 the view renders the filter set, grouped results, and canonical links)",
+            "src/lib/historySearch.test.tsx"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/59-apps-web-src-lib-historysearch-test-tsx.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":6}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-13-102 Inspector client encodes the workspace and Run route|LITE-13-102 Inspector client uses versioned action APIs and idempotency keys)",
+        "src/lib/runtimeInspectorClient.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/60-apps-web-src-lib-runtimeinspectorclient-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-13-102 Inspector client encodes the workspace and Run route|LITE-13-102 Inspector client uses versioned action APIs and idempotency keys)",
+            "src/lib/runtimeInspectorClient.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/60-apps-web-src-lib-runtimeinspectorclient-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/lib/workbenchInteractions.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-12-101 workbench actions remain explicit callback intents)",
+        "src/lib/workbenchInteractions.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/61-apps-web-src-lib-workbenchinteractions-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/61-apps-web-src-lib-workbenchinteractions-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-12-101 workbench actions remain explicit callback intents)",
+            "src/lib/workbenchInteractions.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/61-apps-web-src-lib-workbenchinteractions-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/61-apps-web-src-lib-workbenchinteractions-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "cwd": "apps/web",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-12-016 no web module implements a deferred product surface|LITE-12-016 the workspace shells expose no deferred product entry point)",
+        "src/liteScopeBoundary.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/62-apps-web-src-litescopeboundary-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/62-apps-web-src-litescopeboundary-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/62-apps-web-src-litescopeboundary-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-12-016 no web module implements a deferred product surface|LITE-12-016 the workspace shells expose no deferred product entry point)",
+            "src/liteScopeBoundary.test.ts"
+          ]
+        },
+        "cwd": "apps/web",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/62-apps-web-src-litescopeboundary-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/62-apps-web-src-litescopeboundary-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":4}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/capabilityDeclaration.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/capabilityDeclaration.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts.json\",\"counts\":{\"passed\":4,\"failed\":0,\"skipped\":0},\"assertions\":6}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/codexProviderAdapter.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/64-packages-agent-core-src-providers-codexprovideradapter-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/codexProviderAdapter.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/64-packages-agent-core-src-providers-codexprovideradapter-test-ts.json\",\"counts\":{\"passed\":5,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/kimiCodeAdapter.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/65-packages-agent-core-src-providers-kimicodeadapter-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/kimiCodeAdapter.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/65-packages-agent-core-src-providers-kimicodeadapter-test-ts.json\",\"counts\":{\"passed\":21,\"failed\":0,\"skipped\":0},\"assertions\":6}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/opencodeProviderAdapter.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/opencodeProviderAdapter.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts.json\",\"counts\":{\"passed\":7,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/providerErrorRetryability.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/67-packages-agent-core-src-providers-providererrorretryability-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/providerErrorRetryability.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/67-packages-agent-core-src-providers-providererrorretryability-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/agent-core/src/providers/validation.test.ts",
+      "cwd": "packages/agent-core",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/providers/validation.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/68-packages-agent-core-src-providers-validation-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/providers/validation.test.ts"
+          ]
+        },
+        "cwd": "packages/agent-core",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/68-packages-agent-core-src-providers-validation-test-ts.json\",\"counts\":{\"passed\":8,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "cwd": "packages/process-runtime",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/durable-coordinator.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/69-packages-process-runtime-src-durable-coordinator-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/69-packages-process-runtime-src-durable-coordinator-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/durable-coordinator.test.ts"
+          ]
+        },
+        "cwd": "packages/process-runtime",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/69-packages-process-runtime-src-durable-coordinator-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/69-packages-process-runtime-src-durable-coordinator-test-ts.json\",\"counts\":{\"passed\":34,\"failed\":0,\"skipped\":0},\"assertions\":11}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/process-runtime/src/node-driver.test.ts",
+      "cwd": "packages/process-runtime",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/node-driver.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/70-packages-process-runtime-src-node-driver-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/70-packages-process-runtime-src-node-driver-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/70-packages-process-runtime-src-node-driver-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/node-driver.test.ts"
+          ]
+        },
+        "cwd": "packages/process-runtime",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/70-packages-process-runtime-src-node-driver-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/70-packages-process-runtime-src-node-driver-test-ts.json\",\"counts\":{\"passed\":16,\"failed\":0,\"skipped\":0},\"assertions\":17}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "cwd": "packages/process-runtime",
+      "executable": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "--reporter=verbose",
+        "src/p6-m3b-windows-birth-identity.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "pnpm",
+          "args": [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=verbose",
+            "src/p6-m3b-windows-birth-identity.test.ts"
+          ]
+        },
+        "cwd": "packages/process-runtime",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts.json\",\"counts\":{\"passed\":10,\"failed\":0,\"skipped\":0},\"assertions\":22}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/shared/m3-runtime.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-03-001 rejects illegal payloads and missing Stage envelope association|LITE-03-001 maps envelope and payload failures to distinct stable errors)",
+        "../../packages/shared/m3-runtime.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/72-packages-shared-m3-runtime-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/72-packages-shared-m3-runtime-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/72-packages-shared-m3-runtime-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-03-001 rejects illegal payloads and missing Stage envelope association|LITE-03-001 maps envelope and payload failures to distinct stable errors)",
+            "../../packages/shared/m3-runtime.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/72-packages-shared-m3-runtime-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/72-packages-shared-m3-runtime-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":2}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/shared/mf5-memory-events.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:LITE-03-016 Memory selection Events expose bounded explanation fields)",
+        "../../packages/shared/mf5-memory-events.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/73-packages-shared-mf5-memory-events-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:LITE-03-016 Memory selection Events expose bounded explanation fields)",
+            "../../packages/shared/mf5-memory-events.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/73-packages-shared-mf5-memory-events-test-ts.json\",\"counts\":{\"passed\":1,\"failed\":0,\"skipped\":0},\"assertions\":1}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/shared/p6-l1a-admission.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:L1A-05 READ_ONLY \\+ no enforcement -> MODIFYING|L1A-10 READ_ONLY \\+ verified technical denial \\+ no side effects -> READ_ONLY|LITE-04-009 capability and intent claims fail closed unless technical denial is verified)",
+        "../../packages/shared/p6-l1a-admission.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/74-packages-shared-p6-l1a-admission-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:L1A-05 READ_ONLY \\+ no enforcement -> MODIFYING|L1A-10 READ_ONLY \\+ verified technical denial \\+ no side effects -> READ_ONLY|LITE-04-009 capability and intent claims fail closed unless technical denial is verified)",
+            "../../packages/shared/p6-l1a-admission.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/74-packages-shared-p6-l1a-admission-test-ts.json\",\"counts\":{\"passed\":3,\"failed\":0,\"skipped\":0},\"assertions\":22}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability|L1C-M1-04 GitCommandPort accepts only structured read families)",
+        "../../packages/shared/p6-l1c-git-observation-contract.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/75-packages-shared-p6-l1c-git-observation-contract-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability|L1C-M1-04 GitCommandPort accepts only structured read families)",
+            "../../packages/shared/p6-l1c-git-observation-contract.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/75-packages-shared-p6-l1c-git-observation-contract-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":5}",
+      "buildStderr": ""
+    },
+    {
+      "sourceFile": "packages/shared/wf-template-instantiation.test.ts",
+      "cwd": "apps/server",
+      "executable": "node",
+      "args": [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern",
+        "(?:WFI-10 every template compiles|WFI-04 optional security review)",
+        "../../packages/shared/wf-template-instantiation.test.ts"
+      ],
+      "runDir": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/76-packages-shared-wf-template-instantiation-test-ts",
+      "assertionFile": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/76-packages-shared-wf-template-instantiation-test-ts/assertions.json",
+      "receipt": "docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/76-packages-shared-wf-template-instantiation-test-ts.json",
+      "captureExitCode": 0,
+      "execution": {
+        "schemaVersion": 1,
+        "command": {
+          "executable": "node",
+          "args": [
+            "--import",
+            "tsx",
+            "--test",
+            "--test-concurrency=1",
+            "--test-reporter=tap",
+            "--test-name-pattern",
+            "(?:WFI-10 every template compiles|WFI-04 optional security review)",
+            "../../packages/shared/wf-template-instantiation.test.ts"
+          ]
+        },
+        "cwd": "apps/server",
+        "rawExitCode": 0,
+        "signal": null,
+        "error": null,
+        "trackedCheckoutUnchanged": true
+      },
+      "stdout": "{\"outputDirectory\":\"E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/docs/implementation/lite-closeout/evidence/final-815f0d62-runs/76-packages-shared-wf-template-instantiation-test-ts\",\"rawExitCode\":0,\"signal\":null,\"error\":null,\"trackedCheckoutUnchanged\":true}",
+      "stderr": "",
+      "buildExitCode": 0,
+      "buildStdout": "{\"output\":\"docs/implementation/lite-closeout/evidence/final-815f0d62-receipts/76-packages-shared-wf-template-instantiation-test-ts.json\",\"counts\":{\"passed\":2,\"failed\":0,\"skipped\":0},\"assertions\":3}",
+      "buildStderr": ""
+    }
+  ]
+}

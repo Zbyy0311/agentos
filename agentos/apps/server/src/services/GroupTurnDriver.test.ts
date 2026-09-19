@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ConversationRunResult } from '@agentos/agent-core';
-import type { ConversationReplyMode } from '@agentos/shared';
+import type { ConversationMessage, ConversationReplyMode } from '@agentos/shared';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -115,11 +115,13 @@ function fixture(
   const walkLog: WalkLogEntry[] = [];
   const executionOrder: string[] = [];
   const providerInputs: Array<{ readonly executionId?: string; readonly memoryContext?: string }> = [];
+  const providerHistories: Array<readonly ConversationMessage[]> = [];
   const deltas: Array<{ agentId: string; delta: string }> = [];
   const runnerFactory = (options: unknown) => {
     const runnerOptions = options as {
       executionId?: string;
       memoryContext?: string;
+      history?: readonly ConversationMessage[];
       onEvent?: (event: { status: string; activity: string; content?: string }) => void;
     };
     const myIndex = callIndex;
@@ -129,6 +131,7 @@ function fixture(
       ...(runnerOptions.executionId === undefined ? {} : { executionId: runnerOptions.executionId }),
       ...(runnerOptions.memoryContext === undefined ? {} : { memoryContext: runnerOptions.memoryContext }),
     });
+    providerHistories.push([...(runnerOptions.history ?? [])]);
     const behavior = behaviors[myIndex] ?? { result: makeResult('completed', 'unexpected extra speaker') };
     return {
       run: async () => {
@@ -162,7 +165,7 @@ function fixture(
   const counts = (table: string) => Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
   return {
     db, boundedGroups, interactions, driver, walkLog, deltas, counts, runnerFactory,
-    executionOrder, providerInputs,
+    executionOrder, providerInputs, providerHistories,
     close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } },
   };
 }
@@ -210,6 +213,23 @@ test('CG-walk: the resolved plan executes strictly in order and records one repl
       { kind: 'start', callIndex: 1 }, { kind: 'end', callIndex: 1 },
       { kind: 'start', callIndex: 2 }, { kind: 'end', callIndex: 2 },
     ]);
+    // The real GroupTurnDriver -> ConversationTurnDriver path must pass each
+    // earlier Agent reply with its durable sender identity to the next Provider.
+    assert.deepEqual(
+      fx.providerHistories.map(history => history.map(message => ({
+        senderType: message.senderType,
+        senderAgentId: message.senderAgentId,
+        content: message.content,
+      }))),
+      [
+        [],
+        [{ senderType: 'agent', senderAgentId: AGENTS[0], content: 'agent_a 的意见' }],
+        [
+          { senderType: 'agent', senderAgentId: AGENTS[0], content: 'agent_a 的意见' },
+          { senderType: 'agent', senderAgentId: AGENTS[1], content: 'agent_b 的意见' },
+        ],
+      ],
+    );
 
     const after = fx.boundedGroups.findInteraction(WS, interaction.id)!;
     assert.equal(after.status, 'active');

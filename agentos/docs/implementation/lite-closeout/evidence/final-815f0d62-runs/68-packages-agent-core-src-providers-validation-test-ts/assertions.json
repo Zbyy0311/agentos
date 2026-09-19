@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

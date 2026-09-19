@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:GET /runs/:runId/inspector returns the redacted projection for a canonical Run)",
+      "src/routes/runtimeInspector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/assertions.json",
+      "sha256": "cdf09a0e2562931df801d2e24821638202afb81e34bb6820ea8d66cebcf9e4ba"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/execution.json",
+      "sha256": "32a2f165bdf22d93610b3ba70bfc13dc99651a8a4bb5b08a5a8d895892434f45"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/17-apps-server-src-routes-runtimeinspector-test-ts/stdout.txt",
+      "sha256": "306bd9fe73d4f74c9e1c2d551f03ad1e676601fcbc3917de62b4657d2be4f364"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110",
+      "requirementId": "LITE-13-001",
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+      "line": 90,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "view facts match canonical records;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111",
+      "requirementId": "LITE-13-006",
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+      "line": 90,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112",
+      "requirementId": "LITE-13-011",
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+      "line": 90,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "no two modifying Runs in one Workspace;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113",
+      "requirementId": "LITE-13-012",
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+      "line": 90,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288",
+    "requirementId": "LITE-09-017",
+    "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+    "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+    "line": 68,
+    "expression": "assert.ok(persisted !== undefined);",
+    "clause": "templates use durable Task, Run, and Stage primitives;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289",
+    "requirementId": "LITE-01-101",
+    "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+    "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+    "line": 68,
+    "expression": "assert.ok(persisted !== undefined);",
+    "clause": "有界Workflow templates及真实实例化",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

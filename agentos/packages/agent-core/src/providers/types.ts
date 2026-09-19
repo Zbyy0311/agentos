@@ -6,6 +6,7 @@ import type {
   ProviderConfigurationSnapshotV1,
   ProviderTypeV1,
   RuntimeModeV1,
+  ThinkingEffort,
   WorkingDirectoryModeV1,
 } from '@agentos/shared';
 import type { ProviderErrorCode as SharedProviderErrorCode } from '@agentos/shared';
@@ -168,6 +169,8 @@ export interface ProviderStartInput {
   readonly workspaceRoot: string;
   readonly worktreePath?: string;
   readonly prompt: string;
+  /** Per-invocation effort override; provider defaults remain unchanged. */
+  readonly thinkingEffort?: ThinkingEffort;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly environmentOverrides?: Readonly<Record<string, string>>;
   readonly secretRefs?: readonly string[];

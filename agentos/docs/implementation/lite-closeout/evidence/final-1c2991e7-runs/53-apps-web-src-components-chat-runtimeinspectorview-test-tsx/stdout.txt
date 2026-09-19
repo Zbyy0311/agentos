@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: INS-01 the Run overview is distinct from Task/Process and shows duration
+ok 1 - INS-01 the Run overview is distinct from Task/Process and shows duration
+  ---
+  duration_ms: 13.9907
+  type: 'test'
+  ...
+# Subtest: INS-07 Memory Context explains selection and exclusion from the frozen Snapshot
+ok 2 - INS-07 Memory Context explains selection and exclusion from the frozen Snapshot
+  ---
+  duration_ms: 3.5567
+  type: 'test'
+  ...
+# Subtest: INS-08 Compaction explains WHY it ran and WHO adopted the summary
+ok 3 - INS-08 Compaction explains WHY it ran and WHO adopted the summary
+  ---
+  duration_ms: 3.5959
+  type: 'test'
+  ...
+# Subtest: LITE-12-010 unknown or unavailable read-only enforcement renders modifying
+ok 4 - LITE-12-010 unknown or unavailable read-only enforcement renders modifying
+  ---
+  duration_ms: 5.2138
+  type: 'test'
+  ...
+# Subtest: LITE-13-102 Inspector action controls are exposed only through callbacks
+ok 5 - LITE-13-102 Inspector action controls are exposed only through callbacks
+  ---
+  duration_ms: 2.6174
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 231.566

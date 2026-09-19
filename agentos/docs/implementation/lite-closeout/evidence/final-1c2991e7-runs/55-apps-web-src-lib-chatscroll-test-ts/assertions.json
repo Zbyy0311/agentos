@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-12-005-only-auto-anchors-an-already-following-stream-364",
+    "requirementId": "LITE-12-005",
+    "file": "apps/web/src/lib/chatScroll.test.ts",
+    "name": "only auto-anchors an already-following stream",
+    "line": 11,
+    "expression": "assert.equal(shouldKeepChatAnchor({ userInitiated: false, wasNearBottom: true }), true);",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-only-auto-anchors-an-already-following-stream-365",
+    "requirementId": "LITE-12-006",
+    "file": "apps/web/src/lib/chatScroll.test.ts",
+    "name": "only auto-anchors an already-following stream",
+    "line": 11,
+    "expression": "assert.equal(shouldKeepChatAnchor({ userInitiated: false, wasNearBottom: true }), true);",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

@@ -16,7 +16,7 @@ interface ComposerControlsProps {
   onRunIntentChange?(value: RunIntent): void;
 }
 
-const effortLabels: Record<ThinkingEffort, string> = { auto: '自动', low: '低', medium: '中', high: '高' };
+const effortLabels: Record<ThinkingEffort, string> = { auto: '自动', low: '低', medium: '中', high: '高', max: '最大' };
 const sourceLabels: Record<ModelDiscoverySource, string> = { live: '实时发现', cache: '本地缓存', config: 'CLI 配置', fallback: '默认能力' };
 
 interface PickerOption { value: string; label: string; detail?: string; }

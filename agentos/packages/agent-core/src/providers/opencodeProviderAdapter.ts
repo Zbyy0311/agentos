@@ -50,8 +50,10 @@ export const OPENCODE_PLAIN_TEXT_MAX_CHARACTERS = 64 * 1024;
 /**
  * Evidence boundary for this narrow adapter:
  *
- * - The official CLI documentation establishes `opencode run [message..]`,
- *   `--dir`, `--model`, and the existence of `--format json` raw JSON events.
+ * - The qualified CLI help establishes `opencode run [message..]`,
+ *   `--dir`, `--model`, `--variant`, and `--pure` for a bounded non-interactive
+ *   launch. The variant flag is provider-specific and is only used after the
+ *   model discovery layer has declared a matching effort.
  * - The repository has no OpenCode event schema/parser, authentication probe,
  *   supported CLI-version range, or provider cancellation protocol.
  *
@@ -472,7 +474,7 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
     }
 
     assertSafeArgsTemplate(configuration.argsTemplate ?? []);
-    const args = buildOpenCodeArgs(configuration, cwd, prompt);
+    const args = buildOpenCodeArgs(configuration, cwd, prompt, input.thinkingEffort);
     const environment = input.environment ?? process.env;
     const safeEnvironment = safeEnvironmentForOpenCode(environment);
     const redactedEnvironmentKeys = Object.entries(environment)
@@ -665,13 +667,14 @@ function validationResult(options: ValidationResultOptions): ProviderValidationR
   };
 }
 
-function buildOpenCodeArgs(configuration: ProviderConfigurationInput, cwd: string, prompt: string): string[] {
+function buildOpenCodeArgs(configuration: ProviderConfigurationInput, cwd: string, prompt: string, thinkingEffort?: import('@agentos/shared').ThinkingEffort): string[] {
   const args = ['--pure', 'run', '--format', 'default', '--dir', cwd];
   const model = configuration.model?.trim();
   if (model) {
     if (model.length > MAX_MODEL_CHARACTERS || model.includes('\u0000')) throw new Error('PROVIDER_CONFIG_INVALID');
     args.push('--model', model);
   }
+  if (thinkingEffort !== undefined && thinkingEffort !== 'auto') args.push('--variant', thinkingEffort);
   args.push('--', prompt);
   return args;
 }
@@ -686,7 +689,7 @@ function assertSafeArgsTemplate(template: readonly string[]): void {
       if (format !== 'default') throw new Error('PROVIDER_CAPABILITY_UNAVAILABLE');
       continue;
     }
-    if (arg === '--dir' || arg === '--model' || arg === '-m') {
+    if (arg === '--dir' || arg === '--model' || arg === '-m' || arg === '--variant') {
       const value = template[++index];
       if (value === undefined || value.startsWith('-') || value.includes('\u0000')) throw new Error('PROVIDER_CONFIG_INVALID');
       continue;
@@ -710,8 +713,9 @@ function hasSafeTextLaunchEvidence(helpOutput: string): boolean {
   const hasFormat = /(?:^|\s)--format(?:\s|$)/m.test(helpOutput);
   const hasDir = /(?:^|\s)--dir(?:\s|$)/m.test(helpOutput);
   const hasModel = /(?:^|\s)(?:--model|-m)(?:\s|$)/m.test(helpOutput);
+  const hasVariant = /(?:^|\s)--variant(?:\s|$)/m.test(helpOutput);
   const hasPure = /(?:^|\s)--pure(?:\s|$)/m.test(helpOutput);
-  return hasRun && hasFormat && hasDir && hasModel && hasPure;
+  return hasRun && hasFormat && hasDir && hasModel && hasVariant && hasPure;
 }
 
 function parseVersion(value: string): string | undefined {

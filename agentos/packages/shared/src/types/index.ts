@@ -17,7 +17,7 @@ export type AgentProvider = 'codex' | 'kimi' | 'opencode' | 'mimo' | 'custom';
 
 export type AgentPermission = 'read' | 'write' | 'review';
 
-export type ThinkingEffort = 'auto' | 'low' | 'medium' | 'high';
+export type ThinkingEffort = 'auto' | 'low' | 'medium' | 'high' | 'max';
 
 export type ModelDiscoverySource = 'live' | 'cache' | 'config' | 'fallback';
 
@@ -175,6 +175,8 @@ export interface Conversation {
   thinkingEffort?: ThinkingEffort;
   /** Group dispatch policy. Direct conversations leave this undefined. */
   dispatchMode?: GroupDispatchMode;
+  /** Version of the persisted per-member group runtime settings. */
+  settingsVersion?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -187,6 +189,12 @@ export interface ConversationMember {
   isLeader?: boolean;
   roleKind: CollaborationRole;
   sequence: number;
+  /** Optional group-scoped model override; omitted means inherit the Agent default. */
+  model?: string;
+  /** Optional group-scoped thinking effort override; omitted means inherit the Agent default. */
+  thinkingEffort?: ThinkingEffort;
+  /** Additional role instructions for this Agent in this group only. */
+  additionalInstructions?: string;
   createdAt: string;
 }
 
@@ -199,6 +207,9 @@ export interface GroupMemberInput {
   roleKind: CollaborationRole;
   roleTitle: string;
   sequence: number;
+  model?: string;
+  thinkingEffort?: ThinkingEffort;
+  additionalInstructions?: string;
 }
 
 export interface ConversationAttachment {
@@ -239,8 +250,23 @@ export interface AgentRun {
   intent?: RunIntent;
   /** Immutable policy snapshot resolved when the run was created. */
   runtimePolicy?: RuntimePolicy;
+  /** Immutable group-member settings captured when a legacy group Run starts. */
+  groupRuntimeSettings?: GroupRuntimeSettingsSnapshot;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupRuntimeMemberSettingsSnapshot {
+  agentId: string;
+  roleTitle: string;
+  model?: string;
+  thinkingEffort?: ThinkingEffort;
+  additionalInstructions?: string;
+}
+
+export interface GroupRuntimeSettingsSnapshot {
+  settingsVersion: number;
+  members: GroupRuntimeMemberSettingsSnapshot[];
 }
 
 export type WorktreeLeaseStatus = 'creating' | 'active' | 'completed' | 'cleanup_pending' | 'cleaned' | 'failed';

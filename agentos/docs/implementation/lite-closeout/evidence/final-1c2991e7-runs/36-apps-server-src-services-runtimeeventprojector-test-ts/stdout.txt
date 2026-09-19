@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry
+ok 1 - LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry
+  ---
+  duration_ms: 1.8655
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 167.1655

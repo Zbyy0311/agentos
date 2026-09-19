@@ -1,0 +1,29 @@
+TAP version 13
+# Subtest: WorkspaceAdmissionAuthority unit contract
+    # Subtest: L1D-U09 an active MODIFYING admission blocks every later request
+    ok 1 - L1D-U09 an active MODIFYING admission blocks every later request
+      ---
+      duration_ms: 55.0524
+      type: 'test'
+      ...
+    # Subtest: LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial
+    ok 2 - LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial
+      ---
+      duration_ms: 91.4796
+      type: 'test'
+      ...
+    1..2
+ok 1 - WorkspaceAdmissionAuthority unit contract
+  ---
+  duration_ms: 147.4301
+  type: 'suite'
+  ...
+1..1
+# tests 2
+# suites 1
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 326.9867

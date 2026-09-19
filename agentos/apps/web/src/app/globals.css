@@ -465,6 +465,42 @@ input:focus-visible {
   border-color: var(--app-border);
 }
 
+.ui-modal-sticky-header {
+  position: sticky;
+  top: -1.25rem;
+  z-index: 20;
+  margin: -1.25rem -1.25rem 1.25rem;
+  padding: 1.25rem 1.25rem 1rem;
+  background: var(--app-surface-raised);
+  border-bottom: 1px solid var(--app-border);
+  box-shadow: 0 8px 16px -16px var(--app-border-strong);
+}
+
+.ui-modal-sticky-footer {
+  position: sticky;
+  bottom: -1.25rem;
+  z-index: 20;
+  margin: 1.5rem -1.25rem -1.25rem;
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--app-surface-raised);
+  border-top: 1px solid var(--app-border);
+  box-shadow: 0 -8px 16px -16px var(--app-border-strong);
+}
+
+@media (min-width: 640px) {
+  .ui-modal-sticky-header {
+    top: -1.5rem;
+    margin: -1.5rem -1.5rem 1.5rem;
+    padding: 1.5rem 1.5rem 1rem;
+  }
+
+  .ui-modal-sticky-footer {
+    bottom: -1.5rem;
+    margin: 1.5rem -1.5rem -1.5rem;
+    padding: 1rem 1.5rem 1.5rem;
+  }
+}
+
 .ui-text {
   color: var(--app-text);
 }
@@ -500,6 +536,70 @@ input:focus-visible {
   background: var(--app-border-strong);
   color: var(--app-dim);
   transform: none;
+}
+
+.ui-button-danger {
+  background: var(--app-danger);
+  color: #fffaf4;
+  transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
+}
+
+.ui-button-danger:hover {
+  background: color-mix(in srgb, var(--app-danger) 82%, #000);
+  transform: translateY(-1px);
+}
+
+.ui-button-danger:disabled {
+  transform: none;
+  opacity: 0.72;
+}
+
+.ui-modal-backdrop {
+  background: var(--app-overlay);
+  backdrop-filter: blur(10px);
+}
+
+.ui-confirm-dialog {
+  position: relative;
+  border-color: color-mix(in srgb, var(--app-danger) 26%, var(--app-border));
+  animation: ui-confirm-dialog-enter 160ms ease-out;
+}
+
+.ui-confirm-dialog-accent {
+  height: 3px;
+  background: linear-gradient(90deg, var(--app-danger), color-mix(in srgb, var(--app-danger) 22%, transparent));
+}
+
+.ui-confirm-dialog-icon {
+  background: color-mix(in srgb, var(--app-danger) 14%, var(--app-surface-soft));
+  color: var(--app-danger);
+}
+
+.ui-confirm-dialog-eyebrow {
+  color: var(--app-danger);
+}
+
+.ui-confirm-dialog-target {
+  border-color: color-mix(in srgb, var(--app-danger) 28%, var(--app-border));
+  background: color-mix(in srgb, var(--app-danger) 6%, var(--app-surface-soft));
+}
+
+.ui-confirm-dialog-target-dot {
+  background: var(--app-danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger) 13%, transparent);
+}
+
+.ui-confirm-dialog-spinner {
+  animation: ui-confirm-dialog-spin 700ms linear infinite;
+}
+
+@keyframes ui-confirm-dialog-enter {
+  from { opacity: 0; transform: translateY(0.45rem) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-confirm-dialog-spin {
+  to { transform: rotate(360deg); }
 }
 
 .ui-button-secondary {
@@ -655,6 +755,53 @@ input:focus-visible {
 
 .effort-popover {
   width: min(14rem, calc(100vw - 2rem));
+}
+
+.run-mode-menu {
+  transform-origin: bottom right;
+  animation: run-mode-menu-enter 120ms ease-out both;
+  max-height: min(70vh, 24rem);
+  overflow-y: auto;
+}
+
+.run-mode-menu[data-positioned="false"] {
+  visibility: hidden;
+}
+
+.run-mode-option {
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.run-mode-option:hover {
+  transform: translateX(1px);
+}
+
+@keyframes run-mode-menu-enter {
+  from { opacity: 0; transform: translateY(0.25rem) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.compact-select-menu {
+  transform-origin: top left;
+  animation: compact-select-menu-enter 120ms ease-out both;
+  max-width: calc(100vw - 1.5rem);
+}
+
+.compact-select-menu[data-positioned="false"] {
+  visibility: hidden;
+}
+
+.compact-select-option {
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.compact-select-option:hover {
+  transform: translateX(1px);
+}
+
+@keyframes compact-select-menu-enter {
+  from { opacity: 0; transform: translateY(-0.25rem) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .effort-slider {

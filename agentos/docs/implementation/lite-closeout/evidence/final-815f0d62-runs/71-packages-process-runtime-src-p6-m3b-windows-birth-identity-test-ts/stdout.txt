@@ -1,0 +1,19 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/process-runtime
+
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2: spawn capture and live probe carry the same CANONICAL FILETIME; classifier SAME (primitive-only) 893ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path) 616ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 oracle: production helper FILETIME == independent .NET StartTime.ToFileTimeUtc oracle; real value > 2^53 (BigInt test-only) 421ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: read-only probe fails closed on an invalid PID (never MISSING) 0ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: probe failure / unreadable identity fails closed to unknown (not missing) 0ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 primitive: a live self PID reads a stable, repeatable canonical FILETIME 568ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only 1ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: PID reuse is never classified same 0ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D: valid v2 with NULL birth in column and mirror + PID absent -> missing 0ms
+ ✓ src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D guard: NULL birth + live PID -> unknown (not missing) 0ms
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  09:11:40
+   Duration  2.71s (transform 54ms, setup 0ms, import 73ms, tests 2.50s, environment 0ms)
+

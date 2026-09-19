@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation|LITE-13-009 the Inspector is read-only and carries no process control field|LITE-13-013 the Inspector projection exposes no secret material and a frozen key set)",
+      "src/routes/runtimeInspector.redaction.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/assertions.json",
+      "sha256": "982bd297274bc2ffa81b4ad5f35a8b5d8255528492d8201c5cdd042a93de49fb"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/execution.json",
+      "sha256": "c61a4043a060fd5de482416a731f789307f484b2589a4a80b02dff2e9cba94eb"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/stdout.txt",
+      "sha256": "3de530bf73f503b58a091e1ea7a6a3bc5936b0c724a7e4838bc6b24947fae04e"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-106",
+      "requirementId": "LITE-13-007",
+      "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+      "line": 191,
+      "expression": "assert.ok(gitProcess, 'the Git process is projected as its own observed process');",
+      "clause": "Git wording never implies ownership;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-009-lite-13-009-the-inspector-is-read-only-and-carries-no-process-control-field-107",
+      "requirementId": "LITE-13-009",
+      "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+      "line": 150,
+      "expression": "assert.equal((await fetch(inspectorUrl)).status, 200, 'the read is served');",
+      "clause": "no reattach/takeover/direct-kill control;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108",
+      "requirementId": "LITE-13-013",
+      "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+      "line": 113,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "no secrets in DTOs;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109",
+      "requirementId": "LITE-04-011",
+      "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+      "line": 113,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import type { AgentProfile, GroupStopReason } from '@agentos/shared';
+import type { AgentProfile, GroupStopReason, RunIntent } from '@agentos/shared';
 import type { ConversationRepository } from '../store/ConversationRepository.js';
 import type { GroupInteractionRecord, GroupInteractionRepository } from '../store/GroupInteractionRepository.js';
 import { createEntityId } from '../store/Identity.js';
@@ -54,6 +54,8 @@ export interface GroupWalkInput {
   readonly interactionId: string;
   /** The durable user Message this walk answers; every speaker answers the SAME message. */
   readonly sourceMessageId: string;
+  /** The intent of the user request, forwarded to every speaker's generic Prompt contract. */
+  readonly intent?: RunIntent;
   readonly mentionedAgentIds?: readonly string[];
   readonly namedAgentIds?: readonly string[];
   readonly orchestratedOrder?: readonly string[];
@@ -105,6 +107,11 @@ function toSpeakerMember(member: {
   readonly replyMode: GroupSpeakerMember['replyMode'];
   readonly status: GroupSpeakerMember['status'];
   readonly joinedAt: string;
+  readonly roleTitle?: GroupSpeakerMember['roleTitle'];
+  readonly model?: GroupSpeakerMember['model'];
+  readonly thinkingEffort?: GroupSpeakerMember['thinkingEffort'];
+  readonly additionalInstructions?: GroupSpeakerMember['additionalInstructions'];
+  readonly settingsVersion?: GroupSpeakerMember['settingsVersion'];
 }): GroupSpeakerMember {
   return {
     memberId: member.id,
@@ -113,6 +120,11 @@ function toSpeakerMember(member: {
     replyMode: member.replyMode,
     status: member.status,
     joinedAt: member.joinedAt,
+    ...(member.roleTitle === undefined ? {} : { roleTitle: member.roleTitle }),
+    ...(member.model === undefined ? {} : { model: member.model }),
+    ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
+    ...(member.additionalInstructions === undefined ? {} : { additionalInstructions: member.additionalInstructions }),
+    ...(member.settingsVersion === undefined ? {} : { settingsVersion: member.settingsVersion }),
   };
 }
 
@@ -162,11 +174,17 @@ export class GroupTurnDriver {
       });
     }
 
+    const frozenMembers = this.conversations.listMembers(input.workspaceId, input.conversationId)
+      .map(member => toSpeakerMember({ ...member, settingsVersion: conversation.settingsVersion }));
+    const memberByAgentId = new Map(
+      frozenMembers.filter((member): member is GroupSpeakerMember & { agentId: string } => member.agentId !== null)
+        .map(member => [member.agentId, member]),
+    );
     const plan = resolveGroupSpeakers({
       conversationKind: conversation.kind,
       conversationStatus: conversation.status,
       replyMode: conversation.replyMode,
-      members: this.conversations.listMembers(input.workspaceId, input.conversationId).map(toSpeakerMember),
+      members: frozenMembers,
       ...(input.mentionedAgentIds === undefined ? {} : { mentionedAgentIds: input.mentionedAgentIds }),
       ...(input.namedAgentIds === undefined ? {} : { namedAgentIds: input.namedAgentIds }),
       ...(input.orchestratedOrder === undefined ? {} : { orchestratedOrder: input.orchestratedOrder }),
@@ -204,6 +222,13 @@ export class GroupTurnDriver {
 
       const turnId = createEntityId('turn');
       const responseMessageId = createEntityId('message');
+      const frozenMember = memberByAgentId.get(speaker.agentId);
+      const runtimeOverrides = frozenMember === undefined
+        ? undefined
+        : {
+          ...(frozenMember.model === undefined ? {} : { model: frozenMember.model }),
+          ...(frozenMember.thinkingEffort === undefined ? {} : { thinkingEffort: frozenMember.thinkingEffort }),
+        };
       options.onSpeakerTurnStart?.({ agentId: speaker.agentId, turnId, messageId: responseMessageId });
       const result = await driver.replyWithTurn({
         workspaceId: input.workspaceId,
@@ -211,10 +236,15 @@ export class GroupTurnDriver {
         conversationId: input.conversationId,
         interactionId: input.interactionId,
         agentId: speaker.agentId,
+        intent: input.intent ?? 'execute',
         sourceMessageId: input.sourceMessageId,
         content: source.content,
         turnId,
         responseMessageId,
+        ...(runtimeOverrides === undefined || Object.keys(runtimeOverrides).length === 0 ? {} : { runtimeOverrides }),
+        ...(frozenMember?.additionalInstructions === undefined ? {} : { additionalInstructions: frozenMember.additionalInstructions }),
+        ...(frozenMember?.roleTitle === undefined ? {} : { groupRoleTitle: frozenMember.roleTitle }),
+        ...(frozenMember?.settingsVersion === undefined ? {} : { groupSettingsVersion: frozenMember.settingsVersion }),
         onDelta: (delta, cursor) => options.onSpeakerDelta?.(speaker.agentId, turnId, responseMessageId, delta, cursor),
         ...(input.signal === undefined ? {} : { signal: input.signal }),
         createdAt: input.createdAt,

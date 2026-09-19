@@ -283,7 +283,7 @@ function validateWorkspace(value: unknown): ValidWorkspace | null {
       || !Array.isArray(raw.cliArgs)
       || raw.cliArgs.some(item => typeof item !== 'string')
       || (raw.model !== undefined && typeof raw.model !== 'string')
-      || (raw.thinkingEffort !== undefined && !['auto', 'low', 'medium', 'high'].includes(raw.thinkingEffort as string))
+      || (raw.thinkingEffort !== undefined && !['auto', 'low', 'medium', 'high', 'max'].includes(raw.thinkingEffort as string))
       || ids.has(raw.id)) return null;
     ids.add(raw.id);
     agents.push(normalizeAgent(raw));

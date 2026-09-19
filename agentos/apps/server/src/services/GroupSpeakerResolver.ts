@@ -4,6 +4,7 @@ import type {
   GroupStopReason,
   MemberReplyMode,
   MemberRole,
+  ThinkingEffort,
 } from '@agentos/shared';
 
 /**
@@ -52,6 +53,13 @@ export interface GroupSpeakerMember {
   readonly replyMode: MemberReplyMode;
   readonly status: 'active' | 'muted' | 'removed';
   readonly joinedAt: string;
+  /** Frozen group-specific role title used in the speaker's prompt. */
+  readonly roleTitle?: string;
+  /** Frozen group-scoped Provider configuration carried into the Turn. */
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly additionalInstructions?: string;
+  readonly settingsVersion?: number;
 }
 
 export interface GroupSpeakerBudget {

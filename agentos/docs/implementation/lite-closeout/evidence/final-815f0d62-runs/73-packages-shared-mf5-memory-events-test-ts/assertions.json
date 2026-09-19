@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-03-016-lite-03-016-memory-selection-events-expose-bounded-explanation-fields-464",
+    "requirementId": "LITE-03-016",
+    "file": "packages/shared/mf5-memory-events.test.ts",
+    "name": "LITE-03-016 Memory selection Events expose bounded explanation fields",
+    "line": 158,
+    "expression": "assert.ok(retrieval);",
+    "clause": "Memory selection explanation Events;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "baseline": "f466ab3c940c6d5ac792591315a1416da93a06ab",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:createEntityId produces prefix_ulid format)",
+      "src/store/Identity.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/30-apps-server-src-store-identity-test-ts/assertions.json",
+      "sha256": "b316bec46e02a2c127341dc431784e6d5cbf3bf39409cd7cf70968d80e01fad5"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/30-apps-server-src-store-identity-test-ts/execution.json",
+      "sha256": "6339bf10cd56cfe5379c195e667238190f8a145ebc46e628633b5df3608fb965"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/30-apps-server-src-store-identity-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/30-apps-server-src-store-identity-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/30-apps-server-src-store-identity-test-ts/stdout.txt",
+      "sha256": "6197ee9acbdf1181c8a5bf724c81e40714e432de2af4717956b8d76a77b0919d"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-001-createentityid-produces-prefix-ulid-format-255",
+      "requirementId": "LITE-01-001",
+      "name": "createEntityId produces prefix_ulid format",
+      "line": 63,
+      "expression": "assert.ok(",
+      "clause": "each durable entity uses stable IDs and correct parent references;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-004-createentityid-produces-prefix-ulid-format-256",
+      "requirementId": "LITE-10-004",
+      "name": "createEntityId produces prefix_ulid format",
+      "line": 63,
+      "expression": "assert.ok(",
+      "clause": "Task zero/many Runs and retry child lineage;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    }
+  ]
+}

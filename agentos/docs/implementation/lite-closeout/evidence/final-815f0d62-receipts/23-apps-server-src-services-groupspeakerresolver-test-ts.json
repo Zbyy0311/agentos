@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class)",
+      "src/services/GroupSpeakerResolver.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/assertions.json",
+      "sha256": "748c55d0e6fb0b7a57f1bbb9ba62ef590987f6fc92e044eb1cc729ac8114ea4a"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/execution.json",
+      "sha256": "fdd9a35965babf0bf0309581b5c2e4486cc0be8f0deff28eb5604f4d3e1363cc"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/stdout.txt",
+      "sha256": "a5b7756d5e97f6caecf5554688a57b2160aec3f633fcdeb93fa63a75f966318f"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-013-cg-s1-cg-s9-parallel-read-only-declares-intent-but-never-claims-an-unproven-read-132",
+      "requirementId": "LITE-00-013",
+      "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "line": 201,
+      "expression": "assert.equal(plan.speakers.length, 2);",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-015-cg-s1-cg-s9-parallel-read-only-declares-intent-but-never-claims-an-unproven-read-133",
+      "requirementId": "LITE-09-015",
+      "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "line": 201,
+      "expression": "assert.equal(plan.speakers.length, 2);",
+      "clause": "@all never launches parallel modification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-13-102-lite-13-102-inspector-client-encodes-the-workspace-and-run-route-383",
+    "requirementId": "LITE-13-102",
+    "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+    "name": "LITE-13-102 Inspector client encodes the workspace and Run route",
+    "line": 10,
+    "expression": "assert.match(createInspectorIdempotencyKey('retry'), /^retry-/);",
+    "clause": "Inspector各section规范字段及Cancel/Retry源链",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384",
+    "requirementId": "LITE-13-102",
+    "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+    "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+    "line": 27,
+    "expression": "assert.equal(requests.length, 3);",
+    "clause": "Inspector各section规范字段及Cancel/Retry源链",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

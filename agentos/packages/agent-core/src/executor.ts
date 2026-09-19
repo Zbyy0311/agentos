@@ -23,6 +23,15 @@ import { diffOpenCodeUsage, readOpenCodeUsageSnapshot, type OpenCodeUsageSnapsho
 const DIAG_LOG_DIR = process.env.AGENTOS_DIAG_LOG_DIR
   ?? join(process.env.AGENTOS_WORKSPACE_ROOT ?? process.cwd(), '.agentos', 'logs', 'diagnostics');
 const DEFAULT_MAX_EXECUTION_MS = 30 * 60 * 1000;
+/**
+ * OpenCode can keep retrying a provider-side failure without closing its CLI
+ * process.  Keep the legacy opt-in timeout semantics for every other CLI, but
+ * give this provider a bounded no-output guard so a rate limit/network failure
+ * cannot leave a Conversation in `running_cli` indefinitely.
+ */
+export const DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS = 120 * 1000;
+
+export type CliTimeoutReason = 'inactivity_timeout' | 'max_execution_time';
 
 export function getInactivityTimeoutMs(value = process.env.AGENTOS_AGENT_TIMEOUT): number | null {
   const normalized = value?.trim().toLowerCase();
@@ -32,14 +41,28 @@ export function getInactivityTimeoutMs(value = process.env.AGENTOS_AGENT_TIMEOUT
   return Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : null;
 }
 
+export function resolveInactivityTimeoutMs(
+  cliKind: 'kimi' | 'opencode' | 'codex' | 'unknown',
+  value = process.env.AGENTOS_AGENT_TIMEOUT,
+): number | null {
+  // An explicitly supplied value, including 0/null/empty, preserves the
+  // existing environment contract and wins over provider defaults.
+  if (value !== undefined) return getInactivityTimeoutMs(value);
+  return cliKind === 'opencode' ? DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS : null;
+}
+
 export function getMaxExecutionTimeoutMs(value = process.env.AGENTOS_MAX_EXECUTION_MS): number {
   if (value === undefined) return DEFAULT_MAX_EXECUTION_MS;
   const timeoutMs = Number.parseInt(value.trim(), 10);
   return Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_MAX_EXECUTION_MS;
 }
 
+function isOpenCodexModel(model?: string): boolean {
+  return typeof model === 'string' && /^opencodex\//i.test(model.trim());
+}
+
 export function resolveAgentEnvironment(
-  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'env' | 'provider'>,
+  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'env' | 'provider' | 'model'>,
   inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const env = { ...inheritedEnv, ...config.env };
@@ -64,7 +87,15 @@ export function resolveAgentEnvironment(
     }
   }
 
-  if ((config.provider === 'kimi' || config.role === 'kimi_worker') && env.AGENTOS_KIMI_API_KEY) {
+  const usesKimiCli = config.provider === 'kimi' || config.role === 'kimi_worker';
+  if (usesKimiCli && isOpenCodexModel(config.model)) {
+    // OpenCodex models are aliases in Kimi's config.toml.  Do not let the
+    // native Kimi API-key bridge replace that provider/model mapping.
+    delete env.KIMI_MODEL_NAME;
+    delete env.KIMI_MODEL_API_KEY;
+    delete env.KIMI_MODEL_PROVIDER_TYPE;
+    delete env.KIMI_MODEL_BASE_URL;
+  } else if (usesKimiCli && env.AGENTOS_KIMI_API_KEY) {
     env.KIMI_MODEL_NAME = 'kimi-for-coding';
     env.KIMI_MODEL_API_KEY = env.AGENTOS_KIMI_API_KEY;
     env.KIMI_MODEL_PROVIDER_TYPE = 'kimi';
@@ -72,9 +103,12 @@ export function resolveAgentEnvironment(
   }
 
   if (config.provider === 'opencode' || config.role === 'opencode_reviewer') {
-    if (!env.XDG_CONFIG_HOME && env.AGENTOS_WORKSPACE_ROOT) {
-      env.XDG_CONFIG_HOME = join(env.AGENTOS_WORKSPACE_ROOT, '.agentos', 'opencode');
-    }
+    // OpenCode resolves provider/model definitions and credentials from the
+    // user's normal config directory.  Redirecting XDG_CONFIG_HOME to a
+    // workspace-local, usually empty directory makes configured models such as
+    // `opencodex/gpt-5.6-luna` disappear even though the same CLI works when
+    // launched directly.  Keep an explicitly supplied config directory, but
+    // otherwise let OpenCode use its platform-default user config lookup.
     if (!env.OPENCODE_PERMISSION) {
       env.OPENCODE_PERMISSION = JSON.stringify({
         edit: 'deny',
@@ -117,7 +151,7 @@ export function resolveAgentRuntimeConfig(
   let cliArgs = [...config.cliArgs];
 
   if (capability.cliKind === 'kimi') {
-    const apiKeyMode = Boolean(env.KIMI_MODEL_API_KEY);
+    const apiKeyMode = Boolean(env.KIMI_MODEL_API_KEY) && !isOpenCodexModel(model);
     if (apiKeyMode) {
       if (model) env.KIMI_MODEL_NAME = model;
       cliArgs = removeArgPair(cliArgs, '-m');
@@ -130,6 +164,15 @@ export function resolveAgentRuntimeConfig(
 
   if (capability.cliKind === 'codex' && thinkingEffort !== 'auto') {
     cliArgs = replaceConfigArg(cliArgs, 'model_reasoning_effort', thinkingEffort);
+  }
+  if (capability.cliKind === 'kimi') {
+    if (thinkingEffort === 'auto') delete env.KIMI_MODEL_THINKING_EFFORT;
+    else env.KIMI_MODEL_THINKING_EFFORT = thinkingEffort;
+  }
+  if (capability.cliKind === 'opencode') {
+    cliArgs = thinkingEffort === 'auto'
+      ? removeArgPair(cliArgs, '--variant')
+      : replaceOrAppendArg(cliArgs, '--variant', thinkingEffort);
   }
 
   return { cliArgs, env, cliKind: capability.cliKind, configuredProvider };
@@ -266,6 +309,7 @@ export class CLIError extends Error {
     public exitCode: number | null,
     public stderr: string,
     public log?: TaskLog,
+    public timeoutReason?: CliTimeoutReason,
   ) {
     super(message);
     this.name = 'CLIError';
@@ -284,7 +328,8 @@ export class CLIExecutor {
     const agentName = config.name;
     const executionId = randomUUID().slice(0, 12);
     const serverInstanceId = process.env.AGENTOS_SERVER_INSTANCE_ID ?? 'unknown';
-    const inactivityTimeoutMs = getInactivityTimeoutMs();
+    const cliKind = getCliCapability(config.cliCommand, config.provider).cliKind;
+    const inactivityTimeoutMs = resolveInactivityTimeoutMs(cliKind);
     const maxExecutionTimeoutMs = getMaxExecutionTimeoutMs();
     const imagePlan = resolveImageInput(config, config.imageAttachments ?? []);
     if (imagePlan.transport === 'unsupported') {
@@ -293,7 +338,6 @@ export class CLIExecutor {
       throw new CLIError(`${agentName} (${stage}): ${message}`, stage, null, message, log);
     }
     const preparedPrompt = imagePlan.promptSuffix ? `${prompt}\n\n${imagePlan.promptSuffix}` : prompt;
-    const cliKind = getCliCapability(config.cliCommand, config.provider).cliKind;
     const commandLabel = toCommandLabel(cliKind);
     const invocationId = randomUUID();
     const invocationStartedAt = new Date().toISOString();
@@ -458,6 +502,7 @@ export class CLIExecutor {
       recordActivity('stderr');
     });
 
+    let timeoutReason: CliTimeoutReason | undefined;
     const exitCode = await new Promise<number | null>((resolve) => {
       let abortTriggered = false;
       let inactivityTimedOut = false;
@@ -513,6 +558,7 @@ export class CLIExecutor {
           if (inactivityTimedOut || inactiveForMs < inactivityTimeoutMs) return;
 
           inactivityTimedOut = true;
+          timeoutReason = 'inactivity_timeout';
           stderr += `\n[AgentOS] Agent inactive for ${inactiveForMs}ms (threshold ${inactivityTimeoutMs}ms), killing process.`;
           diagLog(`TIMEOUT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=inactivity_timeout inactivityTimeoutMs=${inactivityTimeoutMs} inactiveForMs=${inactiveForMs} lastActivityAt=${new Date(lastActivityAt).toISOString()} childPid=${child.pid}`);
           killChild('inactivity_timeout');
@@ -523,6 +569,7 @@ export class CLIExecutor {
       maxExecutionTimer = setTimeout(() => {
         if (settled) return;
         maxExecutionTimedOut = true;
+        timeoutReason = 'max_execution_time';
         stderr += `\n[AgentOS] Max execution time exceeded (${maxExecutionTimeoutMs}ms).`;
         diagLog(`TIMEOUT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=max_execution_time maxExecutionTimeoutMs=${maxExecutionTimeoutMs} childPid=${child.pid}`);
         killChild('max_execution_time');
@@ -589,6 +636,7 @@ export class CLIExecutor {
         exitCode,
         '',
         log,
+        timeoutReason,
       );
     }
 

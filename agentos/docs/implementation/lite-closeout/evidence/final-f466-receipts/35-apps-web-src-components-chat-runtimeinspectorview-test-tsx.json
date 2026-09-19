@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "baseline": "f466ab3c940c6d5ac792591315a1416da93a06ab",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration)",
+      "src/components/chat/RuntimeInspectorView.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/35-apps-web-src-components-chat-runtimeinspectorview-test-tsx/assertions.json",
+      "sha256": "efbfa5bbf1b4293dfca375f16518cfba9bf7f4156816e6fb16adefb9e63a313d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/35-apps-web-src-components-chat-runtimeinspectorview-test-tsx/execution.json",
+      "sha256": "acef0cef418ee5045d61a8408f523fe46e947ac044447a4cb8986ab77398d2ad"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/35-apps-web-src-components-chat-runtimeinspectorview-test-tsx/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/35-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/35-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stdout.txt",
+      "sha256": "f563b819a569bea6bb0b72bf108357f9228f41b32d5779072dcfd65f925c51e9"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-011-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-265",
+      "requirementId": "LITE-12-011",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-011-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-266",
+      "requirementId": "LITE-12-011",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-011-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-267",
+      "requirementId": "LITE-12-011",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-268",
+      "requirementId": "LITE-12-012",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-269",
+      "requirementId": "LITE-12-012",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-270",
+      "requirementId": "LITE-12-012",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-271",
+      "requirementId": "LITE-13-006",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-272",
+      "requirementId": "LITE-13-006",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-273",
+      "requirementId": "LITE-13-006",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    }
+  ]
+}

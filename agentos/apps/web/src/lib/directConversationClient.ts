@@ -8,6 +8,8 @@
  * No secret value is ever sent or stored.
  */
 
+import type { AgentCapability, RunIntent, ThinkingEffort } from '@agentos/shared';
+
 export interface ConversationRuntimeError extends Error {
   readonly status: number;
 }
@@ -18,6 +20,7 @@ export interface ForwardConversation {
   readonly title: string;
   readonly status: string;
   readonly version: number;
+  readonly settingsVersion?: number;
 }
 
 export interface ForwardAgent {
@@ -25,6 +28,37 @@ export interface ForwardAgent {
   readonly name: string;
   readonly enabled?: boolean;
   readonly status?: string;
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly capability?: AgentCapability;
+  readonly roleTitle?: string;
+}
+
+export interface ForwardConversationMember {
+  readonly id: string;
+  readonly conversationId: string;
+  readonly workspaceId: string;
+  readonly subjectType: 'user' | 'agent';
+  readonly subjectId: string;
+  readonly displayNameSnapshot: string;
+  readonly role: string;
+  readonly roleTitle: string;
+  readonly replyMode: string;
+  readonly status: string;
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly additionalInstructions?: string;
+  readonly joinedAt: string;
+  readonly removedAt: string | null;
+  readonly version: number;
+}
+
+export interface GroupMemberSettingsUpdate {
+  readonly memberId: string;
+  readonly roleTitle?: string | null;
+  readonly model?: string | null;
+  readonly thinkingEffort?: ThinkingEffort | null;
+  readonly additionalInstructions?: string | null;
 }
 
 export interface ForwardMessage {
@@ -79,6 +113,16 @@ export function directConversationClient(options: DirectConversationClientOption
       `/api/workspaces/${encodeURIComponent(options.workspaceId)}/agents`,
     ),
     listConversations: () => apiFetch<{ conversations: ForwardConversation[] }>(base, '/conversations'),
+    listMembers: (conversationId: string) =>
+      apiFetch<{ members: ForwardConversationMember[] }>(base, `/conversations/${encodeURIComponent(conversationId)}/members`),
+    updateGroupMemberSettings: (
+      conversationId: string,
+      expectedSettingsVersion: number,
+      members: readonly GroupMemberSettingsUpdate[],
+    ) => apiFetch<{ conversation: ForwardConversation; members: ForwardConversationMember[] }>(base, `/conversations/${encodeURIComponent(conversationId)}/members`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedSettingsVersion, members }),
+    }),
     createConversation: (body: Record<string, unknown>) =>
       jsonPost('/conversations', body) as Promise<{ conversation: ForwardConversation }>,
     listMessages: (conversationId: string, afterSequence = 0) =>
@@ -91,9 +135,10 @@ export function directConversationClient(options: DirectConversationClientOption
      * The reply stream (SSE). Returns the raw Response; the controller consumes it.
      * Not OK responses throw before the stream is read.
      */
-    streamReply: async (conversationId: string, content: string): Promise<Response> => {
+    streamReply: async (conversationId: string, content: string, intent?: RunIntent): Promise<Response> => {
       const response = await fetch(`${base}/conversations/${encodeURIComponent(conversationId)}/messages/stream`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, ...(intent === undefined ? {} : { intent }) }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };

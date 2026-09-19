@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:returns run list and aggregated details with workspace isolation and capped limit)",
+      "src/routes/runs.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/14-apps-server-src-routes-runs-test-ts/assertions.json",
+      "sha256": "78e1defef18da29b25b75452101ffc27ecb571dde1e10d586703470db14b495a"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/14-apps-server-src-routes-runs-test-ts/execution.json",
+      "sha256": "0f67e2b243c59b638ca0c2bee67b0ef316493b0c7bf6d090a529105656af8b57"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/14-apps-server-src-routes-runs-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/14-apps-server-src-routes-runs-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/14-apps-server-src-routes-runs-test-ts/stdout.txt",
+      "sha256": "b08b1dda84c7b5fbe2333d9638043d6fc3625b4afc9f01d63ab899298db5b2c8"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 44,
+      "expression": "assert.deepEqual(list.runs.map(run => run.id), ['run-a']);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

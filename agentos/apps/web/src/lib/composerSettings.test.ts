@@ -47,3 +47,24 @@ test('does not send the Agent default as a fake per-message override', () => {
     assert.deepEqual(getRuntimeOverrides(agent, { model: 'codex-default', thinkingEffort: 'high' }), { model: undefined, thinkingEffort: undefined });
     assert.deepEqual(getRuntimeOverrides(agent, { model: 'fast-model', thinkingEffort: 'medium' }), { model: 'fast-model', thinkingEffort: 'medium' });
   });
+
+test('preserves a model-specific max effort through composer settings and overrides', () => {
+    const maxModelAgent: AgentProfile = {
+      ...agent,
+      model: 'kimi/k2.8',
+      thinkingEffort: 'auto',
+      capability: {
+        ...agent.capability!,
+        role: 'kimi',
+        cliKind: 'kimi',
+        models: ['kimi/k2.8'],
+        modelOptions: [{ id: 'kimi/k2.8', label: 'K2.8 Preview', thinkingEfforts: ['auto', 'low', 'high', 'max'], defaultThinkingEffort: 'max' }],
+        thinkingEfforts: ['auto', 'low', 'high', 'max'],
+        defaultModel: 'kimi/k2.8',
+        defaultThinkingEffort: 'max',
+      },
+    };
+    assert.deepEqual(getThinkingEfforts(maxModelAgent, 'kimi/k2.8'), ['auto', 'low', 'high', 'max']);
+    assert.deepEqual(getInitialComposerSettings(maxModelAgent, { model: 'kimi/k2.8', thinkingEffort: 'max' }), { model: 'kimi/k2.8', thinkingEffort: 'max' });
+    assert.deepEqual(getRuntimeOverrides(maxModelAgent, { model: 'kimi/k2.8', thinkingEffort: 'max' }), { model: undefined, thinkingEffort: 'max' });
+  });

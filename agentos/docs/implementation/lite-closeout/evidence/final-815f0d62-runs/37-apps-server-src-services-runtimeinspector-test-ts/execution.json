@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state|LITE-01-006 Run and Process records remain independently queryable|LITE-12-010 unknown or unavailable admission is projected as modifying|LITE-12-010 only complete verified enforcement is presented as read-only|INSP-05 events are ordered and bounded|LITE-13-102 Inspector projects canonical operation identity and version for actions)",
+      "src/services/RuntimeInspector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

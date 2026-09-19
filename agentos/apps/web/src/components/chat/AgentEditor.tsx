@@ -16,7 +16,7 @@ const permissionOptions: Array<{ value: AgentPermission; label: string }> = [
   { value: 'review', label: '代码审查' },
 ];
 
-const effortLabels: Record<ThinkingEffort, string> = { auto: '自动（默认）', low: '低', medium: '中', high: '高' };
+const effortLabels: Record<ThinkingEffort, string> = { auto: '自动（默认）', low: '低', medium: '中', high: '高', max: '最大' };
 const sourceLabels: Record<ModelDiscoverySource, string> = { live: 'CLI 实时读取', cache: 'CLI 本地缓存', config: 'CLI 配置文件', fallback: '静态回退' };
 
 export function AgentEditor({ agent, saving, refreshingModels = false, onClose, onRefreshModels, onSave }: AgentEditorProps) {

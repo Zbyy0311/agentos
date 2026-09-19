@@ -23,4 +23,7 @@ test('LITE-12-103 runtime group creator exposes bounded sequential setup', () =>
   assert.ok(markup.includes('Codex'));
   assert.ok(markup.includes('Kimi'));
   assert.ok(markup.includes('至少选择两个'));
+  assert.ok(markup.includes('使用模型'));
+  assert.ok(markup.includes('思考强度'));
+  assert.ok(markup.includes('群聊附加指令'));
 });

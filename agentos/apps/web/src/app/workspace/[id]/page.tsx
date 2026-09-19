@@ -29,6 +29,7 @@ import { MemoryCandidateQueue } from '@/components/memory/MemoryCandidateQueue';
 import { MemoryReviewQueue } from '@/components/memory/MemoryReviewQueue';
 import { PreferencePanel } from '@/components/preference/PreferencePanel';
 import { ToastStack } from '@/components/feedback/ToastStack';
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog';
 import { classifyUiError, getComposerValidationError, TOAST_DURATION_MS, type ToastItem, type ToastTone } from '@/lib/uiFeedback';
 import { TypewriterQueue } from '@/lib/typewriterQueue';
 import { selectActiveRunExecutions } from '@/lib/runtimeSelection';
@@ -101,6 +102,9 @@ export default function WorkspacePage() {
   const [activeWaitingQuestion, setActiveWaitingQuestion] = useState<string>();
   const [draft, setDraft] = useState('');
   const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([]);
+  // Keep the historical execution default for provider compatibility. The
+  // generic prompt still answers ordinary questions directly; ask/review are
+  // explicit modes and require a provider-backed read-only enforcement proof.
   const [runIntent, setRunIntent] = useState<RunIntent>('execute');
   useEffect(() => {
     const handleRunIntent = (event: Event) => {
@@ -130,6 +134,8 @@ export default function WorkspacePage() {
   const [renamingConversation, setRenamingConversation] = useState<Conversation | null>(null);
   const [savingConversationTitle, setSavingConversationTitle] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [deletingConversation, setDeletingConversation] = useState<Conversation | null>(null);
+  const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [runDetails, setRunDetails] = useState<AgentRunDetails | null>(null);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
@@ -728,21 +734,22 @@ export default function WorkspacePage() {
     } catch (loadError) { notifyError(loadError, '加载群聊策略失败'); }
   }, [notifyError, request, workspaceId]);
 
-  const saveGroupSettings = useCallback(async (input: { members: Array<{ agentId: string; roleKind: NonNullable<ConversationMember['roleKind']>; roleTitle: string; sequence: number }>; dispatchMode: GroupDispatchMode }) => {
+  const saveGroupSettings = useCallback(async (input: { title: string; members: Array<{ agentId: string; roleKind: NonNullable<ConversationMember['roleKind']>; roleTitle: string; sequence: number; model?: string | null; thinkingEffort?: ThinkingEffort | null; additionalInstructions?: string | null }>; dispatchMode: GroupDispatchMode }) => {
     if (!workspaceId || !editingGroup) return;
     setSavingGroupSettings(true);
     try {
-      const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${editingGroup.id}`, { method: 'PATCH', body: input });
+      const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${editingGroup.id}`, { method: 'PATCH', body: { ...input, expectedSettingsVersion: editingGroup.settingsVersion ?? 1 } });
       setGroups(current => current.map(group => group.id === result.conversation.id ? result.conversation : group));
       setEditingGroup(result.conversation);
       setEditingGroupMembers(result.members);
-      pushToast('success', '群聊策略已保存');
+      pushToast('success', '群聊设置已保存');
     } catch (saveError) { notifyError(saveError, '保存群聊策略失败'); }
     finally { setSavingGroupSettings(false); }
   }, [editingGroup, notifyError, pushToast, request, workspaceId]);
 
   const deleteConversation = useCallback(async (conversation: Conversation) => {
-    if (!workspaceId || !window.confirm(`确定删除会话“${conversation.title}”吗？此操作不可撤销。`)) return;
+    if (!workspaceId) return;
+    setDeletingConversationId(conversation.id);
     try {
       await request<{ conversationId: string }>(`/api/workspaces/${workspaceId}/conversations/${conversation.id}`, { method: 'DELETE' });
       const nextId = conversation.type === 'group' ? getNextConversationId(groups, conversation.id) : getNextConversationId(conversations, conversation.id);
@@ -753,8 +760,9 @@ export default function WorkspacePage() {
         setConversations(current => current.filter(item => item.id !== conversation.id));
         if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
       }
-      setContextMenu(null); pushToast('success', '会话已删除');
+      setContextMenu(null); setDeletingConversation(null); pushToast('success', '会话已删除');
     } catch (deleteError) { notifyError(deleteError, '删除会话失败'); }
+    finally { setDeletingConversationId(null); }
   }, [conversations, groups, notifyError, pushToast, request, selectedDirectConversationId, selectedGroupId, workspaceId]);
 
   const selectGroup = useCallback((groupId: string) => {
@@ -772,13 +780,25 @@ export default function WorkspacePage() {
     <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
     <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
     <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
-     <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
+     <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onEditGroup={isGroupConversation && selectedConversation ? () => { void openGroupEditor(selectedConversation); } : undefined} />
     <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
      {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
-     {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}
+     {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} title={editingGroup.title} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}
     {renamingConversation && <GroupRenameModal title={renamingConversation.title} entityLabel={renamingConversation.type === 'group' ? '群聊' : '会话'} saving={savingConversationTitle} onClose={() => setRenamingConversation(null)} onSave={title => { void saveConversationTitle(title); }} />}
-     {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={() => setRenamingConversation(contextMenu.conversation)} onEditGroup={contextMenu.conversation.type === 'group' ? () => { void openGroupEditor(contextMenu.conversation); } : undefined} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => { void deleteConversation(contextMenu.conversation); }} onClose={() => setContextMenu(null)} />}
+    {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={contextMenu.conversation.type === 'group' ? undefined : () => setRenamingConversation(contextMenu.conversation)} onEditGroup={contextMenu.conversation.type === 'group' ? () => { void openGroupEditor(contextMenu.conversation); } : undefined} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => setDeletingConversation(contextMenu.conversation)} onClose={() => setContextMenu(null)} />}
+    {deletingConversation && <ConfirmDialog
+      eyebrow="DELETE CONVERSATION"
+      title={`删除${deletingConversation.type === 'group' ? '群聊' : '会话'}？`}
+      description="此操作不可撤销，历史消息、执行记录及相关上下文都会被移除。"
+      targetLabel={deletingConversation.title}
+      targetDescription="请确认你要删除的是这条会话。"
+      confirmLabel="确认删除"
+      busy={deletingConversationId === deletingConversation.id}
+      busyLabel="删除中…"
+      onClose={() => { if (deletingConversationId === null) setDeletingConversation(null); }}
+      onConfirm={() => { void deleteConversation(deletingConversation); }}
+    />}
     {runDetails && <RunDetails details={runDetails} apiBase={API_BASE} onClose={() => setRunDetails(null)} onGenerateCandidates={runId => { void generateMemoryCandidates(runId); }} generatingCandidates={generatingCandidates} />}
     {showMemories && <MemoryPanel workspaceId={workspaceId} onClose={() => setShowMemories(false)} onOpenRun={runId => { setShowMemories(false); void openRunDetails(runId); }} />}
     {showPreferences && <PreferencePanel workspaceId={workspaceId} onClose={() => setShowPreferences(false)} onOpenRun={runId => { setShowPreferences(false); void openRunDetails(runId); }} />}
