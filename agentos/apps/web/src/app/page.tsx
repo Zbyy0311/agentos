@@ -54,7 +54,7 @@ export default function Home() {
       <section className="signal-panel ui-panel-raised rounded-2xl border p-4 sm:p-6">
         <div className="signal-panel-heading mb-4 flex flex-col gap-1 px-1 pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="signal-section-label mb-2">WORKSPACES</div>
+            <div className="signal-section-label mb-2">工作区</div>
             <h2 className="text-lg font-semibold ui-text">工作区</h2>
             <p className="mt-1 text-xs ui-muted">打开一个工作区，继续上次的协作上下文。</p>
           </div>

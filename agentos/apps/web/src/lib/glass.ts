@@ -51,7 +51,11 @@ export function glassOptionsFor(
     tintTone: theme === 'dark' ? 'dark' : 'light',
     frost: spec.frost,
     material: { refraction: spec.refraction },
+    fallback: 'css',
+    live: 'auto',
     maxDpr: 2,
+    respectReducedTransparency: true,
+    zIndex: -1,
     ...extra,
   };
 }

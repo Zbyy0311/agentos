@@ -38,6 +38,7 @@ import { selectActiveRunExecutions } from '@/lib/runtimeSelection';
 import { collapseStreamingExecutionEvents } from '@/lib/executionTimeline';
 import { upsertRunStep } from '@/lib/runSteps';
 import { indexPresence } from '@/lib/agentPresence';
+import { mergeRuntimeEvent, projectRuntimeResult, type RuntimeResultProjection } from '@/lib/runtimeProjection';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
 type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
@@ -45,7 +46,7 @@ type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; r
 type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
 type ResizePanel = WorkspaceLayoutPanel;
 type OverlayPanel = WorkspaceLayoutPanel | null;
-type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; lastProposed?: number; cleanup: () => void };
+type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; startPreferences: WorkspaceLayoutPreferences; lastProposed?: number; cleanup: () => void };
 
 const PANEL_RESIZE_HANDLE_WIDTH = WORKSPACE_LAYOUT_WIDTHS.handle;
 
@@ -103,6 +104,8 @@ export default function WorkspacePage() {
   const [activeRuntimeEvents, setActiveRuntimeEvents] = useState<AgentEvent[]>([]);
   const [activeRunSteps, setActiveRunSteps] = useState<RunStep[]>([]);
   const [activeArtifacts, setActiveArtifacts] = useState<RuntimeArtifact[]>([]);
+  const [activeRuntimeResult, setActiveRuntimeResult] = useState<RuntimeResultProjection | null>(null);
+  const [conversationRuns, setConversationRuns] = useState<AgentRun[]>([]);
   const [activeStatus, setActiveStatus] = useState<ExecutionStatus>();
   const [activeStartedAt, setActiveStartedAt] = useState<string>();
   const [activeRunId, setActiveRunId] = useState<string>();
@@ -163,6 +166,7 @@ export default function WorkspacePage() {
   const pendingQueueRef = useRef<string[]>([]);
   const drainingQueueRef = useRef(false);
   const activeResizeRef = useRef<ActivePanelResize | null>(null);
+  const runDetailsCacheRef = useRef(new Map<string, Promise<AgentRunDetails>>());
   const toastIdRef = useRef(0);
   const typewriterRef = useRef(new TypewriterQueue());
 
@@ -213,6 +217,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!workspaceId || !layoutReady || layoutStorageWorkspaceRef.current !== workspaceId) return;
+    if (activeResizeRef.current) return;
     try {
       window.localStorage.setItem(workspaceLayoutStorageKey(workspaceId), JSON.stringify(layoutPreferences));
     } catch {
@@ -251,6 +256,20 @@ export default function WorkspacePage() {
     pushToast('error', message || fallback);
   }, [pushToast]);
 
+  const loadRunDetails = useCallback((runId: string): Promise<AgentRunDetails> => {
+    if (!workspaceId) return Promise.reject(new Error('Workspace is unavailable'));
+    const cacheKey = `${workspaceId}:${runId}`;
+    const cached = runDetailsCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const pending = request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${runId}`)
+      .catch(error => {
+        runDetailsCacheRef.current.delete(cacheKey);
+        throw error;
+      });
+    runDetailsCacheRef.current.set(cacheKey, pending);
+    return pending;
+  }, [request, workspaceId]);
+
   const getPanelWidth = useCallback((panel: ResizePanel) => {
     if (panel === 'workspace') return effectiveLayout.workspaceMode === 'compact' ? WORKSPACE_LAYOUT_WIDTHS.compactRail : layoutPreferences.workspaceWidth;
     return panel === 'history' ? layoutPreferences.historyWidth : layoutPreferences.inspectorWidth;
@@ -283,7 +302,7 @@ export default function WorkspacePage() {
     stopResize();
 
     const handle = event.currentTarget;
-    const activeResize: ActivePanelResize = { panel, startX: event.clientX, startWidth: getPanelWidth(panel), cleanup: () => {} };
+    const activeResize: ActivePanelResize = { panel, startX: event.clientX, startWidth: getPanelWidth(panel), startPreferences: layoutPreferences, cleanup: () => {} };
     const handleMove = (moveEvent: globalThis.PointerEvent) => {
       const layout = layoutRef.current;
       if (!layout) return;
@@ -309,8 +328,11 @@ export default function WorkspacePage() {
         return { ...next, inspectorWidth: nextWidth };
       });
     };
-    const finish = () => {
-      if (activeResize.lastProposed !== undefined && activeResize.lastProposed < panelCollapseThreshold(panel)) {
+    const finish = (cancelled = false) => {
+      if (cancelled) {
+        setLayoutPreferences(activeResize.startPreferences);
+      }
+      if (!cancelled && activeResize.lastProposed !== undefined && activeResize.lastProposed < panelCollapseThreshold(panel)) {
         updateLayoutPreferences(current => {
           if (panel === 'workspace') return { ...current, workspaceMode: 'compact', workspaceWidth: activeResize.startWidth, focusMode: false, focusRestore: undefined };
           if (panel === 'history') return { ...current, historyOpen: false, historyWidth: activeResize.startWidth, focusMode: false, focusRestore: undefined };
@@ -318,14 +340,16 @@ export default function WorkspacePage() {
         });
       }
       window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleCancel);
       if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
       if (activeResizeRef.current === activeResize) activeResizeRef.current = null;
       document.body.classList.remove('resizing-panels');
     };
 
-    activeResize.cleanup = finish;
+    const handleUp = () => finish(false);
+    const handleCancel = () => finish(true);
+    activeResize.cleanup = handleCancel;
     activeResizeRef.current = activeResize;
     try {
       handle.setPointerCapture(event.pointerId);
@@ -334,9 +358,9 @@ export default function WorkspacePage() {
     }
     document.body.classList.add('resizing-panels');
     window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', finish);
-    window.addEventListener('pointercancel', finish);
-  }, [effectiveLayout.handleCount, getPanelWidth, otherDockedPanelWidth, stopResize, updateLayoutPreferences]);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleCancel);
+  }, [effectiveLayout.handleCount, getPanelWidth, layoutPreferences, otherDockedPanelWidth, stopResize, updateLayoutPreferences]);
 
   const handleResizeKeyDown = useCallback((panel: ResizePanel, event: ReactKeyboardEvent<HTMLDivElement>) => {
     const range = panelWidthRange(panel);
@@ -448,11 +472,12 @@ export default function WorkspacePage() {
       request<{ executions: Array<AgentExecution & { events: ExecutionEvent[] }> }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/executions`),
       request<{ runs: AgentRun[] }>(`/api/workspaces/${workspaceId}/runs?conversationId=${encodeURIComponent(conversationId)}`),
     ]);
-    const latestRun = runResult.runs[0];
-    const latestRunDetails = latestRun
-      ? await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${latestRun.id}`)
-      : undefined;
     const activeRun = selectActiveRunExecutions(executionResult.executions, runResult.runs);
+    const latestRun = runResult.runs[0];
+    const latestRunDetails = latestRun ? await loadRunDetails(latestRun.id) : undefined;
+    const runtimeResult = latestRunDetails
+      ? projectRuntimeResult(latestRunDetails, { workspaceId, conversationId, runId: activeRun.runId ?? latestRun?.id })
+      : undefined;
     setMessages(messageResult.messages.map(message => ({
       ...message,
       attachments: message.attachments?.map(attachment => ({
@@ -460,6 +485,7 @@ export default function WorkspacePage() {
         url: resolveAttachmentUrl(API_BASE, attachment.url),
       })),
     })));
+    setConversationRuns(runResult.runs);
     setExecutions(activeRun.executions);
     const agentNames = new Map(agents.map(agent => [agent.id, agent.name]));
     const visibleEvents = activeRun.executions
@@ -470,21 +496,23 @@ export default function WorkspacePage() {
       })))
       .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
     setActiveEvents(collapseStreamingExecutionEvents(visibleEvents));
-    setActiveRuntimeEvents((latestRunDetails?.events ?? []).filter(event => event.executionId && activeRun.executions.some(execution => execution.id === event.executionId)));
-    setActiveRunSteps(latestRunDetails?.steps ?? []);
+    const activeExecutionIds = new Set(activeRun.executions.map(execution => execution.id));
+    setActiveRuntimeEvents((runtimeResult?.events ?? []).filter(event => !event.executionId || activeExecutionIds.has(event.executionId)));
+    setActiveRunSteps(runtimeResult?.steps ?? []);
     setActiveStatus(activeRun.executions[0]?.status);
     setActiveStartedAt(activeRun.executions[0]?.startedAt);
     setActiveRunId(activeRun.runId);
     setActiveWaitingQuestion(runResult.runs[0]?.waitingQuestion);
-    setActiveArtifacts(latestRunDetails?.artifacts ?? []);
-  }, [API_BASE, agents, request, workspaceId]);
+    setActiveArtifacts(runtimeResult?.artifacts ?? []);
+    setActiveRuntimeResult(runtimeResult ?? null);
+  }, [API_BASE, agents, loadRunDetails, request, workspaceId]);
 
   const loadConversations = useCallback(async (agentId: string) => {
     if (!workspaceId) return;
     const result = await request<{ conversations: Conversation[] }>(`/api/workspaces/${workspaceId}/conversations?agentId=${encodeURIComponent(agentId)}`);
     setConversations(result.conversations);
     setSelectedDirectConversationId(result.conversations[0]?.id ?? null);
-    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
   }, [request, workspaceId]);
 
   const loadGroups = useCallback(async () => {
@@ -559,7 +587,7 @@ export default function WorkspacePage() {
     setConversations(current => [conversation, ...current.filter(item => item.id !== conversation.id)]);
     setSelectedDirectConversationId(conversation.id);
     setSelectedGroupId(null);
-    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     return conversation;
   }, [composerModel, composerThinkingEffort, persistConversationSettings, request, selectedAgent, workspaceId]);
 
@@ -576,13 +604,15 @@ export default function WorkspacePage() {
 
   const openRunDetails = useCallback(async (runId: string) => {
     if (!workspaceId) return;
+    const requestedConversationId = activeConversationId;
     try {
-      const details = await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${runId}`);
+      const details = await loadRunDetails(runId);
+      if (!requestedConversationId || activeConversationId !== requestedConversationId || !projectRuntimeResult(details, { workspaceId, conversationId: requestedConversationId, runId })) return;
       setRunDetails(details);
     } catch (detailsError) {
       notifyError(detailsError, '加载运行详情失败');
     }
-  }, [notifyError, request, workspaceId]);
+  }, [activeConversationId, loadRunDetails, notifyError, workspaceId]);
 
   const generateMemoryCandidates = useCallback(async (runId: string) => {
     if (!workspaceId) return;
@@ -640,6 +670,7 @@ export default function WorkspacePage() {
       setActiveRuntimeEvents([]);
       setActiveRunSteps([]);
       setActiveArtifacts([]);
+      setActiveRuntimeResult(null);
       setActiveStatus('queued');
       setActiveStartedAt(undefined);
       setActiveWaitingQuestion(undefined);
@@ -675,7 +706,9 @@ export default function WorkspacePage() {
           setActiveEvents(current => collapseStreamingExecutionEvents([...current, { id: time + '-' + current.length, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), ...(data.agentId ? { agentId: data.agentId } : {}), ...(data.agentName ? { agentName: data.agentName } : {}), createdAt: time }]));
           if (data.status === 'streaming_response' && data.content) typewriterRef.current.enqueue(data.content);
         } else if (event.event === 'runtime' && data.runtime) {
-          setActiveRuntimeEvents(current => current.some(item => item.eventId === data.runtime!.eventId) ? current : [...current, data.runtime!]);
+          if (streamRunIdRef.current && data.runtime.runId !== streamRunIdRef.current) return;
+          if (!streamRunIdRef.current) streamRunIdRef.current = data.runtime.runId;
+          setActiveRuntimeEvents(current => mergeRuntimeEvent(current, data.runtime!, streamRunIdRef.current!));
           const payload = data.runtime.payload as Record<string, unknown>;
           const runtimeLabel = typeof payload.toolName === 'string' ? payload.toolName : data.runtime.type;
           const runtimeSummary = typeof payload.summary === 'string' ? payload.summary : typeof payload.text === 'string' ? payload.text : undefined;
@@ -689,6 +722,7 @@ export default function WorkspacePage() {
             createdAt: data.runtime!.timestamp,
           }]));
         } else if (event.event === 'run.step' && data.runStep) {
+          if (streamRunIdRef.current && data.runStep.runId !== streamRunIdRef.current) return;
           setActiveRunSteps(current => upsertRunStep(current, data.runStep!));
         } else if (event.event === 'message' && data.message) {
           typewriterRef.current.flush();
@@ -827,7 +861,7 @@ export default function WorkspacePage() {
       const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations`, { method: 'POST', body: { type: 'group', ...input } });
       setGroups(current => [result.conversation, ...current]);
       setSelectedGroupId(result.conversation.id); setSelectedAgentId(null);
-      setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
+      setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
     } catch (groupError) { notifyError(groupError, '创建群聊失败'); }
     finally { setSavingGroup(false); }
   }, [notifyError, request, workspaceId]);
@@ -873,10 +907,10 @@ export default function WorkspacePage() {
       const nextId = conversation.type === 'group' ? getNextConversationId(groups, conversation.id) : getNextConversationId(conversations, conversation.id);
       if (conversation.type === 'group') {
         setGroups(current => current.filter(group => group.id !== conversation.id));
-        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
       } else {
         setConversations(current => current.filter(item => item.id !== conversation.id));
-        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
       }
       setContextMenu(null); setDeletingConversation(null); pushToast('success', '会话已删除');
     } catch (deleteError) { notifyError(deleteError, '删除会话失败'); }
@@ -887,7 +921,7 @@ export default function WorkspacePage() {
     const group = groups.find(item => item.id === groupId);
     if (!group) return;
     if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
-    setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     setOverlayPanel(null);
   }, [groups, selectedGroupId]);
 
@@ -942,7 +976,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     const handleLayoutShortcut = (event: KeyboardEvent) => {
-      if (event.isComposing || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
+      if (event.isComposing || event.repeat || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
@@ -969,7 +1003,7 @@ export default function WorkspacePage() {
 
   const renderAgentPanel = (compact: boolean, panelWidth?: number) => <AgentList panelWidth={panelWidth} compact={compact} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={selectAgent} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId ?? '')}/runtime`)} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} onOpenMemoryReview={() => setShowMemoryReview(true)} />;
   const renderHistoryPanel = (panelWidth?: number) => <ConversationHistory panelWidth={panelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={setSelectedDirectConversationId} onContextMenu={openContextMenu} />;
-  const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
+  const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} runHistory={conversationRuns} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
@@ -981,7 +1015,7 @@ export default function WorkspacePage() {
       {renderHistoryPanel(layoutPreferences.historyWidth)}
       <PanelResizeHandle panel="history" width={layoutPreferences.historyWidth} onPointerDown={handleResizePointerDown} onKeyDown={handleResizeKeyDown} />
     </>}
-    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} layoutControls={{ workspaceMode: effectiveLayout.workspaceMode, historyAvailable: !selectedGroupId, historyVisible: effectiveLayout.historyVisible, inspectorVisible: effectiveLayout.inspectorVisible, focusMode: layoutPreferences.focusMode, onToggleWorkspace: () => toggleLayoutPanel('workspace'), onToggleHistory: () => toggleLayoutPanel('history'), onToggleInspector: () => toggleLayoutPanel('inspector'), onToggleFocus: toggleFocusMode }} />
+    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} runtimeResult={activeRuntimeResult ?? undefined} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} runIntent={runIntent} onRunIntentChange={setRunIntent} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onOpenRuntimeDetails={runId => { void openRunDetails(runId); }} layoutControls={{ workspaceMode: effectiveLayout.workspaceMode, historyAvailable: !selectedGroupId, historyVisible: effectiveLayout.historyVisible, inspectorVisible: effectiveLayout.inspectorVisible, focusMode: layoutPreferences.focusMode, onToggleWorkspace: () => toggleLayoutPanel('workspace'), onToggleHistory: () => toggleLayoutPanel('history'), onToggleInspector: () => toggleLayoutPanel('inspector'), onToggleFocus: toggleFocusMode }} />
     {effectiveLayout.inspectorVisible && <>
       <PanelResizeHandle panel="inspector" width={layoutPreferences.inspectorWidth} onPointerDown={handleResizePointerDown} onKeyDown={handleResizeKeyDown} />
       {renderInspectorPanel(layoutPreferences.inspectorWidth)}

@@ -54,7 +54,7 @@ function CodeBlockSurface({ language, value }: { language?: string; value: strin
       <span>{language ?? 'code'}</span>
       <button type="button" aria-pressed={wrapped} aria-label={wrapped ? '关闭代码换行' : '开启代码换行'} onClick={() => setWrapped(current => !current)} className="ui-button-ghost rounded px-1.5 py-0.5">{wrapped ? '滚动' : '换行'}</button>
     </div>
-    <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
+    <SyntaxHighlighter language={language} PreTag="div" wrapLongLines={wrapped} customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', minWidth: 0, overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
   </div>;
 }
 

@@ -1,12 +1,12 @@
 import type { AgentPresence, AgentPresenceState } from '@agentos/shared';
 
 export const PRESENCE_LABELS: Record<AgentPresenceState, string> = {
-  disabled: 'Disabled',
-  idle: 'Idle',
-  queued: 'Queued',
-  working: 'Working',
-  waiting: 'Waiting',
-  failed: 'Failed',
+  disabled: '已禁用',
+  idle: '空闲',
+  queued: '排队中',
+  working: '执行中',
+  waiting: '等待补充',
+  failed: '失败',
 };
 
 export const PRESENCE_COLORS: Record<AgentPresenceState, string> = {
@@ -21,4 +21,3 @@ export const PRESENCE_COLORS: Record<AgentPresenceState, string> = {
 export function indexPresence(items: readonly AgentPresence[]): Map<string, AgentPresence> {
   return new Map(items.map(item => [item.agentId, item]));
 }
-

@@ -83,12 +83,18 @@ test('group layouts do not consume a conversation column but keep its preference
 });
 
 test('normalizes malformed local layout state and keeps the storage key versioned', () => {
-  const normalized = normalizeWorkspaceLayout({ workspaceWidth: 9999, historyOpen: 'yes', inspectorWidth: 1, focusMode: true });
+  const normalized = normalizeWorkspaceLayout({ version: 2, workspaceWidth: 9999, historyOpen: 'yes', inspectorWidth: 1, focusMode: true });
   assert.equal(normalized.workspaceWidth, 300);
   assert.equal(normalized.historyOpen, true);
   assert.equal(normalized.inspectorWidth, 240);
-  assert.equal(normalized.focusMode, true);
+  assert.equal(normalized.focusMode, false);
   assert.equal(workspaceLayoutStorageKey('ws/a'), 'agentos:workspace-layout:v2:ws/a');
+});
+
+test('rejects stale versions and malformed focus snapshots without trapping the layout', () => {
+  assert.deepEqual(normalizeWorkspaceLayout({ version: 1, workspaceMode: 'compact' }), DEFAULT_WORKSPACE_LAYOUT);
+  assert.equal(normalizeWorkspaceLayout({ version: 2, focusMode: true, focusRestore: 'broken' }).focusMode, false);
+  assert.equal(normalizeWorkspaceLayout({ version: 2, focusMode: true, focusRestore: { workspaceWidth: 220 } }).focusMode, true);
 });
 
 test('uses independent collapse thresholds for the three user-controlled panels', () => {

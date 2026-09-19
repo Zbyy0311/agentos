@@ -25,4 +25,8 @@ test('GLASS-03 dpr is capped and extras merge through', () => {
   const options = glassOptionsFor('toast', 'dark', { targets: '.toast-item' });
   assert.equal(options.maxDpr, 2);
   assert.equal(options.targets, '.toast-item');
+  assert.equal(options.fallback, 'css');
+  assert.equal(options.live, 'auto');
+  assert.equal(options.respectReducedTransparency, true);
+  assert.equal(options.zIndex, -1);
 });

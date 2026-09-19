@@ -15,7 +15,7 @@ interface ConversationHistoryProps {
 export function ConversationHistory({ title, panelWidth, conversations, selectedConversationId, createLabel, onCreate, onSelect, onContextMenu }: ConversationHistoryProps) {
   return <aside data-signal-history data-layout-panel="history" className="history-sidebar signal-history ui-panel flex w-64 shrink-0 flex-col border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-4 px-2">
-      <div className="signal-section-label">CONVERSATIONS</div>
+      <div className="signal-section-label">会话列表</div>
       <div className="mt-2 truncate text-sm font-semibold ui-text">{title}</div>
     </div>
     <button type="button" onClick={onCreate} className="ui-button-primary mb-5 flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium"><span className="text-lg leading-none">+</span>{createLabel}</button>

@@ -90,7 +90,9 @@ function normalizeRestoredLayout(value: unknown): Omit<WorkspaceLayoutPreference
 export function normalizeWorkspaceLayout(value: unknown): WorkspaceLayoutPreferences {
   if (!value || typeof value !== 'object') return DEFAULT_LAYOUT;
   const input = value as Record<string, unknown>;
+  if (input.version !== WORKSPACE_LAYOUT_STORAGE_VERSION) return DEFAULT_LAYOUT;
   const restored = normalizeRestoredLayout(input.focusRestore);
+  const requestedFocusMode = booleanValue(input.focusMode, DEFAULT_LAYOUT.focusMode);
   return {
     version: WORKSPACE_LAYOUT_STORAGE_VERSION,
     workspaceMode: modeValue(input.workspaceMode, DEFAULT_LAYOUT.workspaceMode),
@@ -99,7 +101,10 @@ export function normalizeWorkspaceLayout(value: unknown): WorkspaceLayoutPrefere
     historyWidth: clamp(finiteNumber(input.historyWidth, DEFAULT_LAYOUT.historyWidth), WORKSPACE_LAYOUT_WIDTHS.history.min, WORKSPACE_LAYOUT_WIDTHS.history.max),
     inspectorOpen: booleanValue(input.inspectorOpen, DEFAULT_LAYOUT.inspectorOpen),
     inspectorWidth: clamp(finiteNumber(input.inspectorWidth, DEFAULT_LAYOUT.inspectorWidth), WORKSPACE_LAYOUT_WIDTHS.inspector.min, WORKSPACE_LAYOUT_WIDTHS.inspector.max),
-    focusMode: booleanValue(input.focusMode, DEFAULT_LAYOUT.focusMode),
+    // A focus snapshot is the only safe way to leave focus mode. If storage
+    // lost or corrupted it, fail open to the normal layout instead of
+    // trapping the user in a mode with hidden panels.
+    focusMode: requestedFocusMode && restored ? true : false,
     ...(restored ? { focusRestore: restored } : {}),
   };
 }
