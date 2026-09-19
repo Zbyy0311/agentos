@@ -86,7 +86,7 @@ export function RunModeSelector({ value, disabled, onChange }: RunModeSelectorPr
   };
 
   return <div ref={rootRef} className="relative flex min-w-0 items-center gap-1.5 text-xs">
-    <span className="shrink-0 text-[11px] ui-dim">模式</span>
+    <span className="picker-label shrink-0 text-[11px] ui-dim">模式</span>
     <button
       ref={triggerRef}
       type="button"

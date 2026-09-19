@@ -54,7 +54,7 @@ function Picker({ label, value, displayValue, options, disabled, widthClass, ari
 
   return <div ref={rootRef} className="relative min-w-0">
     <button type="button" aria-label={ariaLabel} aria-haspopup="listbox" aria-expanded={open} disabled={disabled || options.length === 0} onClick={() => setOpen(current => !current)} className="ui-button-ghost flex max-w-full items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-left text-xs focus-visible:border-[var(--app-accent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50">
-      <span className="shrink-0 text-[11px] ui-dim">{label}</span>
+      <span className="picker-label shrink-0 text-[11px] ui-dim">{label}</span>
       <span className={`truncate font-medium ui-text ${widthClass}`}>{displayValue}</span>
       <span className={`shrink-0 text-[11px] ui-dim transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
     </button>
@@ -99,7 +99,7 @@ function EffortPicker({ value, efforts, disabled, onChange }: EffortPickerProps)
 
   return <div ref={rootRef} className="relative min-w-0">
     <button type="button" aria-label="选择思考强度" aria-haspopup="dialog" aria-expanded={open} disabled={disabled || efforts.length === 0} onClick={() => setOpen(current => !current)} className="ui-button-ghost flex max-w-full items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1.5 text-left text-xs focus-visible:border-[var(--app-accent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50">
-      <span className="shrink-0 text-[11px] ui-dim">思考</span><span className="font-medium ui-text">{currentLabel}</span><span className={`shrink-0 text-[11px] ui-dim transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
+      <span className="picker-label shrink-0 text-[11px] ui-dim">思考</span><span className="font-medium ui-text">{currentLabel}</span><span className={`shrink-0 text-[11px] ui-dim transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
     </button>
     {open && <div role="dialog" aria-label="思考强度设置" className="effort-popover ui-panel-raised absolute bottom-full right-0 z-50 mb-2 rounded-xl border p-3 shadow-[var(--app-shadow)]">
       <div className="flex items-center justify-between gap-3"><span className="text-sm font-semibold ui-text">思考强度 · {currentLabel}</span><span className="text-[10px] ui-dim">影响速度与深度</span></div>

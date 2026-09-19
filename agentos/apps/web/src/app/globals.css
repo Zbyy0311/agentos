@@ -1114,6 +1114,10 @@ body.resizing-panels {
 }
 
 @container (max-width: 460px) {
+  .signal-composer .picker-label {
+    display: none;
+  }
+
   .signal-composer .composer-action-row {
     flex-wrap: wrap;
     row-gap: 0.5rem;

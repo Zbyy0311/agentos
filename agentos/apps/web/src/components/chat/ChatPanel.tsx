@@ -250,7 +250,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
   useEffect(() => {
     if (!headerEl) return undefined;
-    const measure = () => setChromeTop(headerEl.offsetHeight);
+    const measure = () => { const host = headerEl.closest('[data-signal-chat]'); const hostTop = host?.getBoundingClientRect().top ?? 0; setChromeTop(headerEl.getBoundingClientRect().bottom - hostTop); };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(headerEl);
@@ -259,7 +259,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
   useEffect(() => {
     if (!chromeEl) return undefined;
-    const measure = () => setChromeBottom(chromeEl.offsetHeight);
+    const measure = () => { const host = chromeEl.closest('[data-signal-chat]'); const hostBottom = host?.getBoundingClientRect().bottom ?? 0; setChromeBottom(hostBottom - chromeEl.getBoundingClientRect().top); };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(chromeEl);
@@ -319,7 +319,7 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
   return <main data-signal-chat className="signal-chat flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
     <div className="ambient-backdrop" aria-hidden="true" />
-    <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-0 top-0 z-10 flex min-h-[4.75rem] items-center justify-between border-b ui-border px-5 py-3 sm:px-7">
+    <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-3 top-3 z-10 flex min-h-[4.25rem] items-center justify-between rounded-2xl border ui-border px-5 py-3">
       <div className="min-w-0"><div className="mb-1 flex items-center gap-2 signal-section-label"><span className={`h-1.5 w-1.5 rounded-full ${sending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} />ACTIVE SESSION</div><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1>{target.kind !== 'none' && <p className="mt-1 text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
       <div className="flex items-center gap-3">{isGroup && onEditGroup && <button type="button" onClick={onEditGroup} className="ui-button-ghost rounded-lg px-2 py-1 text-xs">编辑群聊</button>}{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
     </header>
