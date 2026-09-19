@@ -327,7 +327,6 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
     composerResizeRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: composerHeight };
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'auto';
   };
 
   const moveComposerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -352,7 +351,6 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
     composerResizeRef.current = null;
     composerResizingRef.current = false;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (scrollRef.current) scrollRef.current.style.scrollBehavior = '';
   };
 
   const handleComposerResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
