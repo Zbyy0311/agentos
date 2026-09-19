@@ -82,7 +82,7 @@ export function GroupEditor({ agents, members, title: initialTitle, dispatchMode
       <div role="dialog" aria-modal="true" aria-labelledby="group-editor-title" className="ui-panel-raised max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
         <div className="ui-modal-sticky-header flex items-start justify-between gap-4">
           <div><p className="text-xs font-medium tracking-[0.16em] ui-accent">GROUP EDITOR</p><h2 id="group-editor-title" className="mt-2 text-lg font-semibold ui-text">编辑群聊</h2><p className="mt-1 text-sm ui-muted">群聊名称、调度策略和成员参数在这里统一管理。</p></div>
-          <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button>
+          <button type="button" onClick={onClose} className="ui-button-ghost ui-button-ghost-danger rounded-lg px-2 py-1 text-sm">关闭</button>
         </div>
         <label className="mt-5 block max-w-md text-sm ui-text-soft" htmlFor="group-editor-group-title">群聊名称<input id="group-editor-group-title" aria-label="群聊名称" value={title} maxLength={80} onChange={event => setTitle(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2 text-sm outline-none" /></label>
         <div className="mt-4 max-w-md"><CompactSelect label="调度策略" value={dispatchMode} options={dispatchOptions} onChange={value => setDispatchMode(value as GroupDispatchMode)} /></div>

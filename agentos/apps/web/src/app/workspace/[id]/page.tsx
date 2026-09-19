@@ -760,10 +760,9 @@ export default function WorkspacePage() {
     if (!workspaceId || !editingGroup) return;
     setSavingGroupSettings(true);
     try {
-      const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${editingGroup.id}`, { method: 'PATCH', body: { ...input, expectedSettingsVersion: editingGroup.settingsVersion ?? 1 } });
+      const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations/${editingGroup.id}`, { method: 'PATCH', body: { ...input, expectedSettingsVersion: editingGroup.settingsVersion ?? 1 } });
       setGroups(current => current.map(group => group.id === result.conversation.id ? result.conversation : group));
-      setEditingGroup(result.conversation);
-      setEditingGroupMembers(result.members);
+      setEditingGroup(null);
       pushToast('success', '群聊设置已保存');
     } catch (saveError) { notifyError(saveError, '保存群聊策略失败'); }
     finally { setSavingGroupSettings(false); }

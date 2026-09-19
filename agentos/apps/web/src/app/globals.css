@@ -679,6 +679,12 @@ input:focus-visible {
   color: var(--app-text);
 }
 
+.ui-button-ghost-danger:hover,
+.ui-button-ghost-danger:focus-visible {
+  background: var(--app-danger);
+  color: #fffaf4;
+}
+
 .ui-input {
   background: var(--app-bg);
   border: 1px solid var(--app-border);
