@@ -1074,7 +1074,8 @@ body.resizing-panels {
   .workspace-sidebar .workspace-group-copy,
   .workspace-sidebar .workspace-knowledge-label,
   .workspace-sidebar .workspace-return-label,
-  .workspace-sidebar .workspace-theme-label {
+  .workspace-sidebar .workspace-theme-label,
+  .workspace-sidebar .workspace-runtime-button {
     display: none;
   }
 

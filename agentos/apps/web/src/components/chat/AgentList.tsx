@@ -37,7 +37,7 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
       <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
       <div className="workspace-copy mt-1 text-xs leading-5 ui-muted">当前工作区的协作成员</div>
       <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
-      {onOpenRuntime === undefined ? null : <button type="button" data-agentos="open-runtime-workbench" onClick={onOpenRuntime} className="mt-2 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs ui-button-ghost hover:border-[var(--app-accent)]">⚡ 运行时工作台</button>}
+      {onOpenRuntime === undefined ? null : <button type="button" data-agentos="open-runtime-workbench" onClick={onOpenRuntime} className="workspace-runtime-button mt-2 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs ui-button-ghost hover:border-[var(--app-accent)]">⚡ 运行时工作台</button>}
     </div>
 
     <div className="workspace-nav-label signal-section-label mb-2 px-2">AGENTS</div>
