@@ -27,7 +27,9 @@ export default function Home() {
     <div className="ambient-backdrop" aria-hidden="true" />
     <header ref={headerGlassRef} className="signal-header ui-panel sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 sm:px-8">
       <div className="flex items-center gap-3">
-        <span className="signal-mark grid h-9 w-9 place-items-center rounded-xl bg-[var(--app-accent)] text-sm font-bold text-white">A/</span>
+        <span className="signal-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--app-accent)] p-1.5">
+          <img src="/agentos-mark.png" alt="" aria-hidden="true" className="h-full w-full object-contain brightness-0 invert" />
+        </span>
         <div>
           <div className="text-base font-semibold tracking-tight ui-text">AgentOS</div>
           <div className="text-[11px] ui-dim">本地多 Agent 工作台</div>

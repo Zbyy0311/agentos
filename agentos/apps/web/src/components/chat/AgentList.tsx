@@ -29,7 +29,9 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
   return <aside data-signal-agent-rail className="workspace-sidebar signal-rail ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="signal-mark grid h-8 w-8 place-items-center rounded-lg bg-[var(--app-accent)] text-[11px] font-bold text-white">A/</div>
+        <div className="signal-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--app-accent)] p-1.5">
+          <img src="/agentos-mark.png" alt="" aria-hidden="true" className="h-full w-full object-contain brightness-0 invert" />
+        </div>
         <div className="workspace-theme-label"><ThemeToggle /></div>
       </div>
       <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
