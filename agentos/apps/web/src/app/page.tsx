@@ -5,6 +5,7 @@ import { useWorkspace } from '@/lib/useWorkspace';
 import { WorkspaceList } from '@/components/workspace/WorkspaceList';
 import { NewWorkspaceModal } from '@/components/workspace/NewWorkspaceModal';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
   const { workspaces, loading, error, createWorkspace, importWorkspace, removeWorkspace } = useWorkspace();
   const [showModal, setShowModal] = useState(false);
   const [importPath, setImportPath] = useState('');
+  const headerGlassRef = useLiquidGlass<HTMLElement>('page-header');
 
   const handleOpen = (id: string) => router.push(`/workspace/${id}`);
 
@@ -22,7 +24,8 @@ export default function Home() {
   };
 
   return <div data-signal-home className="app-shell signal-page min-h-screen">
-    <header className="signal-header ui-panel flex items-center justify-between border-b px-6 py-4 sm:px-8">
+    <div className="ambient-backdrop" aria-hidden="true" />
+    <header ref={headerGlassRef} className="signal-header ui-panel sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 sm:px-8">
       <div className="flex items-center gap-3">
         <span className="signal-mark grid h-9 w-9 place-items-center rounded-xl bg-[var(--app-accent)] text-sm font-bold text-white">A/</span>
         <div>

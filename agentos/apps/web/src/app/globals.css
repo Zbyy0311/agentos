@@ -24,6 +24,7 @@
   --app-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
   --app-grid-line: rgba(255, 255, 255, 0.035);
   --app-glow: rgba(210, 103, 59, 0.16);
+  --ambient-glow-secondary: rgba(94, 138, 130, 0.12);
 }
 
 html[data-theme='light'] {
@@ -48,6 +49,7 @@ html[data-theme='light'] {
   --app-shadow: 0 18px 45px rgba(45, 42, 35, 0.14);
   --app-grid-line: rgba(32, 39, 41, 0.055);
   --app-glow: rgba(180, 82, 50, 0.1);
+  --ambient-glow-secondary: rgba(117, 111, 77, 0.1);
 }
 
 * {
@@ -114,15 +116,21 @@ input:focus-visible {
   background: var(--app-bg);
 }
 
-.signal-page::before {
+/* Liquid glass ambient field. It must be a real element with a real
+   background: the glass auto-backdrop repaint cannot capture pseudo-elements,
+   so the grid/glow layer lives here instead of on .signal-page::before. */
+.ambient-backdrop {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px), linear-gradient(var(--app-grid-line) 1px, transparent 1px), radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem);
-  background-size: 48px 48px, 48px 48px, auto;
-  content: '';
-  opacity: 0.6;
   pointer-events: none;
+  background-image:
+    radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem),
+    radial-gradient(circle at 14% 82%, var(--ambient-glow-secondary), transparent 32rem),
+    linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--app-grid-line) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  opacity: 0.65;
 }
 
 .signal-header {
@@ -338,6 +346,45 @@ input:focus-visible {
 
 .signal-composer {
   box-shadow: 0 18px 50px color-mix(in srgb, #000 25%, transparent);
+}
+
+.signal-chat {
+  position: relative;
+  isolation: isolate;
+}
+
+.signal-chat-chrome {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+}
+
+/* Liquid glass mode: the element's own fill steps back so the refracted
+   backdrop reads through. Without WebGL2 (fallback) the pre-glass solid or
+   blurred look stays in place, so no fallback-specific rules are needed. */
+.signal-chat-header[data-liquid-glass='webgl'],
+.signal-header[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface) 22%, transparent);
+  backdrop-filter: none;
+}
+
+.signal-composer[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
+}
+
+.signal-composer-shell:has(.signal-composer[data-liquid-glass='webgl']) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.toast-item[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 28%, transparent);
+}
+
+.glass-dialog[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
 }
 
 .composer-resize-handle {

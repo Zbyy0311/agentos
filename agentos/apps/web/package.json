@@ -12,6 +12,7 @@
   "dependencies": {
     "@agentos/shared": "workspace:*",
     "@tanstack/react-virtual": "^3.13.12",
+    "apple-liquid-glass-webgl": "^2.5.0",
     "next": "^14.2.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
