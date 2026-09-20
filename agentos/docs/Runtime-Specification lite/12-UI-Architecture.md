@@ -149,22 +149,20 @@ Toolbar:
 Width guidance:
 
 ~~~text
-Agents         200 px default, 180–300 px (or 64 px icon rail)
-Conversations  220 px default, 180–320 px (or fully collapsed)
-Main Canvas    remaining width, 640 px desktop target minimum
-Inspector      280 px default, 240–400 px (or fully collapsed)
+Agents         220–300 px
+Conversations  240–320 px
+Main Canvas    minimum 560 px
+Inspector      300–400 px
 ~~~
 
 Modes:
 
 - wide: four columns;
-- standard: Inspector and then Conversations temporarily leave the dock when the Canvas needs space;
-- compact: 64 px Agent rail plus Canvas, with Conversations and Inspector available as sheets;
+- standard: Inspector overlay/collapse;
+- compact: Agent rail plus Canvas, other panels as sheets;
 - narrow mobile productization: deferred.
 
-The Agents rail cannot disappear completely. It can be reduced to its 64 px icon state. Conversations and Inspector can each be fully collapsed independently; their resize handles and widths do not consume layout space while collapsed. The header exposes all three panel toggles, so Focus mode is a convenience preset rather than the only way to reclaim Canvas space. `Ctrl/⌘+B` toggles Conversations and `Ctrl/⌘+Shift+L` toggles Inspector outside editable controls and modal dialogs.
-
-Panel preferences remain client UI state, not Runtime Events. Widths and independent visibility are stored per workspace in browser-local storage. Width pressure may temporarily suppress a docked panel without overwriting the saved preference; a panel can return as an overlay when the current width cannot accommodate it.
+Panel preferences remain UI state, not Runtime Events.
 
 ## 7. Design Tokens
 
