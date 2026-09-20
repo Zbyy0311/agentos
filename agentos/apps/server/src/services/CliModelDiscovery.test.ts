@@ -36,11 +36,12 @@ test('normalizes a model option without exposing unsupported thinking levels', (
   const result = normalizeModelOption({
     id: 'gpt-5.6-luna',
     label: 'GPT-5.6 Luna',
-    thinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+    thinkingEfforts: ['low', 'medium', 'high', 'max', 'xhigh'],
+    defaultThinkingEffort: 'max',
   });
 
-  assert.deepEqual(result.thinkingEfforts, ['auto', 'low', 'medium', 'high']);
-  assert.equal(result.defaultThinkingEffort, 'medium');
+  assert.deepEqual(result.thinkingEfforts, ['auto', 'low', 'medium', 'high', 'max']);
+  assert.equal(result.defaultThinkingEffort, 'max');
 });
 
 test('reads visible Codex models from models_cache.json', async () => {
@@ -93,6 +94,8 @@ test('reads Kimi model aliases from config.toml without reading credentials', as
       'default_model = "kimi-code/kimi-for-coding"',
       '[models."kimi-code/kimi-for-coding"]',
       'display_name = "Kimi For Coding"',
+      'support_efforts = [ "low", "high", "max" ]',
+      'default_effort = "max"',
       '[models."kimi-code/kimi-for-coding-highspeed"]',
       'display_name = "Kimi Highspeed"',
     ].join('\n'), 'utf8');
@@ -107,7 +110,9 @@ test('reads Kimi model aliases from config.toml without reading credentials', as
       'kimi-code/kimi-for-coding',
       'kimi-code/kimi-for-coding-highspeed',
     ]);
-    assert.ok(result.models.every(model => model.thinkingEfforts.length === 1 && model.thinkingEfforts[0] === 'auto'));
+    assert.deepEqual(result.models[0].thinkingEfforts, ['auto', 'low', 'high', 'max']);
+    assert.equal(result.models[0].defaultThinkingEffort, 'max');
+    assert.deepEqual(result.models[1].thinkingEfforts, ['auto']);
   } finally {
     cleanup(root);
   }
@@ -131,6 +136,73 @@ test('reads OpenCode provider models from a JSON config fixture', async () => {
     assert.equal(result.source, 'config');
     assert.deepEqual(result.models.map(model => model.id), ['openai/gpt-5.6', 'kimi/kimi-k2']);
     assert.equal(result.models[0].label, 'GPT-5.6');
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('reads OpenCode JSONC config with comments and trailing commas', async () => {
+  const root = createFixtureRoot();
+  try {
+    const configFile = join(root, 'opencode.json');
+    writeFileSync(configFile, [
+      '{',
+      '  // OpenCode accepts comments in its config.',
+      '  "provider": {',
+      '    "opencodex": {',
+      '      "models": {',
+      '        "gpt-5.6-luna": {',
+      '          "name": "GPT 5.6 Luna",',
+      '          "endpoint": "https://example.test/models/gpt-5.6-luna",',
+      '          "variants": {',
+      '            "max": { "reasoningEffort": "max", },',
+      '          },',
+      '        },',
+      '      },',
+      '    },',
+      '  },',
+      '}',
+    ].join('\n'), 'utf8');
+
+    const result = await new CliModelDiscovery({ env: { AGENTOS_OPENCODE_MODELS_FILE: configFile } }).discover(
+      discoveryInput('opencode', 'opencode'),
+    );
+
+    assert.equal(result.source, 'config');
+    assert.equal(result.models[0].id, 'opencodex/gpt-5.6-luna');
+    assert.equal(result.models[0].label, 'GPT 5.6 Luna');
+    assert.deepEqual(result.models[0].thinkingEfforts, ['auto', 'max']);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('enriches name-only OpenCode config models from verbose CLI variants', async () => {
+  const root = createFixtureRoot();
+  try {
+    const configFile = join(root, 'opencode.json');
+    writeFileSync(configFile, JSON.stringify({
+      provider: { deepseek: { models: { 'deepseek-v4-flash': { name: 'DeepSeek V4 Flash' } } } },
+    }), 'utf8');
+    const result = await new CliModelDiscovery({
+      env: { AGENTOS_OPENCODE_MODELS_FILE: configFile },
+      execFile: async (_command, args) => {
+        if (args.includes('--json')) throw new Error('unknown option --json');
+        if (args.includes('--verbose')) {
+          return {
+            stdout: JSON.stringify({
+              id: 'deepseek-v4-flash', providerID: 'deepseek', name: 'DeepSeek V4 Flash',
+              variants: { high: { reasoningEffort: 'high' }, max: { reasoningEffort: 'max' } },
+            }, null, 2),
+            stderr: '',
+          };
+        }
+        throw new Error('plain listing should not be needed');
+      },
+    }).discover(discoveryInput('opencode', 'opencode'));
+
+    assert.equal(result.source, 'live');
+    assert.deepEqual(result.models[0].thinkingEfforts, ['auto', 'high', 'max']);
   } finally {
     cleanup(root);
   }
@@ -167,6 +239,46 @@ test('reads the plain model listing emitted by OpenCode 1.17', async () => {
 
     assert.equal(result.source, 'live');
     assert.deepEqual(result.models.map(model => model.id), ['opencode/big-pickle', 'kimi-for-coding/k2p6']);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('reads OpenCode verbose model variants as model-specific thinking efforts', async () => {
+  const root = createFixtureRoot();
+  try {
+    const result = await new CliModelDiscovery({
+      env: { AGENTOS_OPENCODE_MODELS_FILE: join(root, 'missing-opencode.json') },
+      execFile: async (_command, args) => {
+        if (args.includes('--json')) throw new Error('unknown option --json');
+        if (args.includes('--verbose')) {
+          return {
+            stdout: [
+              'Available models:',
+              JSON.stringify({
+                id: 'deepseek-v4-flash',
+                providerID: 'deepseek',
+                name: 'DeepSeek V4 Flash',
+                defaultVariant: 'high',
+                variants: {
+                  low: { reasoningEffort: 'low' },
+                  high: { reasoningEffort: 'high' },
+                  max: { reasoningEffort: 'max' },
+                },
+              }, null, 2),
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        throw new Error('plain listing should not be needed');
+      },
+    }).discover(discoveryInput('opencode', 'opencode'));
+
+    assert.equal(result.source, 'live');
+    assert.equal(result.models[0].id, 'deepseek/deepseek-v4-flash');
+    assert.equal(result.models[0].label, 'DeepSeek V4 Flash');
+    assert.deepEqual(result.models[0].thinkingEfforts, ['auto', 'low', 'high', 'max']);
+    assert.equal(result.models[0].defaultThinkingEffort, 'high');
   } finally {
     cleanup(root);
   }

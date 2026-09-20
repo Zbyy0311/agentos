@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { DirectConversationController } from './directConversationController.js';
 import type { DirectConversationClient, ForwardMessage } from './directConversationClient.js';
+import type { RunIntent } from '@agentos/shared';
 
 function sseResponse(events: string): Response {
   return new Response(events);
@@ -10,8 +11,9 @@ function sseResponse(events: string): Response {
 
 function fakeClient(overrides: Partial<Record<string, (args: never) => Promise<never>>> = {}): DirectConversationClient {
   const sent: Array<{ conversationId: string; content: string }> = [];
+  const streamIntents: Array<RunIntent | undefined> = [];
   return {
-    calls: { sent },
+    calls: { sent, streamIntents },
     listMessages: async () => ({ messages: [] }),
     listConversations: async () => ({ conversations: [] }),
     createConversation: async () => ({ conversation: { id: 'conv_1' } }),
@@ -20,18 +22,26 @@ function fakeClient(overrides: Partial<Record<string, (args: never) => Promise<n
       sent.push({ conversationId, content });
       return { message: { id: 'msg_u', sequence: 1, senderType: 'user', senderAgentId: null, status: 'final', content, taskId: null, runId: null } };
     },
-    streamReply: async () => sseResponse(
-      'event: turn.start\ndata: {"turnId":"turn_1","messageId":"msg_r"}\n\n'
-      + 'event: checkpoint\ndata: {"messageId":"msg_r","cursor":1,"delta":"Hel"}\n\n'
-      + 'event: checkpoint\ndata: {"messageId":"msg_r","cursor":2,"delta":"lo"}\n\n'
-      + 'event: turn.final\ndata: {}\n\n'
-      + 'event: done\ndata: {}\n\n',
-    ),
+    streamReply: async (_conversationId: string, _content: string, intent?: RunIntent) => {
+      streamIntents.push(intent);
+      return sseResponse(
+        'event: turn.start\ndata: {"turnId":"turn_1","messageId":"msg_r"}\n\n'
+        + 'event: checkpoint\ndata: {"messageId":"msg_r","cursor":1,"delta":"Hel"}\n\n'
+        + 'event: checkpoint\ndata: {"messageId":"msg_r","cursor":2,"delta":"lo"}\n\n'
+        + 'event: turn.final\ndata: {}\n\n'
+        + 'event: done\ndata: {}\n\n',
+      );
+    },
     replayCheckpoints: async () => ({ message: { id: 'msg_r', status: 'final' }, checkpoints: [], nextCursor: 0 }),
     createTaskFromMessage: async () => ({}),
     startRunFromMessage: async () => ({}),
     ...overrides,
-  } as unknown as DirectConversationClient & { calls: { sent: Array<{ conversationId: string; content: string }> } };
+  } as unknown as DirectConversationClient & {
+    calls: {
+      sent: Array<{ conversationId: string; content: string }>;
+      streamIntents: Array<RunIntent | undefined>;
+    };
+  };
 }
 
 test('DCUX-C10 a chat send persists the Message and streams the reply as one block', async () => {
@@ -43,6 +53,7 @@ test('DCUX-C10 a chat send persists the Message and streams the reply as one blo
   assert.equal(outcome.stream.text, 'Hello');
   assert.equal(outcome.stream.phase, 'done');
   assert.equal(outcome.stream.lastCursor, 2);
+  assert.deepEqual((client as DirectConversationClient & { calls: { streamIntents: Array<RunIntent | undefined> } }).calls.streamIntents, ['ask']);
 });
 
 test('DCUX-C11 task and run sends hit the bridge and never open a stream', async () => {
@@ -118,4 +129,3 @@ test('DCUX-C15 a checkpoint gap fails the stream instead of guessing', async () 
   const controller = new DirectConversationController({ client });
   await assert.rejects(() => controller.send('conv_1', { mode: 'chat', content: 'hello' }), /STREAM_GAP/);
 });
-

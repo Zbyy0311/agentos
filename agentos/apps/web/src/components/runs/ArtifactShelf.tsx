@@ -12,13 +12,13 @@ interface ArtifactShelfProps {
 
 export function ArtifactShelf({ artifacts, apiBase }: ArtifactShelfProps) {
   const items = getChatVisibleArtifacts(artifacts);
-  return <section aria-label="Agent artifacts">
+  return <section aria-label="Agent 产物">
     <div className="mb-2 flex items-center justify-between gap-3">
-      <h3 className="font-medium ui-text">Artifacts</h3>
+      <h3 className="font-medium ui-text">产物</h3>
       <span className="text-xs ui-dim">{items.length}</span>
     </div>
     {items.length === 0
-      ? <p className="ui-dim">No artifacts were produced.</p>
+      ? <p className="ui-dim">没有可展示的结构化产物。</p>
       : <div className="grid gap-2 sm:grid-cols-2">
         {items.map(artifact => <ArtifactCard key={artifact.id} artifact={artifact} apiBase={apiBase} />)}
       </div>}
@@ -42,7 +42,7 @@ function ArtifactCard({ artifact, apiBase }: { artifact: RuntimeArtifact; apiBas
     <div className="mt-3 flex items-center gap-2">
       {url
         ? <><button type="button" onClick={() => setPreviewOpen(true)} className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">预览</button><a href={url} target="_blank" rel="noreferrer" className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">打开</a></>
-        : <span className="text-xs ui-dim">Metadata only</span>}
+        : <span className="text-xs ui-dim">仅元数据</span>}
     </div>
     {previewOpen && url && <ArtifactPreviewDialog artifact={artifact} url={url} onClose={() => setPreviewOpen(false)} />}
   </article>;

@@ -79,7 +79,7 @@ function probeFor(requests: string[][]): ProcessProbePort {
         return { stdout: '1.17.11', stderr: '', exitCode: 0, signal: null };
       }
       return {
-        stdout: 'Usage: opencode run [message..] --format default --dir <directory> --model <provider/model> --pure',
+        stdout: 'Usage: opencode run [message..] --format default --dir <directory> --model <provider/model> --variant <variant> --pure',
         stderr: '',
         exitCode: 0,
         signal: null,
@@ -147,11 +147,25 @@ describe('OpenCodeProviderAdapter', () => {
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual(expect.arrayContaining([{ code: 'PROVIDER_AUTH_UNKNOWN', message: expect.any(String) }]));
     expect(requests).toEqual([['--version'], ['run', '--help']]);
-    const plan = await adapter.buildLaunchPlan({ configuration: config(), workspaceRoot: 'C:/workspace', prompt: '--share', environment: {} });
-    expect(plan.args).toEqual(['--pure', 'run', '--format', 'default', '--dir', 'C:/workspace', '--model', 'provider/model', '--', '--share']);
+    const plan = await adapter.buildLaunchPlan({ configuration: config(), workspaceRoot: 'C:/workspace', prompt: '--share', environment: {}, thinkingEffort: 'high' });
+    expect(plan.args).toEqual(['--pure', 'run', '--format', 'default', '--dir', 'C:/workspace', '--model', 'provider/model', '--variant', 'high', '--', '--share']);
     expect(plan.shell).toBe(false);
     expect(JSON.stringify(result)).not.toContain('must-not-appear');
     expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');
+  });
+
+  it('omits the provider-specific variant for automatic effort', async () => {
+    const requests: string[][] = [];
+    const adapter = new OpenCodeProviderAdapter({ probe: probeFor(requests) });
+    await expect(adapter.validate({
+      configuration: config(),
+      environment: {},
+      discover: async input => discovered(input),
+    })).resolves.toMatchObject({ valid: true });
+    const plan = await adapter.buildLaunchPlan({
+      configuration: config(), workspaceRoot: 'C:/workspace', prompt: 'hello', thinkingEffort: 'auto',
+    });
+    expect(plan.args).not.toContain('--variant');
   });
 
   it('fails closed when validation support is absent, so no launch plan is constructed', async () => {

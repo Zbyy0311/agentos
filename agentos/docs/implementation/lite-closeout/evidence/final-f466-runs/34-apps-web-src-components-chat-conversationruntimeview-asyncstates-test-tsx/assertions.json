@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-266",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+    "line": 48,
+    "expression": "assert.ok(markup.includes('No messages in Release planning.'),",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-267",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the error state is an announced alert, not silence",
+    "line": 56,
+    "expression": "assert.ok(markup.includes('role=\"alert\"'), 'an error is exposed as an alert role');",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-268",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+    "line": 114,
+    "expression": "assert.ok(markup.length > 0, `state ${index} renders a surface`);",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

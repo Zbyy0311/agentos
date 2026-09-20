@@ -8,6 +8,7 @@ const avatarColors = ['bg-[var(--app-accent)]', 'bg-[var(--app-info)]', 'bg-[var
 interface AgentListProps {
   agents: AgentProfile[];
   panelWidth?: number;
+  compact?: boolean;
   selectedAgentId: string | null;
   activeStatus?: ExecutionStatus;
   presence?: Record<string, AgentPresence>;
@@ -18,32 +19,36 @@ interface AgentListProps {
   onCreateGroup(): void;
   onContextMenu(conversationId: string, event: MouseEvent<HTMLButtonElement>): void;
   onBackToWorkspace(): void;
+  onOpenRuntime?(): void;
   onOpenMemories(): void;
   onOpenPreferences(): void;
   /** MF-5 forward Memory Candidate review queue (optional: absent on surfaces without Memory). */
   onOpenMemoryReview?(): void;
 }
 
-export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, presence = {}, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories, onOpenPreferences, onOpenMemoryReview }: AgentListProps) {
-  return <aside data-signal-agent-rail className="workspace-sidebar signal-rail ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
+export function AgentList({ agents, panelWidth, compact = false, selectedAgentId, activeStatus, presence = {}, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenRuntime, onOpenMemories, onOpenPreferences, onOpenMemoryReview }: AgentListProps) {
+  return <aside data-signal-agent-rail data-layout-panel="workspace" className={`workspace-sidebar signal-rail ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4 ${compact ? 'workspace-sidebar-compact' : ''}`} style={{ width: `${panelWidth ?? (compact ? 64 : 200)}px` }}>
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="signal-mark grid h-8 w-8 place-items-center rounded-lg bg-[var(--app-accent)] text-[11px] font-bold text-white">A/</div>
+        <div className="signal-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--app-accent)] p-1.5">
+          <img src="/agentos-mark.png" alt="" aria-hidden="true" className="h-full w-full object-contain brightness-0 invert" />
+        </div>
         <div className="workspace-theme-label"><ThemeToggle /></div>
       </div>
       <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
       <div className="workspace-copy mt-1 text-xs leading-5 ui-muted">当前工作区的协作成员</div>
-      <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 rounded-lg border ui-border px-2.5 py-1.5 text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
+      <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
+      {onOpenRuntime === undefined ? null : <button type="button" data-agentos="open-runtime-workbench" onClick={onOpenRuntime} className="workspace-runtime-button mt-2 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs ui-button-ghost hover:border-[var(--app-accent)]">⚡ 运行时工作台</button>}
     </div>
 
-    <div className="workspace-nav-label signal-section-label mb-2 px-2">AGENTS</div>
+    <div className="workspace-nav-label signal-section-label mb-2 px-2">协作 Agent</div>
     <div className="space-y-1">
       {agents.map((agent, index) => {
         const selected = agent.id === selectedAgentId;
         const agentPresence = presence[agent.id];
         const active = selected && activeStatus && !['completed', 'failed', 'cancelled'].includes(activeStatus);
         const state = agentPresence?.state ?? (active ? 'working' : agent.enabled ? 'idle' : 'disabled');
-        return <button type="button" key={agent.id} onClick={() => onSelect(agent.id)} className={`workspace-agent-button signal-agent-button flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${selected ? 'ui-selected' : 'ui-button-ghost'}`}>
+        return <button type="button" key={agent.id} aria-label={`${agent.name} · ${agent.roleTitle}`} title={agent.name} aria-pressed={selected} onClick={() => onSelect(agent.id)} className={`workspace-agent-button signal-agent-button flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${selected ? 'ui-selected' : 'ui-button-ghost'}`}>
           <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-semibold text-white ${avatarColors[index % avatarColors.length]}`}>
             {agent.name.slice(0, 1).toUpperCase()}
             <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--app-surface)] ${PRESENCE_COLORS[state]}`} />
@@ -55,12 +60,12 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
     </div>
 
     <div className="mt-8 border-t ui-border pt-5">
-      <div className="workspace-nav-label signal-section-label mb-2 flex items-center justify-between px-2"><span>GROUPS</span><button type="button" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
+      <div className="workspace-nav-label signal-section-label mb-2 flex items-center justify-between px-2"><span>群聊</span><button type="button" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
       <div className="space-y-1">
-        {groups.map(group => <button type="button" key={group.id} aria-label={group.title} title={group.title} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-button w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="workspace-group-copy ml-1">{group.title}</span></button>)}
+        {groups.map(group => <button type="button" key={group.id} aria-label={group.title} title={group.title} aria-pressed={selectedGroupId === group.id} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-button w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="workspace-group-copy ml-1">{group.title}</span></button>)}
         {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}
       </div>
     </div>
-    <div className="mt-auto space-y-2"><button type="button" aria-label="打开交互与工作偏好" title="交互与工作偏好" onClick={onOpenPreferences} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">⚙</span> <span className="workspace-knowledge-label ml-1">交互偏好</span></button><button type="button" aria-label="打开项目知识" title="项目知识" onClick={onOpenMemories} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">📚</span> <span className="workspace-knowledge-label ml-1">项目知识</span></button>{onOpenMemoryReview === undefined ? null : <button type="button" aria-label="打开记忆候选审查" title="记忆候选审查" onClick={onOpenMemoryReview} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">🧠</span> <span className="workspace-knowledge-label ml-1">记忆审查</span></button>}</div>
+    <div className="mt-auto space-y-2 pt-4"><button type="button" aria-label="打开交互与工作偏好" title="交互与工作偏好" onClick={onOpenPreferences} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">⚙</span> <span className="workspace-knowledge-label ml-1">交互偏好</span></button><button type="button" aria-label="打开项目知识" title="项目知识" onClick={onOpenMemories} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">📚</span> <span className="workspace-knowledge-label ml-1">项目知识</span></button>{onOpenMemoryReview === undefined ? null : <button type="button" aria-label="打开记忆候选审查" title="记忆候选审查" onClick={onOpenMemoryReview} className="workspace-knowledge-button w-full rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">🧠</span> <span className="workspace-knowledge-label ml-1">记忆审查</span></button>}</div>
   </aside>;
 }

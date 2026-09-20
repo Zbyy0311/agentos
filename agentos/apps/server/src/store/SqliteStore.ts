@@ -45,6 +45,7 @@ import type {
   ExecutionEvent,
   TaskItem,
   ThinkingEffort,
+  GroupRuntimeSettingsSnapshot,
   Workspace,
 } from '@agentos/shared';
 import { JsonFileStore } from './JsonFileStore.js';
@@ -177,6 +178,7 @@ interface ConversationRow {
   model: string | null;
   thinking_effort: string | null;
   dispatch_mode: GroupDispatchMode | null;
+  settings_version: number;
   created_at: string;
   updated_at: string;
 }
@@ -188,6 +190,9 @@ interface ConversationMemberRow {
   is_leader: number;
   role_kind: CollaborationRole | null;
   sequence: number | null;
+  model: string | null;
+  thinking_effort: string | null;
+  additional_instructions: string | null;
   created_at: string;
 }
 
@@ -245,6 +250,7 @@ interface AgentRunRow {
   waiting_agent_id: string | null;
   intent: AgentRun['intent'] | null;
   runtime_policy_json: string | null;
+  group_runtime_settings_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -566,6 +572,9 @@ export class SqliteStore implements Store {
       this.turnContextSnapshotRepo = new TurnContextSnapshotRepository(this.database as any);
       this.workspaceAdmissionRepo = new WorkspaceAdmissionRepository(this.database as any);
       this.runMigrations(dataDir);
+      // Keep a defensive additive guard for databases whose agent_runs table
+      // was rebuilt by an older recovery path after migration 032 was recorded.
+      this.ensureColumn('agent_runs', 'group_runtime_settings_json', 'TEXT');
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
       this.migrateLegacyWorkspaceAggregates();
@@ -1004,8 +1013,8 @@ export class SqliteStore implements Store {
       throw new Error('Direct conversations require an agentId');
     }
     this.database.prepare(`
-      INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, settings_version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       conversation.id,
       conversation.workspaceId,
@@ -1015,6 +1024,7 @@ export class SqliteStore implements Store {
       conversation.model ?? null,
       conversation.thinkingEffort ?? null,
       conversation.dispatchMode ?? null,
+      conversation.settingsVersion ?? 1,
       conversation.createdAt,
       conversation.updatedAt,
     );
@@ -1023,7 +1033,7 @@ export class SqliteStore implements Store {
 
   listConversations(workspaceId: string): Conversation[] {
     const rows = this.database.prepare(`
-      SELECT id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at
+      SELECT id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, settings_version, created_at, updated_at
       FROM conversations
       WHERE workspace_id = ?
       ORDER BY updated_at DESC, created_at DESC
@@ -1037,6 +1047,7 @@ export class SqliteStore implements Store {
       ...(row.model ? { model: row.model } : {}),
       ...(row.thinking_effort ? { thinkingEffort: normalizeThinkingEffort(row.thinking_effort) } : {}),
       ...(row.dispatch_mode ? { dispatchMode: normalizeDispatchMode(row.dispatch_mode) } : {}),
+      settingsVersion: row.settings_version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -1147,11 +1158,11 @@ export class SqliteStore implements Store {
     try {
       this.createConversation(conversation);
       const insert = this.database.prepare(`
-        INSERT INTO conversation_members (conversation_id, agent_id, role_title, is_leader, role_kind, sequence, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_members (conversation_id, agent_id, role_title, is_leader, role_kind, sequence, model, thinking_effort, additional_instructions, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const member of normalizedMembers) {
-        insert.run(member.conversationId, member.agentId, member.roleTitle, member.roleKind === 'leader' ? 1 : 0, member.roleKind, member.sequence, member.createdAt);
+        insert.run(member.conversationId, member.agentId, member.roleTitle, member.roleKind === 'leader' ? 1 : 0, member.roleKind, member.sequence, member.model ?? null, member.thinkingEffort ?? null, member.additionalInstructions ?? null, member.createdAt);
       }
       this.database.exec('COMMIT');
       return conversation;
@@ -1163,7 +1174,7 @@ export class SqliteStore implements Store {
 
   listConversationMembers(workspaceId: string, conversationId: string): ConversationMember[] {
     const rows = this.database.prepare(`
-      SELECT members.conversation_id, members.agent_id, members.role_title, members.is_leader, members.role_kind, members.sequence, members.created_at
+      SELECT members.conversation_id, members.agent_id, members.role_title, members.is_leader, members.role_kind, members.sequence, members.model, members.thinking_effort, members.additional_instructions, members.created_at
       FROM conversation_members AS members
       INNER JOIN conversations ON conversations.id = members.conversation_id
       WHERE conversations.workspace_id = ? AND members.conversation_id = ?
@@ -1176,6 +1187,9 @@ export class SqliteStore implements Store {
       isLeader: row.role_kind === 'leader' || row.is_leader === 1,
       roleKind: normalizeCollaborationRole(row.role_kind, row.is_leader === 1),
       sequence: row.sequence ?? 0,
+      ...(row.model === null ? {} : { model: row.model }),
+      ...(row.thinking_effort === null ? {} : { thinkingEffort: normalizeThinkingEffort(row.thinking_effort) }),
+      ...(row.additional_instructions === null ? {} : { additionalInstructions: row.additional_instructions }),
       createdAt: row.created_at,
     }));
   }
@@ -1183,11 +1197,14 @@ export class SqliteStore implements Store {
   updateGroupConversation(
     workspaceId: string,
     conversationId: string,
-    update: { dispatchMode?: GroupDispatchMode; members: Array<ConversationMember | LegacyConversationMember> },
+    update: { dispatchMode?: GroupDispatchMode; members: Array<ConversationMember | LegacyConversationMember>; expectedSettingsVersion?: number },
   ): { conversation: Conversation; members: ConversationMember[] } {
     const conversation = this.listConversations(workspaceId).find(item => item.id === conversationId);
     if (!conversation) throw new Error('Conversation not found');
     if (conversation.type !== 'group') throw new Error('Only group conversations support collaboration settings');
+    if (update.expectedSettingsVersion !== undefined && update.expectedSettingsVersion !== conversation.settingsVersion) {
+      throw new Error('Group settings version conflict');
+    }
     const normalizedMembers = normalizeConversationMembers(update.members);
     if (normalizedMembers.length < 2) throw new Error('Group conversations require at least two members');
     if (normalizedMembers.filter(member => member.roleKind === 'leader').length !== 1) throw new Error('Group conversations require exactly one leader');
@@ -1201,15 +1218,16 @@ export class SqliteStore implements Store {
     const updatedAt = new Date().toISOString();
     this.database.exec('BEGIN');
     try {
-      this.database.prepare('UPDATE conversations SET dispatch_mode = ?, updated_at = ? WHERE id = ? AND workspace_id = ?')
-        .run(dispatchMode, updatedAt, conversationId, workspaceId);
+      const changed = this.database.prepare('UPDATE conversations SET dispatch_mode = ?, settings_version = settings_version + 1, updated_at = ? WHERE id = ? AND workspace_id = ? AND settings_version = ?')
+        .run(dispatchMode, updatedAt, conversationId, workspaceId, conversation.settingsVersion ?? 1) as { changes?: number };
+      if (changed.changes !== undefined && changed.changes !== 1) throw new Error('Group settings version conflict');
       this.database.prepare('DELETE FROM conversation_members WHERE conversation_id = ?').run(conversationId);
       const insert = this.database.prepare(`
-        INSERT INTO conversation_members (conversation_id, agent_id, role_title, is_leader, role_kind, sequence, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_members (conversation_id, agent_id, role_title, is_leader, role_kind, sequence, model, thinking_effort, additional_instructions, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const member of normalizedMembers) {
-        insert.run(conversationId, member.agentId, member.roleTitle, member.roleKind === 'leader' ? 1 : 0, member.roleKind, member.sequence, member.createdAt);
+        insert.run(conversationId, member.agentId, member.roleTitle, member.roleKind === 'leader' ? 1 : 0, member.roleKind, member.sequence, member.model ?? null, member.thinkingEffort ?? null, member.additionalInstructions ?? null, member.createdAt);
       }
       this.database.exec('COMMIT');
     } catch (error) {
@@ -1217,7 +1235,7 @@ export class SqliteStore implements Store {
       throw error;
     }
     return {
-      conversation: { ...conversation, dispatchMode, updatedAt },
+      conversation: { ...conversation, dispatchMode, settingsVersion: (conversation.settingsVersion ?? 1) + 1, updatedAt },
       members: [...normalizedMembers].sort((left, right) => left.sequence - right.sequence).map(member => ({ ...member, isLeader: member.roleKind === 'leader' })),
     };
   }
@@ -1341,8 +1359,8 @@ export class SqliteStore implements Store {
       INSERT INTO agent_runs (
         id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, group_runtime_settings_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       run.id,
       run.workspaceId,
@@ -1359,6 +1377,7 @@ export class SqliteStore implements Store {
       run.waitingAgentId ?? null,
       run.intent ?? 'execute',
       run.runtimePolicy ? JSON.stringify(run.runtimePolicy) : null,
+      run.groupRuntimeSettings ? JSON.stringify(run.groupRuntimeSettings) : null,
       run.createdAt,
       run.updatedAt,
     );
@@ -1402,7 +1421,7 @@ export class SqliteStore implements Store {
     const row = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, group_runtime_settings_json, created_at, updated_at
       FROM agent_runs
       WHERE workspace_id = ? AND id = ?
     `).get(workspaceId, runId) as AgentRunRow | undefined;
@@ -1413,7 +1432,7 @@ export class SqliteStore implements Store {
     const rows = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, group_runtime_settings_json, created_at, updated_at
       FROM agent_runs
       WHERE workspace_id = ? AND conversation_id = ?
       ORDER BY updated_at DESC, created_at DESC
@@ -1426,7 +1445,7 @@ export class SqliteStore implements Store {
     const rows = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, group_runtime_settings_json, created_at, updated_at
       FROM agent_runs
       WHERE workspace_id = ?
       ORDER BY updated_at DESC, created_at DESC
@@ -1476,7 +1495,7 @@ export class SqliteStore implements Store {
     const rows = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, group_runtime_settings_json, created_at, updated_at
       FROM agent_runs
       WHERE status IN ('queued', 'running')
       ORDER BY updated_at ASC
@@ -2903,6 +2922,10 @@ export class SqliteStore implements Store {
     this.ensureColumn('conversations', 'dispatch_mode', 'TEXT');
     this.ensureColumn('conversation_members', 'role_kind', "TEXT NOT NULL DEFAULT 'worker'");
     this.ensureColumn('conversation_members', 'sequence', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('conversations', 'settings_version', 'INTEGER NOT NULL DEFAULT 1');
+    this.ensureColumn('conversation_members', 'model', 'TEXT');
+    this.ensureColumn('conversation_members', 'thinking_effort', 'TEXT');
+    this.ensureColumn('conversation_members', 'additional_instructions', 'TEXT');
     this.ensureColumn('messages', 'run_id', 'TEXT');
     this.ensureColumn('executions', 'run_id', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_question', 'TEXT');
@@ -2910,6 +2933,7 @@ export class SqliteStore implements Store {
     this.ensureColumn('agent_runs', 'waiting_agent_id', 'TEXT');
     this.ensureColumn('agent_runs', 'intent', "TEXT NOT NULL DEFAULT 'execute'");
     this.ensureColumn('agent_runs', 'runtime_policy_json', 'TEXT');
+    this.ensureColumn('agent_runs', 'group_runtime_settings_json', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'configured_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'detected_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'provider_mismatch', 'INTEGER NOT NULL DEFAULT 0');
@@ -3369,6 +3393,7 @@ export class SqliteStore implements Store {
       ...(row.waiting_agent_id ? { waitingAgentId: row.waiting_agent_id } : {}),
       ...((row.runtime_policy_json || row.intent === 'ask' || row.intent === 'review') ? { intent: row.intent === 'ask' || row.intent === 'review' || row.intent === 'execute' ? row.intent : 'execute' } : {}),
       ...(row.runtime_policy_json ? { runtimePolicy: parseJson(row.runtime_policy_json, undefined) } : {}),
+      ...(row.group_runtime_settings_json ? { groupRuntimeSettings: parseJson<GroupRuntimeSettingsSnapshot | undefined>(row.group_runtime_settings_json, undefined) } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -3463,6 +3488,9 @@ function normalizeConversationMembers(members: Array<ConversationMember | Legacy
     const roleTitle = member.roleTitle.trim();
     if (roleTitle.length === 0 || roleTitle.length > 80) throw new Error('Group member roleTitle must be 1-80 characters');
     if (explicitSequence !== undefined && (!Number.isInteger(explicitSequence) || explicitSequence <= 0)) throw new Error('Group member sequence must be a positive integer');
+    if (member.model !== undefined && (typeof member.model !== 'string' || member.model.trim().length > 200)) throw new Error('Group member model is invalid');
+    if (member.thinkingEffort !== undefined && !isThinkingEffort(member.thinkingEffort)) throw new Error('Group member thinkingEffort is invalid');
+    if (member.additionalInstructions !== undefined && (typeof member.additionalInstructions !== 'string' || member.additionalInstructions.trim().length > 4000)) throw new Error('Group member additionalInstructions is invalid');
     const roleKind = normalizeCollaborationRole(explicitRole, member.isLeader === true);
     return {
       ...member,
@@ -3470,8 +3498,15 @@ function normalizeConversationMembers(members: Array<ConversationMember | Legacy
       roleKind,
       isLeader: roleKind === 'leader',
       sequence: explicitSequence ?? (index + 1) * 10,
+      ...(member.model?.trim() ? { model: member.model.trim() } : {}),
+      ...(member.thinkingEffort ? { thinkingEffort: member.thinkingEffort } : {}),
+      ...(member.additionalInstructions?.trim() ? { additionalInstructions: member.additionalInstructions.trim() } : {}),
     };
   });
+}
+
+function isThinkingEffort(value: unknown): value is ThinkingEffort {
+  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
 }
 
 function isCollaborationRole(value: unknown): value is CollaborationRole {
@@ -3558,18 +3593,18 @@ function toFtsQuery(query: string): string {
 
 function defaultRoleTitle(role: AgentProfile['role']): string {
   switch (role) {
-    case 'codex': return '首席架构师';
-    case 'kimi': return '高级开发工程师';
-    case 'opencode': return '代码审查工程师';
-    case 'mimo': return '视觉分析工程师';
+    case 'codex': return '首席协作顾问';
+    case 'kimi': return '分析与执行顾问';
+    case 'opencode': return '独立评审顾问';
+    case 'mimo': return '视觉与多模态顾问';
   }
 }
 
 function defaultSystemPrompt(role: AgentProfile['role']): string {
   switch (role) {
-    case 'codex': return '负责分析需求、制定方案和完成最终决策。';
-    case 'kimi': return '负责实现、调试和验证已明确的开发任务。';
-    case 'opencode': return '负责审查正确性、安全性、性能和风格，不直接修改代码。';
+    case 'codex': return '负责理解问题、制定方案、协调协作并给出最终判断；任务可以是问答、讨论、研究或执行。';
+    case 'kimi': return '负责从实践角度分析问题、执行已授权操作并报告可验证结果；先按用户真实需求作答。';
+    case 'opencode': return '负责独立检查事实、方案和结果，指出风险与不确定性；仅在明确授权且允许时执行操作。';
     case 'mimo': return '负责分析图像与多模态输入，并输出可追溯结论。';
   }
 }

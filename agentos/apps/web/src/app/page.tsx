@@ -5,6 +5,7 @@ import { useWorkspace } from '@/lib/useWorkspace';
 import { WorkspaceList } from '@/components/workspace/WorkspaceList';
 import { NewWorkspaceModal } from '@/components/workspace/NewWorkspaceModal';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
   const { workspaces, loading, error, createWorkspace, importWorkspace, removeWorkspace } = useWorkspace();
   const [showModal, setShowModal] = useState(false);
   const [importPath, setImportPath] = useState('');
+  const headerGlassRef = useLiquidGlass<HTMLElement>('page-header');
 
   const handleOpen = (id: string) => router.push(`/workspace/${id}`);
 
@@ -22,9 +24,12 @@ export default function Home() {
   };
 
   return <div data-signal-home className="app-shell signal-page min-h-screen">
-    <header className="signal-header ui-panel flex items-center justify-between border-b px-6 py-4 sm:px-8">
+    <div className="ambient-backdrop" aria-hidden="true" />
+    <header ref={headerGlassRef} className="signal-header ui-panel sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 sm:px-8">
       <div className="flex items-center gap-3">
-        <span className="signal-mark grid h-9 w-9 place-items-center rounded-xl bg-[var(--app-accent)] text-sm font-bold text-white">A/</span>
+        <span className="signal-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--app-accent)] p-1.5">
+          <img src="/agentos-mark.png" alt="" aria-hidden="true" className="h-full w-full object-contain brightness-0 invert" />
+        </span>
         <div>
           <div className="text-base font-semibold tracking-tight ui-text">AgentOS</div>
           <div className="text-[11px] ui-dim">本地多 Agent 工作台</div>
@@ -49,7 +54,7 @@ export default function Home() {
       <section className="signal-panel ui-panel-raised rounded-2xl border p-4 sm:p-6">
         <div className="signal-panel-heading mb-4 flex flex-col gap-1 px-1 pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="signal-section-label mb-2">WORKSPACES</div>
+            <div className="signal-section-label mb-2">工作区</div>
             <h2 className="text-lg font-semibold ui-text">工作区</h2>
             <p className="mt-1 text-xs ui-muted">打开一个工作区，继续上次的协作上下文。</p>
           </div>

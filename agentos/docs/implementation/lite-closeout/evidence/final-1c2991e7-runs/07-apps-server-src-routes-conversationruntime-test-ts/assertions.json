@@ -1,0 +1,68 @@
+[
+  {
+    "id": "LITE-00-001-lite-00-002-conversation-and-message-records-survive-a-restart-and-a-reconnect-70",
+    "requirementId": "LITE-00-001",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+    "line": 258,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "a persistent Agent can change Provider without losing canonical identity or history;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-002-lite-00-002-conversation-and-message-records-survive-a-restart-and-a-reconnect-71",
+    "requirementId": "LITE-00-002",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+    "line": 258,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "Conversation and Message records survive reconnect and restart;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-003-lite-11-001-lite-09-001-lite-02-001-a-message-only-turn-creates-no-task-and-no-r-72",
+    "requirementId": "LITE-01-003",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+    "line": 314,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "Message creation is distinct from Task and Run creation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-015-lite-00-002-conversation-and-message-records-survive-a-restart-and-a-reconnect-73",
+    "requirementId": "LITE-01-015",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+    "line": 258,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "archived or compatibility records do not disappear destructively.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-016-lite-00-002-conversation-and-message-records-survive-a-restart-and-a-reconnect-74",
+    "requirementId": "LITE-09-016",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+    "line": 258,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "archive preserves linked records;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-004-lite-00-002-conversation-and-message-records-survive-a-restart-and-a-reconnect-75",
+    "requirementId": "LITE-09-004",
+    "file": "apps/server/src/routes/conversationRuntime.test.ts",
+    "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+    "line": 258,
+    "expression": "assert.equal(created.status, 201);",
+    "clause": "Messages survive reconnect and Provider switch;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

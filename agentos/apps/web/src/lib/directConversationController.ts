@@ -15,6 +15,7 @@
  */
 
 import type { DirectConversationClient, ForwardMessage } from './directConversationClient';
+import type { RunIntent } from '@agentos/shared';
 import type { ComposerDraft } from './directComposer';
 import { resolveComposerAction } from './directComposer';
 import { ConversationStreamMachine, type ConversationStreamState } from './directConversationStream';
@@ -66,17 +67,17 @@ export class DirectConversationController {
       await this.options.client.startRunFromMessage(message.id);
       return { kind: 'run', terminal: true, stream: this.machine.snapshot };
     }
-    await this.streamReply(conversationId, draft.content);
+    await this.streamReply(conversationId, draft.content, 'ask');
     return { kind: 'chat', terminal: this.machine.snapshot.terminal, stream: this.machine.snapshot };
   }
 
   /** Chat path: persist (done by `send`), then stream the reply as durable checkpoints. */
-  async streamReply(conversationId: string, content: string): Promise<ConversationStreamState> {
+  async streamReply(conversationId: string, content: string, intent: RunIntent = 'ask'): Promise<ConversationStreamState> {
     // Each reply gets a fresh machine; a previous terminal stream must not leak.
     this.machine = new ConversationStreamMachine();
     this.machine.connect();
     this.emitState();
-    const response = await this.options.client.streamReply(conversationId, content);
+    const response = await this.options.client.streamReply(conversationId, content, intent);
     try {
       await consumeSseResponse(response, (event, data) => {
         this.applySseEvent(event.event, data);

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:Migration 012 checksum, order, repeat run and existing idempotency data are stable|all Migration 012 foreign keys and integrity checks pass)",
+      "src/migrations/__tests__/m3-p2a-migration-012.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

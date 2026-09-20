@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '@/lib/useApi';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 /**
  * MF-5 forward Memory Candidate review queue (12-UI-Architecture section 14).
@@ -89,7 +90,7 @@ export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueuePro
   };
 
   return (
-    <div className="fixed inset-0 z-[90] bg-[var(--app-surface)] p-6" data-agentos="memory-review-queue">
+    <div className={`fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`} data-agentos="memory-review-queue">
       <div className="mx-auto flex h-full max-w-5xl flex-col">
         <div className="mb-5 flex items-center justify-between">
           <div>

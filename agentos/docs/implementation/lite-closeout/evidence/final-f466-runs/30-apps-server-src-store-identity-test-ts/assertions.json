@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-01-001-createentityid-produces-prefix-ulid-format-255",
+    "requirementId": "LITE-01-001",
+    "name": "createEntityId produces prefix_ulid format",
+    "line": 63,
+    "expression": "assert.ok(",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-createentityid-produces-prefix-ulid-format-256",
+    "requirementId": "LITE-10-004",
+    "name": "createEntityId produces prefix_ulid format",
+    "line": 63,
+    "expression": "assert.ok(",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

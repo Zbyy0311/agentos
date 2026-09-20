@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row
+ok 1 - LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row
+  ---
+  duration_ms: 150.9485
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 355.8928

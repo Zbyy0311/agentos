@@ -1,0 +1,43 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/process-runtime
+
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > establish creates exactly one Session and one root Process atomically; duplicates join 2ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > Process reservation failure rolls back the pair atomically (Session=0, Process=0) 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > paired Session+root takeover commits together and rolls back together 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > only the winning created->starting CAS calls spawn; losers join without spawning 2ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > spawn failure is durably compensated as process.failed with a fixed detail; never respawns 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > registration failure runs terminateTree->verifySurvivors; no-survivor terminalizes failed 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > registration failure with bare complete remains uncertain 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > registration failure with survivors stays uncertainty (orphaned), never fake success 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > cleanup terminateTree throw fails closed as unknown platform uncertainty 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > cleanup verifySurvivors throw fails closed as unknown platform uncertainty 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > starting x cancel late success binds same identity, stays stopping, cleans up; never running 29ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > P5A-REMED2-04/05: authorized late cleanup waits for durable native bind 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > P5A-REMED2-06: bind version race re-reads stopping and binds before cleanup 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > P5A-REMED2-07: unbound stopping handle cannot create ProcessCancelCoordinator proof 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > starting x cancel x spawn failure chains the real stopping Event and emits one failed fact 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > rejects replayed StreamChunk before writing duplicate artifact bytes 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > rejects a sourceOffset gap before the sink is touched 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > rejects a stderr StreamChunk on a stdout writer before writing 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > accepts normal continuous source offsets 0 -> N -> M 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > raw Uint8Array can never be handed to the writer (StreamChunk seam only) 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > retained cap fails closed BEFORE any byte commit 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > checkpoint conflict reverts the uncommitted sink tail; retry never duplicates bytes 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > real FileArtifactSink rollback restores file offset and sha256 before retry 6ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > checkpoint throw reverts the uncommitted sink tail and surfaces the failure 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > finalize retries a CAS conflict against a fresh version and stores the real sha256 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > beginOutput surfaces sink open failure while the reference stays consistent (zero counts) 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > raw secrets never reach the sink or the DB; only scanner output is persisted 1ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > truncate marks the reference with a bounded reason and source counts continue 0ms
+ ✓ src/durable-coordinator.test.ts > DurableProcessCoordinator > segment count derives from the frozen 8 MiB rolling segment cap 0ms
+ ✓ src/durable-coordinator.test.ts > FileArtifactSink > rejects storage keys that escape the sink root 1ms
+ ✓ src/durable-coordinator.test.ts > FileArtifactSink > writes append-only bytes, computes the retained sha256 and never overwrites 5ms
+ ✓ src/durable-coordinator.test.ts > FileArtifactSink > truncateTo reverts the uncommitted tail within the open write session 4ms
+ ✓ src/durable-coordinator.test.ts > FileArtifactSink > abort removes the partial artifact (compensation) 3ms
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  09:11:29
+   Duration  308ms (transform 82ms, setup 0ms, import 104ms, tests 62ms, environment 0ms)
+

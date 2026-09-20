@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { assertRuntimePolicySupported, getAgentCapability, resolveRuntimePolicy } from '@agentos/agent-core';
-import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, CollaborationRole, Conversation, ConversationMember, GroupDispatchMode, PartialWriteDecision, RunIntent, ThinkingEffort } from '@agentos/shared';
+import { assertRuntimePolicySupported, resolveRuntimePolicy } from '@agentos/agent-core';
+import type { AgentProfile, AgentProvider, CollaborationRole, Conversation, ConversationMember, GroupDispatchMode, PartialWriteDecision, RunIntent, ThinkingEffort } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
@@ -14,6 +14,7 @@ import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import type { PreferenceLearningService } from '../services/ConversationService.js';
 import { RunDecisionService } from '../services/RunDecisionService.js';
 import type { WorktreeManager } from '../services/WorktreeManager.js';
+import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
@@ -48,7 +49,7 @@ export function createConversationRoutes(
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
-      const agents = await Promise.all(store.listAgentProfiles(workspace.id).map(agent => withCapability(agent, modelDiscovery)));
+      const agents = await Promise.all(store.listAgentProfiles(workspace.id).map(agent => withAgentCapability(agent, modelDiscovery)));
       res.json({ agents, workspaceId: workspace.id });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -68,20 +69,24 @@ export function createConversationRoutes(
       ? current.thinkingEffort ?? 'auto'
       : body.thinkingEffort;
     if (!isThinkingEffort(thinkingEffort)) {
-      return res.status(400).json({ error: 'thinkingEffort must be auto, low, medium, or high' });
+      return res.status(400).json({ error: 'thinkingEffort must be auto, low, medium, high, or max' });
     }
-    const nextModel = typeof body.model === 'string' ? body.model.trim() : current.model;
+    const nextModel = typeof body.model === 'string' ? body.model.trim() || undefined : current.model;
     const provider = body.provider === undefined
       ? current.provider
       : isAgentProvider(body.provider) ? body.provider : undefined;
     if (body.provider !== undefined && !provider) {
       return res.status(400).json({ error: 'provider must be codex, kimi, opencode, mimo, or custom' });
     }
-    const capability = getAgentCapability(current.role, current.cliCommand, nextModel);
-    if (!capability.thinkingEfforts.includes(thinkingEffort)) {
-      return res.status(400).json({ error: `${current.name} does not support thinking effort "${thinkingEffort}"` });
-    }
     try {
+      // Validate the selected model against the same live capability metadata
+      // used by the composer. A CLI-level capability is not enough here:
+      // provider registries can expose different effort variants per model.
+      const capableAgent = await withAgentCapability({ ...current, model: nextModel }, modelDiscovery);
+      validateRuntimeOverrides(capableAgent, {
+        ...(nextModel === undefined ? {} : { model: nextModel }),
+        thinkingEffort,
+      });
       const agent = store.updateAgentProfile(workspace.id, current.id, {
         name: typeof body.name === 'string' ? body.name : current.name,
         roleTitle: typeof body.roleTitle === 'string' ? body.roleTitle : current.roleTitle,
@@ -89,10 +94,10 @@ export function createConversationRoutes(
         permissions,
         enabled: typeof body.enabled === 'boolean' ? body.enabled : current.enabled,
         provider,
-        model: typeof body.model === 'string' ? body.model : current.model,
+        model: nextModel,
         thinkingEffort,
       });
-      res.json({ agent: await withCapability(agent, modelDiscovery) });
+      res.json({ agent: await withAgentCapability(agent, modelDiscovery) });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -104,7 +109,7 @@ export function createConversationRoutes(
     const current = store.listAgentProfiles(workspace.id).find(agent => agent.id === req.params.agentId);
     if (!current) return res.status(404).json({ error: 'Agent not found' });
     try {
-      res.json({ agent: await withCapability(current, modelDiscovery, true) });
+      res.json({ agent: await withAgentCapability(current, modelDiscovery, true) });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -119,7 +124,7 @@ export function createConversationRoutes(
     res.json({ conversations });
   });
 
-  router.post('/conversations', (req: Request, res: Response) => {
+  router.post('/conversations', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const { agentId, title, type, memberAgentIds, leaderAgentId: rawLeaderAgentId, members: rawMembers, dispatchMode: rawDispatchMode } = req.body as {
@@ -128,6 +133,9 @@ export function createConversationRoutes(
     };
     if (type === 'group') {
       const explicitMembers = parseGroupMembers(rawMembers);
+      if (rawMembers !== undefined && explicitMembers === undefined) {
+        return res.status(400).json({ error: 'members must contain at least two valid group members' });
+      }
       const legacyIds = Array.isArray(memberAgentIds) && memberAgentIds.every(id => typeof id === 'string') ? memberAgentIds as string[] : undefined;
       const ids = explicitMembers?.map(member => member.agentId) ?? legacyIds;
       const leader = explicitMembers?.find(member => member.roleKind === 'leader')?.agentId
@@ -148,6 +156,7 @@ export function createConversationRoutes(
       const conversation: Conversation = {
         id: randomUUID(), workspaceId: workspace.id, type: 'group',
         dispatchMode,
+        settingsVersion: 1,
         title: typeof title === 'string' && title.trim() ? title.trim() : '新建协作群聊', createdAt: now, updatedAt: now,
       };
       const members = uniqueIds.map(id => ({
@@ -161,10 +170,15 @@ export function createConversationRoutes(
           ...member,
           roleKind,
           isLeader: roleKind === 'leader',
+          roleTitle: explicit?.roleTitle ?? member.roleTitle,
           sequence: explicit?.sequence ?? (index + 1) * 10,
+          ...(explicit?.model === undefined ? {} : { model: explicit.model }),
+          ...(explicit?.thinkingEffort === undefined ? {} : { thinkingEffort: explicit.thinkingEffort }),
+          ...(explicit?.additionalInstructions === undefined ? {} : { additionalInstructions: explicit.additionalInstructions }),
         };
       });
       try {
+        await validateGroupMemberRuntimeSettings(profiles, configuredMembers, modelDiscovery);
         store.createGroupConversation(conversation, configuredMembers);
       } catch (error) {
         return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
@@ -211,9 +225,9 @@ export function createConversationRoutes(
             : (() => { throw new Error('model must be a string or null'); })();
       const thinkingEffort = body.thinkingEffort === undefined ? conversation.thinkingEffort : body.thinkingEffort;
       if (thinkingEffort !== undefined && !isThinkingEffort(thinkingEffort)) {
-        throw new Error('thinkingEffort must be auto, low, medium, or high');
+        throw new Error('thinkingEffort must be auto, low, medium, high, or max');
       }
-      const capableAgent = await withCapability(agent, modelDiscovery);
+      const capableAgent = await withAgentCapability(agent, modelDiscovery);
       validateRuntimeOverrides(capableAgent, {
         ...(model ? { model } : {}),
         ...(thinkingEffort ? { thinkingEffort } : {}),
@@ -263,7 +277,7 @@ export function createConversationRoutes(
     }
   });
 
-  router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
+  router.patch('/conversations/:conversationId', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const body = req.body as Record<string, unknown>;
@@ -287,16 +301,25 @@ export function createConversationRoutes(
           isLeader: member.roleKind === 'leader',
           sequence: member.sequence ?? (index + 1) * 10,
           createdAt: now,
+          ...(member.model === undefined ? {} : { model: member.model }),
+          ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
+          ...(member.additionalInstructions === undefined ? {} : { additionalInstructions: member.additionalInstructions }),
         }));
         const dispatchMode = body.dispatchMode === undefined ? (current.dispatchMode ?? 'leader_route') : parseDispatchMode(body.dispatchMode);
         if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
-        const updated = store.updateGroupConversation(workspace.id, current.id, { members, dispatchMode });
+        await validateGroupMemberRuntimeSettings(new Map(store.listAgentProfiles(workspace.id).filter(profile => profile.enabled).map(profile => [profile.id, profile])), members, modelDiscovery);
+        const expectedSettingsVersion = body.expectedSettingsVersion === undefined ? undefined : body.expectedSettingsVersion;
+        if (expectedSettingsVersion !== undefined && (typeof expectedSettingsVersion !== 'number' || !Number.isSafeInteger(expectedSettingsVersion))) {
+          return res.status(400).json({ error: 'expectedSettingsVersion must be an integer' });
+        }
+        const updated = store.updateGroupConversation(workspace.id, current.id, { members, dispatchMode, expectedSettingsVersion });
         conversation = updated.conversation;
         return res.json({ conversation, members: updated.members });
       }
       res.json({ conversation });
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(message.includes('settings version conflict') ? 409 : 400).json({ error: message });
     }
   });
 
@@ -373,7 +396,7 @@ export function createConversationRoutes(
       try {
         const agent = store.listAgentProfiles(workspace.id).find(item => item.id === conversation.agentId && item.enabled);
         if (!agent) return res.status(400).json({ error: 'Agent is unavailable' });
-        const capableAgent = await withCapability(agent, modelDiscovery);
+        const capableAgent = await withAgentCapability(agent, modelDiscovery);
         try {
           if (intent !== 'execute') assertRuntimePolicySupported(resolveRuntimePolicy(intent, capableAgent), process.env.AGENTOS_FORCE_MOCK === 'true');
         } catch (error) {
@@ -598,25 +621,59 @@ function parseRunIntent(value: unknown): RunIntent | undefined {
   return value === 'ask' || value === 'execute' || value === 'review' ? value : undefined;
 }
 
-function parseGroupMembers(value: unknown): Array<{ agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number }> | undefined {
+function parseGroupMembers(value: unknown): Array<{
+  agentId: string;
+  roleKind: CollaborationRole;
+  roleTitle?: string;
+  sequence?: number;
+  model?: string;
+  thinkingEffort?: ThinkingEffort;
+  additionalInstructions?: string;
+}> | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length < 2) return undefined;
-  const members: Array<{ agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number }> = [];
-  for (const item of value) {
-    if (!item || typeof item !== 'object') return undefined;
-    const entry = item as Record<string, unknown>;
-    if (typeof entry.agentId !== 'string' || !entry.agentId.trim()) return undefined;
-    if (entry.roleKind !== 'leader' && entry.roleKind !== 'worker' && entry.roleKind !== 'reviewer' && entry.roleKind !== 'specialist') return undefined;
-    if (entry.sequence !== undefined && (!Number.isInteger(entry.sequence) || Number(entry.sequence) <= 0)) return undefined;
-    if (entry.roleTitle !== undefined && typeof entry.roleTitle !== 'string') return undefined;
-    members.push({
-      agentId: entry.agentId,
-      roleKind: entry.roleKind,
-      ...(typeof entry.roleTitle === 'string' ? { roleTitle: entry.roleTitle.trim() } : {}),
-      ...(entry.sequence !== undefined ? { sequence: Number(entry.sequence) } : {}),
-    });
+  const members: Array<{
+    agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number;
+    model?: string; thinkingEffort?: ThinkingEffort; additionalInstructions?: string;
+  }> = [];
+  try {
+    for (const item of value) {
+      if (!item || typeof item !== 'object') return undefined;
+      const entry = item as Record<string, unknown>;
+      if (typeof entry.agentId !== 'string' || !entry.agentId.trim()) return undefined;
+      if (entry.roleKind !== 'leader' && entry.roleKind !== 'worker' && entry.roleKind !== 'reviewer' && entry.roleKind !== 'specialist') return undefined;
+      if (entry.sequence !== undefined && (!Number.isInteger(entry.sequence) || Number(entry.sequence) <= 0)) return undefined;
+      const settings = parseGroupMemberSettings(entry);
+      members.push({
+        agentId: entry.agentId,
+        roleKind: entry.roleKind,
+        ...(settings.roleTitle === undefined ? {} : { roleTitle: settings.roleTitle }),
+        ...(entry.sequence !== undefined ? { sequence: Number(entry.sequence) } : {}),
+        ...(settings.model === undefined ? {} : { model: settings.model }),
+        ...(settings.thinkingEffort === undefined ? {} : { thinkingEffort: settings.thinkingEffort }),
+        ...(settings.additionalInstructions === undefined ? {} : { additionalInstructions: settings.additionalInstructions }),
+      });
+    }
+  } catch {
+    return undefined;
   }
   return members;
+}
+
+async function validateGroupMemberRuntimeSettings(
+  profiles: Map<string, AgentProfile>,
+  members: readonly ConversationMember[],
+  modelDiscovery: ModelDiscoveryService,
+): Promise<void> {
+  await Promise.all(members.map(async member => {
+    const profile = profiles.get(member.agentId);
+    if (!profile) throw new Error('Group member is unavailable');
+    const capable = await withAgentCapability(profile, modelDiscovery);
+    validateRuntimeOverrides(capable, {
+      ...(member.model === undefined ? {} : { model: member.model }),
+      ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
+    });
+  }));
 }
 
 function parseAttachmentInputs(value: unknown): ConversationAttachmentInput[] {
@@ -638,7 +695,7 @@ function parseStreamCursor(value: unknown): number {
 }
 
 function isThinkingEffort(value: unknown): value is ThinkingEffort {
-  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high';
+  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
 }
 
 function parseRuntimeOverrides(body: Record<string, unknown>): Pick<AgentProfile, 'model' | 'thinkingEffort'> | undefined {
@@ -646,73 +703,12 @@ function parseRuntimeOverrides(body: Record<string, unknown>): Pick<AgentProfile
   if (model === null) throw new Error('model must be a string');
   const thinkingEffort = body.thinkingEffort === undefined ? undefined : body.thinkingEffort;
   if (thinkingEffort !== undefined && !isThinkingEffort(thinkingEffort)) {
-    throw new Error('thinkingEffort must be auto, low, medium, or high');
+    throw new Error('thinkingEffort must be auto, low, medium, high, or max');
   }
   if (!model && thinkingEffort === undefined) return undefined;
   return {
     ...(model ? { model } : {}),
     ...(thinkingEffort ? { thinkingEffort } : {}),
-  };
-}
-
-function validateRuntimeOverrides(
-  agent: AgentProfile & { capability: AgentCapability },
-  overrides: Pick<AgentProfile, 'model' | 'thinkingEffort'> | undefined,
-): void {
-  if (!overrides) return;
-  const modelOptions = agent.capability.modelOptions ?? agent.capability.models.map(model => ({
-    id: model,
-    label: model,
-    thinkingEfforts: [...agent.capability.thinkingEfforts],
-    defaultThinkingEffort: agent.capability.defaultThinkingEffort,
-  }));
-  const selectedModel = overrides.model ?? agent.model;
-  const selectedModelOption = selectedModel ? modelOptions.find(model => model.id === selectedModel) : undefined;
-  if (overrides.model && !selectedModelOption) {
-    throw new Error(`Model "${overrides.model}" is not available for ${agent.name}`);
-  }
-  if (overrides.thinkingEffort) {
-    const supportedEfforts = selectedModelOption?.thinkingEfforts ?? agent.capability.thinkingEfforts;
-    if (!supportedEfforts.includes(overrides.thinkingEffort)) {
-      throw new Error(`${agent.name} model does not support thinking effort "${overrides.thinkingEffort}"`);
-    }
-  }
-}
-
-async function withCapability(
-  agent: AgentProfile,
-  modelDiscovery: ModelDiscoveryService,
-  forceRefresh = false,
-): Promise<AgentProfile & { capability: ReturnType<typeof getAgentCapability> }> {
-  const baseCapability = getAgentCapability(agent.role, agent.cliCommand, agent.model);
-  const fallbackModels: AgentModelOption[] = baseCapability.models.map(model => ({
-    id: model,
-    label: model,
-    thinkingEfforts: [...baseCapability.thinkingEfforts],
-    defaultThinkingEffort: baseCapability.defaultThinkingEffort,
-  }));
-  const discovery = await modelDiscovery.discover({
-    cliCommand: agent.cliCommand,
-    role: agent.role,
-    fallbackModels,
-    fallbackThinkingEfforts: baseCapability.thinkingEfforts,
-    forceRefresh,
-  });
-  const modelOptions = discovery.models.length > 0 ? discovery.models : fallbackModels;
-  const selectedModel = agent.model?.trim();
-  const selectedOption = selectedModel ? modelOptions.find(model => model.id === selectedModel) : undefined;
-  return {
-    ...agent,
-    thinkingEffort: agent.thinkingEffort ?? 'auto',
-    capability: {
-      ...baseCapability,
-      models: modelOptions.map(model => model.id),
-      modelOptions,
-      modelSource: discovery.source,
-      modelSourceStale: discovery.stale,
-      ...(discovery.warning ? { modelSourceWarning: discovery.warning } : {}),
-      thinkingEfforts: selectedOption?.thinkingEfforts ?? baseCapability.thinkingEfforts,
-    },
   };
 }
 

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink)",
+      "src/routes/memoryRuntime.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

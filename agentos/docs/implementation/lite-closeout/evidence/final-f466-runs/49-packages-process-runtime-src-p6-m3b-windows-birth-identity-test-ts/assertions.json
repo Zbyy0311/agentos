@@ -1,0 +1,222 @@
+[
+  {
+    "id": "LITE-05-001-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-349",
+    "requirementId": "LITE-05-001",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "reserve-before-spawn ordering and idempotency;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-001-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-350",
+    "requirementId": "LITE-05-001",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "reserve-before-spawn ordering and idempotency;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-002-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-351",
+    "requirementId": "LITE-05-002",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-002-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-352",
+    "requirementId": "LITE-05-002",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-003-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-353",
+    "requirementId": "LITE-05-003",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-003-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-354",
+    "requirementId": "LITE-05-003",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-004-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-355",
+    "requirementId": "LITE-05-004",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-004-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-356",
+    "requirementId": "LITE-05-004",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-005-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-357",
+    "requirementId": "LITE-05-005",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-005-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-358",
+    "requirementId": "LITE-05-005",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-006-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-359",
+    "requirementId": "LITE-05-006",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-006-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-360",
+    "requirementId": "LITE-05-006",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-007-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-361",
+    "requirementId": "LITE-05-007",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-007-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-362",
+    "requirementId": "LITE-05-007",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-009-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-363",
+    "requirementId": "LITE-05-009",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-009-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-364",
+    "requirementId": "LITE-05-009",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-012-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-365",
+    "requirementId": "LITE-05-012",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-012-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-366",
+    "requirementId": "LITE-05-012",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-010-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-367",
+    "requirementId": "LITE-10-010",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "Process reserve-before-spawn;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-010-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-368",
+    "requirementId": "LITE-10-010",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "Process reserve-before-spawn;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-012-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-369",
+    "requirementId": "LITE-10-012",
+    "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+    "line": 108,
+    "expression": "expect(",
+    "clause": "fail-closed recovery evidence;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-012-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-370",
+    "requirementId": "LITE-10-012",
+    "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+    "line": 221,
+    "expression": "expect(",
+    "clause": "fail-closed recovery evidence;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

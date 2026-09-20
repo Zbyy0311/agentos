@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation|P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically|TaskRunService captures four Legacy stages on initial and retry with latest lineage|LITE-01-004 a Task supports zero Runs and then multiple independent Runs|LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability)",
+      "src/services/TaskRunService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getAdjacentImageId } from '@/lib/imageAttachments';
+import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 export interface ImagePreviewItem {
   id: string;
@@ -16,6 +18,7 @@ interface ImagePreviewModalProps {
 
 export function ImagePreviewModal({ items, selectedId, onClose, onSelect }: ImagePreviewModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const glassRef = useLiquidGlass<HTMLDivElement>('modal');
   const selectedIndex = items.findIndex(item => item.id === selectedId);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
 
@@ -51,13 +54,13 @@ export function ImagePreviewModal({ items, selectedId, onClose, onSelect }: Imag
   };
 
   return <div
-    className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4"
+    className={`fixed inset-0 ${uiLayerClass('mediaPreview')} flex items-center justify-center bg-black/75 p-4`}
     role="dialog"
     aria-modal="true"
     aria-label={`图片预览：${selectedItem.name}`}
     onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
   >
-    <div className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col gap-3 rounded-2xl border ui-border bg-[var(--app-surface)] p-3 sm:p-4">
+    <div ref={glassRef} className="glass-dialog relative flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col gap-3 rounded-2xl border ui-border bg-[var(--app-surface)] p-3 sm:p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] tracking-[0.14em] ui-dim">IMAGE PREVIEW</div>

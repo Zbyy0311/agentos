@@ -15,6 +15,7 @@ import {
   ConversationRepository,
   ConversationRepositoryError,
   type AppendMessageInput,
+  type AddMemberInput,
 } from './ConversationRepository.js';
 
 interface SqliteStatement {
@@ -153,6 +154,52 @@ test('CR1R-06 member management', () => {
   } finally { fx.close(); }
 });
 
+// CR1R-16 — Conversation creation and all member inserts are one aggregate transaction.
+test('CR1R-16 conversation aggregate creation rolls back the conversation and earlier members together', () => {
+  const fx = fixture();
+  try {
+    const conversation = {
+      id: CONV, workspaceId: WS, kind: 'group' as const, title: 'Atomic group',
+      replyMode: 'sequential' as const, createdAt: NOW,
+    };
+    const member = (
+      id: string,
+      subjectType: AddMemberInput['subjectType'],
+      subjectId: string,
+      role: AddMemberInput['role'],
+    ): AddMemberInput => ({
+      id, conversationId: CONV, workspaceId: WS, subjectType, subjectId,
+      displayNameSnapshot: subjectId, role, replyMode: 'always', joinedAt: NOW,
+    });
+
+    assert.throws(() => fx.repo.createConversationWithMembers({
+      conversation,
+      members: [
+        member('member_user', 'user', 'user_1', 'owner'),
+        member('member_agent_a', 'agent', 'agent_1', 'participant'),
+        // The second Agent violates the durable aggregate uniqueness constraint
+        // after the first two rows have already been inserted in this transaction.
+        member('member_agent_duplicate', 'agent', 'agent_1', 'participant'),
+      ],
+    }), (error: unknown) => expectCode(error, 'PERSISTENCE_FAILED'));
+
+    assert.equal(fx.repo.findConversationById(WS, CONV), undefined);
+    assert.deepEqual(fx.repo.listMembers(WS, CONV), []);
+
+    // The rollback also releases the transaction so the same aggregate can be
+    // created successfully with a valid member set.
+    const committed = fx.repo.createConversationWithMembers({
+      conversation,
+      members: [
+        member('member_user', 'user', 'user_1', 'owner'),
+        member('member_agent_a', 'agent', 'agent_1', 'participant'),
+      ],
+    });
+    assert.equal(committed.conversation.id, CONV);
+    assert.equal(committed.members.length, 2);
+  } finally { fx.close(); }
+});
+
 // CR1R-07 — messages get a transactional per-conversation sequence.
 test('CR1R-07 message sequence is per-conversation', () => {
   const fx = fixture();
@@ -267,5 +314,60 @@ test('CR1R-15 record exposes no secret value field', () => {
     for (const forbidden of ['secret', 'token', 'password', 'credential']) {
       assert.ok(!Object.keys(message).includes(forbidden), forbidden);
     }
+  } finally { fx.close(); }
+});
+
+// LITE-GROUP-032: group-scoped settings are an atomic, optimistic replacement.
+// The Agent profile remains untouched; a stale editor cannot overwrite another
+// editor's complete member set.
+test('LITE-GROUP-032 group member runtime settings are versioned and atomic', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createConversation({ id: CONV, workspaceId: WS, kind: 'group', title: 'G', replyMode: 'sequential', createdAt: NOW });
+    fx.repo.addMember({ id: 'user_032', conversationId: CONV, workspaceId: WS, subjectType: 'user', subjectId: 'user', displayNameSnapshot: 'You', role: 'owner', replyMode: 'always', joinedAt: NOW });
+    fx.repo.addMember({ id: 'agent_032_a', conversationId: CONV, workspaceId: WS, subjectType: 'agent', subjectId: 'codex', displayNameSnapshot: 'Codex', role: 'participant', replyMode: 'always', roleTitle: '规划', joinedAt: NOW });
+    fx.repo.addMember({ id: 'agent_032_b', conversationId: CONV, workspaceId: WS, subjectType: 'agent', subjectId: 'kimi', displayNameSnapshot: 'Kimi', role: 'participant', replyMode: 'always', roleTitle: '执行', joinedAt: NOW });
+
+    const first = fx.repo.updateGroupMemberSettings({
+      workspaceId: WS,
+      conversationId: CONV,
+      expectedSettingsVersion: 1,
+      updatedAt: NOW2,
+      members: [
+        { memberId: 'agent_032_a', roleTitle: '规划负责人', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先列出风险' },
+        { memberId: 'agent_032_b', roleTitle: '执行负责人', model: null, thinkingEffort: null, additionalInstructions: null },
+      ],
+    });
+    assert.equal(first.conversation.settingsVersion, 2);
+    assert.deepEqual(first.members.filter(member => member.subjectType === 'agent').map(member => ({
+      id: member.id, roleTitle: member.roleTitle, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions, version: member.version,
+    })), [
+      { id: 'agent_032_a', roleTitle: '规划负责人', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先列出风险', version: 2 },
+      { id: 'agent_032_b', roleTitle: '执行负责人', model: undefined, thinkingEffort: undefined, additionalInstructions: undefined, version: 2 },
+    ]);
+
+    assert.throws(() => fx.repo.updateGroupMemberSettings({
+      workspaceId: WS,
+      conversationId: CONV,
+      expectedSettingsVersion: 1,
+      updatedAt: '2026-09-16T02:00:00.000Z',
+      members: [
+        { memberId: 'agent_032_a', roleTitle: '过期编辑', model: 'model-b' },
+        { memberId: 'agent_032_b', roleTitle: '过期编辑', model: 'model-c' },
+      ],
+    }), (error: unknown) => expectCode(error, 'SETTINGS_CONFLICT'));
+    assert.equal(fx.repo.findConversationById(WS, CONV)?.settingsVersion, 2);
+    assert.equal(fx.repo.listMembers(WS, CONV).find(member => member.id === 'agent_032_a')?.model, 'model-a');
+
+    assert.throws(() => fx.repo.updateGroupMemberSettings({
+      workspaceId: WS,
+      conversationId: CONV,
+      expectedSettingsVersion: 2,
+      updatedAt: '2026-09-16T03:00:00.000Z',
+      members: [
+        { memberId: 'agent_032_a', thinkingEffort: 'extreme' as never },
+        { memberId: 'agent_032_b' },
+      ],
+    }), (error: unknown) => expectCode(error, 'INPUT_INVALID'));
   } finally { fx.close(); }
 });

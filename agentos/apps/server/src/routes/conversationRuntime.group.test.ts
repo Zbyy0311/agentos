@@ -9,6 +9,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
+import type { ModelDiscoveryService } from '../services/CliModelDiscovery.js';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-group-route-'));
@@ -26,14 +27,17 @@ function createProjectRoot(): string {
   return root;
 }
 
-async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<void>): Promise<void> {
+async function withServer(
+  run: (baseUrl: string, store: SqliteStore) => Promise<void>,
+  modelDiscovery?: ModelDiscoveryService,
+): Promise<void> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const app = express();
   const server = app.listen(0);
   try {
     app.use(express.json());
-    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store), modelDiscovery));
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address() as AddressInfo;
     await run(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime`, store);
@@ -287,5 +291,97 @@ test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', 
     });
   } finally {
     delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+test('LITE-GROUP-032 runtime group create/edit validates and freezes member settings', async () => {
+  const discovery: ModelDiscoveryService = {
+    async discover(input) {
+      const cliKind = input.role === 'kimi' ? 'kimi' : input.role === 'opencode' ? 'opencode' : 'codex';
+      return {
+        cliKind,
+        models: [
+          { id: 'model-a', label: 'Model A', thinkingEfforts: ['auto', 'high'], defaultThinkingEffort: 'high' },
+          { id: 'model-b', label: 'Model B', thinkingEfforts: ['auto', 'low'], defaultThinkingEffort: 'low' },
+        ],
+        source: 'live', stale: false, discoveredAt: '2026-09-16T00:00:00.000Z',
+      };
+    },
+  };
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, {
+        kind: 'group', replyMode: 'sequential', title: '可配置运行时群聊',
+        members: [
+          { agentId: 'codex', roleTitle: '规划负责人', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先列出风险' },
+          { agentId: 'kimi', roleTitle: '执行负责人', model: 'model-b', thinkingEffort: 'low', additionalInstructions: '给出可复现步骤' },
+        ],
+      });
+      assert.equal(created.status, 201);
+      const createdBody = created.json as {
+        conversation: { id: string; settingsVersion: number };
+        members: Array<{ id: string; subjectType: string; subjectId: string; roleTitle: string; model?: string; thinkingEffort?: string; additionalInstructions?: string }>;
+      };
+      assert.equal(createdBody.conversation.settingsVersion, 1);
+      const createdAgents = createdBody.members.filter(member => member.subjectType === 'agent');
+      assert.deepEqual(createdAgents.map(member => ({ subjectId: member.subjectId, roleTitle: member.roleTitle, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions })), [
+        { subjectId: 'codex', roleTitle: '规划负责人', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先列出风险' },
+        { subjectId: 'kimi', roleTitle: '执行负责人', model: 'model-b', thinkingEffort: 'low', additionalInstructions: '给出可复现步骤' },
+      ]);
+
+      const memberUpdates = createdAgents.map(member => ({
+        memberId: member.id,
+        roleTitle: member.subjectId === 'codex' ? '新的规划负责人' : '新的执行负责人',
+        model: member.subjectId === 'codex' ? 'model-b' : null,
+        thinkingEffort: member.subjectId === 'codex' ? 'low' : null,
+        additionalInstructions: member.subjectId === 'codex' ? '只报告阻塞项' : null,
+      }));
+      const updated = await fetch(`${baseUrl}/conversations/${createdBody.conversation.id}/members`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedSettingsVersion: 1, members: memberUpdates }),
+      });
+      assert.equal(updated.status, 200);
+      const updatedBody = await updated.json() as { conversation: { settingsVersion: number }; members: typeof createdBody.members };
+      assert.equal(updatedBody.conversation.settingsVersion, 2);
+      const updatedCodex = updatedBody.members.find(member => member.subjectId === 'codex')!;
+      const updatedKimi = updatedBody.members.find(member => member.subjectId === 'kimi')!;
+      assert.deepEqual({ model: updatedCodex.model, thinkingEffort: updatedCodex.thinkingEffort, additionalInstructions: updatedCodex.additionalInstructions }, { model: 'model-b', thinkingEffort: 'low', additionalInstructions: '只报告阻塞项' });
+      assert.deepEqual({ model: updatedKimi.model, thinkingEffort: updatedKimi.thinkingEffort, additionalInstructions: updatedKimi.additionalInstructions }, { model: undefined, thinkingEffort: undefined, additionalInstructions: undefined });
+
+      const stale = await fetch(`${baseUrl}/conversations/${createdBody.conversation.id}/members`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedSettingsVersion: 1, members: memberUpdates }),
+      });
+      assert.equal(stale.status, 409);
+      const current = await fetch(`${baseUrl}/conversations/${createdBody.conversation.id}`).then(response => response.json()) as { conversation: { settingsVersion: number } };
+      assert.equal(current.conversation.settingsVersion, 2);
+
+      const sent = await postJson(`${baseUrl}/conversations/${createdBody.conversation.id}/messages`, { content: '请执行配置化群聊' });
+      assert.equal(sent.status, 201);
+      const sourceMessageId = (sent.json as { message: { id: string } }).message.id;
+      const interaction = await postJson(`${baseUrl}/conversations/${createdBody.conversation.id}/interactions`, {
+        budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+      });
+      assert.equal(interaction.status, 201);
+      const interactionId = (interaction.json as { interaction: { id: string } }).interaction.id;
+      const response = await fetch(`${baseUrl}/conversations/${createdBody.conversation.id}/interactions/${interactionId}/respond`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceMessageId }),
+      });
+      assert.equal(response.status, 200);
+      assert.match(await response.text(), /event: group\.done/);
+
+      const snapshots = store.getDatabase().prepare(
+        'SELECT agent_id AS agentId, budget_json AS budgetJson FROM cr_turn_context_snapshots WHERE interaction_id = ? ORDER BY agent_id',
+      ).all(interactionId) as Array<{ agentId: string; budgetJson: string }>;
+      assert.equal(snapshots.length, 2);
+      const configByAgent = new Map(snapshots.map(snapshot => [snapshot.agentId, JSON.parse(snapshot.budgetJson) as { groupRuntimeConfig: { model: string | null; thinkingEffort: string | null; roleTitle: string | null; additionalInstructions: string | null; settingsVersion: number | null } }]));
+      assert.deepEqual(configByAgent.get('codex')!.groupRuntimeConfig, { model: 'model-b', thinkingEffort: 'low', roleTitle: '新的规划负责人', additionalInstructions: '只报告阻塞项', settingsVersion: 2 });
+      assert.deepEqual(configByAgent.get('kimi')!.groupRuntimeConfig, { model: null, thinkingEffort: null, roleTitle: '新的执行负责人', additionalInstructions: null, settingsVersion: 2 });
+    }, discovery);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
   }
 });

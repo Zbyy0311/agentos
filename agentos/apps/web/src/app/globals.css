@@ -24,7 +24,29 @@
   --app-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
   --app-grid-line: rgba(255, 255, 255, 0.035);
   --app-glow: rgba(210, 103, 59, 0.16);
+  --ambient-glow-secondary: rgba(94, 138, 130, 0.12);
+  --layer-content: 10;
+  --layer-local-menu: 50;
+  --layer-workspace-overlay: 80;
+  --layer-context-menu: 85;
+  --layer-run-details: 90;
+  --layer-workspace-surface: 95;
+  --layer-editor: 105;
+  --layer-confirmation: 110;
+  --layer-media-preview: 120;
+  --layer-toast: 130;
 }
+
+.ui-layer-content { z-index: 10; }
+.ui-layer-local-menu { z-index: 50; }
+.ui-layer-workspace-overlay { z-index: 80; }
+.ui-layer-context-menu { z-index: 85; }
+.ui-layer-run-details { z-index: 90; }
+.ui-layer-workspace-surface { z-index: 95; }
+.ui-layer-editor { z-index: 105; }
+.ui-layer-confirmation { z-index: 110; }
+.ui-layer-media-preview { z-index: 120; }
+.ui-layer-toast { z-index: 130; }
 
 html[data-theme='light'] {
   --app-bg: #f0eee9;
@@ -48,6 +70,7 @@ html[data-theme='light'] {
   --app-shadow: 0 18px 45px rgba(45, 42, 35, 0.14);
   --app-grid-line: rgba(32, 39, 41, 0.055);
   --app-glow: rgba(180, 82, 50, 0.1);
+  --ambient-glow-secondary: rgba(117, 111, 77, 0.1);
 }
 
 * {
@@ -114,15 +137,21 @@ input:focus-visible {
   background: var(--app-bg);
 }
 
-.signal-page::before {
+/* Liquid glass ambient field. It must be a real element with a real
+   background: the glass auto-backdrop repaint cannot capture pseudo-elements,
+   so the grid/glow layer lives here instead of on .signal-page::before. */
+.ambient-backdrop {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px), linear-gradient(var(--app-grid-line) 1px, transparent 1px), radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem);
-  background-size: 48px 48px, 48px 48px, auto;
-  content: '';
-  opacity: 0.6;
   pointer-events: none;
+  background-image:
+    radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem),
+    radial-gradient(circle at 14% 82%, var(--ambient-glow-secondary), transparent 32rem),
+    linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--app-grid-line) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  opacity: 0.65;
 }
 
 .signal-header {
@@ -329,7 +358,45 @@ input:focus-visible {
 }
 
 .signal-message {
+  min-width: 0;
+  max-width: 100%;
   box-shadow: 0 10px 24px color-mix(in srgb, #000 10%, transparent);
+}
+
+.signal-message-agent,
+.signal-message-system {
+  width: 100%;
+  box-shadow: none;
+}
+
+.signal-message-user {
+  width: fit-content;
+  max-width: min(80%, 760px);
+}
+
+.signal-message-row,
+.message-content-column,
+.signal-message .markdown-message {
+  min-width: 0;
+}
+
+/* Keep prose readable without narrowing code, tables, diffs, or artifacts. */
+.signal-message-agent .markdown-message > :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote),
+.signal-message-agent .message-sender {
+  max-width: min(80ch, 100%);
+}
+
+.markdown-code-block,
+.markdown-code-block > :last-child,
+.markdown-code-block pre,
+.signal-message .overflow-x-auto {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.markdown-code-block > :last-child,
+.markdown-code-block pre {
+  overflow-x: auto;
 }
 
 .signal-composer-shell {
@@ -338,6 +405,65 @@ input:focus-visible {
 
 .signal-composer {
   box-shadow: 0 18px 50px color-mix(in srgb, #000 25%, transparent);
+}
+
+.signal-chat {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+.signal-chat-chrome {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  overflow-x: clip;
+}
+
+/* Liquid glass mode: the element's own fill steps back so the refracted
+   backdrop reads through. Without WebGL2 (fallback) the pre-glass solid or
+   blurred look stays in place, so no fallback-specific rules are needed. */
+.signal-chat-header[data-liquid-glass='webgl'],
+.signal-header[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface) 22%, transparent);
+  backdrop-filter: none;
+}
+
+.signal-composer[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
+}
+
+.signal-composer-shell:has(.signal-composer[data-liquid-glass='webgl']) {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* Group mentions share the composer's material and ghost-control styling. */
+.composer-group-actions {
+  flex-wrap: wrap;
+}
+
+.composer-group-targets {
+  display: flex;
+  flex: 1 1 20rem;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.composer-group-targets > :first-child {
+  flex: 0 1 auto;
+  max-width: 40%;
+}
+
+.toast-item[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 28%, transparent);
+}
+
+.glass-dialog[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
 }
 
 .composer-resize-handle {
@@ -465,6 +591,42 @@ input:focus-visible {
   border-color: var(--app-border);
 }
 
+.ui-modal-sticky-header {
+  position: sticky;
+  top: -1.25rem;
+  z-index: 20;
+  margin: -1.25rem -1.25rem 1.25rem;
+  padding: 1.25rem 1.25rem 1rem;
+  background: var(--app-surface-raised);
+  border-bottom: 1px solid var(--app-border);
+  box-shadow: 0 8px 16px -16px var(--app-border-strong);
+}
+
+.ui-modal-sticky-footer {
+  position: sticky;
+  bottom: -1.25rem;
+  z-index: 20;
+  margin: 1.5rem -1.25rem -1.25rem;
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--app-surface-raised);
+  border-top: 1px solid var(--app-border);
+  box-shadow: 0 -8px 16px -16px var(--app-border-strong);
+}
+
+@media (min-width: 640px) {
+  .ui-modal-sticky-header {
+    top: -1.5rem;
+    margin: -1.5rem -1.5rem 1.5rem;
+    padding: 1.5rem 1.5rem 1rem;
+  }
+
+  .ui-modal-sticky-footer {
+    bottom: -1.5rem;
+    margin: 1.5rem -1.5rem -1.5rem;
+    padding: 1rem 1.5rem 1.5rem;
+  }
+}
+
 .ui-text {
   color: var(--app-text);
 }
@@ -502,6 +664,70 @@ input:focus-visible {
   transform: none;
 }
 
+.ui-button-danger {
+  background: var(--app-danger);
+  color: #fffaf4;
+  transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
+}
+
+.ui-button-danger:hover {
+  background: color-mix(in srgb, var(--app-danger) 82%, #000);
+  transform: translateY(-1px);
+}
+
+.ui-button-danger:disabled {
+  transform: none;
+  opacity: 0.72;
+}
+
+.ui-modal-backdrop {
+  background: var(--app-overlay);
+  backdrop-filter: blur(10px);
+}
+
+.ui-confirm-dialog {
+  position: relative;
+  border-color: color-mix(in srgb, var(--app-danger) 26%, var(--app-border));
+  animation: ui-confirm-dialog-enter 160ms ease-out;
+}
+
+.ui-confirm-dialog-accent {
+  height: 3px;
+  background: linear-gradient(90deg, var(--app-danger), color-mix(in srgb, var(--app-danger) 22%, transparent));
+}
+
+.ui-confirm-dialog-icon {
+  background: color-mix(in srgb, var(--app-danger) 14%, var(--app-surface-soft));
+  color: var(--app-danger);
+}
+
+.ui-confirm-dialog-eyebrow {
+  color: var(--app-danger);
+}
+
+.ui-confirm-dialog-target {
+  border-color: color-mix(in srgb, var(--app-danger) 28%, var(--app-border));
+  background: color-mix(in srgb, var(--app-danger) 6%, var(--app-surface-soft));
+}
+
+.ui-confirm-dialog-target-dot {
+  background: var(--app-danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger) 13%, transparent);
+}
+
+.ui-confirm-dialog-spinner {
+  animation: ui-confirm-dialog-spin 700ms linear infinite;
+}
+
+@keyframes ui-confirm-dialog-enter {
+  from { opacity: 0; transform: translateY(0.45rem) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-confirm-dialog-spin {
+  to { transform: rotate(360deg); }
+}
+
 .ui-button-secondary {
   background: transparent;
   border: 1px solid var(--app-border-strong);
@@ -523,6 +749,12 @@ input:focus-visible {
 .ui-button-ghost:hover {
   background: var(--app-accent-soft);
   color: var(--app-text);
+}
+
+.ui-button-ghost-danger:hover,
+.ui-button-ghost-danger:focus-visible {
+  background: var(--app-danger);
+  color: #fffaf4;
 }
 
 .ui-input {
@@ -655,6 +887,53 @@ input:focus-visible {
 
 .effort-popover {
   width: min(14rem, calc(100vw - 2rem));
+}
+
+.run-mode-menu {
+  transform-origin: bottom right;
+  animation: run-mode-menu-enter 120ms ease-out both;
+  max-height: min(70vh, 24rem);
+  overflow-y: auto;
+}
+
+.run-mode-menu[data-positioned="false"] {
+  visibility: hidden;
+}
+
+.run-mode-option {
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.run-mode-option:hover {
+  transform: translateX(1px);
+}
+
+@keyframes run-mode-menu-enter {
+  from { opacity: 0; transform: translateY(0.25rem) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.compact-select-menu {
+  transform-origin: top left;
+  animation: compact-select-menu-enter 120ms ease-out both;
+  max-width: calc(100vw - 1.5rem);
+}
+
+.compact-select-menu[data-positioned="false"] {
+  visibility: hidden;
+}
+
+.compact-select-option {
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.compact-select-option:hover {
+  transform: translateX(1px);
+}
+
+@keyframes compact-select-menu-enter {
+  from { opacity: 0; transform: translateY(-0.25rem) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .effort-slider {
@@ -792,20 +1071,149 @@ body.resizing-panels .panel-resize-handle {
   background: var(--app-accent-soft);
 }
 
+.panel-resize-handle:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -2px;
+  background: var(--app-accent-soft);
+}
+
 body.resizing-panels {
   user-select: none;
 }
 
-@media (max-width: 1180px) {
-  .inspector-sidebar {
-    display: none;
-  }
+.chat-layout-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--app-surface) 36%, transparent);
 }
 
-@media (max-width: 860px) {
-  .history-sidebar {
-    width: 210px;
-  }
+.chat-layout-toggle {
+  display: inline-flex;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.chat-layout-toggle > span:first-child {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.chat-layout-toggle.ui-selected {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+}
+
+.workspace-sidebar-compact {
+  width: 64px !important;
+  padding-right: 0.55rem !important;
+  padding-left: 0.55rem !important;
+}
+
+.workspace-sidebar-compact .workspace-copy,
+.workspace-sidebar-compact .workspace-nav-label,
+.workspace-sidebar-compact .workspace-agent-copy,
+.workspace-sidebar-compact .workspace-group-copy,
+.workspace-sidebar-compact .workspace-knowledge-label,
+.workspace-sidebar-compact .workspace-return-label,
+.workspace-sidebar-compact .workspace-theme-label,
+.workspace-sidebar-compact .workspace-runtime-button {
+  display: none;
+}
+
+.workspace-sidebar-compact .workspace-agent-button {
+  justify-content: center;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.workspace-sidebar-compact .workspace-group-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.workspace-sidebar-compact .workspace-knowledge-button {
+  display: grid;
+  place-items: center;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.workspace-panel-overlay {
+  position: fixed;
+  z-index: var(--layer-workspace-overlay);
+  inset: 0;
+}
+
+.workspace-panel-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: color-mix(in srgb, #000 32%, transparent);
+  cursor: default;
+}
+
+.workspace-panel-overlay-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  width: min(88vw, 380px);
+  flex-direction: column;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 30%, transparent);
+}
+
+.workspace-panel-overlay-workspace .workspace-panel-overlay-panel,
+.workspace-panel-overlay-history .workspace-panel-overlay-panel {
+  left: 0;
+}
+
+.workspace-panel-overlay-inspector .workspace-panel-overlay-panel {
+  right: 0;
+}
+
+.workspace-panel-overlay-header {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.workspace-panel-overlay-content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.workspace-panel-overlay-content > [data-layout-panel] {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100%;
+  min-height: 100%;
+  border: 0;
 }
 
 @media (max-width: 680px) {
@@ -822,66 +1230,66 @@ body.resizing-panels {
     border-radius: 0.85rem;
   }
 
-  .workspace-sidebar {
-    width: 74px !important;
-    padding-left: 0.55rem !important;
-    padding-right: 0.55rem !important;
-  }
-
-  .workspace-sidebar .workspace-copy,
-  .workspace-sidebar .workspace-nav-label,
-  .workspace-sidebar .workspace-agent-copy,
-  .workspace-sidebar .workspace-group-copy,
-  .workspace-sidebar .workspace-knowledge-label,
-  .workspace-sidebar .workspace-return-label,
-  .workspace-sidebar .workspace-theme-label {
+  .chat-layout-toggle-label {
     display: none;
   }
 
-  .workspace-sidebar .workspace-agent-button {
-    justify-content: center;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-
-  .workspace-sidebar .workspace-group-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-
-  .workspace-sidebar .workspace-knowledge-button {
-    display: grid;
-    place-items: center;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-
-  .history-sidebar {
-    display: none;
-  }
-
-  .panel-resize-handle {
-    display: none;
+  .signal-chat-header {
+    padding-right: 0.7rem;
+    padding-left: 0.7rem;
   }
 }
 
-main > div.border-t > div {
+/* The composer is the layout container: its width depends on the chat column,
+   not the viewport, so responsiveness must be container-based. */
+.signal-composer {
   container-type: inline-size;
+  overflow-x: clip;
+}
+
+/* The model-source note yields to the pickers: it only appears when the
+   composer has room, so the controls never wrap just because of it. */
+.signal-composer .composer-source {
+  display: none;
+}
+
+@container (min-width: 560px) {
+  .signal-composer .composer-source {
+    display: inline;
+  }
 }
 
 @container (max-width: 460px) {
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 {
-    flex-wrap: wrap;
+  .signal-composer .picker-label {
+    display: none;
   }
 
-  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 > div.ml-auto {
-    width: 100%;
-    max-width: 100%;
-    margin-left: 0;
+  /* Keep attach, pickers and send on one row while they fit; wrap only as a
+     last resort, and let the controls group wrap internally then. */
+  .signal-composer .composer-action-row {
+    flex-wrap: wrap;
+    column-gap: 0.4rem;
+    row-gap: 0.4rem;
+  }
+
+  .signal-composer .composer-action-row > div.ml-auto {
+    flex-wrap: wrap;
     justify-content: flex-end;
+    row-gap: 0.4rem;
+  }
+
+  .signal-composer .composer-controls {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .signal-composer .composer-controls button {
+    padding-right: 0.45rem;
+    padding-left: 0.45rem;
+  }
+
+  .signal-composer .run-mode-trigger {
+    min-width: 0;
   }
 }
 

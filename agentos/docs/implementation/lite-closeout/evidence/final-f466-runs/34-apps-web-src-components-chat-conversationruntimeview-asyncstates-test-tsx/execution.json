@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-12-007 the empty state is named, never rendered as a blank surface|LITE-12-007 the error state is an announced alert, not silence|LITE-12-007 every state renders without throwing, so no state is unreachable)",
+      "src/components/chat/ConversationRuntimeView.asyncStates.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

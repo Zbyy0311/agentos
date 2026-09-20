@@ -12,6 +12,11 @@ interface MarkdownMessageProps {
   apiBase?: string;
 }
 
+// react-markdown 9.x does not consistently expose the legacy `inline` prop.
+// Keep the distinction at the Markdown tree boundary so inline code never
+// falls through to the block renderer (which would put a <div> inside <p>).
+const CodeBlockContext = React.createContext(false);
+
 function isSafeUrl(value: string): boolean {
   if (value.startsWith('/') || value.startsWith('#')) return true;
   try {
@@ -32,12 +37,29 @@ function isSameOriginArtifact(value: string, apiBase: string): boolean {
   }
 }
 
-function CodeBlock({ inline, className, children, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
+function CodeBlock({ inline, className, children, node: _node, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean; node?: unknown }) {
+  const insidePre = React.useContext(CodeBlockContext);
+  const isInline = inline ?? !insidePre;
   const language = /language-(\w+)/.exec(className ?? '')?.[1];
   const value = String(children).replace(/\n$/, '');
-  if (inline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
+  if (isInline) return <code className="rounded bg-[var(--app-bg)] px-1 py-0.5 font-mono text-[0.9em] ui-text" {...props}>{children}</code>;
   if (language === 'diff' || language === 'patch') return <DiffBlock content={value} />;
-  return <SyntaxHighlighter language={language} PreTag="div" customStyle={{ margin: 0, borderRadius: '0.75rem', padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)' }}>{value}</SyntaxHighlighter>;
+  return <CodeBlockSurface language={language} value={value} />;
+}
+
+function CodeBlockSurface({ language, value }: { language?: string; value: string }) {
+  const [wrapped, setWrapped] = React.useState(false);
+  return <div className="markdown-code-block max-w-full overflow-hidden rounded-xl border ui-border">
+    <div className="flex items-center justify-between border-b ui-border px-3 py-1.5 text-[10px] ui-dim">
+      <span>{language ?? 'code'}</span>
+      <button type="button" aria-pressed={wrapped} aria-label={wrapped ? '关闭代码换行' : '开启代码换行'} onClick={() => setWrapped(current => !current)} className="ui-button-ghost rounded px-1.5 py-0.5">{wrapped ? '滚动' : '换行'}</button>
+    </div>
+    <SyntaxHighlighter language={language} PreTag="div" wrapLongLines={wrapped} customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', minWidth: 0, overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
+  </div>;
+}
+
+function MarkdownPre({ children }: { children?: React.ReactNode }) {
+  return <CodeBlockContext.Provider value>{children}</CodeBlockContext.Provider>;
 }
 
 export function MarkdownMessage({ content, apiBase = '' }: MarkdownMessageProps) {
@@ -46,6 +68,7 @@ export function MarkdownMessage({ content, apiBase = '' }: MarkdownMessageProps)
       remarkPlugins={[remarkGfm]}
       components={{
         code: CodeBlock,
+        pre: MarkdownPre,
         a: ({ href, children, ...props }) => {
           const safeHref = href && isSafeUrl(href) ? href : undefined;
           return safeHref ? <a href={safeHref} target="_blank" rel="noreferrer noopener" {...props}>{children}</a> : <span {...props}>{children}</span>;

@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class
+ok 1 - CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class
+  ---
+  duration_ms: 0.7226
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 129.9205

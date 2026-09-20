@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LITE-00-013-wfi-10-every-template-compiles-396",
+    "requirementId": "LITE-00-013",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-wfi-04-optional-security-review-397",
+    "requirementId": "LITE-01-011",
+    "name": "WFI-04 optional security review",
+    "line": 61,
+    "expression": "assert.equal(",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-wfi-10-every-template-compiles-398",
+    "requirementId": "LITE-09-015",
+    "name": "WFI-10 every template compiles",
+    "line": 144,
+    "expression": "assert.equal(",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

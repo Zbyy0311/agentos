@@ -221,3 +221,32 @@
 - 真实 Kimi 单聊当前计费周期返回 HTTP 403，依赖 Kimi 的三 Agent 群聊 gate 继续保持未通过。
 - 续验：空临时目录固定短提示下，Kimi 默认模型 `kimi-code/kimi-for-coding` 与配置中的 `kimi-code/kimi-for-coding-highspeed` 均返回 exit 1，并命中计费周期配额 403；当前没有可用的 Kimi 模型入口可用于完成真实群聊 gate。
 - 2026-07-15 配额恢复后真实 E2E run 5：Codex/Kimi/OpenCode 单聊和三 Agent 群聊均通过；真实记忆注入、无隐藏标记候选闭环、失败、取消、waiting_user resume、确定性生命周期与重启恢复均通过，脚本 exit 0。群聊提示增加 `REAL_GROUP_NO_WAIT` 和完整公开范围，修复 Kimi 将群聊任务误判为等待用户的问题。
+| 2026-09-16T09:32:38.713Z | KimiCode | kimi_worker | 501a308a-0404-4697-bc04-86ff0f98cbbf | real | FAIL |
+| 2026-09-16T09:50:01.042Z | Codex | codex_manager | turn_01M2MSXXFP0TXK5EGQA3QXY3SS | real | OK |
+| 2026-09-16T09:50:04.220Z | KimiCode | kimi_worker | turn_01M2MSZ3B4GBK4C43GN44VJWVW | real | FAIL |
+| 2026-09-16T14:38:44.532Z | KimiCode | kimi_worker | 389a33b6-dc97-4cee-8b9b-b06a9cc01cde | real | FAIL |
+| 2026-09-16T14:58:48.154Z | KimiCode | kimi_worker | 3a0dcdb4-e461-4c09-8913-6bf0ea4fabab | real | OK |
+| 2026-09-16T15:21:21.634Z | KimiCode | kimi_worker | 1c79c91e-7ab6-4e0e-903f-88a43c03820b | real | OK |
+| 2026-09-16T15:52:20.123Z | KimiCode | kimi_worker | 8830f8d1-a4ae-48ed-abe5-7554f368faeb | real | FAIL |
+| 2026-09-16T17:53:47.377Z | KimiCode | kimi_worker | 3b14685b-f3e8-40bf-9a45-0b1d1556e67e | real | OK |
+| 2026-09-17T03:35:21.311Z | KimiCode | kimi_worker | 7381123b-a384-4d2b-9512-2fbc82c8d909 | real | OK |
+| 2026-09-17T04:08:29.903Z | KimiCode | kimi_worker | f7077e6f-f274-48ef-8011-1e14ef6b9537 | real | OK |
+| 2026-09-17T04:10:38.826Z | KimiCode | kimi_worker | 59530a64-0ed7-4552-95a6-4192b932511a | real | OK |
+| 2026-09-17T05:04:58.599Z | KimiCode | kimi_worker | f9e9ce81-7b33-4767-9957-c445226e78c7 | real | OK |
+| 2026-09-17T05:13:31.996Z | KimiCode | kimi_worker | fd1ed31a-2708-4b1a-bb00-2eaf0eea9dd1 | real | OK |
+| 2026-09-17T05:32:39.839Z | KimiCode | kimi_worker | 464a7002-1074-4aa2-811a-94ccc3511692 | real | OK |
+| 2026-09-17T05:40:27.227Z | KimiCode | kimi_worker | 19a1cb05-aeb8-4821-acf3-566db964797d | real | OK |
+| 2026-09-17T06:20:06.900Z | KimiCode | kimi_worker | d24c54f3-2bda-4d27-8ba9-01140ed340dc | real | OK |
+| 2026-09-17T06:26:15.599Z | KimiCode | kimi_worker | b2d4a66c-e451-459c-8667-1c066421d59f | real | OK |
+| 2026-09-17T06:41:40.603Z | KimiCode | kimi_worker | a88235a5-7e7b-49ed-a980-622156a987c7 | real | OK |
+| 2026-09-17T06:47:51.633Z | KimiCode | kimi_worker | 6c360005-dc32-499e-8d45-de7be6cef78d | real | OK |
+| 2026-09-17T06:50:06.231Z | KimiCode | kimi_worker | 022baab3-82e9-4a61-afe8-a5c6993100d8 | real | OK |
+| 2026-09-17T07:58:35.082Z | KimiCode | kimi_worker | 6938b0ca-f622-4079-96ff-4465f00f60d8 | real | OK |
+| 2026-09-17T08:06:53.065Z | KimiCode | kimi_worker | turn_01M2Q6EJZ1MBW7QEKPQTCAM180 | real | OK |
+| 2026-09-17T08:16:48.273Z | KimiCode | kimi_worker | turn_01M2Q70Q83FVCVRD81YRPYRKSN | real | OK |
+| 2026-09-17T08:22:00.499Z | KimiCode | kimi_worker | 1cccdb09-d58e-46e2-94fa-3da424113e1e | real | OK |
+| 2026-09-17T11:44:05.744Z | KimiCode | kimi_worker | cf6e981b-7e68-4342-9724-b3dfbb5d96ca | real | OK |
+| 2026-09-17T11:47:16.481Z | KimiCode | kimi_worker | 66ee365c-347f-4544-875f-34708c3d9580 | real | OK |
+| 2026-09-17T12:33:10.954Z | KimiCode | kimi_worker | f4e39c77-8813-49f5-8912-4c78ef01d560 | real | OK |
+| 2026-09-17T12:53:03.005Z | KimiCode | kimi_worker | e82088f9-32af-4fd7-904f-6856d5aad610 | real | OK |
+| 2026-09-17T12:55:29.403Z | KimiCode | kimi_worker | 6cd68510-2061-431f-a778-904c745d4cdb | real | OK |

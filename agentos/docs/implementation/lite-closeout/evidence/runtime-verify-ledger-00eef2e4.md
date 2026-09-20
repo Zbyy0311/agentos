@@ -1,0 +1,212 @@
+# S8 RUNTIME-VERIFY 逐行断言账本
+
+本账本把「点名文件整体通过」升级为「该文件里**实际执行过**的断言」，正是撤回 196 个 PASS 时缺失的那一环：`No immutable per-requirement mapping to specific executed test assertions and their outcomes.`
+
+它只产出候选判定，不改矩阵状态：每行 verdict 取 `candidate-supported`、`insufficient-evidence` 或 `failed`；未执行 PASS 提升，未执行 `--require-closed`。
+
+- 批次收据：`docs/implementation/lite-closeout/evidence/verification-batches-00eef2e4.json`
+- 收据绑定基线：`00eef2e4029e73e9e55f3cd3b106e770a511f44f`
+- 批次汇总：`{"batches":58,"passed":55,"failed":3,"requirementsProvable":0,"requirementsTotal":213}`
+- 判定规则：该文件在该基线上以干净计数退出，且文件内至少一条**已执行且通过**的断言与条款文本共享具区别性的词元（≥6 字符，或两个独立 4–5 字符词元）。
+
+## 汇总
+
+| 判定 | 行数 |
+| --- | ---: |
+| `candidate-supported` | 127 |
+| `insufficient-evidence` | 52 |
+| `failed` | 0 |
+| 合计 | 179 |
+
+未判为 candidate-supported 的分布：
+
+| 原因 | 行数 |
+| --- | ---: |
+| `not-clean / no-assertion-parsed` | 1 |
+| `passed / no-assertion-parsed` | 24 |
+| `passed / no-clause-match` | 27 |
+
+## 逐行明细
+
+| Requirement | 点名文件 | 文件状态 | 已解析断言 | 命中断言（示例） | 判定 |
+| --- | --- | --- | ---: | --- | --- |
+| `LITE-00-001` | `apps/server/src/store/SqliteStore.test.ts` | `passed` | 37 | Workspace.agents projected fields match Provider Configuration after update | candidate-supported |
+| `LITE-00-002` | `apps/server/src/routes/conversationRuntime.test.ts` | `passed` | 11 | LITE-00-002 Conversation and Message records survive a restart and a reconnect | candidate-supported |
+| `LITE-00-003` | `apps/server/src/services/RuntimeInspector.test.ts` | `passed` | 16 | INSP-12 Run, Stage, Provider, Process and duration stay distinct | candidate-supported |
+| `LITE-00-004` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lif | candidate-supported |
+| `LITE-00-005` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or R | candidate-supported |
+| `LITE-00-006` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once | candidate-supported |
+| `LITE-00-008` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U09 an active MODIFYING admission blocks every later request | candidate-supported |
+| `LITE-00-009` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute | candidate-supported |
+| `LITE-00-010` | `apps/server/src/services/MemoryContextResolver.test.ts` | `passed` | 17 | — | insufficient-evidence |
+| `LITE-00-011` | `apps/server/src/services/GitObservationCollector.integration.test.ts` | `passed` | 36 | — | insufficient-evidence |
+| `LITE-00-012` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | SHELL-01 wide mode renders all four columns with landmarks | candidate-supported |
+| `LITE-00-013` | `apps/server/src/services/BoundedGroupService.test.ts` | `passed` | 17 | — | insufficient-evidence |
+| `LITE-01-001` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | Identity — canonical entity IDs | candidate-supported |
+| `LITE-01-002` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | Identity — canonical entity IDs | candidate-supported |
+| `LITE-01-003` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | operation IDs remain distinct from all existing kinds | candidate-supported |
+| `LITE-01-004` | `apps/server/src/services/TaskRunService.test.ts` | `passed` | 93 | LITE-01-004 a Task supports zero Runs and then multiple independent Runs | candidate-supported |
+| `LITE-01-005` | `apps/server/src/services/TaskRunService.test.ts` | `passed` | 93 | P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation | candidate-supported |
+| `LITE-01-006` | `apps/server/src/services/RuntimeInspector.test.ts` | `passed` | 16 | LITE-01-006 Run and Process records remain independently queryable | candidate-supported |
+| `LITE-01-007` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | snapshot prefix is not confused with other kinds | candidate-supported |
+| `LITE-01-008` | `apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts` | `passed` | 56 | L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence | candidate-supported |
+| `LITE-01-009` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial | candidate-supported |
+| `LITE-01-010` | `apps/server/src/services/GroupSpeakerResolver.test.ts` | `passed` | 7 | CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only cla | candidate-supported |
+| `LITE-01-011` | `packages/shared/wf-template-instantiation.test.ts` | `passed` | 10 | WFI-04 optional security review | candidate-supported |
+| `LITE-01-012` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | snapshot kind exists with snapshot prefix | candidate-supported |
+| `LITE-01-013` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | Identity — canonical entity IDs | candidate-supported |
+| `LITE-01-014` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-01-015` | `apps/server/src/store/Identity.test.ts` | `passed` | 38 | — | insufficient-evidence |
+| `LITE-02-002` | `apps/server/src/services/ConversationBridgeService.test.ts` | `passed` | 14 | CR4B-02 create-task is idempotent across retries and starts nothing | candidate-supported |
+| `LITE-02-003` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B same-file concurrency permits only one composite cancellation | candidate-supported |
+| `LITE-02-004` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approva | candidate-supported |
+| `LITE-02-005` | `apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts` | `passed` | 30 | failure during Event append rolls back the entire creation graph and idempotency miss | candidate-supported |
+| `LITE-02-006` | `apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts` | `passed` | 30 | — | insufficient-evidence |
+| `LITE-02-007` | `apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts` | `passed` | 30 | P3D-2 operation approval Event and Outbox failures roll back all state | candidate-supported |
+| `LITE-02-008` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-02-009` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged | candidate-supported |
+| `LITE-02-010` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native recon | candidate-supported |
+| `LITE-02-011` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B completeRunStartup commits Stage then Run started events with snapshots | candidate-supported |
+| `LITE-02-012` | `apps/server/src/services/TaskRunService.test.ts` | `passed` | 93 | P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation | candidate-supported |
+| `LITE-02-013` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect | candidate-supported |
+| `LITE-02-016` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | — | insufficient-evidence |
+| `LITE-02-017` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P3D-2 operation approval Event and Outbox failures roll back all state | candidate-supported |
+| `LITE-03-001` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-002` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-003` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-004` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P3D-2 operation approval Event and Outbox failures roll back all state | candidate-supported |
+| `LITE-03-005` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership | candidate-supported |
+| `LITE-03-006` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P3D-2 operation approval Event and Outbox failures roll back all state | candidate-supported |
+| `LITE-03-007` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-008` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-009` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native recon | candidate-supported |
+| `LITE-03-010` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-011` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-012` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-013` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-014` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-015` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-016` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-017` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-03-019` | `apps/server/src/services/OutboxPublisher.test.ts` | `passed` | 12 | M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acce | candidate-supported |
+| `LITE-04-001` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-002` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-003` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-004` | `apps/server/src/store/SqliteStore.test.ts` | `passed` | 37 | LITE-04-004 switching a Provider preserves the Agent identity and durable History | candidate-supported |
+| `LITE-04-005` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lif | candidate-supported |
+| `LITE-04-006` | `packages/agent-core/src/providers/providerErrorRetryability.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-007` | `packages/agent-core/src/providers/capabilityDeclaration.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-008` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | L1B-R07 different Runs in same Workspace may each have an Admission | insufficient-evidence |
+| `LITE-04-009` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-010` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-011` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-04-012` | `packages/agent-core/src/providers/kimiCodeAdapter.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-001` | `packages/process-runtime/src/durable-coordinator.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-002` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-003` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-004` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-005` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-006` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-007` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-008` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state  | candidate-supported |
+| `LITE-05-009` | `packages/process-runtime/src/manager.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-010` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-05-011` | `apps/server/src/taskRecovery.test.ts` | `passed` | 29 | LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction | candidate-supported |
+| `LITE-05-012` | `packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-06-001` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U02 a missing Workspace fails with WORKSPACE_NOT_FOUND | candidate-supported |
+| `LITE-06-002` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U02 a missing Workspace fails with WORKSPACE_NOT_FOUND | candidate-supported |
+| `LITE-06-003` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U06 MODIFYING winner follows durable request_order FIFO | candidate-supported |
+| `LITE-06-004` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U06 MODIFYING winner follows durable request_order FIFO | candidate-supported |
+| `LITE-06-005` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-R02 grant state, timestamp, classification, and version commit atomically | candidate-supported |
+| `LITE-06-006` | `apps/server/src/services/GitObservationCollector.integration.test.ts` | `passed` | 36 | non-Git directory yields the exact C-locale NOT_GIT snapshot | candidate-supported |
+| `LITE-06-007` | `packages/shared/p6-l1c-git-observation-contract.test.ts` | `passed` | 26 | — | insufficient-evidence |
+| `LITE-06-008` | `apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts` | `passed` | 5 | WorkflowDefinitionRepository rejects invalid V2 worktree and dependency contracts | candidate-supported |
+| `LITE-06-009` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U06 MODIFYING winner follows durable request_order FIFO | candidate-supported |
+| `LITE-06-010` | `packages/shared/p6-l1c-git-observation-contract.test.ts` | `passed` | 26 | L1C-M1-03 command execution contract freezes C locale and side-effect guards | candidate-supported |
+| `LITE-06-011` | `apps/server/src/routes/git.test.ts` | `passed` | 2 | LITE-06-011 the Git surface observes only and its wording claims no ownership | candidate-supported |
+| `LITE-07-005` | `apps/server/src/services/MemoryContextResolver.test.ts` | `passed` | 17 | LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation | candidate-supported |
+| `LITE-07-012` | `apps/server/src/services/MemoryContextResolver.test.ts` | `passed` | 17 | LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay froz | candidate-supported |
+| `LITE-07-014` | `apps/server/src/services/MemoryContextResolver.test.ts` | `passed` | 17 | MF4I-01 resolve persists a snapshot and returns bounded context | candidate-supported |
+| `LITE-08-001` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | MF-4 integration: a blocked injection prevents provider execution | candidate-supported |
+| `LITE-08-002` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect | candidate-supported |
+| `LITE-08-003` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | — | insufficient-evidence |
+| `LITE-08-004` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | — | insufficient-evidence |
+| `LITE-08-008` | `apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts` | `not-clean` | 34 | LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute | candidate-supported |
+| `LITE-08-009` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B completeRunStartup commits Stage then Run started events with snapshots | candidate-supported |
+| `LITE-08-010` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes | candidate-supported |
+| `LITE-08-011` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails close | candidate-supported |
+| `LITE-08-012` | `apps/server/src/routes/runtimeApprovals.test.ts` | `passed` | 8 | LITE-08-012: a browser disconnect decides nothing; only the explicit decision does | candidate-supported |
+| `LITE-08-013` | `apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts` | `passed` | 56 | L1B-06 CANONICAL_RUN Admission valid | candidate-supported |
+| `LITE-08-014` | `apps/server/src/services/run-engine/CanonicalArtifactResult.liveGate.test.ts` | `not-clean` | 0 | — | insufficient-evidence |
+| `LITE-08-015` | `apps/web/src/liteScopeBoundary.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-09-003` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | LITE-09-102 chat refuses while another subject holds the Workspace modifying authority | candidate-supported |
+| `LITE-09-004` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | TD-02 a provider failure finalizes failed and preserves the checkpoints | candidate-supported |
+| `LITE-09-007` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state  | candidate-supported |
+| `LITE-09-008` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | — | insufficient-evidence |
+| `LITE-09-009` | `apps/server/src/store/SqliteStore.test.ts` | `passed` | 37 | LITE-04-004 switching a Provider preserves the Agent identity and durable History | candidate-supported |
+| `LITE-09-011` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavail | candidate-supported |
+| `LITE-09-014` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | LITE-09-102 chat refuses while another subject holds the Workspace modifying authority | candidate-supported |
+| `LITE-09-015` | `apps/server/src/services/GroupSpeakerResolver.test.ts` | `passed` | 7 | — | insufficient-evidence |
+| `LITE-09-016` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | TD-02 a provider failure finalizes failed and preserves the checkpoints | candidate-supported |
+| `LITE-09-017` | `apps/server/src/services/ConversationTurnDriver.test.ts` | `passed` | 14 | TD-01 a completed reply streams every delta as a durable checkpoint and finalizes | candidate-supported |
+| `LITE-10-001` | `apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts` | `passed` | 3 | LITE-10-001 fresh install and supported upgrade both apply the complete registry | candidate-supported |
+| `LITE-10-002` | `apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts` | `passed` | 17 | T01 records 005/006 id, name and checksum in _schema_migrations | candidate-supported |
+| `LITE-10-003` | `apps/server/src/services/RuntimeInspector.test.ts` | `passed` | 16 | INSP-12 Run, Stage, Provider, Process and duration stay distinct | candidate-supported |
+| `LITE-10-004` | `apps/server/src/services/TaskRunService.test.ts` | `passed` | 93 | LITE-01-004 a Task supports zero Runs and then multiple independent Runs | candidate-supported |
+| `LITE-10-005` | `apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-10-006` | `apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts` | `passed` | 14 | Task-domain parent deletes are rejected without modifying the append-only Event | candidate-supported |
+| `LITE-10-007` | `apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts` | `passed` | 30 | P3D-2 operation approval Event and Outbox failures roll back all state | candidate-supported |
+| `LITE-10-008` | `apps/server/src/routes/runLifecycle.test.ts` | `passed` | 57 | P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and n | candidate-supported |
+| `LITE-10-009` | `apps/server/src/store/__tests__/RunRepository.test.ts` | `passed` | 29 | T48 concurrent transitions produce exactly one winner | candidate-supported |
+| `LITE-10-010` | `packages/process-runtime/src/durable-coordinator.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-10-011` | `apps/server/src/services/WorkspaceAdmissionAuthority.test.ts` | `passed` | 47 | L1D-U03 frozen classifier, not requested class, is effective authority | candidate-supported |
+| `LITE-10-012` | `packages/process-runtime/src/durable-coordinator.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-10-013` | `packages/process-runtime/src/durable-coordinator.test.ts` | `passed` | 0 | — | insufficient-evidence |
+| `LITE-10-014` | `apps/server/src/store/SqliteStore.test.ts` | `passed` | 37 | tombstoned workspace rejected by assertWorkspaceExists for new Conversation | candidate-supported |
+| `LITE-10-015` | `apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts` | `passed` | 2 | LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes wit | candidate-supported |
+| `LITE-10-016` | `apps/server/src/store/MemoryEntryRepository.test.ts` | `passed` | 19 | LITE-07-012/LITE-10-016 preserves approved secret references and authority | candidate-supported |
+| `LITE-10-017` | `apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-11-002` | `apps/server/src/routes/conversationRuntime.test.ts` | `passed` | 11 | create-task and start-run bridge a Message into durable work | candidate-supported |
+| `LITE-11-003` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P5C afterSequence-only cursor replays strictly greater durable sequences | candidate-supported |
+| `LITE-11-004` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lif | candidate-supported |
+| `LITE-11-005` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | — | insufficient-evidence |
+| `LITE-11-006` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P5C-R07 transport backpressure during initial replay closes transport and subscription fai | candidate-supported |
+| `LITE-11-007` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0) | candidate-supported |
+| `LITE-11-008` | `apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts` | `passed` | 56 | L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence | candidate-supported |
+| `LITE-11-009` | `apps/server/src/routes/canonicalRunStream.test.ts` | `passed` | 16 | — | insufficient-evidence |
+| `LITE-11-010` | `apps/server/src/routes/runLifecycle.test.ts` | `passed` | 57 | P3C1-RY06 live and replay return the immutable HTTP 201 acceptance snapshot | candidate-supported |
+| `LITE-11-011` | `apps/server/src/routes/conversationRuntime.test.ts` | `passed` | 11 | history endpoint returns the agent unified references | candidate-supported |
+| `LITE-11-012` | `apps/server/src/routes/artifacts.test.ts` | `passed` | 1 | serves owned artifact content and rejects metadata-only artifacts | candidate-supported |
+| `LITE-11-013` | `apps/web/src/liteScopeBoundary.test.ts` | `passed` | 3 | LITE-12-016 no web module implements a deferred product surface | candidate-supported |
+| `LITE-12-001` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse | candidate-supported |
+| `LITE-12-002` | `apps/web/src/lib/uiFoundation.test.ts` | `passed` | 15 | UIF-01 both themes share semantic token names | candidate-supported |
+| `LITE-12-003` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | SHELL-07 dark and light themes emit their own token values | candidate-supported |
+| `LITE-12-004` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | — | insufficient-evidence |
+| `LITE-12-005` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | — | insufficient-evidence |
+| `LITE-12-006` | `apps/web/src/lib/directConversation.test.ts` | `passed` | 10 | DCUX-S03 reconnect resumes from the durable cursor and resyncs | candidate-supported |
+| `LITE-12-007` | `apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx` | `passed` | 5 | LITE-12-007 the content state coexists with the other states without losing them | candidate-supported |
+| `LITE-12-008` | `apps/web/src/lib/directConversation.test.ts` | `passed` | 10 | DCUX-P02 task and run modes map to distinct explicit actions | candidate-supported |
+| `LITE-12-009` | `apps/web/src/components/chat/GroupConversationCanvas.test.tsx` | `passed` | 2 | GRP-canvas: the group canvas mounts with a composer and the budget controls | candidate-supported |
+| `LITE-12-010` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse | candidate-supported |
+| `LITE-12-011` | `apps/web/src/components/chat/RuntimeInspectorView.test.tsx` | `passed` | 11 | INS-07 Memory Context explains selection and exclusion from the frozen Snapshot | candidate-supported |
+| `LITE-12-012` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | SHELL-03 standard mode collapses the Inspector into an affordance | candidate-supported |
+| `LITE-12-013` | `apps/server/src/services/AgentHistoryService.test.ts` | `passed` | 7 | LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only  | candidate-supported |
+| `LITE-12-014` | `apps/web/src/lib/uiFoundation.test.ts` | `passed` | 15 | — | insufficient-evidence |
+| `LITE-12-015` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | — | insufficient-evidence |
+| `LITE-12-016` | `apps/web/src/liteScopeBoundary.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-13-001` | `apps/server/src/routes/runtimeInspector.test.ts` | `passed` | 5 | GET /runs/:runId/inspector returns the redacted projection for a canonical Run | candidate-supported |
+| `LITE-13-004` | `apps/server/src/services/RuntimeInspector.test.ts` | `passed` | 16 | — | insufficient-evidence |
+| `LITE-13-005` | `apps/server/src/routes/runtimeInspector.test.ts` | `passed` | 5 | — | insufficient-evidence |
+| `LITE-13-006` | `apps/server/src/routes/runtimeInspector.test.ts` | `passed` | 5 | GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) | candidate-supported |
+| `LITE-13-007` | `apps/server/src/routes/runtimeInspector.redaction.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-13-009` | `apps/server/src/routes/runtimeInspector.redaction.test.ts` | `passed` | 3 | LITE-13-009 the Inspector is read-only and carries no process control field | candidate-supported |
+| `LITE-13-010` | `apps/server/src/routes/runtimeInspector.test.ts` | `passed` | 5 | R11b GET events preserves an unknown persisted Runtime Event | candidate-supported |
+| `LITE-13-011` | `apps/server/src/routes/runtimeInspector.test.ts` | `passed` | 5 | GET /runs/:runId/inspector fails closed for an unknown Run and workspace | candidate-supported |
+| `LITE-13-012` | `packages/shared/p6-l1a-admission.test.ts` | `passed` | 24 | L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY | candidate-supported |
+| `LITE-13-013` | `apps/server/src/routes/runtimeInspector.redaction.test.ts` | `passed` | 3 | — | insufficient-evidence |
+| `LITE-13-014` | `apps/server/src/services/m3-p6-integrated-verification.test.ts` | `passed` | 23 | P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state  | candidate-supported |
+| `LITE-09-103` | `apps/server/src/services/AgentHistoryService.test.ts` | `passed` | 7 | CR6-A5 provider filter scopes Turns to their Provider configuration | candidate-supported |
+| `LITE-12-101` | `apps/web/src/components/layout/WorkbenchShell.test.tsx` | `passed` | 9 | — | insufficient-evidence |
+| `LITE-13-102` | `apps/server/src/services/RuntimeInspector.test.ts` | `passed` | 16 | LITE-13-102 Inspector projects canonical operation identity and version for actions | candidate-supported |
+| `LITE-01-101` | `packages/shared/wf-template-instantiation.test.ts` | `passed` | 10 | — | insufficient-evidence |
+

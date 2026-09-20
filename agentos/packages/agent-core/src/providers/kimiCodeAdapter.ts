@@ -66,7 +66,7 @@ const KIMICODE_CAPABILITIES: ProviderCapabilities = {
 
 const SAFE_ENVIRONMENT_KEYS = new Set([
   'PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP',
-  'USERPROFILE', 'HOME', 'LANG', 'LC_ALL', 'NODE_ENV',
+  'USERPROFILE', 'HOME', 'LANG', 'LC_ALL', 'NODE_ENV', 'KIMI_MODEL_THINKING_EFFORT',
 ]);
 const SECRET_KEY_PATTERN = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|COOKIE|AUTH)/i;
 const SENSITIVE_WARNING_PATTERN = /(?:bearer\s+|oauth|(?:token|api[_-]?key|password|secret|credential)\s*[:=]|-----begin)/i;
@@ -325,6 +325,10 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       if (!ENV_KEY_PATTERN.test(key) || SECRET_KEY_PATTERN.test(key)) throw new Error('PROVIDER_CONFIG_INVALID');
       if (value.includes('\u0000')) throw new Error('PROVIDER_CONFIG_INVALID');
       safeEnvironment[key] = value;
+    }
+    if (input.thinkingEffort !== undefined) {
+      if (input.thinkingEffort === 'auto') delete safeEnvironment.KIMI_MODEL_THINKING_EFFORT;
+      else safeEnvironment.KIMI_MODEL_THINKING_EFFORT = input.thinkingEffort;
     }
     assertNoConflictingEnvironmentAliases(safeEnvironment, process.platform);
     const secretRefs = [...new Set(input.secretRefs ?? (configuration.secretProfileId ? [configuration.secretProfileId] : []))];

@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once|L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn|LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once|LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute|LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available)",
+      "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/24-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/assertions.json",
+      "sha256": "6f94d540b7b8d3ad635a6f4e5b4175afddd1dd9df2dd1270bb2dd9d0a41411e6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/24-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/execution.json",
+      "sha256": "44f43d7e3d1c36553f7ff18fe5bb18fbf39dad40762a48c5961ae698baac6f32"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/24-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/24-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/24-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/stdout.txt",
+      "sha256": "2e5abdd38158334e6a7cff605d5f96aac2be57ee5b2a635ce498d18a3395aff8"
+    }
+  ],
+  "counts": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "total": 5
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-006-p5e-composes-dispatcher-cancellation-owned-process-cleanup-and-lts-handoff-exact-174",
+      "requirementId": "LITE-00-006",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "line": 993,
+      "expression": "assert.ok(evidence.processId);",
+      "clause": "Windows cancellation handles the owned process tree;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-009-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-175",
+      "requirementId": "LITE-00-009",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-010-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-176",
+      "requirementId": "LITE-01-010",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-004-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-177",
+      "requirementId": "LITE-02-004",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-011-p5e-composes-dispatcher-cancellation-owned-process-cleanup-and-lts-handoff-exact-178",
+      "requirementId": "LITE-02-011",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "line": 993,
+      "expression": "assert.ok(evidence.processId);",
+      "clause": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-013-p5e-composes-dispatcher-cancellation-owned-process-cleanup-and-lts-handoff-exact-179",
+      "requirementId": "LITE-02-013",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "line": 993,
+      "expression": "assert.ok(evidence.processId);",
+      "clause": "Process exit does not falsely complete a Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-008-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-180",
+      "requirementId": "LITE-04-008",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-p5e-composes-dispatcher-cancellation-owned-process-cleanup-and-lts-handoff-exact-181",
+      "requirementId": "LITE-05-007",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "line": 993,
+      "expression": "assert.ok(evidence.processId);",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-002-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-182",
+      "requirementId": "LITE-06-002",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-003-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-183",
+      "requirementId": "LITE-06-003",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "unknown classification is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-004-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-184",
+      "requirementId": "LITE-06-004",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-008-lite-08-005-006-007-ask-user-pauses-before-spawn-and-one-approved-original-run-c-185",
+      "requirementId": "LITE-08-008",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+      "line": 518,
+      "expression": "assert.ok(pending);",
+      "clause": "snapshot hashes detect changed actions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-008-lite-08-006-007-reject-is-terminal-replay-safe-and-a-changed-launch-plan-cannot--186",
+      "requirementId": "LITE-08-008",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "line": 567,
+      "expression": "assert.throws(() => gate.beforeLaunch(input, {",
+      "clause": "snapshot hashes detect changed actions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-011-lite-08-005-006-007-ask-user-pauses-before-spawn-and-one-approved-original-run-c-187",
+      "requirementId": "LITE-08-011",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+      "line": 518,
+      "expression": "assert.ok(pending);",
+      "clause": "engine failure fails closed;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-011-lite-08-006-007-reject-is-terminal-replay-safe-and-a-changed-launch-plan-cannot--188",
+      "requirementId": "LITE-08-011",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "line": 567,
+      "expression": "assert.throws(() => gate.beforeLaunch(input, {",
+      "clause": "engine failure fails closed;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-012-lite-08-005-006-007-ask-user-pauses-before-spawn-and-one-approved-original-run-c-189",
+      "requirementId": "LITE-08-012",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+      "line": 518,
+      "expression": "assert.ok(pending);",
+      "clause": "browser disconnect does not decide;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-012-lite-08-006-007-reject-is-terminal-replay-safe-and-a-changed-launch-plan-cannot--190",
+      "requirementId": "LITE-08-012",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "line": 567,
+      "expression": "assert.throws(() => gate.beforeLaunch(input, {",
+      "clause": "browser disconnect does not decide;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-011-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-191",
+      "requirementId": "LITE-09-011",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-011-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-192",
+      "requirementId": "LITE-10-011",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-l1d-i17-stale-granted-read-only-authority-cannot-reach-runengine-provider-proces-193",
+      "requirementId": "LITE-13-012",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "line": 766,
+      "expression": "assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-009-lite-02-016-a-modifying-run-completes-when-no-agentos-owned-worktree-is-availabl-194",
+      "requirementId": "LITE-06-009",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available",
+      "line": 942,
+      "expression": "assert.equal(result.outcome, 'claimed-and-progressed');",
+      "clause": "a modifying Run completes without any AgentOS-owned Worktree;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-014-lite-02-016-a-modifying-run-completes-when-no-agentos-owned-worktree-is-availabl-195",
+      "requirementId": "LITE-08-014",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available",
+      "line": 942,
+      "expression": "assert.equal(result.outcome, 'claimed-and-progressed');",
+      "clause": "modifying execution succeeds without an AgentOS-owned Worktree;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

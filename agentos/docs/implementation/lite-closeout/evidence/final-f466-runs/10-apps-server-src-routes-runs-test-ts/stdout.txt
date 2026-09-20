@@ -1,0 +1,17 @@
+TAP version 13
+# [legacy-migration] skipped Workspace workspace-b: canonical_root_path already exists
+# Subtest: returns run list and aggregated details with workspace isolation and capped limit
+ok 1 - returns run list and aggregated details with workspace isolation and capped limit
+  ---
+  duration_ms: 219.7183
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 622.0378

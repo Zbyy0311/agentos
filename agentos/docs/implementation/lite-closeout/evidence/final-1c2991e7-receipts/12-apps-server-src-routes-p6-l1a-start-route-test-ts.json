@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-11-009 a forced READ_ONLY start request creates no admission authority)",
+      "src/routes/p6-l1a-start-route.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/assertions.json",
+      "sha256": "f8ad867c239a55255c76ea5de95a17b32314d26ee08ef4704f81f76ed45c8e9e"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/execution.json",
+      "sha256": "63c8decdaba44c388925475ff39eb2b9772a1ef3bc5391d7ae0ee20f112d2902"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/stdout.txt",
+      "sha256": "9314546498e44b5064e882e0c3e63c392576eaaacbfc8e0e809f26060c2ba51e"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-11-009-lite-11-009-a-forced-read-only-start-request-creates-no-admission-authority-88",
+      "requirementId": "LITE-11-009",
+      "file": "apps/server/src/routes/p6-l1a-start-route.test.ts",
+      "name": "LITE-11-009 a forced READ_ONLY start request creates no admission authority",
+      "line": 103,
+      "expression": "assert.equal(res.status, 202);",
+      "clause": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state)",
+      "src/services/RuntimeInspector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

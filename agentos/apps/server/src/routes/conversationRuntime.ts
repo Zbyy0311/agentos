@@ -25,9 +25,13 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
 import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
+import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
+import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
 import {
   CONVERSATION_REPLY_MODES,
+  type AgentProfile,
   type ConversationReplyMode,
+  type RunIntent,
 } from '@agentos/shared';
 import type { ConversationStatus } from '@agentos/shared';
 
@@ -69,7 +73,52 @@ function isConversationReplyMode(value: unknown): value is ConversationReplyMode
   return (CONVERSATION_REPLY_MODES as readonly unknown[]).includes(value);
 }
 
-export function createConversationRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+function parseConversationIntent(value: unknown): RunIntent | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'ask' || value === 'execute' || value === 'review') return value;
+  throw new Error('intent must be ask, execute, or review');
+}
+
+type RuntimeGroupMemberInput = ReturnType<typeof parseGroupMemberSettings> & { readonly agentId: string };
+
+function parseRuntimeGroupMemberSettings(value: unknown): RuntimeGroupMemberInput[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 2) throw new Error('members must contain at least two Agents');
+  return value.map(item => {
+    if (!item || typeof item !== 'object') throw new Error('members contains an invalid entry');
+    const row = item as Record<string, unknown>;
+    if (typeof row.agentId !== 'string' || row.agentId.trim().length === 0) {
+      throw new Error('members requires agentId');
+    }
+    return { agentId: row.agentId.trim(), ...parseGroupMemberSettings(row) };
+  });
+}
+
+async function validateRuntimeGroupMemberSettings(
+  profiles: Map<string, AgentProfile>,
+  members: ReadonlyArray<{
+    readonly agentId: string;
+    readonly model?: string | null;
+    readonly thinkingEffort?: import('@agentos/shared').ThinkingEffort | null;
+  }>,
+  modelDiscovery: ModelDiscoveryService,
+): Promise<void> {
+  await Promise.all(members.map(async member => {
+    const profile = profiles.get(member.agentId);
+    if (!profile) throw new Error('a group member Agent is unavailable');
+    const capable = await withAgentCapability(profile, modelDiscovery);
+    validateRuntimeOverrides(capable, {
+      ...(typeof member.model === 'string' && member.model.length > 0 ? { model: member.model } : {}),
+      ...(member.thinkingEffort === undefined || member.thinkingEffort === null ? {} : { thinkingEffort: member.thinkingEffort }),
+    });
+  }));
+}
+
+export function createConversationRuntimeRoutes(
+  store: SqliteStore,
+  workspaceManager: WorkspaceManager,
+  modelDiscovery: ModelDiscoveryService = new CliModelDiscovery(),
+): Router {
   const router = Router({ mergeParams: true });
 
   const requireWorkspace = (req: Request, res: Response) => {
@@ -144,7 +193,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
 
   // ---- Conversations ------------------------------------------------------
 
-  router.post('/conversations', (req: Request, res: Response) => {
+  router.post('/conversations', async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const body = req.body as Record<string, unknown>;
@@ -164,21 +213,26 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         if (agentId === null) { res.status(400).json({ error: 'agentId is required for a direct Conversation' }); return; }
         const agent = store.listAgentProfiles(workspace.id).find(p => p.id === agentId && p.enabled);
         if (!agent) { res.status(400).json({ error: 'Agent is unavailable' }); return; }
-        const conversation = conversations().createConversation({
-          id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'direct',
+        const conversationInput = {
+          id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'direct' as const,
           title: title ?? `与 ${agent.name} 的对话`, createdAt: now,
+        };
+        const created = conversations().createConversationWithMembers({
+          conversation: conversationInput,
+          members: [
+            {
+              id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+              subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+              replyMode: 'always', joinedAt: now,
+            },
+            {
+              id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+              subjectType: 'agent', subjectId: agent.id, displayNameSnapshot: agent.name, role: 'participant',
+              replyMode: 'always', joinedAt: now,
+            },
+          ],
         });
-        conversations().addMember({
-          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
-          subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
-          replyMode: 'always', joinedAt: now,
-        });
-        conversations().addMember({
-          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
-          subjectType: 'agent', subjectId: agent.id, displayNameSnapshot: agent.name, role: 'participant',
-          replyMode: 'always', joinedAt: now,
-        });
-        res.status(201).json({ conversation, members: conversations().listMembers(workspace.id, conversation.id) });
+        res.status(201).json(created);
         return;
       }
       // group
@@ -190,32 +244,54 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       const memberAgentIds = Array.isArray(body.memberAgentIds)
         ? (body.memberAgentIds as unknown[]).filter((id): id is string => typeof id === 'string')
         : [];
-      if (memberAgentIds.length < 2) {
+      let parsedMemberSettings: RuntimeGroupMemberInput[] | undefined;
+      try {
+        parsedMemberSettings = parseRuntimeGroupMemberSettings(body.members);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      const requestedMembers: RuntimeGroupMemberInput[] = parsedMemberSettings ?? memberAgentIds.map(agentId => ({ agentId }));
+      const requestedAgentIds = requestedMembers.map(member => member.agentId);
+      if (requestedAgentIds.length < 2) {
         res.status(400).json({ error: 'a group Conversation needs at least two Agents' });
         return;
       }
       const profiles = new Map(store.listAgentProfiles(workspace.id).filter(p => p.enabled).map(p => [p.id, p]));
-      if (memberAgentIds.some(id => !profiles.has(id))) {
+      if (new Set(requestedAgentIds).size !== requestedAgentIds.length || requestedAgentIds.some(id => !profiles.has(id))) {
         res.status(400).json({ error: 'a group member Agent is unavailable' });
         return;
       }
-      const conversation = conversations().createConversation({
-        id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'group',
-        title: title ?? 'Group', replyMode, createdAt: now,
-      });
-      conversations().addMember({
-        id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
-        subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
-        replyMode: 'always', joinedAt: now,
-      });
-      for (const agentId of memberAgentIds) {
-        conversations().addMember({
-          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
-          subjectType: 'agent', subjectId: agentId, displayNameSnapshot: profiles.get(agentId)!.name,
-          role: 'participant', replyMode: 'always', joinedAt: now,
-        });
+      try {
+        await validateRuntimeGroupMemberSettings(profiles, requestedMembers, modelDiscovery);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        return;
       }
-      res.status(201).json({ conversation, members: conversations().listMembers(workspace.id, conversation.id) });
+      const conversationInput = {
+        id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'group' as const,
+        title: title ?? 'Group', replyMode, createdAt: now,
+      };
+      const created = conversations().createConversationWithMembers({
+        conversation: conversationInput,
+        members: [
+          {
+            id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+            subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+            replyMode: 'always', joinedAt: now,
+          },
+          ...requestedMembers.map(member => ({
+            id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+            subjectType: 'agent' as const, subjectId: member.agentId, displayNameSnapshot: profiles.get(member.agentId)!.name,
+            role: 'participant' as const, replyMode: 'always' as const, joinedAt: now,
+            ...(member.roleTitle === undefined ? {} : { roleTitle: member.roleTitle }),
+            ...(member.model === undefined ? {} : { model: member.model }),
+            ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
+            ...(member.additionalInstructions === undefined ? {} : { additionalInstructions: member.additionalInstructions }),
+          })),
+        ],
+      });
+      res.status(201).json(created);
     } catch (error) {
       fail(res, error);
     }
@@ -267,6 +343,85 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     res.json({ members: conversations().listMembers(workspace.id, req.params.conversationId) });
+  });
+
+  /**
+   * Replace only group-scoped Agent settings. Membership, permissions and
+   * Provider credentials remain outside this endpoint. The whole update is
+   * optimistic and transactional, so the next interaction sees either the old
+   * set or the new set, never a partially edited group.
+   */
+  router.patch('/conversations/:conversationId/members', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { res.status(400).json({ error: 'Only group Conversations support member settings' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!Number.isSafeInteger(body.expectedSettingsVersion) || Number(body.expectedSettingsVersion) < 1) {
+      res.status(400).json({ error: 'expectedSettingsVersion is required' });
+      return;
+    }
+    if (!Array.isArray(body.members)) {
+      res.status(400).json({ error: 'members must be an array' });
+      return;
+    }
+    const existing = conversations().listMembers(workspace.id, conversation.id)
+      .filter(member => member.subjectType === 'agent' && member.status === 'active');
+    const byAgentId = new Map(existing.map(member => [member.subjectId, member]));
+    const byMemberId = new Map(existing.map(member => [member.id, member]));
+    const updates: Array<{
+      memberId: string;
+      roleTitle?: string;
+      model?: string | null;
+      thinkingEffort?: import('@agentos/shared').ThinkingEffort | null;
+      additionalInstructions?: string | null;
+    }> = [];
+    try {
+      for (const item of body.members) {
+        if (!item || typeof item !== 'object') throw new Error('members contains an invalid entry');
+        const row = item as Record<string, unknown>;
+        const member = typeof row.memberId === 'string'
+          ? byMemberId.get(row.memberId)
+          : typeof row.agentId === 'string' ? byAgentId.get(row.agentId) : undefined;
+        if (!member) throw new Error('members contains an unknown Agent member');
+        const settings = parseGroupMemberSettings(row);
+        const model = row.model === null || (typeof row.model === 'string' && row.model.trim().length === 0)
+          ? null
+          : settings.model;
+        const additionalInstructions = row.additionalInstructions === null
+          || (typeof row.additionalInstructions === 'string' && row.additionalInstructions.trim().length === 0)
+          ? null
+          : settings.additionalInstructions;
+        const thinkingEffort = row.thinkingEffort === null ? null : settings.thinkingEffort;
+        updates.push({
+          memberId: member.id,
+          ...(settings.roleTitle === undefined ? {} : { roleTitle: settings.roleTitle }),
+          ...(model === undefined ? {} : { model }),
+          ...(thinkingEffort === undefined ? {} : { thinkingEffort }),
+          ...(additionalInstructions === undefined ? {} : { additionalInstructions }),
+        });
+      }
+      await validateRuntimeGroupMemberSettings(
+        new Map(store.listAgentProfiles(workspace.id).filter(agent => agent.enabled).map(agent => [agent.id, agent])),
+        updates.map(update => ({
+          agentId: byMemberId.get(update.memberId)!.subjectId,
+          ...update,
+        })),
+        modelDiscovery,
+      );
+      const result = conversations().updateGroupMemberSettings({
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        expectedSettingsVersion: Number(body.expectedSettingsVersion),
+        members: updates,
+        updatedAt: new Date().toISOString(),
+      });
+      res.json(result);
+    } catch (error) {
+      fail(res, error);
+    }
   });
 
   router.get('/conversations/:conversationId/turns', (req: Request, res: Response) => {
@@ -527,6 +682,16 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
+    let intent: RunIntent;
+    try {
+      // Keep omitted intent compatible with existing Providers. The generic
+      // prompt handles ordinary questions in execute mode; ask/review remain
+      // explicit because they require a proven read-only enforcement path.
+      intent = parseConversationIntent(body.intent) ?? 'execute';
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
     const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
     const source = sourceMessageId.length === 0
       ? undefined
@@ -582,6 +747,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
           conversationId: conversation.id,
           interactionId,
           sourceMessageId: source.id,
+          ...(intent === undefined ? {} : { intent }),
           ...(mentionedAgentIds === undefined ? {} : { mentionedAgentIds }),
           ...(namedAgentIds === undefined ? {} : { namedAgentIds }),
           ...(orchestratedOrder === undefined ? {} : { orchestratedOrder }),
@@ -633,6 +799,15 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
     const body = req.body as Record<string, unknown>;
     const content = typeof body.content === 'string' ? body.content.trim() : '';
     if (content.length === 0) { res.status(400).json({ error: 'content is required' }); return; }
+    let intent: RunIntent;
+    try {
+      // A bounded group is still a conversation. Keep the existing execution
+      // default; ask/review are explicit and require read-only enforcement.
+      intent = parseConversationIntent(body.intent) ?? 'execute';
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
     const agent = conversations().listMembers(workspace.id, conversation.id)
       .find(member => member.subjectType === 'agent' && member.status === 'active');
     if (!agent) { res.status(400).json({ error: 'no active Agent member' }); return; }
@@ -680,6 +855,16 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         workspaceRoot: workspace.rootPath,
         conversationId: conversation.id,
         agentId: agent.subjectId,
+        ...(intent === undefined ? {} : { intent }),
+        ...(agent.model === undefined && agent.thinkingEffort === undefined ? {} : {
+          runtimeOverrides: {
+            ...(agent.model === undefined ? {} : { model: agent.model }),
+            ...(agent.thinkingEffort === undefined ? {} : { thinkingEffort: agent.thinkingEffort }),
+          },
+        }),
+        ...(agent.additionalInstructions === undefined ? {} : { additionalInstructions: agent.additionalInstructions }),
+        ...(conversation.kind === 'group' && agent.roleTitle ? { groupRoleTitle: agent.roleTitle } : {}),
+        ...(conversation.settingsVersion === undefined ? {} : { groupSettingsVersion: conversation.settingsVersion }),
         sourceMessageId: userMessage.id,
         content,
         turnId,

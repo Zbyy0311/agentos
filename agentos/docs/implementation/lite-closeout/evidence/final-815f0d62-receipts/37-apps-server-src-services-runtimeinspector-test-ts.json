@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INSP-12 Run, Stage, Provider, Process and duration stay distinct|INSP-08 memory context projection|INSP-04 process PID is evidence-only|INSP-01 overview projects canonical run state|LITE-01-006 Run and Process records remain independently queryable|LITE-12-010 unknown or unavailable admission is projected as modifying|LITE-12-010 only complete verified enforcement is presented as read-only|INSP-05 events are ordered and bounded|LITE-13-102 Inspector projects canonical operation identity and version for actions)",
+      "src/services/RuntimeInspector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/assertions.json",
+      "sha256": "560e5abe25944e3fa24992644e3963026d7e4c698558ceb9ec35ce2f2b87084d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/execution.json",
+      "sha256": "3cb6e13c94127cad25c9318525f897d199ea130d4e0f5cd34b43fa2ed7be3360"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/37-apps-server-src-services-runtimeinspector-test-ts/stdout.txt",
+      "sha256": "f50b2bfcd6560ced57fedd02052e5de61b5bb9f912f61cd76e88b997743c2212"
+    }
+  ],
+  "counts": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0,
+    "total": 9
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-003-insp-12-run-stage-provider-process-and-duration-stay-distinct-249",
+      "requirementId": "LITE-00-003",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "line": 151,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "Task, Run, Process, and Event remain distinct and traceable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-insp-08-memory-context-projection-250",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-08 memory context projection",
+      "line": 327,
+      "expression": "assert.ok(projection.memoryContext !== null);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-007-insp-04-process-pid-is-evidence-only-251",
+      "requirementId": "LITE-01-007",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-04 process PID is evidence-only",
+      "line": 236,
+      "expression": "assert.equal(projection.processes.length, 1);",
+      "clause": "Process ID and native PID cannot be confused by API or UI labels;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-insp-08-memory-context-projection-252",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-08 memory context projection",
+      "line": 327,
+      "expression": "assert.ok(projection.memoryContext !== null);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-insp-08-memory-context-projection-253",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-08 memory context projection",
+      "line": 327,
+      "expression": "assert.ok(projection.memoryContext !== null);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-insp-08-memory-context-projection-254",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-08 memory context projection",
+      "line": 327,
+      "expression": "assert.ok(projection.memoryContext !== null);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-003-insp-04-process-pid-is-evidence-only-255",
+      "requirementId": "LITE-10-003",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-04 process PID is evidence-only",
+      "line": 236,
+      "expression": "assert.equal(projection.processes.length, 1);",
+      "clause": "opaque IDs and Process ID/PID distinction;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-001-insp-01-overview-projects-canonical-run-state-256",
+      "requirementId": "LITE-13-001",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-01 overview projects canonical run state",
+      "line": 192,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "view facts match canonical records;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-insp-01-overview-projects-canonical-run-state-257",
+      "requirementId": "LITE-13-006",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-01 overview projects canonical run state",
+      "line": 192,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-011-insp-01-overview-projects-canonical-run-state-258",
+      "requirementId": "LITE-13-011",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-01 overview projects canonical run state",
+      "line": 192,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "no two modifying Runs in one Workspace;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-insp-01-overview-projects-canonical-run-state-259",
+      "requirementId": "LITE-13-012",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-01 overview projects canonical run state",
+      "line": 192,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-006-lite-01-006-run-and-process-records-remain-independently-queryable-260",
+      "requirementId": "LITE-01-006",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-01-006 Run and Process records remain independently queryable",
+      "line": 254,
+      "expression": "assert.equal(run?.id, RUN);",
+      "clause": "Run and Process can be queried independently;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-004-lite-12-010-unknown-or-unavailable-admission-is-projected-as-modifying-261",
+      "requirementId": "LITE-08-004",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-12-010 unknown or unavailable admission is projected as modifying",
+      "line": 409,
+      "expression": "assert.equal(unknown.overview.admissionState, 'unknown');",
+      "clause": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-004-lite-12-010-only-complete-verified-enforcement-is-presented-as-read-only-262",
+      "requirementId": "LITE-08-004",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-12-010 only complete verified enforcement is presented as read-only",
+      "line": 445,
+      "expression": "assert.equal(projection.overview.admissionState, 'GRANTED');",
+      "clause": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-010-lite-12-010-unknown-or-unavailable-admission-is-projected-as-modifying-263",
+      "requirementId": "LITE-12-010",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-12-010 unknown or unavailable admission is projected as modifying",
+      "line": 409,
+      "expression": "assert.equal(unknown.overview.admissionState, 'unknown');",
+      "clause": "truthful parallel-read-only availability and modifying admission when write denial cannot be enforced;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-010-lite-12-010-only-complete-verified-enforcement-is-presented-as-read-only-264",
+      "requirementId": "LITE-12-010",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-12-010 only complete verified enforcement is presented as read-only",
+      "line": 445,
+      "expression": "assert.equal(projection.overview.admissionState, 'GRANTED');",
+      "clause": "truthful parallel-read-only availability and modifying admission when write denial cannot be enforced;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-005-insp-05-events-are-ordered-and-bounded-265",
+      "requirementId": "LITE-13-005",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-05 events are ordered and bounded",
+      "line": 277,
+      "expression": "assert.equal(projection.events.length, 3);",
+      "clause": "bounded output without unbounded client state;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-projects-canonical-operation-identity-and-version-for-acti-266",
+      "requirementId": "LITE-13-102",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "LITE-13-102 Inspector projects canonical operation identity and version for actions",
+      "line": 456,
+      "expression": "assert.deepEqual(projection.operations, [{ operationId: operation.id, type: 'run.start', status: 'queued', version: 1 }]);",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

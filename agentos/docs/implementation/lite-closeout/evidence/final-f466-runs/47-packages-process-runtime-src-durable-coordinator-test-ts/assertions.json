@@ -1,0 +1,92 @@
+[
+  {
+    "id": "LITE-00-005-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-323",
+    "requirementId": "LITE-00-005",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(",
+    "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-013-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-324",
+    "requirementId": "LITE-03-013",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(",
+    "clause": "redaction before persistence;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--325",
+    "requirementId": "LITE-03-014",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-retained-cap-fails-closed-before-any-byte-commit-326",
+    "requirementId": "LITE-03-014",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-010-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--327",
+    "requirementId": "LITE-05-010",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(",
+    "clause": "bounded independent stdout/stderr with Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-010-retained-cap-fails-closed-before-any-byte-commit-328",
+    "requirementId": "LITE-05-010",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(",
+    "clause": "bounded independent stdout/stderr with Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-009-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-329",
+    "requirementId": "LITE-08-009",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(",
+    "clause": "snapshots and Events contain no secret values;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-013-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--330",
+    "requirementId": "LITE-10-013",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(",
+    "clause": "bounded finalized output references;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-013-retained-cap-fails-closed-before-any-byte-commit-331",
+    "requirementId": "LITE-10-013",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(",
+    "clause": "bounded finalized output references;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

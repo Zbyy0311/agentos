@@ -9,27 +9,28 @@ export interface CliCapability {
 }
 
 const AUTO_ONLY: ThinkingEffort[] = ['auto'];
+const ADJUSTABLE_EFFORTS: ThinkingEffort[] = ['auto', 'low', 'medium', 'high', 'max'];
 
 export function getCliCapability(cliCommand: string, configuredProvider?: AgentProvider): CliCapability {
   if (configuredProvider) {
-    if (configuredProvider === 'kimi') return { cliKind: 'kimi', modelFlag: '-m', thinkingEffortMode: 'none', thinkingEffortValues: [...AUTO_ONLY] };
-    if (configuredProvider === 'opencode') return { cliKind: 'opencode', modelFlag: '--model', thinkingEffortMode: 'none', thinkingEffortValues: [...AUTO_ONLY] };
-    if (configuredProvider === 'codex') return { cliKind: 'codex', modelFlag: '-m', thinkingEffortMode: 'arg', thinkingEffortValues: ['auto', 'low', 'medium', 'high'] };
+    if (configuredProvider === 'kimi') return { cliKind: 'kimi', modelFlag: '-m', thinkingEffortMode: 'env', thinkingEffortValues: [...ADJUSTABLE_EFFORTS] };
+    if (configuredProvider === 'opencode') return { cliKind: 'opencode', modelFlag: '--model', thinkingEffortMode: 'arg', thinkingEffortValues: [...ADJUSTABLE_EFFORTS] };
+    if (configuredProvider === 'codex') return { cliKind: 'codex', modelFlag: '-m', thinkingEffortMode: 'arg', thinkingEffortValues: [...ADJUSTABLE_EFFORTS] };
   }
   if (/^(?:kimi)(?:\.(?:exe|cmd|bat))?$/i.test(cliCommand) || /[\\/]kimi(?:\.(?:exe|cmd|bat))?$/i.test(cliCommand)) {
     return {
       cliKind: 'kimi',
       modelFlag: '-m',
-      thinkingEffortMode: 'none',
-      thinkingEffortValues: [...AUTO_ONLY],
+      thinkingEffortMode: 'env',
+      thinkingEffortValues: [...ADJUSTABLE_EFFORTS],
     };
   }
   if (isOpenCodeCli(cliCommand)) {
     return {
       cliKind: 'opencode',
       modelFlag: '--model',
-      thinkingEffortMode: 'none',
-      thinkingEffortValues: [...AUTO_ONLY],
+      thinkingEffortMode: 'arg',
+      thinkingEffortValues: [...ADJUSTABLE_EFFORTS],
     };
   }
   if (isCodexCli(cliCommand)) {
@@ -37,7 +38,7 @@ export function getCliCapability(cliCommand: string, configuredProvider?: AgentP
       cliKind: 'codex',
       modelFlag: '-m',
       thinkingEffortMode: 'arg',
-      thinkingEffortValues: ['auto', 'low', 'medium', 'high'],
+      thinkingEffortValues: [...ADJUSTABLE_EFFORTS],
     };
   }
   return {

@@ -34,10 +34,11 @@ type Db = InstanceType<typeof DatabaseSync>;
 const NOW = '2026-08-13T00:00:00.000Z';
 const NOW2 = '2026-08-13T01:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
-// The full default registry now continues past 015 into 016–024. These
+// The full default registry now continues past 015 into later additive
+// migrations. These
 // M4/P6-M3b suites intentionally stop at 015; FULL_MIGRATION_IDS documents the
 // registry-order assertion's complete expected sequence.
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031'];
+const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034'];
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328",
+    "requirementId": "LITE-05-011",
+    "file": "apps/server/src/taskRecovery.test.ts",
+    "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+    "line": 745,
+    "expression": "assert.ok(callsAfterPreflight > 0, 'preflight must have invoked the verifier');",
+    "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

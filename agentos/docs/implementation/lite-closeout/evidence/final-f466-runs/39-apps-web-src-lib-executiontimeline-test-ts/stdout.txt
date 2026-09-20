@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: LITE-09-008 projects repeated streaming chunks for one execution into one timeline card
+ok 1 - LITE-09-008 projects repeated streaming chunks for one execution into one timeline card
+  ---
+  duration_ms: 0.8025
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 171.7228

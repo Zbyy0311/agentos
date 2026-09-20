@@ -1,0 +1,57 @@
+[
+  {
+    "id": "LITE-00-011-preserves-distinct-first-final-head-shas-across-a-real-commit-boundary-105",
+    "requirementId": "LITE-00-011",
+    "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+    "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+    "line": 727,
+    "expression": "assert.equal(gitSnapshot(first.snapshot).baseCommitSha, shaA);",
+    "clause": "Git changes are observable without AgentOS owning Git workflow execution;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-017-preserves-distinct-first-final-head-shas-across-a-real-commit-boundary-106",
+    "requirementId": "LITE-03-017",
+    "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+    "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+    "line": 727,
+    "expression": "assert.equal(gitSnapshot(first.snapshot).baseCommitSha, shaA);",
+    "clause": "Git observation wording that does not imply Git ownership;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-005-preserves-distinct-first-final-head-shas-across-a-real-commit-boundary-107",
+    "requirementId": "LITE-06-005",
+    "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+    "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+    "line": 727,
+    "expression": "assert.equal(gitSnapshot(first.snapshot).baseCommitSha, shaA);",
+    "clause": "Git root, cwd, base/final commit, status, changed files, and diff Artifact are recorded without ownership claims;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-006-preserves-distinct-first-final-head-shas-across-a-real-commit-boundary-108",
+    "requirementId": "LITE-06-006",
+    "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+    "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+    "line": 727,
+    "expression": "assert.equal(gitSnapshot(first.snapshot).baseCommitSha, shaA);",
+    "clause": "non-Git Workspaces report `not-git` without silent fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-011-preserves-distinct-first-final-head-shas-across-a-real-commit-boundary-109",
+    "requirementId": "LITE-06-011",
+    "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+    "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+    "line": 727,
+    "expression": "assert.equal(gitSnapshot(first.snapshot).baseCommitSha, shaA);",
+    "clause": "Git observation wording never implies AgentOS-owned Git workflow.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

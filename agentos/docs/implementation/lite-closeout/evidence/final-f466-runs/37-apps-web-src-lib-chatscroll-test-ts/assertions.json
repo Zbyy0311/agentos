@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-12-005-only-auto-anchors-an-already-following-stream-289",
+    "requirementId": "LITE-12-005",
+    "name": "only auto-anchors an already-following stream",
+    "line": 11,
+    "expression": "assert.equal(",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-only-auto-anchors-an-already-following-stream-290",
+    "requirementId": "LITE-12-006",
+    "name": "only auto-anchors an already-following stream",
+    "line": 11,
+    "expression": "assert.equal(",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

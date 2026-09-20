@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body
+ok 1 - P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body
+  ---
+  duration_ms: 210.9797
+  type: 'test'
+  ...
+# Subtest: P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT
+ok 2 - P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT
+  ---
+  duration_ms: 151.0607
+  type: 'test'
+  ...
+# Subtest: P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201
+ok 3 - P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201
+  ---
+  duration_ms: 161.199
+  type: 'test'
+  ...
+# Subtest: P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event
+ok 4 - P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event
+  ---
+  duration_ms: 161.6415
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1102.8902

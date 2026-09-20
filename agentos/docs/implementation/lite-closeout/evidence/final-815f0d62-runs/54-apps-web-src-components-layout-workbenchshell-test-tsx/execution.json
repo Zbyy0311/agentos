@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:SHELL-01 wide mode renders all four columns with landmarks|SHELL-05 reduced motion collapses panel transitions to zero|SHELL-07 dark and light themes emit their own token values)",
+      "src/components/layout/WorkbenchShell.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

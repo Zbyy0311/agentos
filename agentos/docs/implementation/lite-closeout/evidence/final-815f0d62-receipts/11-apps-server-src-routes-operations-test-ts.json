@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering|P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body|P5D already-terminal Run cannot regress through public active cancellation)",
+      "src/routes/operations.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/assertions.json",
+      "sha256": "63b047e9146121658cd6518e80b6c6b8f6430437e1941095a6643146f8f98466"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/execution.json",
+      "sha256": "6af41f4e46ac19fbc343716d3ee6f3d0f295b175e1b379c3f74a66accb09b17e"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/11-apps-server-src-routes-operations-test-ts/stdout.txt",
+      "sha256": "d2daa8996ac8a533a67c09e753215edb16a029e3461ebb7d7eda523b6ba9cd53"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-13-010-p5d-waiting-approval-uses-the-evidence-seam-and-preserves-approval-before-run-ev-85",
+      "requirementId": "LITE-13-010",
+      "file": "apps/server/src/routes/operations.test.ts",
+      "name": "P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering",
+      "line": 977,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-005-p5d-active-operation-cancel-uses-runtime-proof-while-preserving-the-frozen-http--86",
+      "requirementId": "LITE-11-005",
+      "file": "apps/server/src/routes/operations.test.ts",
+      "name": "P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body",
+      "line": 872,
+      "expression": "assert.deepEqual(input, { workspaceId: fx.workspaceId, runId: fx.runId, correlationId: operation.correlationId });",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-005-p5d-already-terminal-run-cannot-regress-through-public-active-cancellation-87",
+      "requirementId": "LITE-11-005",
+      "file": "apps/server/src/routes/operations.test.ts",
+      "name": "P5D already-terminal Run cannot regress through public active cancellation",
+      "line": 1002,
+      "expression": "assert.deepEqual(cancelSnapshot(fx, operation.id), before);",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import {
   type MemberSubjectType,
   type MessageKind,
   type MessageStatus,
+  type ThinkingEffort,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 
@@ -41,6 +42,7 @@ export type ConversationRepositoryErrorCode =
   | 'MEMBER_NOT_FOUND'
   | 'MESSAGE_NOT_FOUND'
   | 'MESSAGE_NOT_TRANSITIONABLE'
+  | 'SETTINGS_CONFLICT'
   | 'SEQUENCE_CONFLICT'
   | 'PERSISTENCE_FAILED';
 
@@ -70,6 +72,8 @@ export interface ConversationRecord {
   readonly lastMessageId: string | null;
   readonly lastMessageAt: string | null;
   readonly version: number;
+  /** Independent optimistic version for group member runtime settings. */
+  readonly settingsVersion: number;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly archivedAt: string | null;
@@ -84,7 +88,21 @@ export interface AddMemberInput {
   readonly displayNameSnapshot: string;
   readonly role: MemberRole;
   readonly replyMode: MemberReplyMode;
+  readonly roleTitle?: string;
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly additionalInstructions?: string;
   readonly joinedAt: string;
+}
+
+export interface CreateConversationWithMembersInput {
+  readonly conversation: CreateConversationInput;
+  readonly members: readonly AddMemberInput[];
+}
+
+export interface CreatedConversation {
+  readonly conversation: ConversationRecord;
+  readonly members: MemberRecord[];
 }
 
 export interface MemberRecord {
@@ -96,6 +114,10 @@ export interface MemberRecord {
   readonly displayNameSnapshot: string;
   readonly role: MemberRole;
   readonly replyMode: MemberReplyMode;
+  readonly roleTitle: string;
+  readonly model?: string;
+  readonly thinkingEffort?: ThinkingEffort;
+  readonly additionalInstructions?: string;
   readonly status: MemberStatus;
   readonly joinedAt: string;
   readonly removedAt: string | null;
@@ -167,6 +189,7 @@ interface ConversationRow {
   last_message_id: string | null;
   last_message_at: string | null;
   version: number;
+  settings_version: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -181,6 +204,10 @@ interface MemberRow {
   display_name_snapshot: string;
   role: string;
   reply_mode: string;
+  role_title: string;
+  model: string | null;
+  thinking_effort: string | null;
+  additional_instructions: string | null;
   status: string;
   joined_at: string;
   removed_at: string | null;
@@ -235,31 +262,67 @@ function isMessageStatus(value: unknown): value is MessageStatus {
   return (MESSAGE_STATUSES as readonly unknown[]).includes(value);
 }
 
+function validateCreateConversationInput(input: CreateConversationInput): void {
+  if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.title)
+    || !nonBlank(input.createdAt) || !isKind(input.kind)) {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
+  if (input.replyMode !== undefined && !isReplyMode(input.replyMode)) {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
+  // A direct Conversation has no reply mode.
+  if (input.kind === 'direct' && input.replyMode !== undefined) {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
+}
+
+function validateAddMemberInput(input: AddMemberInput): void {
+  if (!nonBlank(input.id) || !nonBlank(input.conversationId) || !nonBlank(input.workspaceId)
+    || !nonBlank(input.subjectId) || !nonBlank(input.displayNameSnapshot) || !nonBlank(input.joinedAt)
+    || !isMemberSubject(input.subjectType) || !isMemberRole(input.role)
+    || !isMemberReplyMode(input.replyMode)) {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
+  validateMemberText(input.roleTitle, 'roleTitle', 80, false);
+  validateMemberText(input.model, 'model', 200, true);
+  validateMemberText(input.additionalInstructions, 'additionalInstructions', 4000, true);
+  validateThinkingEffort(input.thinkingEffort);
+}
+
 export class ConversationRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
   createConversation(input: CreateConversationInput): ConversationRecord {
-    if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.title)
-      || !nonBlank(input.createdAt) || !isKind(input.kind)) {
+    validateCreateConversationInput(input);
+    try {
+      return inTransaction(this.db, () => this.insertConversationWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * Create a Conversation aggregate in one transaction. The runtime route uses
+   * this seam so a failure while adding any member rolls back the Conversation
+   * and every earlier member insert together.
+   */
+  createConversationWithMembers(input: CreateConversationWithMembersInput): CreatedConversation {
+    validateCreateConversationInput(input.conversation);
+    if (!Array.isArray(input.members) || input.members.length === 0) {
       throw new ConversationRepositoryError('INPUT_INVALID');
     }
-    if (input.replyMode !== undefined && !isReplyMode(input.replyMode)) {
-      throw new ConversationRepositoryError('INPUT_INVALID');
-    }
-    // A direct Conversation has no reply mode.
-    if (input.kind === 'direct' && input.replyMode !== undefined) {
-      throw new ConversationRepositoryError('INPUT_INVALID');
+    for (const member of input.members) {
+      validateAddMemberInput(member);
+      if (member.conversationId !== input.conversation.id
+        || member.workspaceId !== input.conversation.workspaceId) {
+        throw new ConversationRepositoryError('INPUT_INVALID');
+      }
     }
     try {
       return inTransaction(this.db, () => {
-        this.assertWorkspaceExists(input.workspaceId);
-        this.db.prepare(
-          'INSERT INTO cr_conversations (id, workspace_id, kind, title, status, reply_mode, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)',
-        ).run(
-          input.id, input.workspaceId, input.kind, input.title, 'active',
-          input.replyMode ?? null, input.createdAt, input.createdAt,
-        );
-        return this.requireConversation(input.workspaceId, input.id);
+        const conversation = this.insertConversationWithinTransaction(input.conversation);
+        const members = input.members.map(member => this.insertMemberWithinTransaction(member));
+        return { conversation, members };
       });
     } catch (error) {
       throw this.publicError(error);
@@ -321,24 +384,9 @@ export class ConversationRepository {
   }
 
   addMember(input: AddMemberInput): MemberRecord {
-    if (!nonBlank(input.id) || !nonBlank(input.conversationId) || !nonBlank(input.workspaceId)
-      || !nonBlank(input.subjectId) || !nonBlank(input.displayNameSnapshot) || !nonBlank(input.joinedAt)
-      || !isMemberSubject(input.subjectType) || !isMemberRole(input.role)
-      || !isMemberReplyMode(input.replyMode)) {
-      throw new ConversationRepositoryError('INPUT_INVALID');
-    }
+    validateAddMemberInput(input);
     try {
-      return inTransaction(this.db, () => {
-        this.assertConversation(input.workspaceId, input.conversationId);
-        this.db.prepare(
-          'INSERT INTO cr_conversation_members (id, conversation_id, workspace_id, subject_type, subject_id, display_name_snapshot, role, reply_mode, status, joined_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-        ).run(
-          input.id, input.conversationId, input.workspaceId, input.subjectType,
-          input.subjectId, input.displayNameSnapshot, input.role, input.replyMode,
-          'active', input.joinedAt,
-        );
-        return this.requireMember(input.workspaceId, input.conversationId, input.id);
-      });
+      return inTransaction(this.db, () => this.insertMemberWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
@@ -350,6 +398,83 @@ export class ConversationRepository {
       'SELECT * FROM cr_conversation_members WHERE workspace_id = ? AND conversation_id = ? ORDER BY id ASC',
     ).all(workspaceId, conversationId) as MemberRow[];
     return rows.map(toMemberRecord);
+  }
+
+  /**
+   * Atomically replace the runtime settings for every active Agent member of a
+   * group. Membership itself is intentionally not mutable through this seam.
+   * The separate conversation settings version makes edits safe while a Turn
+   * is starting; a running Turn already owns the settings it read before the
+   * Provider call.
+   */
+  updateGroupMemberSettings(input: {
+    readonly workspaceId: string;
+    readonly conversationId: string;
+    readonly expectedSettingsVersion: number;
+    readonly members: readonly {
+      readonly memberId: string;
+      readonly roleTitle?: string | null;
+      readonly model?: string | null;
+      readonly thinkingEffort?: ThinkingEffort | null;
+      readonly additionalInstructions?: string | null;
+    }[];
+    readonly updatedAt: string;
+  }): { conversation: ConversationRecord; members: MemberRecord[] } {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.conversationId)
+      || !Number.isSafeInteger(input.expectedSettingsVersion) || input.expectedSettingsVersion < 1
+      || !nonBlank(input.updatedAt)) {
+      throw new ConversationRepositoryError('INPUT_INVALID');
+    }
+    try {
+      return inTransaction(this.db, () => {
+        const conversation = this.db.prepare(
+          'SELECT * FROM cr_conversations WHERE workspace_id = ? AND id = ?',
+        ).get(input.workspaceId, input.conversationId) as ConversationRow | undefined;
+        if (conversation === undefined) throw new ConversationRepositoryError('CONVERSATION_NOT_FOUND');
+        if (conversation.kind !== 'group') throw new ConversationRepositoryError('INPUT_INVALID');
+        if (conversation.settings_version !== input.expectedSettingsVersion) {
+          throw new ConversationRepositoryError('SETTINGS_CONFLICT');
+        }
+
+        const currentMembers = this.db.prepare(
+          "SELECT * FROM cr_conversation_members WHERE workspace_id = ? AND conversation_id = ? AND subject_type = 'agent' AND status = 'active'",
+        ).all(input.workspaceId, input.conversationId) as MemberRow[];
+        const currentIds = new Set(currentMembers.map(member => member.id));
+        const updateIds = new Set(input.members.map(member => member.memberId));
+        if (currentMembers.length < 2 || input.members.length !== currentMembers.length
+          || updateIds.size !== input.members.length || [...updateIds].some(id => !currentIds.has(id))) {
+          throw new ConversationRepositoryError('INPUT_INVALID');
+        }
+
+        const currentById = new Map(currentMembers.map(member => [member.id, member]));
+        for (const update of input.members) {
+          const current = currentById.get(update.memberId);
+          if (current === undefined) throw new ConversationRepositoryError('MEMBER_NOT_FOUND');
+          const roleTitle = normalizeMemberText(update.roleTitle, current.role_title, 'roleTitle', 80);
+          const model = normalizeMemberText(update.model, current.model, 'model', 200, true);
+          const additionalInstructions = normalizeMemberText(update.additionalInstructions, current.additional_instructions, 'additionalInstructions', 4000, true);
+          validateThinkingEffort(update.thinkingEffort);
+          this.db.prepare(
+            'UPDATE cr_conversation_members SET role_title = ?, model = ?, thinking_effort = ?, additional_instructions = ?, version = version + 1 WHERE workspace_id = ? AND conversation_id = ? AND id = ? AND version = ?',
+          ).run(
+            roleTitle, model, update.thinkingEffort === undefined ? current.thinking_effort : update.thinkingEffort ?? null,
+            additionalInstructions, input.workspaceId, input.conversationId, update.memberId, current.version,
+          );
+        }
+        const changed = this.db.prepare(
+          'UPDATE cr_conversations SET settings_version = settings_version + 1, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND settings_version = ?',
+        ).run(input.updatedAt, input.workspaceId, input.conversationId, input.expectedSettingsVersion) as { changes?: number };
+        if (changed.changes !== undefined && changed.changes !== 1) {
+          throw new ConversationRepositoryError('SETTINGS_CONFLICT');
+        }
+        return {
+          conversation: this.requireConversation(input.workspaceId, input.conversationId),
+          members: this.listMembers(input.workspaceId, input.conversationId),
+        };
+      });
+    } catch (error) {
+      throw this.publicError(error);
+    }
   }
 
   /**
@@ -557,6 +682,30 @@ export class ConversationRepository {
     if (row === undefined) throw new ConversationRepositoryError('WORKSPACE_NOT_FOUND');
   }
 
+  private insertConversationWithinTransaction(input: CreateConversationInput): ConversationRecord {
+    this.assertWorkspaceExists(input.workspaceId);
+    this.db.prepare(
+      'INSERT INTO cr_conversations (id, workspace_id, kind, title, status, reply_mode, version, settings_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)',
+    ).run(
+      input.id, input.workspaceId, input.kind, input.title, 'active',
+      input.replyMode ?? null, input.createdAt, input.createdAt,
+    );
+    return this.requireConversation(input.workspaceId, input.id);
+  }
+
+  private insertMemberWithinTransaction(input: AddMemberInput): MemberRecord {
+    this.assertConversation(input.workspaceId, input.conversationId);
+    this.db.prepare(
+      'INSERT INTO cr_conversation_members (id, conversation_id, workspace_id, subject_type, subject_id, display_name_snapshot, role, reply_mode, role_title, model, thinking_effort, additional_instructions, status, joined_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    ).run(
+      input.id, input.conversationId, input.workspaceId, input.subjectType,
+      input.subjectId, input.displayNameSnapshot, input.role, input.replyMode,
+      input.roleTitle ?? '协作成员', input.model ?? null, input.thinkingEffort ?? null,
+      input.additionalInstructions ?? null, 'active', input.joinedAt,
+    );
+    return this.requireMember(input.workspaceId, input.conversationId, input.id);
+  }
+
   private assertConversation(workspaceId: string, conversationId: string): void {
     const row = this.db.prepare(
       'SELECT 1 AS present FROM cr_conversations WHERE workspace_id = ? AND id = ?',
@@ -606,6 +755,7 @@ function toConversationRecord(row: ConversationRow): ConversationRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
+    settingsVersion: row.settings_version,
   };
 }
 
@@ -619,11 +769,51 @@ function toMemberRecord(row: MemberRow): MemberRecord {
     displayNameSnapshot: row.display_name_snapshot,
     role: row.role as MemberRole,
     replyMode: row.reply_mode as MemberReplyMode,
+    roleTitle: row.role_title,
+    ...(row.model === null ? {} : { model: row.model }),
+    ...(row.thinking_effort === null ? {} : { thinkingEffort: normalizeThinkingEffort(row.thinking_effort) }),
+    ...(row.additional_instructions === null ? {} : { additionalInstructions: row.additional_instructions }),
     status: row.status as MemberStatus,
     joinedAt: row.joined_at,
     removedAt: row.removed_at,
     version: row.version,
   };
+}
+
+function normalizeThinkingEffort(value: string | null | undefined): ThinkingEffort {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'max' ? value : 'auto';
+}
+
+function validateThinkingEffort(value: ThinkingEffort | null | undefined): void {
+  if (value !== undefined && value !== null
+    && value !== 'auto' && value !== 'low' && value !== 'medium' && value !== 'high' && value !== 'max') {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
+}
+
+function normalizeMemberText(
+  value: string | null | undefined,
+  current: string | null,
+  field: string,
+  maxLength: number,
+  nullable = false,
+): string | null {
+  if (value === undefined) return current;
+  if (value === null) return nullable ? null : current;
+  if (typeof value !== 'string') throw new ConversationRepositoryError('INPUT_INVALID');
+  const trimmed = value.trim();
+  if (!nullable && trimmed.length === 0) throw new ConversationRepositoryError('INPUT_INVALID');
+  if (trimmed.length > maxLength) throw new ConversationRepositoryError('INPUT_INVALID');
+  return trimmed.length === 0 && nullable ? null : trimmed;
+}
+
+function validateMemberText(value: string | null | undefined, _field: string, maxLength: number, nullable: boolean): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string') throw new ConversationRepositoryError('INPUT_INVALID');
+  const trimmed = value.trim();
+  if ((!nullable && trimmed.length === 0) || trimmed.length > maxLength) {
+    throw new ConversationRepositoryError('INPUT_INVALID');
+  }
 }
 
 function toMessageRecord(row: MessageRow): MessageRecord {

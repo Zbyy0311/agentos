@@ -1,7 +1,7 @@
-import { ConversationAgentRunner } from '@agentos/agent-core';
+import { assertRuntimePolicySupported, ConversationAgentRunner, resolveRuntimePolicy } from '@agentos/agent-core';
 import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos/agent-core';
 import { createHash } from 'node:crypto';
-import type { AgentProfile, ConversationMessage } from '@agentos/shared';
+import type { AgentProfile, ConversationMessage, RunIntent } from '@agentos/shared';
 import type { AgentTurnRecord } from '../store/AgentTurnRepository.js';
 import type { ConversationRepository, MessageRecord } from '../store/ConversationRepository.js';
 import { createEntityId } from '../store/Identity.js';
@@ -30,6 +30,16 @@ export interface ReplyWithTurnInput {
   /** CR-5: link a Group speaker Turn's snapshot to its interaction. */
   readonly interactionId?: string;
   readonly agentId: string;
+  /** The user-selected turn intent; the generic Prompt contract uses this as guidance. */
+  readonly intent?: RunIntent;
+  /** Frozen group-scoped model/effort; omitted for ordinary direct Turns. */
+  readonly runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>;
+  /** Frozen group-only role instructions, applied before the Provider call. */
+  readonly additionalInstructions?: string;
+  /** Frozen role title for this Agent in the current group. */
+  readonly groupRoleTitle?: string;
+  /** The group settings version that produced this Turn's configuration. */
+  readonly groupSettingsVersion?: number;
   /** The triggering user Message this reply answers. */
   readonly sourceMessageId: string;
   readonly content: string;
@@ -328,6 +338,11 @@ export class ConversationTurnDriver {
   async replyWithTurn(input: ReplyWithTurnInput): Promise<ReplyWithTurnResult> {
     const agent = this.getAgent(input.workspaceId, input.agentId);
     if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
+    const intent = input.intent ?? 'execute';
+    const runtimePolicy = intent === 'execute' ? undefined : resolveRuntimePolicy(intent, agent);
+    if (runtimePolicy !== undefined) {
+      assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    }
 
     // S6 / LITE-09-106: the versioned threshold is evaluated BEFORE this Turn's
     // context is assembled, so a summary published here is the one this Turn
@@ -432,6 +447,17 @@ export class ConversationTurnDriver {
             frozenHistoryMessageIds: frozenHistory.map(message => message.id),
             totalConversationMessages: history.length,
             contextTokenBudget: this.context.contextTokenBudget ?? null,
+            ...(input.runtimeOverrides === undefined && input.additionalInstructions === undefined && input.groupRoleTitle === undefined && input.groupSettingsVersion === undefined
+              ? {}
+              : {
+                groupRuntimeConfig: {
+                  model: input.runtimeOverrides?.model ?? null,
+                  thinkingEffort: input.runtimeOverrides?.thinkingEffort ?? null,
+                  roleTitle: input.groupRoleTitle ?? null,
+                  additionalInstructions: input.additionalInstructions ?? null,
+                  settingsVersion: input.groupSettingsVersion ?? null,
+                },
+              }),
             ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
             ...(staleCompactionSummary === undefined
               ? {}
@@ -478,10 +504,17 @@ export class ConversationTurnDriver {
 
     const options: ConstructorParameters<typeof ConversationAgentRunner>[0] = {
       agent,
+      intent,
       workspaceRoot: input.workspaceRoot,
       executionId: input.turnId,
-      message: input.content,
+      message: [
+        input.content,
+        input.groupRoleTitle?.trim() ? `群聊角色：${input.groupRoleTitle.trim()}` : '',
+        input.additionalInstructions?.trim() ? `群聊附加指令：${input.additionalInstructions.trim()}` : '',
+      ].filter(Boolean).join('\n\n'),
       history: frozenHistory,
+      ...(input.runtimeOverrides === undefined ? {} : { runtimeOverrides: input.runtimeOverrides }),
+      ...(runtimePolicy === undefined ? {} : { runtimePolicy }),
       // LITE-09-101: inject exactly the frozen selection whose ids the snapshot above
       // recorded. An empty or whitespace-only selection adds nothing to the prompt.
       ...(memoryContext === undefined ? {} : { memoryContext }),

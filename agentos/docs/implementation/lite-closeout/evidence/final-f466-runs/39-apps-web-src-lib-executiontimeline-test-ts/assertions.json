@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-12-005-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-294",
+    "requirementId": "LITE-12-005",
+    "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+    "line": 23,
+    "expression": "assert.deepEqual(",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-295",
+    "requirementId": "LITE-12-006",
+    "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+    "line": 23,
+    "expression": "assert.deepEqual(",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

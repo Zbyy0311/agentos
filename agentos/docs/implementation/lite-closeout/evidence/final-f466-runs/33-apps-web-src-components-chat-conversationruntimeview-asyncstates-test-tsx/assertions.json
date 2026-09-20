@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-261",
+    "requirementId": "LITE-12-007",
+    "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+    "line": 48,
+    "expression": "assert.ok(",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-262",
+    "requirementId": "LITE-12-007",
+    "name": "LITE-12-007 the error state is an announced alert, not silence",
+    "line": 56,
+    "expression": "assert.ok(",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-263",
+    "requirementId": "LITE-12-007",
+    "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+    "line": 114,
+    "expression": "assert.ok(",
+    "clause": "complete async states;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

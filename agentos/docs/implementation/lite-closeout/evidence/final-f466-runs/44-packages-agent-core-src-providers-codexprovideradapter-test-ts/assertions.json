@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-315",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 194,
+    "expression": "expect(types).toEqual([",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-316",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 194,
+    "expression": "expect(types).toEqual([",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

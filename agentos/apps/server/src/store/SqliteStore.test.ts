@@ -56,6 +56,12 @@ test('new Workspace assigns kimicode provider type to Kimi agent', () => {
     assert.ok(kimiConfig, 'Kimi agent should get provider_type kimicode, not custom-cli');
     const legacyConfig = pcRows.find(pc => pc.provider_type === 'custom-cli');
     assert.equal(legacyConfig, undefined, 'No agent should fall through to custom-cli for known roles');
+
+    const profiles = store.listAgentProfiles(created.id);
+    assert.equal(profiles.find(agent => agent.id === 'codex')?.roleTitle, '首席协作顾问');
+    assert.equal(profiles.find(agent => agent.id === 'kimi')?.roleTitle, '分析与执行顾问');
+    assert.equal(profiles.find(agent => agent.id === 'opencode')?.roleTitle, '独立评审顾问');
+    assert.match(profiles.find(agent => agent.id === 'kimi')?.systemPrompt ?? '', /用户真实需求/);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -467,7 +473,7 @@ test('records the tombstone schema through MigrationRunner and keeps it after re
     const migrations = store.getDatabase().prepare(
       'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
     ).all() as Array<{ migration_id: string }>;
-    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031']);
+    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034']);
     store.deleteWorkspace('workspace-a');
     store.close();
     store = new SqliteStore(root);

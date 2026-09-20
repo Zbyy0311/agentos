@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry)",
+      "src/services/RuntimeArtifactCollector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/26-apps-server-src-services-runtimeartifactcollector-test-ts/assertions.json",
+      "sha256": "caa26e5c1c759d966bdf07a8de7fea28d2ff45f680a25fded41d43fc4470ce03"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/26-apps-server-src-services-runtimeartifactcollector-test-ts/execution.json",
+      "sha256": "71c50f00d05721fdf46f8b5a8750ced24c7499a5b3faf5d33c114fcff83b2db9"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/26-apps-server-src-services-runtimeartifactcollector-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/26-apps-server-src-services-runtimeartifactcollector-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/26-apps-server-src-services-runtimeartifactcollector-test-ts/stdout.txt",
+      "sha256": "8c6e90b229a505b5fa87c910f14592f0090151c723f5c97c633fa11b2384e6d1"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-03-014-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-204",
+      "requirementId": "LITE-03-014",
+      "file": "apps/server/src/services/RuntimeArtifactCollector.test.ts",
+      "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+      "line": 60,
+      "expression": "assert.equal(notifications, 1);",
+      "clause": "payload limit and Artifact fallback;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-007-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-205",
+      "requirementId": "LITE-06-007",
+      "file": "apps/server/src/services/RuntimeArtifactCollector.test.ts",
+      "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+      "line": 60,
+      "expression": "assert.equal(notifications, 1);",
+      "clause": "diff Artifacts are immutable and checksummed;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

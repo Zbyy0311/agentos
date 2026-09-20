@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-04-006-lite-04-002-lite-04-006-classifies-every-production-adapter-identically-for-auth-325",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures",
+    "line": 49,
+    "expression": "expect({ adapter: adapter.name, input: testCase.input, code: normalized.code })",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-326",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "always reports retryability as an explicit boolean, never as an absence",
+    "line": 60,
+    "expression": "expect(typeof normalized.retryable).toBe('boolean');",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-keeps-a-normalized-error-idempotent-through-re-normalization-327",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "keeps a normalized error idempotent through re-normalization",
+    "line": 71,
+    "expression": "expect(twice.code).toBe(once.code);",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

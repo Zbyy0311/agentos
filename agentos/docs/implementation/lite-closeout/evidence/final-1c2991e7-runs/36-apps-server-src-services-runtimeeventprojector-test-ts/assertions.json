@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-03-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-247",
+    "requirementId": "LITE-03-012",
+    "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+    "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+    "line": 25,
+    "expression": "assert.deepEqual(projected.map(event => event.type), [",
+    "clause": "provider mapping fidelity and no invented telemetry;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-012-lite-03-012-lite-04-012-projects-provider-events-faithfully-without-invented-tel-248",
+    "requirementId": "LITE-04-012",
+    "file": "apps/server/src/services/RuntimeEventProjector.test.ts",
+    "name": "LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry",
+    "line": 25,
+    "expression": "assert.deepEqual(projected.map(event => event.type), [",
+    "clause": "no invented provider telemetry appears in canonical Events.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

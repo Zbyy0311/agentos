@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-03-014-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-204",
+    "requirementId": "LITE-03-014",
+    "file": "apps/server/src/services/RuntimeArtifactCollector.test.ts",
+    "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+    "line": 60,
+    "expression": "assert.equal(notifications, 1);",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-205",
+    "requirementId": "LITE-06-007",
+    "file": "apps/server/src/services/RuntimeArtifactCollector.test.ts",
+    "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+    "line": 60,
+    "expression": "assert.equal(notifications, 1);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

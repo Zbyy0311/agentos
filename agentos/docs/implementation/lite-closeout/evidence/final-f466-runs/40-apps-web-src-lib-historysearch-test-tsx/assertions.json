@@ -1,0 +1,62 @@
+[
+  {
+    "id": "LITE-01-013-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-296",
+    "requirementId": "LITE-01-013",
+    "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+    "line": 78,
+    "expression": "assert.equal(",
+    "clause": "Agent History links canonical records rather than provider-native history;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-013-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-297",
+    "requirementId": "LITE-01-013",
+    "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+    "line": 103,
+    "expression": "assert.ok(",
+    "clause": "Agent History links canonical records rather than provider-native history;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-011-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-298",
+    "requirementId": "LITE-11-011",
+    "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+    "line": 78,
+    "expression": "assert.equal(",
+    "clause": "History is Agent-unified and Search is secret-free;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-011-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-299",
+    "requirementId": "LITE-11-011",
+    "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+    "line": 103,
+    "expression": "assert.ok(",
+    "clause": "History is Agent-unified and Search is secret-free;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-013-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-300",
+    "requirementId": "LITE-12-013",
+    "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+    "line": 78,
+    "expression": "assert.equal(",
+    "clause": "Agent-unified History and secret-free Search;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-013-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-301",
+    "requirementId": "LITE-12-013",
+    "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+    "line": 103,
+    "expression": "assert.ok(",
+    "clause": "Agent-unified History and secret-free Search;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

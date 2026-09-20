@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChildProcess, execFileSync } from 'node:child_process';
-import { CLIExecutor, CLIError, createCommandInvocation, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveKimiCliArgs, safeCleanup } from './executor.js';
+import { CLIExecutor, CLIError, createCommandInvocation, DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveInactivityTimeoutMs, resolveKimiCliArgs, safeCleanup } from './executor.js';
 import type { AgentConfig } from './types.js';
 import type { RunFileChange } from '@agentos/shared';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -37,12 +37,64 @@ describe('resolveAgentRuntimeConfig', () => {
     expect(resolved.env.AGENTOS_KIMI_API_KEY).toBe('test-key');
   });
 
+  it('preserves OpenCodex model routing when a Kimi API key is configured', () => {
+    const resolved = resolveAgentRuntimeConfig({
+      role: 'kimi_worker',
+      provider: 'kimi',
+      cliCommand: 'kimi',
+      cliArgs: ['-m', 'opencodex/gpt-5.6-luna', '-p'],
+      model: 'opencodex/gpt-5.6-luna',
+      thinkingEffort: 'auto',
+    }, {
+      AGENTOS_KIMI_API_KEY: 'test-key',
+      KIMI_MODEL_NAME: 'kimi-for-coding',
+      KIMI_MODEL_API_KEY: 'stale-key',
+      KIMI_MODEL_PROVIDER_TYPE: 'kimi',
+      KIMI_MODEL_BASE_URL: 'https://api.kimi.com/coding/v1',
+    });
+
+    expect(resolved.cliArgs).toEqual(['-m', 'opencodex/gpt-5.6-luna', '-p']);
+    expect(resolved.env.KIMI_MODEL_NAME).toBeUndefined();
+    expect(resolved.env.KIMI_MODEL_API_KEY).toBeUndefined();
+    expect(resolved.env.KIMI_MODEL_PROVIDER_TYPE).toBeUndefined();
+    expect(resolved.env.KIMI_MODEL_BASE_URL).toBeUndefined();
+    expect(resolved.env.AGENTOS_KIMI_API_KEY).toBe('test-key');
+  });
+
   it('replaces the OpenCode model flag when the command is OpenCode', () => {
     const resolved = resolveAgentRuntimeConfig({
       role: 'opencode_reviewer', cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'old-model'], model: 'new-model', thinkingEffort: 'auto',
     }, {});
 
     expect(resolved.cliArgs).toEqual(['--pure', 'run', '--model', 'new-model']);
+  });
+
+  it('passes OpenCode thinking effort as the provider variant', () => {
+    const resolved = resolveAgentRuntimeConfig({
+      role: 'opencode_reviewer', cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'new-model'], model: 'new-model', thinkingEffort: 'high',
+    }, {});
+
+    expect(resolved.cliArgs).toEqual(['--pure', 'run', '--model', 'new-model', '--variant', 'high']);
+  });
+
+  it('passes Kimi thinking effort through its supported environment setting', () => {
+    const resolved = resolveAgentRuntimeConfig({
+      role: 'kimi_worker', cliCommand: 'kimi', cliArgs: ['-p'], model: 'kimi-code/kimi-for-coding', thinkingEffort: 'max',
+    }, {});
+
+    expect(resolved.env.KIMI_MODEL_THINKING_EFFORT).toBe('max');
+  });
+
+  it('removes stale provider effort overrides when automatic effort is selected', () => {
+    const kimi = resolveAgentRuntimeConfig({
+      role: 'kimi_worker', cliCommand: 'kimi', cliArgs: ['-p'], model: 'kimi-code/kimi-for-coding', thinkingEffort: 'auto',
+    }, { KIMI_MODEL_THINKING_EFFORT: 'max' });
+    const opencode = resolveAgentRuntimeConfig({
+      role: 'opencode_reviewer', cliCommand: 'opencode', cliArgs: ['run', '--variant', 'high'], model: 'new-model', thinkingEffort: 'auto',
+    }, {});
+
+    expect(kimi.env.KIMI_MODEL_THINKING_EFFORT).toBeUndefined();
+    expect(opencode.cliArgs).toEqual(['run', '--model', 'new-model']);
   });
 
   it('uses Codex flags when the reviewer falls back to Codex', () => {
@@ -64,10 +116,20 @@ describe('resolveAgentRuntimeConfig', () => {
     ]);
   });
 
-  it('rejects unsupported thinking effort values', () => {
+  it('maps Codex max thinking effort to its config override', () => {
+    const resolved = resolveAgentRuntimeConfig({
+      role: 'codex_manager', cliCommand: 'codex', cliArgs: ['exec'], model: 'gpt-5.6-luna', thinkingEffort: 'max',
+    }, {});
+
+    expect(resolved.cliArgs).toEqual([
+      'exec', '-m', 'gpt-5.6-luna', '-c', 'model_reasoning_effort=max',
+    ]);
+  });
+
+  it('accepts Kimi adjustable thinking effort values', () => {
     expect(() => resolveAgentRuntimeConfig({
       role: 'kimi_worker', cliCommand: 'kimi', cliArgs: ['-p'], model: 'new-model', thinkingEffort: 'high',
-    }, {})).toThrow('does not support thinking effort "high"');
+    }, {})).not.toThrow();
   });
 });
 
@@ -405,6 +467,13 @@ describe('CLIExecutor', () => {
     expect(getInactivityTimeoutMs('null')).toBeNull();
   });
 
+  it('bounds OpenCode no-output executions without changing other CLI defaults', () => {
+    expect(resolveInactivityTimeoutMs('opencode', undefined)).toBe(DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS);
+    expect(resolveInactivityTimeoutMs('codex', undefined)).toBeNull();
+    expect(resolveInactivityTimeoutMs('opencode', '0')).toBeNull();
+    expect(resolveInactivityTimeoutMs('opencode', '250')).toBe(250);
+  });
+
   it('reads the maximum execution timeout from the environment at execution time', () => {
     expect(getMaxExecutionTimeoutMs('100')).toBe(100);
   });
@@ -452,6 +521,7 @@ describe('CLIExecutor', () => {
     }, 'ignored', ctx('inactive-command'))).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(CLIError);
       expect((err as Error).message).toContain('inactive');
+      expect((err as CLIError).timeoutReason).toBe('inactivity_timeout');
       return true;
     });
   });
@@ -607,7 +677,7 @@ describe('CLIExecutor', () => {
     expect(env.CODEX_HOME).toBeUndefined();
   });
 
-  it('isolates OpenCode config and denies write-capable tools by default', () => {
+  it('preserves the user OpenCode config lookup and denies write-capable tools by default', () => {
     const env = resolveAgentEnvironment({
       ...okConfig,
       role: 'opencode_reviewer',
@@ -617,13 +687,27 @@ describe('CLIExecutor', () => {
       USERPROFILE: 'C:\\Users\\TestUser',
     });
 
-    expect(env.XDG_CONFIG_HOME).toBe('C:\\workspace\\agentos\\.agentos\\opencode');
+    expect(env.XDG_CONFIG_HOME).toBeUndefined();
     expect(JSON.parse(env.OPENCODE_PERMISSION ?? '{}')).toMatchObject({
       edit: 'deny',
       bash: 'deny',
       task: 'deny',
       external_directory: 'deny',
     });
+  });
+
+  it('preserves an explicitly configured OpenCode config directory', () => {
+    const env = resolveAgentEnvironment({
+      ...okConfig,
+      role: 'opencode_reviewer',
+      cliCommand: 'E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe',
+      env: { XDG_CONFIG_HOME: 'D:\\agentos\\opencode-config' },
+    }, {
+      AGENTOS_WORKSPACE_ROOT: 'C:\\workspace\\agentos',
+      USERPROFILE: 'C:\\Users\\TestUser',
+    });
+
+    expect(env.XDG_CONFIG_HOME).toBe('D:\\agentos\\opencode-config');
   });
 
   it('uses API Key runtime settings instead of the Kimi OAuth model alias', () => {
