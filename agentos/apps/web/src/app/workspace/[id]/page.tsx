@@ -167,11 +167,14 @@ export default function WorkspacePage() {
   const drainingQueueRef = useRef(false);
   const activeResizeRef = useRef<ActivePanelResize | null>(null);
   const runDetailsCacheRef = useRef(new Map<string, Promise<AgentRunDetails>>());
+  const conversationLoadGenerationRef = useRef(0);
+  const activeConversationIdRef = useRef<string | null>(null);
   const toastIdRef = useRef(0);
   const typewriterRef = useRef(new TypewriterQueue());
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
   const activeConversationId = getActiveConversationId({ selectedGroupId, selectedDirectConversationId });
+  activeConversationIdRef.current = activeConversationId;
   const selectedConversation = selectedGroupId
     ? groups.find(conversation => conversation.id === selectedGroupId)
     : conversations.find(conversation => conversation.id === selectedDirectConversationId);
@@ -262,9 +265,11 @@ export default function WorkspacePage() {
     const cached = runDetailsCacheRef.current.get(cacheKey);
     if (cached) return cached;
     const pending = request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${runId}`)
-      .catch(error => {
-        runDetailsCacheRef.current.delete(cacheKey);
-        throw error;
+      .finally(() => {
+        // Deduplicate only overlapping requests. A completed run must be
+        // fetched again so streaming, approval, and artifact updates cannot
+        // be frozen behind a permanently cached Promise.
+        if (runDetailsCacheRef.current.get(cacheKey) === pending) runDetailsCacheRef.current.delete(cacheKey);
       });
     runDetailsCacheRef.current.set(cacheKey, pending);
     return pending;
@@ -467,14 +472,20 @@ export default function WorkspacePage() {
 
   const loadConversationDetails = useCallback(async (conversationId: string) => {
     if (!workspaceId) return;
+    const generation = conversationLoadGenerationRef.current + 1;
+    conversationLoadGenerationRef.current = generation;
+    const isCurrentConversation = () => conversationLoadGenerationRef.current === generation
+      && activeConversationIdRef.current === conversationId;
     const [messageResult, executionResult, runResult] = await Promise.all([
       request<{ messages: ConversationMessage[] }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/messages`),
       request<{ executions: Array<AgentExecution & { events: ExecutionEvent[] }> }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/executions`),
       request<{ runs: AgentRun[] }>(`/api/workspaces/${workspaceId}/runs?conversationId=${encodeURIComponent(conversationId)}`),
     ]);
+    if (!isCurrentConversation()) return;
     const activeRun = selectActiveRunExecutions(executionResult.executions, runResult.runs);
     const latestRun = runResult.runs[0];
     const latestRunDetails = latestRun ? await loadRunDetails(latestRun.id) : undefined;
+    if (!isCurrentConversation()) return;
     const runtimeResult = latestRunDetails
       ? projectRuntimeResult(latestRunDetails, { workspaceId, conversationId, runId: activeRun.runId ?? latestRun?.id })
       : undefined;
@@ -604,16 +615,16 @@ export default function WorkspacePage() {
 
   const openRunDetails = useCallback(async (runId: string) => {
     if (!workspaceId) return;
-    const requestedConversationId = activeConversationId;
+    const requestedConversationId = activeConversationIdRef.current;
     setOverlayPanel(null);
     try {
       const details = await loadRunDetails(runId);
-      if (!requestedConversationId || activeConversationId !== requestedConversationId || !projectRuntimeResult(details, { workspaceId, conversationId: requestedConversationId, runId })) return;
+      if (!requestedConversationId || activeConversationIdRef.current !== requestedConversationId || !projectRuntimeResult(details, { workspaceId, conversationId: requestedConversationId, runId })) return;
       setRunDetails(details);
     } catch (detailsError) {
       notifyError(detailsError, '加载运行详情失败');
     }
-  }, [activeConversationId, loadRunDetails, notifyError, workspaceId]);
+  }, [loadRunDetails, notifyError, workspaceId]);
 
   const generateMemoryCandidates = useCallback(async (runId: string) => {
     if (!workspaceId) return;
@@ -923,9 +934,17 @@ export default function WorkspacePage() {
     const group = groups.find(item => item.id === groupId);
     if (!group) return;
     if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
+    conversationLoadGenerationRef.current += 1;
     setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     setOverlayPanel(null);
   }, [groups, selectedGroupId]);
+
+  const selectDirectConversation = useCallback((conversationId: string) => {
+    conversationLoadGenerationRef.current += 1;
+    setSelectedGroupId(null);
+    setSelectedDirectConversationId(conversationId);
+    setActiveRuntimeResult(null);
+  }, []);
 
   const closeOverlayPanel = useCallback(() => {
     const panel = overlayPanel;
@@ -1009,7 +1028,7 @@ export default function WorkspacePage() {
   }, []);
 
   const renderAgentPanel = (compact: boolean, panelWidth?: number) => <AgentList panelWidth={panelWidth} compact={compact} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={selectAgent} onSelectGroup={selectGroup} onCreateGroup={() => openEditorLayer(() => setCreatingGroup(true))} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenRuntime={() => router.push(`/workspace/${encodeURIComponent(workspaceId ?? '')}/runtime`)} onOpenMemories={() => openEditorLayer(() => setShowMemories(true))} onOpenPreferences={() => openEditorLayer(() => setShowPreferences(true))} onOpenMemoryReview={() => openEditorLayer(() => setShowMemoryReview(true))} />;
-  const renderHistoryPanel = (panelWidth?: number) => <ConversationHistory panelWidth={panelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={setSelectedDirectConversationId} onContextMenu={openContextMenu} />;
+  const renderHistoryPanel = (panelWidth?: number) => <ConversationHistory panelWidth={panelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel="新建会话" onCreate={() => { void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectDirectConversation} onContextMenu={openContextMenu} />;
   const renderInspectorPanel = (panelWidth?: number) => <ExecutionInspector panelWidth={panelWidth} agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} runHistory={conversationRuns} activeStatus={activeStatus} activeStartedAt={activeStartedAt} apiBase={API_BASE} workspaceId={workspaceId ?? undefined} activeRunId={activeRunId} onEdit={() => { setOverlayPanel(null); setEditingAgent(true); }} onOpenRunDetails={runId => { void openRunDetails(runId); }} onRuntimeApprovalResolved={() => { if (activeConversationId) void loadConversationDetails(activeConversationId).catch(() => undefined); }} />;
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;

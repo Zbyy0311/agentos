@@ -14,6 +14,8 @@ const requirementId = /^LITE-\d{2}-\d{3}$/;
 const digest = text => createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex');
 const fileDigest = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 const readJson = file => JSON.parse(readFileSync(file, 'utf8'));
+const gitRootCache = new Map();
+const historicalSourceCache = new Map();
 
 // S0 v1 identity anchor; changing it requires a separately reviewed scope amendment.
 const scopeLockHash = '140848da717c448daae0a6ddd44413c8d808eab70464bd0d482946f5f3f27aba';
@@ -64,6 +66,49 @@ function existingPath(repositoryRoot, candidate, label) {
   const path = repositoryPath(repositoryRoot, candidate, label);
   assert.ok(existsSync(path), `missing ${label}: ${candidate}`);
   return path;
+}
+
+function readSourceAtCommit(repositoryRoot, commit, candidate, label) {
+  const currentPath = existingPath(repositoryRoot, candidate, label);
+  const cacheKey = `${repositoryRoot}\u0000${commit}\u0000${candidate}`;
+  const cached = historicalSourceCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const gitRoot = gitRootCache.get(repositoryRoot) ?? execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  }).trim();
+  gitRootCache.set(repositoryRoot, gitRoot);
+  const repositoryPath = relative(gitRoot, currentPath).split(sep).join('/');
+  try {
+    const source = execFileSync('git', ['show', `${commit}:${repositoryPath}`], {
+      cwd: gitRoot,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    historicalSourceCache.set(cacheKey, source);
+    return source;
+  } catch {
+    return undefined;
+  }
+}
+
+function sourceMatchesAssertion(source, assertion) {
+  if (typeof source !== 'string' || typeof assertion.expression !== 'string') return false;
+  const line = source.split(/\r?\n/)[assertion.line - 1];
+  return line?.includes(assertion.expression) === true
+    && (typeof assertion.name !== 'string' || source.includes(assertion.name));
+}
+
+/**
+ * Evidence baselines anchor the production implementation. Test files may gain
+ * additive coverage after capture, which legitimately moves a mapped line while
+ * preserving the exact assertion. Prefer the recorded source; only fall back to
+ * the current test file when the same line and test name are still exact there.
+ */
+function readSourceForAssertion(repositoryRoot, baseline, assertion, label) {
+  const historical = readSourceAtCommit(repositoryRoot, baseline, assertion.file, label);
+  if (sourceMatchesAssertion(historical, assertion)) return historical;
+  return readFileSync(existingPath(repositoryRoot, assertion.file, label), 'utf8');
 }
 
 function freezePayload(freeze) {
@@ -309,7 +354,12 @@ export function validatePassPromotions(matrix, freeze, authority, ledger, reposi
       assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `pass promotion assertion line is required: ${promotion.requirementId}`);
       assert.equal(assertion.outcome, 'passed', `pass promotion assertion outcome is not passed: ${promotion.requirementId}`);
       existingPath(repositoryRoot, assertion.file, `pass promotion assertion source ${promotion.requirementId}`);
-      const source = readFileSync(existingPath(repositoryRoot, assertion.file, `pass promotion assertion source ${promotion.requirementId}`), 'utf8');
+      const source = readSourceForAssertion(
+        repositoryRoot,
+        promotion.baselineSha,
+        assertion,
+        `pass promotion assertion source ${promotion.requirementId}`,
+      );
       assert.ok(/\b(?:assert|expect)\b/.test(assertion.expression), `pass promotion assertion expression is not an assertion: ${promotion.requirementId}`);
       assert.ok(source.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
         `pass promotion assertion expression is not at the stated source line: ${promotion.requirementId}`);
@@ -443,7 +493,7 @@ function validateRaw(proof, expectedBaseline, repositoryRoot, label) {
     assert.equal(Number(matches[0][1]), raw.counts[key], `${label} declared count disagrees with original output`);
   }
   for (const assertion of raw.assertionCoverage) {
-    const source = readFileSync(existingPath(repositoryRoot, assertion.file, `${label} assertion source`), 'utf8');
+    const source = readSourceForAssertion(repositoryRoot, raw.baseline, assertion, `${label} assertion source`);
     assert.ok(typeof assertion.expression === 'string' && /\b(?:assert|expect)\b/.test(assertion.expression), `${label} specific assertion expression is required`);
     assert.ok(source.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression), `${label} assertion expression is not at the stated source line`);
     assert.ok(source.includes(assertion.name), `${label} test name is absent from source`);
@@ -531,8 +581,7 @@ function validateControlledHarnessRaw(proof, expectedBaseline, repositoryRoot, l
     assert.equal(assertion.requirementId, receipt.requirementId, `${label} controlled assertion requirement mismatch: ${assertion.id}`);
     assert.deepEqual(assertion.actual, receipt.actual, `${label} controlled assertion actual mismatch: ${assertion.id}`);
     assert.deepEqual(assertion.expected, receipt.expected, `${label} controlled assertion expected mismatch: ${assertion.id}`);
-    const sourceFile = existingPath(repositoryRoot, assertion.file, `${label} controlled assertion source`);
-    const sourceText = readFileSync(sourceFile, 'utf8');
+    const sourceText = readSourceForAssertion(repositoryRoot, raw.baseline, assertion, `${label} controlled assertion source`);
     assert.ok(sourceText.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
       `${label} controlled assertion expression is not at the stated source line: ${assertion.id}`);
     assert.ok(sourceText.includes(assertion.name), `${label} controlled assertion name is absent: ${assertion.id}`);
@@ -596,7 +645,7 @@ export function validateVitestRaw(proof, expectedBaseline, repositoryRoot, label
     }
     assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `${label} assertion line is required`);
     assert.equal(assertion.outcome, 'passed', `${label} assertion outcome is not passed`);
-    const source = readFileSync(existingPath(repositoryRoot, assertion.file, `${label} assertion source`), 'utf8');
+    const source = readSourceForAssertion(repositoryRoot, raw.baseline, assertion, `${label} assertion source`);
     assert.ok(source.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
       `${label} assertion expression is not at the stated source line`);
     assert.ok(source.includes(assertion.name), `${label} assertion test name is absent from source`);

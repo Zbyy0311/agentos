@@ -56,7 +56,7 @@ function fixture(
   context?: ConversationTurnContextOptions,
   beforeRunner?: (
     history: readonly ConversationMessage[],
-    options: { readonly memoryContext?: string },
+    options: { readonly memoryContext?: string; readonly runtimePolicy?: unknown },
   ) => void,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'agentos-turndriver-'));
@@ -80,7 +80,7 @@ function fixture(
   const driver = new ConversationTurnDriver(
     conversations,
     stream,
-    (_ws, agentId) => (agentId === 'agent_main' ? ({} as never) : undefined),
+    (_ws, agentId) => (agentId === 'agent_main' ? ({ id: 'agent_main', name: 'Agent', permissions: ['write'], cliCommand: 'codex' } as never) : undefined),
     (options) => ({
       run: async () => {
         beforeRunner?.(options.history, options);
@@ -231,6 +231,19 @@ test('TD-04 an unknown Agent fails closed without reserving a stream', async () 
     );
     assert.equal(fx.turns.listTurnsByConversation(WS, CONV).length, 0);
     assert.equal(fx.conversations.listMessages(WS, CONV).length, 1);
+  } finally { fx.close(); }
+});
+
+test('TD-04a ask intent passes an enforced read-only runtime policy to the Provider', async () => {
+  let runtimePolicy: { workspaceWrite?: boolean; toolPolicy?: string } | undefined;
+  const fx = fixture(undefined, undefined, (_history, options) => {
+    runtimePolicy = options.runtimePolicy as typeof runtimePolicy;
+  });
+  try {
+    const result = await fx.driver.replyWithTurn(input({ intent: 'ask' }));
+    assert.equal(result.status, 'completed');
+    assert.equal(runtimePolicy?.workspaceWrite, false);
+    assert.equal(runtimePolicy?.toolPolicy, 'read-only');
   } finally { fx.close(); }
 });
 

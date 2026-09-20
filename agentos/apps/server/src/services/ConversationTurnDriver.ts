@@ -1,4 +1,4 @@
-import { ConversationAgentRunner } from '@agentos/agent-core';
+import { assertRuntimePolicySupported, ConversationAgentRunner, resolveRuntimePolicy } from '@agentos/agent-core';
 import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos/agent-core';
 import { createHash } from 'node:crypto';
 import type { AgentProfile, ConversationMessage, RunIntent } from '@agentos/shared';
@@ -338,6 +338,11 @@ export class ConversationTurnDriver {
   async replyWithTurn(input: ReplyWithTurnInput): Promise<ReplyWithTurnResult> {
     const agent = this.getAgent(input.workspaceId, input.agentId);
     if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
+    const intent = input.intent ?? 'execute';
+    const runtimePolicy = intent === 'execute' ? undefined : resolveRuntimePolicy(intent, agent);
+    if (runtimePolicy !== undefined) {
+      assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    }
 
     // S6 / LITE-09-106: the versioned threshold is evaluated BEFORE this Turn's
     // context is assembled, so a summary published here is the one this Turn
@@ -499,7 +504,7 @@ export class ConversationTurnDriver {
 
     const options: ConstructorParameters<typeof ConversationAgentRunner>[0] = {
       agent,
-      intent: input.intent ?? 'execute',
+      intent,
       workspaceRoot: input.workspaceRoot,
       executionId: input.turnId,
       message: [
@@ -509,6 +514,7 @@ export class ConversationTurnDriver {
       ].filter(Boolean).join('\n\n'),
       history: frozenHistory,
       ...(input.runtimeOverrides === undefined ? {} : { runtimeOverrides: input.runtimeOverrides }),
+      ...(runtimePolicy === undefined ? {} : { runtimePolicy }),
       // LITE-09-101: inject exactly the frozen selection whose ids the snapshot above
       // recorded. An empty or whitespace-only selection adds nothing to the prompt.
       ...(memoryContext === undefined ? {} : { memoryContext }),

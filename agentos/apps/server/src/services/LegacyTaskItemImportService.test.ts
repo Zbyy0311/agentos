@@ -379,8 +379,13 @@ test('[M27-P3-T005] Source preflight runs under acquired-and-released Ownership 
       assert.equal(countRows(fxJunction.db, 'legacy_data_migrations'), 0);
       assert.equal(countRows(fxJunction.db, 'legacy_task_items'), 0);
     } finally {
-      rmSync(outside, { recursive: true, force: true });
-      fxJunction.cleanup();
+      // Remove the junction while its target still exists. On Windows a
+      // dangling junction can prevent recursive fixture cleanup (ENOTEMPTY).
+      try {
+        fxJunction.cleanup();
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
     }
 
     // Project A database + Project B source root is rejected before

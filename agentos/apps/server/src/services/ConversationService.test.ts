@@ -605,7 +605,8 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
   let store: SqliteStore | undefined;
   const worktreeRoot = mkdtempSync(join(tmpdir(), 'agentos-isolated-root-'));
   try {
-    execFileSync('git', ['init', '-q', root]);
+    // This worktree fixture does not need Git's Windows symlink capability probe.
+    execFileSync('git', ['-c', 'core.symlinks=false', 'init', '-q', root]);
     execFileSync('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
     execFileSync('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
     writeFileSync(join(root, '.gitignore'), '.agentos/\n');

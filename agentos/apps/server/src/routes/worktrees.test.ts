@@ -10,7 +10,8 @@ import { createWorktreeRoutes } from './worktrees.js';
 
 function repo(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-worktree-route-'));
-  execFileSync('git', ['init', '-q', root]);
+  // These fixtures do not test symlinks. Avoid Git's dangling probe link on Windows.
+  execFileSync('git', ['-c', 'core.symlinks=false', 'init', '-q', root]);
   execFileSync('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
   execFileSync('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
   writeFileSync(join(root, 'README.md'), 'base');
