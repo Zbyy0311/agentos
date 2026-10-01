@@ -405,6 +405,57 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
   }
 });
 
+test('disabled workspace memory freezes empty selections on direct and new group streams', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      new MemoryEntryRepository(store.getDatabase() as never).createEntry({
+        id: 'mem_disabled_stream', workspaceId: 'workspace-a', scope: 'workspace', category: 'knowledge',
+        authority: 'user-explicit', status: 'active', confidence: 1, importance: 1,
+        title: 'Never inject while disabled', content: 'DISABLED_MEMORY_BODY',
+        sources: [{ kind: 'user', id: 'default' }], createdAt: new Date().toISOString(),
+      });
+      store.getDatabase().prepare('UPDATE workspaces SET memory_enabled=0 WHERE id=?').run('workspace-a');
+      for (const body of [{ kind: 'direct', agentId: 'codex' },
+        { kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex', 'kimi'] }]) {
+        const created = await postJson(`${baseUrl}/conversations`, body);
+        assert.equal(created.status, 201);
+        const id = (created.json as { conversation: { id: string } }).conversation.id;
+        let streamUrl = `${baseUrl}/conversations/${id}/messages/stream`;
+        let streamBody: unknown = { content: 'answer briefly' };
+        if (body.kind === 'group') {
+          const sent = await postJson(`${baseUrl}/conversations/${id}/discussions`, {
+            content: 'answer briefly',
+            budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+          });
+          assert.equal(sent.status, 201);
+          const discussion = sent.json as { message: { id: string }; interaction: { id: string } };
+          streamUrl = `${baseUrl}/conversations/${id}/interactions/${discussion.interaction.id}/respond`;
+          streamBody = { sourceMessageId: discussion.message.id };
+        }
+        const stream = await fetch(streamUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(streamBody),
+        });
+        assert.equal(stream.status, 200);
+        const streamText = await stream.text();
+        const rows = store.getDatabase().prepare(`SELECT id, selected_entry_ids_json AS ids,
+          total_tokens AS tokens,retrieval_strategy_version AS strategy FROM cr_turn_context_snapshots WHERE conversation_id=?`)
+          .all(id) as { id: string; ids: string; tokens: number; strategy: string }[];
+        assert.equal(rows.length, body.kind === 'group' ? 2 : 1, `expected frozen snapshots: ${streamText.slice(-3000)}`);
+        for (const row of rows) {
+          assert.deepEqual(JSON.parse(row.ids), []);
+          assert.equal(row.tokens, 0);
+          assert.match(row.strategy, /memory-disabled$/);
+          const payload = store.getDatabase().prepare('SELECT context_text FROM cr_turn_memory_payloads WHERE snapshot_id=?')
+            .get(row.id) as { context_text: string };
+          assert.equal(payload.context_text, '');
+        }
+      }
+    });
+  } finally { delete process.env.AGENTOS_FORCE_MOCK; }
+});
+
 test('LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority', async () => {
   process.env.AGENTOS_FORCE_MOCK = 'true';
   try {

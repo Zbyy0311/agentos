@@ -124,6 +124,31 @@ test('prepared chat selection awaits the retrieval seam and persists a visible s
   } finally { fx.close(); }
 });
 
+test('disabled chat memory skips all retrieval and a disable during preparation freezes an empty selection', async () => {
+  let enabled = false;
+  let reads = 0;
+  const port = createChatMemorySelectionPort({
+    isMemoryEnabled: workspaceId => workspaceId === WS && enabled,
+    retrieval: {
+      retrieveWithStatus() { reads += 1; return { results: [], degraded: false }; },
+      async retrievePrepared() { reads += 1; enabled = false; return { results: [], degraded: false }; },
+    },
+  });
+  const sync = port.select(SELECT_INPUT);
+  const asyncDisabled = await port.selectPrepared!(SELECT_INPUT);
+  assert.equal(reads, 0);
+  for (const selected of [sync, asyncDisabled]) {
+    assert.deepEqual(selected.selectedEntryIds, []);
+    assert.equal(selected.contextText, undefined);
+    assert.equal(selected.totalTokens, 0);
+    assert.match(selected.retrievalStrategyVersion, /memory-disabled$/);
+  }
+  enabled = true;
+  const disabledWhilePreparing = await port.selectPrepared!(SELECT_INPUT);
+  assert.equal(reads, 1);
+  assert.match(disabledWhilePreparing.retrievalStrategyVersion, /memory-disabled$/);
+});
+
 test('LITE-09-101 CM-02 another Workspace, another Agent and a Task-scoped entry stay out of reach', () => {
   const fx = fixture();
   try {

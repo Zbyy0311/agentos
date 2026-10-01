@@ -149,6 +149,7 @@ export function createConversationRuntimeRoutes(
   );
   const chatMemorySelection = createChatMemorySelectionPort({
     retrieval: memoryRetrieval.retrieval,
+    isMemoryEnabled: workspaceId => workspaceManager.get(workspaceId)?.memoryEnabled === true,
     onProblem: detail => console.warn('[AgentOS ChatMemory] ' + detail),
   });
 
