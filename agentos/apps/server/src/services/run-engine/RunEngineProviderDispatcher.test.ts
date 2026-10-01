@@ -1386,7 +1386,8 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.ok(!(query as string).includes('RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY'));
       assert.ok((query as string).length <= 2000, 'memory query must be capped at 2000 characters');
       assert.ok(fx.capturedInputs.length >= 1, 'stage must be executed');
-      assert.ok(fx.capturedInputs[0].prompt.startsWith('MEMORY_CONTEXT_BODY'), 'memory context must precede the base prompt');
+      assert.ok(fx.capturedInputs[0].prompt.startsWith('Memory provides historical context; the current user instruction overrides'), 'the current-instruction precedence rule must precede memory');
+      assert.ok(fx.capturedInputs[0].prompt.includes('\nMEMORY_CONTEXT_BODY\n\n'), 'frozen memory must precede the base prompt');
     } finally { close(fx); }
   });
 
