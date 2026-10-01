@@ -1010,3 +1010,4 @@ export * from './mf5-workspace-events.js';
 export * from './cr0-conversation-contracts.js';
 export * from './wf-templates.js';
 export * from './wf-template-instantiation.js';
+export * from './memory-management.js';

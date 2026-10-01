@@ -50,7 +50,7 @@ export class RunContextBuilder {
     const itemLimit = Math.max(0, Math.min(MAX_MEMORY_ITEMS, Math.floor(input.limit)));
     const characterLimit = Math.max(0, Math.min(MAX_MEMORY_CHARACTERS, Math.floor(input.maxCharacters)));
     if (!(itemLimit > 0) || !(characterLimit > 0)) return empty;
-    const heading = '## 与本次任务相关的项目记忆\n\n';
+    const heading = '历史记忆只提供背景；与当前用户明确指令冲突时，当前指令优先。\n## 与本次任务相关的项目记忆\n\n';
     let usedCharacters = 0;
     const sections: string[] = [];
     const usages: MemoryUsage[] = [];

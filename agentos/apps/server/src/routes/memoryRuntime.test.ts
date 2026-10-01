@@ -212,6 +212,47 @@ async function postJson(url: string, body: unknown): Promise<{ status: number; j
   return { status: response.status, json: await response.json() };
 }
 
+test('M2 conflict list exposes versioned pairs and resolved history within the workspace', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    seedConflict(store);
+    const response = await fetch(`${baseUrl}/memory/conflicts`);
+    assert.equal(response.status, 200);
+    const listed = await response.json() as { conflicts: Array<{ id: string; entryAId: string; entryBId: string; version: number }> };
+    assert.deepEqual(listed.conflicts.map(item => [item.id, item.entryAId, item.entryBId, item.version]), [[CONFLICT, MEM_A, MEM_B, 1]]);
+    assert.equal((await fetch(`${baseUrl}/memory/conflicts?status=invalid`)).status, 400);
+    assert.equal((await fetch(`${baseUrl.replace(WS, 'foreign')}/memory/conflicts`)).status, 404);
+    await postJson(`${baseUrl}/memory-conflicts/${CONFLICT}/resolve`, { expectedVersion: 1, disposition: 'keep-both' });
+    assert.deepEqual(await (await fetch(`${baseUrl}/memory/conflicts`)).json(), { conflicts: [] });
+    const history = await (await fetch(`${baseUrl}/memory/conflicts?status=resolved`)).json() as { conflicts: Array<{ version: number; status: string }> };
+    assert.equal(history.conflicts[0].version, 2);
+    assert.equal(history.conflicts[0].status, 'resolved');
+  });
+});
+
+test('M2 lifecycle HTTP changes future selection with CAS and rolls back on event failure', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    const endpoint = `${baseUrl}/memory/entries/${MEM_A}/lifecycle`;
+    assert.equal((await postJson(endpoint, { expectedVersion: 1, action: 'archive', unexpected: true })).status, 400);
+    assert.equal((await postJson(endpoint, { expectedVersion: 2, action: 'archive' })).status, 409);
+    assert.equal((await postJson(endpoint, { expectedVersion: 1, action: 'archive' })).status, 200);
+    assert.equal((await postJson(endpoint, { expectedVersion: 2, action: 'restore' })).status, 200);
+    assert.equal((await postJson(endpoint, { expectedVersion: 3, action: 'set-validity', expiresAt: NOW })).status, 200);
+    const selected = await postJson(`${baseUrl}/memory/retrieve`, {});
+    assert.ok(!(selected.json as { results: Array<{ entry: { id: string } }> }).results.some(item => item.entry.id === MEM_A));
+    assert.equal((await postJson(endpoint, { expectedVersion: 4, action: 'revalidate', expiresAt: null })).status, 400);
+    store.getDatabase().exec("CREATE TRIGGER m2_fail_event BEFORE INSERT ON workspace_events BEGIN SELECT RAISE(ABORT, 'event failed'); END");
+    assert.equal((await postJson(endpoint, { expectedVersion: 4, action: 'delete' })).status, 500);
+    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, MEM_A)!;
+    assert.equal(entry.version, 4);
+    assert.equal(entry.status, 'active');
+    assert.equal((store.getDatabase().prepare('SELECT count(*) AS n FROM memory_lifecycle_actions WHERE entry_id = ?').get(MEM_A) as { n: number }).n, 3);
+  });
+});
+
 interface WorkspaceEventRow {
   readonly id: string;
   readonly type: string;

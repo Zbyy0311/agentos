@@ -11,6 +11,8 @@ import {
   type MemoryEntryDto,
   type MemoryEntryFormValues,
 } from '@/lib/memoryEntries';
+import { MemoryEntryLifecycle } from './MemoryEntryLifecycle';
+import type { MemoryEntryLifecyclePayload } from '@/lib/memoryManagement';
 import { CompactSelect } from '../chat/CompactSelect';
 import { MemoryMarkdownPreview } from './MemoryMarkdownPreview';
 
@@ -20,9 +22,11 @@ interface MemoryEntryEditorProps {
   loading: boolean;
   saving: boolean;
   error: string;
+  stale?: boolean;
   notice?: string;
   onSave(values: MemoryEntryFormValues): void;
-  onArchive?(): void;
+  onReload?(): void;
+  onLifecycle?(payload: MemoryEntryLifecyclePayload): void;
   onOpenRun(runId: string): void;
 }
 
@@ -44,7 +48,7 @@ function fromEntry(entry: MemoryEntryDto): MemoryEntryFormValues {
   };
 }
 
-export function MemoryEntryEditor({ entry, isNew, loading, saving, error, notice, onSave, onArchive, onOpenRun }: MemoryEntryEditorProps) {
+export function MemoryEntryEditor({ entry, isNew, loading, saving, error, stale, notice, onSave, onReload, onLifecycle, onOpenRun }: MemoryEntryEditorProps) {
   const [values, setValues] = useState<MemoryEntryFormValues>(() => entry ? fromEntry(entry) : empty);
   const [validationError, setValidationError] = useState('');
 
@@ -81,12 +85,12 @@ export function MemoryEntryEditor({ entry, isNew, loading, saving, error, notice
   return <section aria-label="正式记忆编辑器" className="min-w-0 flex-1 overflow-y-auto pl-0 pt-4 sm:pl-5 sm:pt-0">
     <div className="mb-5 flex items-center justify-between gap-4">
       <div><div className="text-[11px] tracking-[0.14em] ui-dim">CANONICAL MEMORY ENTRY</div><h3 className="mt-1 text-lg font-semibold ui-text">{isNew ? '新建正式记忆' : entry ? '正式记忆详情' : '选择一条正式记忆'}</h3></div>
-      {entry?.status === 'active' && onArchive && <button type="button" disabled={saving || loading} onClick={onArchive} className="rounded-lg border border-[var(--app-danger)]/40 px-3 py-1.5 text-xs text-[var(--app-danger)] disabled:opacity-50">归档</button>}
     </div>
     <p className="mb-4 text-xs leading-5 ui-dim">保存后的记忆供后续上下文使用；运行时会按范围等条件和上下文预算决定是否选取。</p>
     {loading && <p role="status" className="mb-3 text-xs ui-dim">正在加载所选记忆…</p>}
     {notice && <p role="status" className="mb-3 rounded-lg border ui-border p-3 text-xs ui-accent">{notice}</p>}
     {error && <p role="alert" className="mb-3 rounded-lg border border-[var(--app-danger)]/30 bg-[var(--app-danger)]/10 p-3 text-xs text-[var(--app-danger)]">{error}</p>}
+    {stale && onReload && <button type="button" disabled={saving || loading} onClick={onReload} className="mb-3 rounded-lg border ui-border px-3 py-2 text-xs ui-accent disabled:opacity-50">重新加载最新版本</button>}
     {validationError && <p role="alert" className="mb-3 rounded-lg border border-[var(--app-danger)]/30 bg-[var(--app-danger)]/10 p-3 text-xs text-[var(--app-danger)]">{validationError}</p>}
     {!entry && !isNew ? <div className="rounded-xl border border-dashed ui-border p-6 text-sm ui-dim">从左侧选择记忆，或新建一条记忆。</div> : <>
       {entry && <div className="mb-4 flex flex-wrap gap-2 text-[11px] ui-dim">{identity.map((item, index) => <span key={`${entry.id}:${index}`} className="rounded-full border ui-border px-2 py-1">{item}</span>)}</div>}
@@ -110,6 +114,7 @@ export function MemoryEntryEditor({ entry, isNew, loading, saving, error, notice
       {entry && entry.sources.length > 0 && <section className="mt-5 border-t ui-border pt-4"><h4 className="mb-2 text-xs ui-muted">来源记录（只读）</h4><div className="flex flex-wrap gap-2">{entry.sources.map((source, index) => source.kind === 'run'
         ? <button type="button" key={`${source.kind}:${source.id}:${index}`} onClick={() => onOpenRun(source.id)} className="rounded-md border ui-border px-2 py-1 text-[11px] ui-accent hover:border-[var(--app-accent)]">Run {source.id.slice(0, 8)}</button>
         : <span key={`${source.kind}:${source.id}:${index}`} className="rounded-md border ui-border px-2 py-1 text-[11px] ui-accent">{source.kind}: {source.id}</span>)}</div></section>}
+      {entry && onLifecycle && <MemoryEntryLifecycle entry={entry} saving={saving || loading} onApply={onLifecycle} />}
     </>}
   </section>;
 }

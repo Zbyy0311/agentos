@@ -573,7 +573,7 @@ export class RunEngineProviderDispatcher {
       : '';
     const prompt = memoryContext === null || memoryContext.contextText.length === 0
       ? `${basePrompt}${collaborationPrompt}`
-      : `${memoryContext.contextText}\n\n${basePrompt}${collaborationPrompt}`;
+      : `Memory provides historical context; the current user instruction overrides any conflicting historical preference.\n${memoryContext.contextText}\n\n${basePrompt}${collaborationPrompt}`;
     const executionProviderSnapshot = isCollaborationRun
       ? { ...stageDefinition.provider, workingDirectoryMode: 'worktree' as const, workspaceRelativeWorkingDirectory: null }
       : stageDefinition.provider;

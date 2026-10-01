@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import type { PreferenceContextKind, PreferenceProjectionStatus } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { PreferenceService } from '../services/PreferenceService.js';
+import { PreferenceConfirmationError } from '../services/PreferenceConfirmationService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
 const contextKinds = new Set<PreferenceContextKind>(['coding', 'debugging', 'planning', 'review', 'explanation', 'general']);
@@ -22,6 +23,61 @@ export function createPreferenceRoutes(store: SqliteStore, workspaceManager: Wor
   };
   router.get('/preferences', list);
 
+  router.get('/preferences/suggestions', (req: Request, res: Response) => {
+    const workspace = getWorkspace(req);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    res.json({ suggestions: preferenceService.confirmations.listSuggestions(workspace.id) });
+  });
+
+  const actionInput = (req: Request, res: Response) => {
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body.workspaceId !== 'string' || body.workspaceId.trim() === ''
+      || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1
+      || (body.confirmGlobal !== undefined && typeof body.confirmGlobal !== 'boolean')
+      || Object.keys(body).some(key => !['workspaceId', 'expectedVersion', 'confirmGlobal'].includes(key))) {
+      res.status(400).json({ error: 'PREFERENCE_INPUT_INVALID' });
+      return undefined;
+    }
+    if (typeof req.params.workspaceId === 'string' && req.params.workspaceId !== body.workspaceId) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return undefined;
+    }
+    if (!workspaceManager.get(body.workspaceId)) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return undefined;
+    }
+    return { projectionId: req.params.projectionId, workspaceId: body.workspaceId,
+      expectedVersion: body.expectedVersion as number, ...(body.confirmGlobal === true ? { confirmGlobal: true } : {}) };
+  };
+
+  const sendAction = (res: Response, action: () => unknown) => {
+    try { res.json(action()); }
+    catch (error) {
+      if (error instanceof PreferenceConfirmationError) {
+        const status = error.code.endsWith('_NOT_FOUND') ? 404
+          : error.code.endsWith('_CONFLICT') || error.code.includes('BINDING') ? 409 : 400;
+        res.status(status).json({ error: error.code });
+        return;
+      }
+      res.status(500).json({ error: 'PREFERENCE_PERSISTENCE_FAILED' });
+    }
+  };
+
+  router.post('/preferences/:projectionId/confirm', (req: Request, res: Response) => {
+    const input = actionInput(req, res);
+    if (input) sendAction(res, () => preferenceService.confirmations.confirm(input));
+  });
+
+  router.post('/preferences/:projectionId/reject', (req: Request, res: Response) => {
+    const input = actionInput(req, res);
+    if (input) sendAction(res, () => preferenceService.confirmations.reject(input));
+  });
+
+  router.post('/preferences/:projectionId/revoke', (req: Request, res: Response) => {
+    const input = actionInput(req, res);
+    if (input) sendAction(res, () => preferenceService.confirmations.revoke(input));
+  });
+
   router.get('/preferences/evidence', (req: Request, res: Response) => {
     const workspace = getWorkspace(req);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
@@ -29,9 +85,19 @@ export function createPreferenceRoutes(store: SqliteStore, workspaceManager: Wor
     const projectionId = typeof req.query.projectionId === 'string' ? req.query.projectionId : undefined;
     let evidence = store.listPreferenceEvidence(profile.id, workspace.id);
     if (projectionId) {
+      const frozenEvidence = preferenceService.confirmations.evidenceForProjection(projectionId, workspace.id, profile.id);
+      if (frozenEvidence === null) return res.status(404).json({ error: 'Preference evidence not found' });
+      if (frozenEvidence !== undefined) return res.json({ evidence: frozenEvidence });
       const projection = store.listPreferenceProjections(profile.id, workspace.id).find(item => item.id === projectionId);
-      if (!projection) return res.status(404).json({ error: 'Preference projection not found' });
-      evidence = evidence.filter(item => item.dimension === projection.dimension && item.contextKind === projection.contextKind && item.candidateValue === projection.preferredValue);
+      if (!projection || projection.scope !== 'workspace') return res.status(404).json({ error: 'Preference projection not found' });
+      const linked = store.getDatabase().prepare(`
+        SELECT e.id FROM preference_projection_evidence AS pe
+        INNER JOIN preference_evidence AS e ON e.id = pe.evidence_id
+        WHERE pe.projection_id = ? AND e.profile_id = ? AND e.workspace_id = ?
+        ORDER BY e.observed_at ASC, e.id ASC
+      `).all(projection.id, profile.id, workspace.id) as Array<{ id: string }>;
+      evidence = linked.map(row => store.getPreferenceEvidence(profile.id, row.id))
+        .filter((item): item is NonNullable<typeof item> => item !== undefined);
     }
     res.json({ evidence });
   });

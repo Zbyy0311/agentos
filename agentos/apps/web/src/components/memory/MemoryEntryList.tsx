@@ -24,6 +24,11 @@ interface MemoryEntryListProps {
 const statusOptions = [
   { value: 'active', label: '生效中' },
   { value: 'archived', label: '已归档' },
+  { value: 'conflicted', label: '存在冲突' },
+  { value: 'expired', label: '已过期' },
+  { value: 'superseded', label: '已被替代' },
+  { value: 'rejected', label: '已拒绝' },
+  { value: 'deleted', label: '已删除' },
   { value: 'all', label: '全部状态' },
 ];
 

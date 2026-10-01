@@ -13,6 +13,7 @@ import { inTransaction } from '../store/Transaction.js';
 import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
 import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidateGenerationService.js';
 import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from '../services/MemoryContextProjection.js';
+import { MemoryLifecycleService, type MemoryLifecycleInput } from '../services/MemoryLifecycleService.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -260,6 +261,20 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   });
 
   // ---- Retrieval (read-only explanation surface) --------------------------
+  router.post('/memory/entries/:entryId/lifecycle', (req:Request,res:Response)=>{
+    const workspace=requireWorkspace(req,res);
+    if(!workspace) return;
+    if(!workspace.memoryEnabled) {res.status(409).json({error:'WORKSPACE_MEMORY_DISABLED'});return;}
+    const body=req.body;
+    if(!isPlainRecord(body)||Object.keys(body).some(key=>!['expectedVersion','action','validFrom','validUntil','expiresAt'].includes(key))) {
+      res.status(400).json({error:'MEMORY_LIFECYCLE_INPUT_INVALID'});return;
+    }
+    try {
+      const entry=new MemoryLifecycleService(store.getDatabase()).apply({...body,workspaceId:workspace.id,entryId:req.params.entryId} as unknown as MemoryLifecycleInput,
+        (record,timestamp)=>appendEditEvent(record,timestamp,body.action==='archive'?'memory.entry_archived':'memory.entry_updated'));
+      res.json({entry});
+    } catch(error) {fail(res,error);}
+  });
 
   router.post('/memory/retrieve', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
@@ -425,6 +440,18 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   });
 
   // ---- Conflict resolution (transactional write) ---------------------------
+
+  router.get('/memory/conflicts', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const status = req.query.status ?? 'open';
+    if (typeof status !== 'string' || !['open', 'resolved', 'all'].includes(status)) {
+      res.status(400).json({ error: 'MEMORY_CONFLICT_INPUT_INVALID' }); return;
+    }
+    try {
+      res.json({ conflicts: candidates.listConflicts(workspace.id, status as 'open' | 'resolved' | 'all') });
+    } catch (error) { fail(res, error); }
+  });
 
   // ---- Forward Candidate queue (MF-2 tables) -------------------------------
 
