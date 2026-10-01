@@ -12,6 +12,7 @@ import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
 import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidateGenerationService.js';
+import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from '../services/MemoryContextProjection.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -165,6 +166,18 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   };
 
   // Project knowledge manages the same Entries the Run/chat selectors read.
+  router.get('/memory/contexts', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req,res);
+    if (!workspace) return;
+    const { kind, ownerId } = req.query;
+    if ((kind !== undefined && !(MEMORY_CONTEXT_KINDS as readonly unknown[]).includes(kind))
+      || (ownerId !== undefined && !nonBlank(ownerId))) {
+      res.status(400).json({ error:'MEMORY_CONTEXT_INPUT_INVALID' }); return;
+    }
+    try { res.json({ contexts:listMemoryContexts(store.getDatabase(),workspace.id,kind as MemoryContextKind|undefined,ownerId as string|undefined) }); }
+    catch (error) { fail(res,error); }
+  });
+
   router.get('/memory/entries', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;

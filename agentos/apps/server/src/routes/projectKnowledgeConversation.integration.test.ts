@@ -92,6 +92,30 @@ test('project knowledge HTTP saves reach the default single-agent SSE path and t
     assert.ok(degraded.prompt.includes('degraded-canonical-marker'), 'eligible structured retrieval remains usable');
     assert.ok(degraded.events.some(event => event.type === 'execution.diagnostic'
       && event.payload.code === 'memory.retrieval_degraded' && event.payload.level === 'warning'), 'FTS degradation is observable in the default run event stream');
+    const contextsResponse = await fetch(base + '/memory/contexts?kind=legacy-execution');
+    assert.equal(contextsResponse.status, 200);
+    const { contexts } = await contextsResponse.json() as { contexts: Array<{
+      id: string; ownerId: string; contextText: string; selected: { memoryId: string; memoryVersion: number }[];
+      retrievalDegraded: boolean; kind: string;
+    }> };
+    assert.equal(contexts.length, 4);
+    assert.ok(contexts.some(context => context.contextText.includes('default-canonical-marker')
+      && context.selected.some(selection => selection.memoryId === entry.id && selection.memoryVersion === 1)),
+    'historical payload still freezes the first version after edit/archive');
+    assert.ok(contexts.some(context => context.retrievalDegraded));
+    const exact = await (await fetch(base + '/memory/contexts?kind=legacy-execution&ownerId=' + contexts[0].ownerId)).json() as { contexts: unknown[] };
+    assert.equal(exact.contexts.length, 1);
+    assert.equal((await fetch(base + '/memory/contexts?kind=invalid')).status, 400);
+    const promptsBefore = readFileSync(capture, 'utf8');
+    store.getDatabase().exec(`CREATE TRIGGER reject_execution_memory BEFORE INSERT ON memory_execution_contexts
+      BEGIN SELECT RAISE(ABORT,'forced memory freeze failure'); END`);
+    const blocked = await fetch(`${base}/conversations/${conversation.id}/messages/stream`, {
+      method: 'POST',headers: {'Content-Type':'application/json'},body:JSON.stringify({content:'Check deployment constraints',intent:'execute'}),
+    });
+    await blocked.text();
+    assert.equal(readFileSync(capture, 'utf8'), promptsBefore, 'snapshot failure never calls the child Provider');
+    assert.equal(store.listRuns('default-memory-workspace',conversation.id)[0].status,'failed');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_execution_contexts').get() as {n:number}).n, 4);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     store.close();

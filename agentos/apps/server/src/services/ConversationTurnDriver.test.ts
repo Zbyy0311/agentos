@@ -26,6 +26,10 @@ import {
   type ConversationTurnContextOptions,
 } from './ConversationTurnDriver.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { createChatMemorySelectionPort } from './ChatMemorySelectionPort.js';
+import { listMemoryContexts } from './MemoryContextProjection.js';
 
 interface SqliteStatement {
   all(...params: unknown[]): unknown[];
@@ -105,6 +109,62 @@ function input(overrides: Record<string, unknown> = {}) {
     createdAt: NOW, ...overrides,
   };
 }
+
+test('M1 production Turn query freezes actual versions/text/reasons; later edits and reads cannot rewrite it', async () => {
+  const context: ConversationTurnContextOptions = {};
+  let receivedText: string | undefined;
+  const fx = fixture(undefined, context, (_history, options) => { receivedText=options.memoryContext; });
+  try {
+    const db=fx.db as unknown as TransactionDatabase;
+    const entries=new MemoryEntryRepository(db);
+    const entry=entries.createEntry({id:'memory-turn-v1',workspaceId:WS,scope:'workspace',category:'constraint',
+      authority:'user-explicit',status:'active',confidence:1,importance:1,title:'nebula',content:'nebula original rule',sources:[],createdAt:NOW});
+    Object.assign(context,{ snapshots:createDurableTurnContextSnapshotPort({getDatabase:()=>db}),
+      selection:createChatMemorySelectionPort({retrieval:new MemoryRetrievalService(entries)}) });
+    const result=await fx.driver.replyWithTurn(input({content:'nebula'}));
+    assert.equal(result.status,'completed');
+    const id=result.turn.contextSnapshotId!;
+    const payload=fx.snapshots.readPayload(WS,id)!;
+    assert.equal(receivedText,payload.contextText);
+    assert.match(payload.contextText,/nebula original rule/);
+    assert.equal(payload.selected[0].memoryVersion,1);
+    assert.ok(payload.selected[0].reasons.includes('fts-relevance'));
+    assert.match(payload.queryHash??'',/^[a-f0-9]{64}$/);
+    fx.db.exec(`UPDATE memory_entries SET content='edited rule',version=2,updated_at='${NOW2}' WHERE id='${entry.id}'`);
+    assert.equal(fx.snapshots.readPayload(WS,id)?.contextText,payload.contextText);
+    assert.equal(fx.snapshots.readPayload('foreign',id),undefined);
+    const before=fx.db.prepare('SELECT total_changes() AS n').get();
+    const projected=listMemoryContexts(db,WS,'turn',result.turn.id);
+    assert.equal(projected.length,1);
+    assert.equal(projected[0].contextText,payload.contextText);
+    assert.deepEqual(fx.db.prepare('SELECT total_changes() AS n').get(),before);
+    assert.throws(()=>fx.db.exec("UPDATE cr_turn_memory_payloads SET context_text='other'"),/IMMUTABLE/);
+    assert.throws(()=>fx.db.exec('DELETE FROM cr_turn_memory_payloads'),/IMMUTABLE/);
+  } finally {fx.close();}
+});
+
+test('M1 Turn payload failure rolls back header and blocks Provider; old snapshots stay metadata-only', async () => {
+  const context: ConversationTurnContextOptions = {};
+  let called=false;
+  const fx=fixture(undefined,context,()=>{called=true;});
+  try {
+    const db=fx.db as unknown as TransactionDatabase;
+    Object.assign(context,{snapshots:createDurableTurnContextSnapshotPort({getDatabase:()=>db})});
+    fx.db.exec("CREATE TRIGGER reject_turn_payload BEFORE INSERT ON cr_turn_memory_payloads BEGIN SELECT RAISE(ABORT,'payload fail'); END");
+    const result=await fx.driver.replyWithTurn(input());
+    assert.equal(result.status,'failed');
+    assert.equal(called,false);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM cr_turn_context_snapshots').get() as {n:number}).n,0);
+    fx.db.exec('DROP TRIGGER reject_turn_payload');
+    fx.db.exec('BEGIN');
+    fx.snapshots.insertWithinTransaction({id:'historical',workspaceId:WS,conversationId:CONV,agentId:'agent_main',
+      budgetJson:'{}',selectedEntryIdsJson:'[]',totalTokens:0,truncated:false,retrievalStrategyVersion:'legacy',createdAt:NOW});
+    fx.db.exec('COMMIT');
+    assert.equal(fx.snapshots.readPayload(WS,'historical'),undefined);
+    assert.equal(listMemoryContexts(db,WS,'turn')[0].payloadAvailable,false);
+    assert.equal(listMemoryContexts(db,WS,'turn')[0].contextText,null);
+  } finally {fx.close();}
+});
 
 /** LITE-09-101 fixture: real snapshot store plus a captured Provider history. */
 function freezeFixture(historyCount: number, snapshots?: TurnContextSnapshotPort) {

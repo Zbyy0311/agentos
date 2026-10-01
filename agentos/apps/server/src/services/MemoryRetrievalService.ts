@@ -74,7 +74,9 @@ function nonBlank(value: unknown): value is string {
 export function toSafeFtsQuery(query: string): string | null {
   const tokens = query.split(/\s+/u).map(token => token.replace(/["*()^:-]/gu, ' ').trim()).filter(Boolean);
   if (tokens.length === 0) return null;
-  return tokens.map(token => '"' + token.replace(/"/gu, '""') + '"').join(' ');
+  // Requests include task/stage wording. Requiring every word would suppress
+  // relevant matches; scope eligibility is enforced separately before ranking.
+  return tokens.map(token => '"' + token.replace(/"/gu, '""') + '"').join(' OR ');
 }
 
 /** LITE-07-109: temporal and access eligibility precede ranking, including FTS. */

@@ -164,6 +164,47 @@ function collaborationProgressRole(stageKey: string): 'planner' | 'implementer' 
   return 'other';
 }
 
+const MAX_STAGE_MEMORY_QUERY_CHARS = 2000;
+
+function normalizeStageMemoryQueryPart(value: string | undefined, maxChars: number): string {
+  if (value === undefined || maxChars <= 0) return '';
+  // Bound preprocessing as well as the final query. These inputs are durable
+  // task/stage metadata, never provider output or transcript text.
+  const normalized = value.slice(0, maxChars * 4)
+    .replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  let bounded = '';
+  for (const character of normalized) {
+    if (bounded.length + character.length > maxChars) break;
+    bounded += character;
+  }
+  return bounded;
+}
+
+function buildStageMemoryQuery(
+  taskObjective: string | undefined,
+  stageKey: string,
+  priorFailureCode: string | undefined,
+): string {
+  const safeStageKey = normalizeStageMemoryQueryPart(stageKey, 256) || 'unknown';
+  const safeFailureCode = priorFailureCode !== undefined
+    && /^[A-Z0-9][A-Z0-9_]{0,95}$/u.test(priorFailureCode)
+    ? priorFailureCode
+    : undefined;
+  const stageContext = `Stage key: ${safeStageKey}`
+    + (safeFailureCode === undefined ? '' : `\nPrior failure code for this stage: ${safeFailureCode}`);
+  const objectivePrefix = 'Task objective: ';
+  const objectiveBudget = MAX_STAGE_MEMORY_QUERY_CHARS - objectivePrefix.length - stageContext.length - 1;
+  const safeObjective = normalizeStageMemoryQueryPart(taskObjective, objectiveBudget);
+  const query = safeObjective.length === 0
+    ? stageContext
+    : `${objectivePrefix}${safeObjective}\n${stageContext}`;
+  return query.length <= MAX_STAGE_MEMORY_QUERY_CHARS
+    ? query
+    : query.slice(0, MAX_STAGE_MEMORY_QUERY_CHARS);
+}
+
 export class RunEngineProviderDispatcher {
   private readonly engine: RunEngine;
   private readonly coordinator: StageExecutionCoordinator;
@@ -524,7 +565,7 @@ export class RunEngineProviderDispatcher {
     // MF-4 Run startup integration: resolve, freeze, and gate Memory BEFORE
     // provider execution. A snapshot failure throws and blocks the stage.
     const memoryContext = this.resolveStageMemoryContext(
-      workspaceId, runId, stage, snapshot.payload.run.taskId, operation,
+      workspaceId, runId, stage, snapshot.id, snapshot.payload.run.taskId, operation, currentRun,
     );
     const isCollaborationRun = currentRun.objective?.startsWith('[AgentOS collaboration task]') === true;
     const collaborationPrompt = isCollaborationRun
@@ -684,16 +725,33 @@ export class RunEngineProviderDispatcher {
     workspaceId: string,
     runId: string,
     stage: RunStage,
-    taskId: string,
+    snapshotId: string,
+    snapshotTaskId: string,
     operation: ApiOperation,
+    currentRun: Run,
   ): ResolvedMemoryContext | null {
     const resolver = this.memoryContextResolver;
     if (resolver === undefined) return null;
+    // The objective and scope identifiers must come from the workspace-scoped
+    // Run/Stage records and agree with the immutable Run Snapshot. Never accept
+    // task context supplied by a caller or infer a broader owner scope.
+    if (
+      currentRun.workspaceId !== workspaceId
+      || currentRun.id !== runId
+      || currentRun.taskId !== snapshotTaskId
+      || stage.workspaceId !== workspaceId
+      || stage.runId !== runId
+      || stage.runSnapshotId !== snapshotId
+    ) {
+      throw new Error('RUN_ENGINE_MEMORY_QUERY_AUTHORITY_UNPROVEN');
+    }
+    const priorFailureCode = this.relevantPriorStageFailureCode(workspaceId, currentRun, stage);
     const resolved = resolver.resolve({
       workspaceId,
       runId,
-      taskId,
+      taskId: currentRun.taskId,
       stageId: stage.id,
+      query: buildStageMemoryQuery(currentRun.objective, stage.workflowStageKey, priorFailureCode),
       createdAt: new Date().toISOString(),
       // MF-5: the snapshot's canonical Event is caused by the Run's persisted
       // `run.start` Operation. An emitter-wired resolver re-proves that row in
@@ -704,6 +762,31 @@ export class RunEngineProviderDispatcher {
       throw new Error('MEMORY_CONTEXT_INJECTION_BLOCKED');
     }
     return resolved;
+  }
+
+  private relevantPriorStageFailureCode(
+    workspaceId: string,
+    currentRun: Run,
+    stage: RunStage,
+  ): string | undefined {
+    if (currentRun.reason !== 'retry' || currentRun.parentRunId === undefined) return undefined;
+    const parentRun = this.runRepository.findById(workspaceId, currentRun.parentRunId);
+    if (
+      parentRun === undefined
+      || parentRun.workspaceId !== workspaceId
+      || parentRun.taskId !== currentRun.taskId
+      || parentRun.status !== 'failed'
+    ) {
+      return undefined;
+    }
+    const priorStage = this.runStageRepository.listByRun(workspaceId, parentRun.id).find(candidate => (
+      candidate.workflowStageKey === stage.workflowStageKey
+      && candidate.status === 'failed'
+    ));
+    const failureCode = priorStage?.failureCode?.trim().toUpperCase();
+    return failureCode !== undefined && /^[A-Z0-9][A-Z0-9_]{0,95}$/u.test(failureCode)
+      ? failureCode
+      : undefined;
   }
 
   private requireStartOperation(workspaceId: string, runId: string): ApiOperation {

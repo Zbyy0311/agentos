@@ -39,6 +39,8 @@ import { migration038 } from './migrations/038-collaboration-candidate-evidence.
 import { migration039 } from './migrations/039-collaboration-control.js';
 import { migration040 } from './migrations/040-collaboration-application-admission.js';
 import { migration041 } from './migrations/041-group-execution-ownership.js';
+import { migration042 } from './migrations/042-memory-turn-payloads.js';
+import { migration043 } from './migrations/043-memory-execution-contexts.js';
 import type { Migration } from './types.js';
 
 /**
@@ -128,4 +130,6 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration039,
   migration040,
   migration041,
+  migration042,
+  migration043,
 ];

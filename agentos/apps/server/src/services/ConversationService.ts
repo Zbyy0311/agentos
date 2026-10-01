@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import { MemoryExecutionContextRepository } from '../store/MemoryExecutionContextRepository.js';
+import type { RunContextResult } from './RunContextBuilder.js';
 import { ConversationAgentRunner, resolveImageInput, resolveRuntimePolicy, assertRuntimePolicySupported, type ConversationExecutionEvent as RunnerExecutionEvent, type NormalizedCliEvent } from '@agentos/agent-core';
 import type { AgentEvent, AgentEventDraft, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, Conversation, ConversationMember, ConversationMessage, ExecutionStatus, GroupRuntimeSettingsSnapshot, MemoryUsage, PreferenceContext, RunCliInvocation, RunFileChange, RuntimeArtifact, RunIntent, RuntimePolicy } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -275,6 +277,7 @@ export class ConversationService {
       updatedAt: now,
     };
     this.store.createExecution(execution);
+    const frozenMemoryContext = this.freezeExecutionMemory(execution, this.combineContexts(runContext.context, preferenceContext.text), runContext);
     this.artifactCollector?.start(this.artifactContext(execution, input.workspaceRoot));
     this.recordExecutionEvent(execution, { status: 'queued', activity: '消息已进入执行队列' }, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true });
 
@@ -286,7 +289,7 @@ export class ConversationService {
       runtimePolicy,
       workspaceRoot: input.workspaceRoot,
       executionId: execution.id,
-      message: this.combineContexts(runContext.context, preferenceContext.text, content),
+      message: this.combineContexts(frozenMemoryContext, content),
       history,
       attachments: storedAttachments.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
@@ -404,13 +407,14 @@ export class ConversationService {
       mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
+    const frozenMemoryContext = this.freezeExecutionMemory(execution, this.combineContexts(runContext.context, preferenceContext.text), runContext);
     this.artifactCollector?.start(this.artifactContext(execution, input.workspaceRoot));
     this.recordExecutionEvent(execution, { status: 'queued', activity: '补充信息已进入执行队列' }, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true });
     const history = this.store.listMessages(input.workspaceId, conversation.id).filter(message => message.id !== userMessage.id);
     const prompt = `原始任务：${run.objective}\n上次等待问题：${previousQuestion}\n用户补充信息：${content}`;
     const runner = new ConversationAgentRunner({
       agent, intent: run.intent ?? 'execute', workspaceRoot: input.workspaceRoot, executionId: execution.id,
-      message: this.combineContexts(runContext.context, preferenceContext.text, prompt), history,
+      message: this.combineContexts(frozenMemoryContext, prompt), history,
       signal: input.signal,
       ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
@@ -614,7 +618,7 @@ export class ConversationService {
           runtimePolicy: member.isLeader ? leaderPolicy : resolveRuntimePolicy(intent, agent),
           runtimeOverrides: memberRuntimeOverrides(member), groupRoleTitle: member.roleTitle,
           additionalInstructions: member.additionalInstructions, executionWorkspaceRoot, worktreeLeaseId,
-          memoryContext: this.combineContexts(runContext.context, preferenceContext.text), attachments: storedAttachments,
+          memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text), attachments: storedAttachments,
           prompt: `原始用户请求：${content}\n本轮运行意图：${intent}\n你是本轮被用户直接选中的群聊成员，角色是：${member.roleTitle}\n请直接回应用户的真实需求。不要等待 Leader 计划，不要代表未选中的 Agent 发言，也不要默认把问答、讨论、方案或研究任务改写成代码任务；只有用户明确要求且当前运行权限允许时，才使用工具或修改文件。`,
           signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
           onAgentMessage: input.onAgentMessage, finalizeRun, allowWaiting: true,
@@ -699,7 +703,7 @@ export class ConversationService {
       runtimeOverrides: memberRuntimeOverrides(leaderMember),
       groupRoleTitle: leaderMember.roleTitle,
       additionalInstructions: leaderMember.additionalInstructions,
-      memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
+      memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `原始用户请求：${content}\n本轮运行意图：${intent}\n你是本次群聊的 Leader。先判断用户需要的是直接回答、讨论/方案、分析还是实际执行。简单请求可直接回答；确实需要协作时，再依据成员职责委派与原始请求相关的部分，不要默认把任务改写成代码任务。`,
       signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -735,7 +739,7 @@ export class ConversationService {
           groupRoleTitle: member.roleTitle,
           additionalInstructions: member.additionalInstructions,
           executionWorkspaceRoot, worktreeLeaseId,
-          memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
+          memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
           attachments: storedAttachments,
           prompt: `原始用户请求：${content}\n本轮运行意图：${intent}\n群主计划：${planned.responseMessage.content}\n你在本群的职责是：${member.roleTitle}\n请围绕原始请求提供该角色视角的贡献：如果是问答、讨论、方案或研究，给出分析与建议；只有用户明确要求且当前运行权限允许时，才使用工具或修改文件。不要要求不存在的项目文件。`,
           signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -772,7 +776,7 @@ export class ConversationService {
       runtimeOverrides: memberRuntimeOverrides(leaderMember),
       groupRoleTitle: leaderMember.roleTitle,
       additionalInstructions: leaderMember.additionalInstructions,
-      memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
+      memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `请作为群聊 Leader 汇总本轮请求。原始用户请求：${content}\n本轮运行意图：${intent}\n成员报告：\n${workerSummary || '无可用成员报告'}\n给出与用户真正需求匹配的最终回答；不要强制输出代码、文件清单、阻塞项或下一步，只有相关时才输出。`,
       signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -835,7 +839,7 @@ export class ConversationService {
     this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded);
     const preferenceContext = this.resolvePreferenceContext({ runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group' });
     this.preferenceService.recordApplications(preferenceContext.applications);
-    const planned = await this.runAgentTurn({ workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: conversation.id, runId: run.id, sourceMessage: userMessage, agent, intent: run.intent ?? 'execute', runtimePolicy: run.runtimePolicy ?? resolveRuntimePolicy('execute', agent), runtimeOverrides: memberSettings === undefined ? undefined : memberRuntimeOverrides(memberSettings), groupRoleTitle: memberSettings?.roleTitle, additionalInstructions: memberSettings?.additionalInstructions, memoryContext: this.combineContexts(runContext.context, preferenceContext.text), prompt: `原始用户请求：${run.objective}\n本轮运行意图：${run.intent ?? 'execute'}\n上次等待问题：${previousQuestion}\n用户补充信息：${content}\n请继续处理原始请求，不要因为存在补充信息就默认把任务限定为代码或文件操作。`, signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent, onAgentMessage: input.onAgentMessage, finalizeRun: true });
+    const planned = await this.runAgentTurn({ workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: conversation.id, runId: run.id, sourceMessage: userMessage, agent, intent: run.intent ?? 'execute', runtimePolicy: run.runtimePolicy ?? resolveRuntimePolicy('execute', agent), runtimeOverrides: memberSettings === undefined ? undefined : memberRuntimeOverrides(memberSettings), groupRoleTitle: memberSettings?.roleTitle, additionalInstructions: memberSettings?.additionalInstructions, memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text), prompt: `原始用户请求：${run.objective}\n本轮运行意图：${run.intent ?? 'execute'}\n上次等待问题：${previousQuestion}\n用户补充信息：${content}\n请继续处理原始请求，不要因为存在补充信息就默认把任务限定为代码或文件操作。`, signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent, onAgentMessage: input.onAgentMessage, finalizeRun: true });
     if (planned.status === 'completed') this.persistMemoryUsage(input.workspaceId, conversation.id, [], run.id, runContext.entryUsages);
     await this.finishGroupRunSteps(input.workspaceId, run.id, planned.status, planned.responseMessage.content);
     await this.flushStepMutations();
@@ -860,6 +864,7 @@ export class ConversationService {
     runtimePolicy?: RuntimePolicy;
     prompt: string;
     memoryContext?: string;
+    memorySelection?: RunContextResult;
     attachments?: StoredConversationAttachment[];
     signal?: AbortSignal;
     onExecutionEvent?: (event: StreamExecutionEvent) => void;
@@ -876,6 +881,7 @@ export class ConversationService {
       mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
+    const frozenMemoryContext = this.freezeExecutionMemory(execution, input.memoryContext ?? '', input.memorySelection);
     this.artifactCollector?.start(this.artifactContext(execution, executionWorkspaceRoot));
     this.recordExecutionEvent(execution, { status: 'queued', activity: `${input.agent.name} 已进入执行队列` }, input.onExecutionEvent, input.agent, { runId: input.runId, finalizeRun: input.finalizeRun, allowWaiting: input.allowWaiting });
     const history = this.store.listMessages(input.workspaceId, input.conversationId).filter(message => message.id !== input.sourceMessage.id);
@@ -888,8 +894,8 @@ export class ConversationService {
       agent: input.agent, intent: input.intent ?? 'execute', workspaceRoot: executionWorkspaceRoot, executionId: execution.id,
       runtimePolicy: input.runtimePolicy,
       runtimeOverrides: input.runtimeOverrides,
-      message: input.memoryContext
-        ? `${input.memoryContext}\n\n${groupPrompt}`
+      message: frozenMemoryContext
+        ? `${frozenMemoryContext}\n\n${groupPrompt}`
         : groupPrompt,
       history,
       attachments: input.attachments?.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
@@ -1297,6 +1303,24 @@ export class ConversationService {
       return this.preferenceService.resolveForRun({ profileId: 'default', ...input });
     } catch {
       return { contextKind: 'general', text: '', applications: [] };
+    }
+  }
+
+  private freezeExecutionMemory(execution: AgentExecution, contextText: string, context?: RunContextResult): string {
+    try {
+      return new MemoryExecutionContextRepository(this.store.getDatabase()).freeze({
+        workspaceId: execution.workspaceId, runId: execution.runId, executionId: execution.id,
+        conversationId: execution.conversationId, agentId: execution.agentId, contextText,
+        queryHash: context?.selection?.queryHash ?? createHash('sha256').update('').digest('hex'),
+        selected: context?.selection?.selected ?? [], exclusions: context?.selection?.exclusions ?? [],
+        truncated: context?.selection?.truncated ?? false, retrievalDegraded: context?.retrievalDegraded ?? false,
+        createdAt: execution.createdAt,
+      }).contextText;
+    } catch (error) {
+      const timestamp = new Date().toISOString();
+      this.store.updateExecution(execution.workspaceId, execution.id, { status: 'failed', completedAt: timestamp, updatedAt: timestamp });
+      this.store.updateRun(execution.workspaceId, execution.runId, { status: 'failed', failureReason: 'CONTEXT_SNAPSHOT_FAILED', completedAt: timestamp });
+      throw error;
     }
   }
 

@@ -3,8 +3,9 @@ import {
   type MemoryBudgetPolicyV1,
 } from '@agentos/shared';
 import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
-import { applyBudget, injectedEntryText } from './MemoryContextBudgetSelector.js';
+import { applyBudget, hashRetrievalQuery, injectedEntryText } from './MemoryContextBudgetSelector.js';
 import type { TurnContextSelection, TurnContextSelectionInput, TurnContextSelectionPort } from './ConversationTurnDriver.js';
+import type { TurnContextMemoryExclusion } from '../store/TurnContextSnapshotRepository.js';
 
 /**
  * LITE-09-101 production selection for the conversation (chat) path.
@@ -68,6 +69,7 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
           agentId: input.agentId,
           conversationId: input.conversationId,
         },
+        ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
         limit,
       });
       const outcome = applyBudget(result.results, { ...policy, maxTokens });
@@ -76,11 +78,37 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
         // ranking produced, and the degradation is reported to the caller's sink.
         report(`CHAT_MEMORY_SELECTION_DEGRADED workspace=${input.workspaceId} turn=${input.turnId}`);
       }
+      const selectedIds = new Set(outcome.selected.map(selected => selected.entry.id));
+      const exclusions: TurnContextMemoryExclusion[] = result.results
+        .filter(item => !selectedIds.has(item.entry.id))
+        .map(item => {
+          const exclusion = outcome.exclusions.find(candidate => candidate.memoryId === item.entry.id);
+          return {
+            memoryId: item.entry.id,
+            memoryVersion: item.entry.version,
+            rank: item.rank,
+            reason: exclusion?.reason ?? 'status-excluded',
+            reasons: [...item.reasons, exclusion?.reason ?? 'status-excluded'],
+          };
+        });
+      const retrievalInput = {
+        context: {
+          workspaceId: input.workspaceId,
+          agentId: input.agentId,
+          conversationId: input.conversationId,
+        },
+        ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
+        limit,
+      };
       return {
         selectedEntryIds: outcome.selected.map(selected => selected.entry.id),
         totalTokens: outcome.totalTokens,
         truncated: outcome.truncated,
         retrievalStrategyVersion: strategyVersion,
+        queryHash: hashRetrievalQuery(retrievalInput),
+        selected: outcome.selected.map(selected => selected.explanation),
+        exclusions,
+        retrievalDegraded: result.degraded,
         ...(outcome.selected.length === 0
           ? {}
           : {
