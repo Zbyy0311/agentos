@@ -15,6 +15,7 @@ import type { TransactionDatabase } from '../store/Transaction.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { MemoryLifecycleService } from './MemoryLifecycleService.js';
 import { MemoryContextBudgetSelector } from './MemoryContextBudgetSelector.js';
 import {
   MemoryContextResolver,
@@ -95,6 +96,32 @@ function addEntry(fx: ReturnType<typeof fixture>, overrides: Record<string, unkn
 function resolveInput(overrides: Record<string, unknown> = {}) {
   return { workspaceId: WS, runId: RUN, taskId: TASK, budget: BUDGET, createdAt: NOW, ...overrides } as never;
 }
+
+test('M2 new canonical stages reflect edits and lifecycle while every previous scope replays its frozen version', () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    const id = addEntry(fx, { title:'checkpoint', content:'version one' });
+    const first = fx.resolver.resolve(resolveInput({stageId:'stage-before'}));
+    fx.entries.updateEntryWithinTransaction({ workspaceId:WS,entryId:id,expectedVersion:1,content:'version two',updatedAt:NOW });
+    const edited = fx.resolver.resolve(resolveInput({stageId:'stage-after-edit'}));
+    assert.match(edited.contextText,/version two/);
+    assert.equal(edited.snapshot.selected[0].memoryVersion,2);
+    const lifecycle = new MemoryLifecycleService(fx.db as unknown as TransactionDatabase, () => NOW);
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:2,action:'archive' });
+    assert.equal(fx.resolver.resolve(resolveInput({stageId:'stage-after-archive'})).contextText,'');
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:3,action:'restore' });
+    const restored = fx.resolver.resolve(resolveInput({stageId:'stage-after-restore'}));
+    assert.match(restored.contextText,/version two/);
+    assert.equal(restored.snapshot.selected[0].memoryVersion,4);
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:4,action:'set-validity',expiresAt:NOW });
+    assert.equal(fx.resolver.resolve(resolveInput({stageId:'stage-after-expiry'})).contextText,'');
+    const replay = fx.resolver.resolve(resolveInput({stageId:'stage-before',query:'a different request'}));
+    assert.equal(replay.reused,true);
+    assert.equal(replay.contextText,first.contextText);
+    assert.equal(replay.snapshot.selected[0].memoryVersion,1);
+    assert.equal(fx.snapshots.readContextText(WS,edited.snapshot.id),edited.contextText);
+  } finally { fx.close(); }
+});
 
 // MF4I-01 — resolve persists a snapshot before returning context.
 test('MF4I-01 resolve persists a snapshot and returns bounded context', () => {

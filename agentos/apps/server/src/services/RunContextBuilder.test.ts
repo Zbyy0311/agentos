@@ -10,6 +10,7 @@ import { inTransaction } from '../store/Transaction.js';
 import { MemoryService } from './MemoryService.js';
 import { MemoryRetriever as LegacyMemoryRetriever } from './MemoryRetriever.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { MemoryLifecycleService } from './MemoryLifecycleService.js';
 import { MAX_MEMORY_CHARACTERS, MAX_MEMORY_ITEMS, MAX_SINGLE_MEMORY_CHARACTERS, RunContextBuilder } from './RunContextBuilder.js';
 import type { MemoryRetriever, RetrievedMemory } from './MemoryRetriever.js';
 
@@ -109,6 +110,24 @@ test('real canonical Entries enter default context ahead of legacy without write
     assert.deepEqual(db.prepare('SELECT total_changes() AS n').get(), before, 'build is read-only, including snapshots and usage rows');
     assert.equal(fx.store.listMemories(WS, { status: 'all' }).length, 1, 'canonical Entry is not dual-written');
   } finally { fx.close(); }
+});
+
+test('M2 compatibility new calls honor archive restore and expiry using current canonical Entry versions', async () => {
+  const fx = fixture();
+  try {
+    const entry = fx.addEntry({title:'lifecycle checkpoint',content:'checkpoint value'});
+    const lifecycle = new MemoryLifecycleService(fx.store.getDatabase(),()=>NOW);
+    const first = await fx.builder.build(fx.input({query:'checkpoint'}));
+    assert.match(first.context,/checkpoint value/);
+    lifecycle.apply({workspaceId:WS,entryId:entry.id,expectedVersion:1,action:'archive'});
+    assert.equal((await fx.builder.build(fx.input({query:'checkpoint'}))).context,'');
+    lifecycle.apply({workspaceId:WS,entryId:entry.id,expectedVersion:2,action:'restore'});
+    const restored=await fx.builder.build(fx.input({query:'checkpoint'}));
+    assert.equal(restored.selection?.selected[0].memoryVersion,3);
+    lifecycle.apply({workspaceId:WS,entryId:entry.id,expectedVersion:3,action:'set-validity',expiresAt:NOW});
+    assert.equal((await fx.builder.build(fx.input({query:'checkpoint'}))).context,'');
+    assert.match(first.context,/checkpoint value/);
+  } finally {fx.close();}
 });
 
 test('canonical edits update future context/version and archiving removes the Entry', async () => {

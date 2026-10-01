@@ -7,6 +7,7 @@ import type { PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { PreferenceObserver, type ObserveRunInput } from './PreferenceObserver.js';
 import { PreferenceService } from './PreferenceService.js';
+import { migration044 } from '../migrations/migrations/044-preference-confirmations.js';
 
 function createRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-preference-observer-'));
@@ -80,6 +81,7 @@ test('deduplicates evidence through the service and keeps user text out of stora
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
+    migration044.apply({ db: store.getDatabase() });
     store.createConversation({ id: 'conversation-a', workspaceId: 'workspace-a', type: 'direct', title: 'A', agentId: 'codex', createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z' });
     store.createMessage({ id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user', content: '实现设置页面', createdAt: '2026-07-17T00:00:00.000Z' });
     store.createRun({ id: 'run-5', workspaceId: 'workspace-a', conversationId: 'conversation-a', sourceMessageId: 'message-a', objective: '实现设置页面', status: 'completed', resultSummary: '完成', createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z' });

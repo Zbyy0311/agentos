@@ -577,6 +577,17 @@ export class MemoryEntryRepository {
     return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
   }
 
+  /** Only explicitly confirmed global preferences may cross their origin workspace. */
+  listConfirmedGlobalPreferences(workspaceId: string): MemoryEntryRecord[] {
+    if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='preference_confirmations'").get()) return [];
+    const rows = this.db.prepare('SELECT ' + SELECT_COLUMNS + ` FROM memory_entries
+      WHERE workspace_id <> ? AND scope = 'global' AND category = 'preference' AND authority = 'user-explicit'
+        AND status = 'active' AND id IN (SELECT entry_id FROM preference_confirmations
+          WHERE status = 'confirmed' AND scope = 'global' AND profile_id = 'default')
+      ORDER BY updated_at DESC, id ASC`).all(workspaceId) as EntryRow[];
+    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
+  }
+
   private readSources(entryId: string): MemoryEntrySourceInput[] {    const rows = this.db.prepare(
       'SELECT source_kind, source_id FROM memory_entry_sources WHERE memory_entry_id = ? ORDER BY source_kind ASC, source_id ASC',
     ).all(entryId) as Array<{ source_kind: string; source_id: string }>;

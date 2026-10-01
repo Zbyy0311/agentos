@@ -46,13 +46,22 @@ test('MRQ-03 artifact source URL encodes the workspace and artifact IDs', () => 
   );
 });
 
-test('MRQ-04 initial render is the empty review queue, not an error', async () => {
+test('MRQ-04 initial render is a guarded loading state, not an error', async () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const { MemoryReviewQueue } = await import('./MemoryReviewQueue.js');
   const markup = renderToStaticMarkup(<MemoryReviewQueue workspaceId="workspace-a" onClose={() => {}} />);
   assert.ok(markup.includes('data-agentos="memory-review-queue"'));
-  assert.ok(markup.includes('暂无待审查候选'));
+  assert.ok(markup.includes('正在加载待审查候选'));
   // edit-and-accept is deliberately absent: the contract records outcomes
   // without applying edits
   assert.ok(!markup.includes('编辑后接受'));
+});
+
+test('MRQ-05 embedded queue can live inside the workspace memory tabs', async () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const { MemoryReviewQueue } = await import('./MemoryReviewQueue.js');
+  const markup = renderToStaticMarkup(<MemoryReviewQueue workspaceId="workspace-a" embedded />);
+  assert.ok(markup.includes('data-agentos="memory-review-queue"'));
+  assert.ok(!markup.includes('fixed inset-0'));
+  assert.ok(markup.includes('正在加载待审查候选'));
 });

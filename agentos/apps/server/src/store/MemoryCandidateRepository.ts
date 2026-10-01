@@ -400,6 +400,19 @@ export class MemoryCandidateRepository {
     return rows.filter(isSafeCandidateRow).map(row => this.toCandidateRecord(row));
   }
 
+  /** Workspace-scoped management projection; resolving still uses the stored version. */
+  listConflicts(workspaceId: string, status: 'open' | 'resolved' | 'all' = 'open'): MemoryConflictRecord[] {
+    if (!nonBlank(workspaceId) || !['open', 'resolved', 'all'].includes(status)) {
+      throw new Error('MEMORY_CONFLICT_INPUT_INVALID');
+    }
+    const rows = status === 'all'
+      ? this.db.prepare('SELECT * FROM memory_conflicts WHERE workspace_id = ? ORDER BY created_at DESC, id ASC')
+        .all(workspaceId) as ConflictRow[]
+      : this.db.prepare('SELECT * FROM memory_conflicts WHERE workspace_id = ? AND status = ? ORDER BY created_at DESC, id ASC')
+        .all(workspaceId, status) as ConflictRow[];
+    return rows.map(row => this.toConflictRecord(row));
+  }
+
   /**
    * Record a review outcome. `merge-with-existing` requires the target Entry in
    * the same Workspace. Review never deletes the Candidate.

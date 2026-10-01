@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   memoryCategoryLabel,
+  memoryStatusLabel,
   memoryEntriesPath,
   memoryEntryCreatePayload,
   memoryEntryListQuery,
@@ -35,6 +36,7 @@ const entry: MemoryEntryDto = {
 test('canonical list query and entry paths use the forward memory API contract', () => {
   assert.equal(memoryEntryListQuery('all', 'security', '  auth  '), 'status=all&category=security&query=auth');
   assert.equal(memoryEntryListQuery('active', 'all', ' '), 'status=active');
+  assert.equal(memoryEntryListQuery('conflicted', 'all', ''), 'status=conflicted');
   assert.equal(memoryEntriesPath('workspace 1', 'status=active'), '/api/workspaces/workspace%201/memory/entries?status=active');
   assert.equal(memoryEntryPath('workspace 1', 'entry/1'), '/api/workspaces/workspace%201/memory/entries/entry%2F1');
 });
@@ -66,6 +68,8 @@ test('scores round-trip between the 0–100 editor scale and the 0–1 API scale
 test('unknown categories stay visible and legacy import creates a safe review document', () => {
   assert.equal(memoryCategoryLabel('security'), '安全');
   assert.equal(memoryCategoryLabel('future-category'), 'future-category');
+  assert.equal(memoryStatusLabel('deprecated'), '已弃用');
+  assert.equal(memoryStatusLabel('future-status'), 'future-status');
   assert.equal(legacyMemoryFilename('../../legacy:record'), 'legacy_record.md');
   assert.equal(legacyMemoryMarkdown(' 标题\n# 注入 ', ' 摘要 ', ' 正文 '), '# 标题 # 注入\n\n摘要\n\n正文');
 });

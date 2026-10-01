@@ -28,7 +28,8 @@ export interface MemoryEntryDto {
   readonly summary: string;
   readonly content: string;
   readonly tags: readonly string[];
-  readonly status: MemoryEntryStatus;
+  /** `deprecated` is accepted by the lifecycle API although it is not yet in the shared status vocabulary. */
+  readonly status: MemoryEntryStatus | 'deprecated';
   readonly pinned: boolean;
   readonly validFrom: string | null;
   readonly validUntil: string | null;
@@ -43,7 +44,7 @@ export interface MemoryEntryDto {
   readonly sources: readonly MemoryEntrySourceDto[];
 }
 
-export type MemoryEntryStatusFilter = 'active' | 'archived' | 'all';
+export type MemoryEntryStatusFilter = MemoryEntryStatus | 'all';
 
 export interface MemoryEntryFormValues {
   category: MemoryCategory;
@@ -73,7 +74,7 @@ export const memoryCategoryLabels: Record<MemoryCategory, string> = {
   reference: '参考资料',
 };
 
-const memoryStatusLabels: Record<MemoryEntryStatus, string> = {
+const memoryStatusLabels: Partial<Record<MemoryEntryStatus | 'deprecated', string>> = {
   candidate: '待审候选',
   active: '生效中',
   conflicted: '存在冲突',
@@ -82,6 +83,7 @@ const memoryStatusLabels: Record<MemoryEntryStatus, string> = {
   archived: '已归档',
   rejected: '已拒绝',
   deleted: '已删除',
+  deprecated: '已弃用',
 };
 
 const memoryScopeLabels: Record<MemoryScope, string> = {
@@ -106,8 +108,8 @@ export function memoryCategoryLabel(category: string): string {
   return memoryCategoryLabels[category as MemoryCategory] ?? category;
 }
 
-export function memoryStatusLabel(status: MemoryEntryStatus): string {
-  return memoryStatusLabels[status];
+export function memoryStatusLabel(status: string): string {
+  return memoryStatusLabels[status as MemoryEntryStatus | 'deprecated'] ?? status;
 }
 
 export function memoryScopeLabel(scope: MemoryScope): string {

@@ -10,5 +10,5 @@ export const preferenceDimensionLabels: Record<PreferenceDimension, string> = {
 };
 
 export const preferenceStatusLabels: Record<PreferenceProjectionStatus, string> = {
-  observed: '已观察', provisional: '试运行', stable: '稳定', dormant: '已休眠',
+  observed: '已观察', provisional: '待确认建议', stable: '证据稳定（待确认）', dormant: '已休眠',
 };

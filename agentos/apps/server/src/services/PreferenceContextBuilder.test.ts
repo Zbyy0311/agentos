@@ -54,7 +54,7 @@ test('omits close-confidence opposite values at the same priority', () => {
   assert.deepEqual(resolved, []);
 });
 
-test('renders only provisional and stable preferences within 800 characters', () => {
+test('learned projections never enter reply context before canonical Entry confirmation', () => {
   const result = buildPreferenceContext({
     runId: 'run-context', workspaceId: 'workspace-a', objective: '实现一个页面',
     projections: [
@@ -63,10 +63,6 @@ test('renders only provisional and stable preferences within 800 characters', ()
       projection({ id: 'observed', status: 'observed', confidence: 62, dimension: 'verification_depth', preferredValue: 'targeted' }),
     ],
   });
-  assert.ok(result.text.startsWith('## 用户交互与工作偏好\n以下内容仅为历史默认偏好；如与当前用户要求冲突，以当前要求为准。'));
-  assert.ok(result.text.length <= 800);
-  assert.match(result.text, /concise/);
-  assert.match(result.text, /direct_execution/);
-  assert.doesNotMatch(result.text, /targeted/);
-  assert.equal(result.applications.length, 2);
+  assert.equal(result.text, '');
+  assert.deepEqual(result.applications, []);
 });

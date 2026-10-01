@@ -1,8 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '@/lib/useApi';
 import { uiLayerClass } from '@/lib/uiLayers';
+import {
+  isMemoryVersionConflict,
+  memoryCandidateReviewPath,
+  memoryCandidatesPath,
+  memoryVersionConflictGuidance,
+  workspaceResponseIsCurrent,
+} from '@/lib/memoryManagement';
 
 /**
  * MF-5 forward Memory Candidate review queue (12-UI-Architecture section 14).
@@ -56,52 +63,95 @@ export function buildReviewBody(candidate: ForwardMemoryCandidateDto, outcome: R
 
 interface MemoryReviewQueueProps {
   workspaceId: string;
-  onClose(): void;
+  onClose?(): void;
+  embedded?: boolean;
 }
 
-export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueueProps) {
+export function MemoryReviewQueue({ workspaceId, onClose, embedded = false }: MemoryReviewQueueProps) {
   const { API_BASE, request } = useApi();
   const [candidates, setCandidates] = useState<ForwardMemoryCandidateDto[]>([]);
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [mergingId, setMergingId] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
   const [error, setError] = useState('');
+  const [stale, setStale] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const activeWorkspaceId = useRef(workspaceId);
+  const workspaceGeneration = useRef(0);
+  const loadGeneration = useRef(0);
+  activeWorkspaceId.current = workspaceId;
 
   const load = useCallback(async () => {
-    const result = await request<{ candidates: ForwardMemoryCandidateDto[] }>(
-      `/api/workspaces/${workspaceId}/memory/candidates?outcome=review-required`,
-    );
-    setCandidates(result.candidates);
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    setError('');
+    setStale(false);
+    try {
+      const result = await request<{ candidates: ForwardMemoryCandidateDto[] }>(memoryCandidatesPath(workspaceId));
+      if (workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, loadGeneration.current)) setCandidates(result.candidates);
+    } catch (loadError) {
+      if (workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, loadGeneration.current)) {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, loadGeneration.current)) setLoading(false);
+    }
   }, [request, workspaceId]);
 
-  useEffect(() => { void load().catch(loadError => setError(loadError instanceof Error ? loadError.message : String(loadError))); }, [load]);
+  useEffect(() => {
+    const generation = ++workspaceGeneration.current;
+    setCandidates([]);
+    setMergeTargets({});
+    setMergingId(undefined);
+    void load();
+    return () => {
+      if (workspaceGeneration.current === generation) workspaceGeneration.current += 1;
+      loadGeneration.current += 1;
+    };
+  }, [load]);
 
   const review = async (candidate: ForwardMemoryCandidateDto, outcome: ReviewOutcome) => {
-    setBusyId(candidate.id); setError('');
+    const generation = workspaceGeneration.current;
+    setBusyId(candidate.id); setError(''); setStale(false);
     try {
-      await request(`/api/workspaces/${workspaceId}/memory/candidates/${candidate.id}/review`, {
+      await request(memoryCandidateReviewPath(workspaceId, candidate.id), {
         method: 'POST',
         body: buildReviewBody(candidate, outcome, mergeTargets[candidate.id]),
       });
+      if (!workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, workspaceGeneration.current)) return;
       setCandidates(current => current.filter(item => item.id !== candidate.id));
       setMergingId(undefined);
-    } catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : String(reviewError)); }
-    finally { setBusyId(undefined); }
+    } catch (reviewError) {
+      if (!workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, workspaceGeneration.current)) return;
+      const message = reviewError instanceof Error ? reviewError.message : String(reviewError);
+      setError([message, memoryVersionConflictGuidance(reviewError)].filter(Boolean).join(' '));
+      setStale(isMemoryVersionConflict(reviewError));
+    } finally {
+      if (workspaceResponseIsCurrent(workspaceId, activeWorkspaceId.current, generation, workspaceGeneration.current)) setBusyId(undefined);
+    }
   };
 
+  const shellClass = embedded
+    ? 'flex min-h-0 min-w-0 flex-1 flex-col'
+    : `fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`;
+
   return (
-    <div className={`fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`} data-agentos="memory-review-queue">
-      <div className="mx-auto flex h-full max-w-5xl flex-col">
+    <div className={shellClass} data-agentos="memory-review-queue">
+      <div className={`mx-auto flex min-h-0 h-full w-full flex-col ${embedded ? '' : 'max-w-5xl'}`}>
         <div className="mb-5 flex items-center justify-between">
           <div>
             <div className="text-[11px] tracking-[0.16em] ui-dim">MEMORY REVIEW</div>
             <h2 className="mt-1 text-xl font-semibold ui-text">记忆候选审查</h2>
           </div>
-          <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-3 py-2 text-sm">关闭</button>
+          {onClose && <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-3 py-2 text-sm">关闭</button>}
         </div>
         {error && <p className="mb-3 rounded-lg border border-[var(--app-danger)]/30 p-3 text-sm text-[var(--app-danger)]">{error}</p>}
+        {error && !stale && <button type="button" onClick={() => { void load(); }} className="mb-3 self-start rounded-lg border ui-border px-3 py-2 text-xs ui-accent">重试加载候选</button>}
+        {stale && <button type="button" onClick={() => { void load(); }} className="mb-3 self-start rounded-lg border ui-border px-3 py-2 text-xs ui-accent">重新加载最新版本</button>}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-          {candidates.length === 0
+          {loading
+            ? <p role="status" className="p-4 text-center text-sm ui-dim">正在加载待审查候选…</p>
+            : candidates.length === 0
             ? <div className="ui-panel rounded-2xl border p-8 text-center text-sm ui-dim">暂无待审查候选</div>
             : candidates.map(candidate => (
               <article key={candidate.id} className="ui-panel rounded-2xl border p-5" data-candidate-id={candidate.id}>

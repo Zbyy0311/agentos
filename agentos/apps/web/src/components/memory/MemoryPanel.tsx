@@ -12,11 +12,21 @@ import {
   type MemoryEntryFormValues,
   type MemoryEntryStatusFilter,
 } from '@/lib/memoryEntries';
+import {
+  isMemoryVersionConflict,
+  memoryEntryLifecyclePath,
+  memoryVersionConflictGuidance,
+  workspaceResponseIsCurrent,
+  type MemoryEntryLifecyclePayload,
+} from '@/lib/memoryManagement';
 import { uiLayerClass } from '@/lib/uiLayers';
 import { LegacyMemoryBrowser } from './LegacyMemoryBrowser';
 import { MemoryContextHistory } from './MemoryContextHistory';
+import { MemoryConflictManagement } from './MemoryConflictManagement';
 import { MemoryEntryEditor } from './MemoryEntryEditor';
 import { MemoryEntryList, type MemoryEntryCategoryFilter } from './MemoryEntryList';
+import { MemoryPreferenceManagement } from './MemoryPreferenceManagement';
+import { MemoryReviewQueue } from './MemoryReviewQueue';
 
 interface MemoryPanelProps {
   workspaceId: string;
@@ -24,7 +34,7 @@ interface MemoryPanelProps {
   onOpenRun(runId: string): void;
 }
 
-type PanelTab = 'entries' | 'legacy' | 'history';
+type PanelTab = 'entries' | 'review' | 'conflicts' | 'preferences' | 'legacy' | 'history';
 
 function asMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -49,10 +59,13 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [staleEntry, setStaleEntry] = useState(false);
   const listGeneration = useRef(0);
   const detailGeneration = useRef(0);
   const selectedIdRef = useRef<string | undefined>();
   const savingRef = useRef(false);
+  const currentWorkspaceId = useRef(workspaceId);
+  currentWorkspaceId.current = workspaceId;
 
   const loadEntries = useCallback(async () => {
     const generation = ++listGeneration.current;
@@ -61,11 +74,11 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setError('');
     try {
       const result = await request<{ entries: MemoryEntryDto[] }>(memoryEntriesPath(workspaceId, filters));
-      if (generation === listGeneration.current) setEntries(result.entries);
+      if (workspaceResponseIsCurrent(workspaceId, currentWorkspaceId.current, generation, listGeneration.current)) setEntries(result.entries);
     } catch (loadError) {
-      if (generation === listGeneration.current) setError(asMessage(loadError));
+      if (workspaceResponseIsCurrent(workspaceId, currentWorkspaceId.current, generation, listGeneration.current)) setError(asMessage(loadError));
     } finally {
-      if (generation === listGeneration.current) setListLoading(false);
+      if (workspaceResponseIsCurrent(workspaceId, currentWorkspaceId.current, generation, listGeneration.current)) setListLoading(false);
     }
   }, [category, query, request, status, workspaceId]);
 
@@ -86,6 +99,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setDetailLoading(true);
     setError('');
     setNotice('');
+    setStaleEntry(false);
     try {
       const result = await request<{ entry: MemoryEntryDto }>(memoryEntryPath(workspaceId, entry.id));
       if (generation !== detailGeneration.current || selectedIdRef.current !== entry.id) return;
@@ -107,6 +121,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setDetailLoading(false);
     setError('');
     setNotice('');
+    setStaleEntry(false);
   };
 
   const saveEntry = async (values: MemoryEntryFormValues) => {
@@ -117,6 +132,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setSaving(true);
     setError('');
     setNotice('');
+    setStaleEntry(false);
     try {
       const response = target
         ? await request<{ entry: MemoryEntryDto }>(memoryEntryPath(workspaceId, target.id), {
@@ -140,39 +156,47 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
       }
       await loadEntries();
     } catch (saveError) {
-      setError(asMessage(saveError));
+      setError([asMessage(saveError), memoryVersionConflictGuidance(saveError)].filter(Boolean).join(' '));
+      setStaleEntry(isMemoryVersionConflict(saveError));
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   };
 
-  const archiveEntry = async () => {
+  const applyLifecycle = async (payload: MemoryEntryLifecyclePayload) => {
     const target = selected;
-    if (!target || target.status !== 'active' || savingRef.current) return;
-    if (!window.confirm(`确定归档“${target.title}”吗？`)) return;
+    if (!target || savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     setError('');
     setNotice('');
+    setStaleEntry(false);
     try {
-      await request<{ entry: MemoryEntryDto }>(`${memoryEntryPath(workspaceId, target.id)}/archive`, {
+      const response = await request<{ entry: MemoryEntryDto }>(memoryEntryLifecyclePath(workspaceId, target.id), {
         method: 'POST',
-        body: { expectedVersion: target.version },
+        body: payload,
       });
-      selectedIdRef.current = undefined;
-      setSelectedId(undefined);
-      setSelected(null);
-      setIsNew(false);
-      setNotice('正式记忆已归档。');
-      if (status === 'active') setStatus('archived');
+      setSelected(response.entry);
+      setSelectedId(response.entry.id);
+      const label = payload.action === 'archive' ? '已归档' : payload.action === 'restore' ? '已恢复' : payload.action === 'delete' ? '已软删除' : payload.action === 'revalidate' ? '已重新验证' : '有效期已更新';
+      setNotice(`正式记忆${label}。`);
+      if (payload.action === 'archive') setStatus('archived');
+      if (payload.action === 'delete') setStatus('deleted');
+      if (payload.action === 'restore' || payload.action === 'revalidate') setStatus('active');
       await loadEntries();
-    } catch (archiveError) {
-      setError(asMessage(archiveError));
+    } catch (lifecycleError) {
+      setError([asMessage(lifecycleError), memoryVersionConflictGuidance(lifecycleError)].filter(Boolean).join(' '));
+      setStaleEntry(isMemoryVersionConflict(lifecycleError));
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
+  };
+
+  const reloadSelected = () => {
+    if (!selected || savingRef.current) return;
+    void selectEntry(selected);
   };
 
   const startCreate = () => {
@@ -189,6 +213,9 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
         <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
           <div role="tablist" aria-label="项目知识来源" className="flex flex-wrap rounded-lg border ui-border p-1">
             <button type="button" role="tab" aria-selected={tab === 'entries'} onClick={() => setTab('entries')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'entries' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>正式记忆</button>
+            <button type="button" role="tab" aria-selected={tab === 'review'} onClick={() => setTab('review')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'review' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>候选审查</button>
+            <button type="button" role="tab" aria-selected={tab === 'conflicts'} onClick={() => setTab('conflicts')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'conflicts' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>冲突管理</button>
+            <button type="button" role="tab" aria-selected={tab === 'preferences'} onClick={() => setTab('preferences')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'preferences' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>偏好建议</button>
             <button type="button" role="tab" aria-selected={tab === 'legacy'} onClick={() => setTab('legacy')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'legacy' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>旧版记录</button>
             <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'history' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>使用记录</button>
           </div>
@@ -205,12 +232,24 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
           />
           <MemoryEntryEditor
             key={isNew ? 'new-entry' : selected ? `${selected.id}:${selected.version}` : 'empty-entry'}
-            entry={selected} isNew={isNew} loading={detailLoading} saving={saving} error={error} notice={notice}
-            onSave={values => { void saveEntry(values); }} onArchive={selected?.status === 'active' ? () => { void archiveEntry(); } : undefined} onOpenRun={onOpenRun}
+            entry={selected} isNew={isNew} loading={detailLoading} saving={saving} error={error} stale={staleEntry} notice={notice}
+            onSave={values => { void saveEntry(values); }} onReload={reloadSelected} onLifecycle={payload => { void applyLifecycle(payload); }} onOpenRun={onOpenRun}
           />
         </> : tab === 'legacy'
           ? <LegacyMemoryBrowser key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />
-          : <MemoryContextHistory key={workspaceId} workspaceId={workspaceId} />}
+          : tab === 'history'
+            ? <MemoryContextHistory key={workspaceId} workspaceId={workspaceId} />
+          : tab === 'conflicts'
+            ? <MemoryConflictManagement key={workspaceId} workspaceId={workspaceId} />
+            : tab === 'review'
+              ? <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs ui-dim">
+                  <span>在此处理待审候选；冲突条目已单独列在冲突管理中。</span>
+                  <button type="button" onClick={() => setTab('conflicts')} className="ui-button-ghost rounded-lg border ui-border px-3 py-2 ui-accent">管理冲突</button>
+                </div>
+                <MemoryReviewQueue key={workspaceId} workspaceId={workspaceId} embedded />
+              </div>
+          : <MemoryPreferenceManagement key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />}
       </div>
     </div>
   </div>;

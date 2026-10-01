@@ -3,6 +3,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { buildPreferenceContext } from './PreferenceContextBuilder.js';
 import { calculatePreferenceProjection, normalizePreferenceEvidence } from './PreferenceProjector.js';
 import { PreferenceObserver, type ObserveRunInput } from './PreferenceObserver.js';
+import { PreferenceConfirmationService } from './PreferenceConfirmationService.js';
 
 export interface ResolvePreferenceInput {
   profileId: string;
@@ -16,6 +17,7 @@ export class PreferenceService {
   constructor(
     private readonly store: SqliteStore,
     private readonly observer = new PreferenceObserver(),
+    readonly confirmations = new PreferenceConfirmationService(store),
   ) {}
 
   async recordRunEvidence(input: ObserveRunInput): Promise<PreferenceProjection[]> {
@@ -46,6 +48,7 @@ export class PreferenceService {
           .filter(item => item.candidateValue === workspaceProjection.preferredValue)
           .map(item => ({ evidenceId: item.id, contribution: item.polarity === 'negative' ? -item.weight : item.weight }));
         this.store.upsertPreferenceProjection(workspaceProjection, links);
+        this.confirmations.synchronizeProjection(workspaceProjection);
         projections.push(workspaceProjection);
       }
       const globalEvidence = this.store.listPreferenceEvidence(input.profileId)
@@ -56,6 +59,7 @@ export class PreferenceService {
           .filter(item => item.candidateValue === globalProjection.preferredValue)
           .map(item => ({ evidenceId: item.id, contribution: item.polarity === 'negative' ? -item.weight : item.weight }));
         this.store.upsertPreferenceProjection(globalProjection, links);
+        this.confirmations.synchronizeProjection(globalProjection);
         projections.push(globalProjection);
       }
     }
@@ -69,7 +73,7 @@ export class PreferenceService {
     }
     return buildPreferenceContext({
       runId: input.runId, workspaceId: input.workspaceId, objective: input.objective,
-      conversationType: input.conversationType, projections: this.store.listPreferenceProjections(input.profileId, input.workspaceId),
+      conversationType: input.conversationType, projections: [],
     });
   }
 

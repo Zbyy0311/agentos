@@ -11,6 +11,7 @@ import {
   MemoryEntryRepositoryError,
   type MemoryEntryRecord,
 } from '../store/MemoryEntryRepository.js';
+import { filterPreferenceMemory } from './PreferenceMemoryEligibility.js';
 
 /**
  * MF-3 scope-filtered Memory retrieval.
@@ -129,6 +130,7 @@ export class MemoryRetrievalService {
         reach,
         statuses: [...RETRIEVABLE_STATUSES],
       });
+      if (context.includeGlobal !== false) candidates.push(...this.entries.listConfirmedGlobalPreferences(context.workspaceId));
     } catch (error) {
       if (error instanceof MemoryEntryRepositoryError) throw new MemoryRetrievalError('RETRIEVAL_FAILED');
       throw new MemoryRetrievalError('RETRIEVAL_FAILED');
@@ -147,9 +149,10 @@ export class MemoryRetrievalService {
       return true;
     });
 
-    const fts = this.readFtsRanks(context.workspaceId, input.query, filtered.map(entry => entry.id));
+    const eligible = filterPreferenceMemory(this.entries.getDatabase(), filtered, context.workspaceId, input.query);
+    const fts = this.readFtsRanks(context.workspaceId, input.query, eligible.map(entry => entry.id));
     const ftsRanks = fts.ranks;
-    const rankingCandidates: MemoryRankingCandidate[] = filtered.map(entry => ({
+    const rankingCandidates: MemoryRankingCandidate[] = eligible.map(entry => ({
       memoryId: entry.id,
       memoryVersion: entry.version,
       scope: entry.scope,
@@ -165,7 +168,7 @@ export class MemoryRetrievalService {
     }));
     const ranked: MemoryRankedResult[] = rankMemoryCandidates(rankingCandidates, { nowMs });
 
-    const byId = new Map(filtered.map(entry => [entry.id, entry]));
+    const byId = new Map(eligible.map(entry => [entry.id, entry]));
     const limit = input.limit ?? ranked.length;
     return {
       degraded: fts.degraded,
@@ -200,11 +203,10 @@ export class MemoryRetrievalService {
         'SELECT memory_entries_fts.memory_entry_id AS id, bm25(memory_entries_fts) AS rank'
           + ' FROM memory_entries_fts'
           + ' INNER JOIN memory_entries ON memory_entries.id = memory_entries_fts.memory_entry_id'
-          + ' WHERE memory_entries.workspace_id = ?'
-          + ' AND memory_entries_fts.memory_entry_id IN (' + placeholders + ')'
+          + ' WHERE memory_entries_fts.memory_entry_id IN (' + placeholders + ')'
           + ' AND memory_entries_fts MATCH ?'
           + ' ORDER BY rank ASC',
-      ).all(workspaceId, ...ids, ftsQuery) as Array<{ id: string; rank: number }>;
+      ).all(...ids, ftsQuery) as Array<{ id: string; rank: number }>;
       for (const row of rows) ranks.set(row.id, row.rank);
     } catch {
       // Degraded mode: no FTS rank; structured filters remain authoritative.
