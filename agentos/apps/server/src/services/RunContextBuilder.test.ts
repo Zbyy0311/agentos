@@ -262,6 +262,26 @@ test('canonical token budgeting excludes oversized entries and preserves a visib
   } finally { fx.close(); }
 });
 
+test('canonical conversation retrieval awaits semantic preparation and surfaces fallback reason in strategy metadata', async () => {
+  const fx = fixture();
+  try {
+    const entry = fx.addEntry({ title: 'prepared deployment', content: 'deployment context value' });
+    const prepare = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    let calls = 0;
+    fx.retrieval.retrievePrepared = async input => {
+      calls += 1;
+      const result = await prepare(input);
+      return { ...result, degraded: true, semantic: { degraded: true, reason: 'CACHE_MISS', prepared: true } };
+    };
+    const result = await fx.builder.build(fx.input({ query: 'prepared deployment' }));
+    assert.equal(calls, 1);
+    assert.ok(result.entryUsages?.some(usage => usage.entryId === entry.id));
+    assert.equal(result.retrievalDegraded, true);
+    assert.equal(result.retrievalDegradedReason, 'CACHE_MISS');
+    assert.match(result.selection?.retrievalStrategyVersion ?? '', /semantic-fallback:CACHE_MISS/);
+  } finally { fx.close(); }
+});
+
 test('canonical retrieval failures propagate instead of silently falling back to legacy', async () => {
   const fx = fixture();
   try {

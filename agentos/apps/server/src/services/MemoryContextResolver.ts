@@ -192,6 +192,68 @@ export class MemoryContextResolver {
   }
 
   /**
+   * Prepared async counterpart for new Run contexts. Existing snapshots are
+   * checked first, so replay reads the immutable saved payload and never calls
+   * an embedding adapter.
+   */
+  async resolvePrepared(input: ResolveRunMemoryContextInput): Promise<ResolvedMemoryContext> {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.runId) || !nonBlank(input.createdAt)) {
+      throw new MemoryContextResolverError('INPUT_INVALID');
+    }
+    const budget = input.budget ?? DEFAULT_MEMORY_BUDGET_POLICY_V1;
+    const budgetCheck = validateMemoryBudgetPolicy(budget);
+    if (!budgetCheck.valid) throw new MemoryContextResolverError('INPUT_INVALID');
+    if (this.emitter !== undefined && input.eventContext === undefined) {
+      throw new MemoryContextResolverError('INPUT_INVALID');
+    }
+
+    const existing = this.findExisting(input);
+    if (existing !== undefined) {
+      return { snapshot: existing, contextText: this.assemble(existing), reused: true };
+    }
+
+    const context: MemoryRetrievalContext = {
+      workspaceId: input.workspaceId,
+      ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
+      ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
+      ...(input.taskId === undefined ? {} : { taskId: input.taskId }),
+      runId: input.runId,
+    };
+    const selection: SelectMemoryContextInput = {
+      snapshotId: this.createSnapshotId(input),
+      retrieval: { context, ...(input.query === undefined ? {} : { query: input.query }) },
+      budget,
+      agentId: input.agentId,
+      taskId: input.taskId,
+      stageId: input.stageId,
+      providerConfigId: input.providerConfigId,
+      createdAt: input.createdAt,
+    };
+
+    let snapshot: MemoryContextSnapshotRecord;
+    try {
+      const planned = await this.selector.planPrepared(selection);
+      // A concurrent replay may freeze this scope while preparation awaits.
+      const raced = this.findExisting(input);
+      if (raced !== undefined) return { snapshot: raced, contextText: this.assemble(raced), reused: true };
+      if (this.emitter === undefined) {
+        snapshot = this.snapshots.createSnapshot(planned.snapshotInput);
+      } else {
+        snapshot = this.emitter.emitContextCreated({
+          ...planned.snapshotInput,
+          eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1,
+          timestamp: input.createdAt,
+        }).record;
+      }
+    } catch {
+      throw new MemoryContextResolverError('SNAPSHOT_FAILED');
+    }
+    const persistedText = this.snapshots.readContextText(snapshot.workspaceId, snapshot.id);
+    if (persistedText === undefined) throw new MemoryContextResolverError('SNAPSHOT_FAILED');
+    return { snapshot, contextText: persistedText, reused: false };
+  }
+
+  /**
    * Injection gate. A Run must check this (or confirm `resolve` returned a
    * snapshot) before sending Memory to a Provider.
    */

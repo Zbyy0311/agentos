@@ -35,9 +35,11 @@ test('history details label a missing historical payload and unpersisted explana
 });
 
 test('history details show the actual frozen payload, selected version/reasons, exclusions and degraded warning', async () => {
-  const markup = await render({ ...BASE_CONTEXT, retrievalDegraded: true });
+  const markup = await render({ ...BASE_CONTEXT, retrievalDegraded: true,
+    retrievalStrategyVersion: 'memory-v3+semantic-fallback:SEMANTIC_QUALITY_GATE_REQUIRED' });
   assert.ok(markup.includes('Frozen prompt from that run'));
   assert.ok(markup.includes('data-field="retrieval-degraded"'));
+  assert.ok(markup.includes('当前 embedding 模型尚未通过固定查询评测，已回退到全文检索。'));
   assert.ok(markup.includes('v7'));
   assert.ok(markup.includes('scope-match、fts-match'));
   assert.ok(markup.includes('entry-2 — token-budget'));

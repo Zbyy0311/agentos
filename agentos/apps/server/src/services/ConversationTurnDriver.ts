@@ -123,6 +123,8 @@ export interface TurnContextSelectionInput {
 /** Selection port; the composition root supplies the real Memory selector. */
 export interface TurnContextSelectionPort {
   select(input: TurnContextSelectionInput): TurnContextSelection;
+  /** Optional async preparation seam used before a new Turn snapshot is frozen. */
+  selectPrepared?(input: TurnContextSelectionInput): Promise<TurnContextSelection>;
 }
 
 export interface TurnContextSnapshotWriteInput {
@@ -152,6 +154,11 @@ export interface TurnContextSnapshotPort {
   insert(input: TurnContextSnapshotWriteInput): { readonly id: string };
   /** Present on the production port; optional for existing test/custom ports. */
   readPayload?(workspaceId: string, snapshotId: string): TurnContextMemoryPayloadRecord | undefined;
+  /** Return a prior immutable payload for an idempotent Turn retry, if one exists. */
+  readForTurn?(workspaceId: string, turnId: string): {
+    readonly snapshotId: string;
+    readonly payload: TurnContextMemoryPayloadRecord | undefined;
+  } | undefined;
 }
 
 /** Build a deterministic query without transcript history and cap total retrieval input. */
@@ -356,6 +363,14 @@ export function createDurableTurnContextSnapshotPort(
     readPayload(workspaceId, snapshotId) {
       return new TurnContextSnapshotRepository(store.getDatabase()).readPayload(workspaceId, snapshotId);
     },
+    readForTurn(workspaceId, turnId) {
+      const repository = new TurnContextSnapshotRepository(store.getDatabase());
+      const snapshot = repository.listForTurn(workspaceId, turnId)[0];
+      return snapshot === undefined ? undefined : {
+        snapshotId: snapshot.id,
+        payload: repository.readPayload(workspaceId, snapshot.id),
+      };
+    },
   };
 }
 
@@ -441,7 +456,10 @@ export class ConversationTurnDriver {
     const frozenHistory = effectiveHistory.slice(-MAX_FROZEN_HISTORY_MESSAGES);
     // The snapshot id is chosen up front so the durable Turn can reference the
     // exact selection it will receive.
-    const contextSnapshotId = this.context?.snapshots === undefined ? undefined : createEntityId('snapshot');
+    const priorTurnContext = this.context?.snapshots?.readForTurn?.(input.workspaceId, input.turnId);
+    const contextSnapshotId = this.context?.snapshots === undefined
+      ? undefined
+      : priorTurnContext?.snapshotId ?? createEntityId('snapshot');
 
     const reservation = this.stream.beginAgentTurnStream({
       workspaceId: input.workspaceId,
@@ -477,68 +495,87 @@ export class ConversationTurnDriver {
     let memoryContext: string | undefined;
     if (this.context?.snapshots !== undefined && contextSnapshotId !== undefined) {
       try {
-        const selection = (this.context.selection ?? EMPTY_SELECTION).select({
-          workspaceId: input.workspaceId,
-          conversationId: input.conversationId,
-          agentId: input.agentId,
-          turnId: input.turnId,
-          createdAt: input.createdAt,
-          contextTokenBudget: this.context.contextTokenBudget ?? null,
-          retrievalQuery: buildChatMemoryRetrievalQuery(input),
-        });
-        this.context.snapshots.insert({
-          id: contextSnapshotId,
-          workspaceId: input.workspaceId,
-          conversationId: input.conversationId,
-          ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
-          agentId: input.agentId,
-          turnId: input.turnId,
-          budgetJson: JSON.stringify({
+        const isReplay = priorTurnContext !== undefined
+          || reservation.turn.contextSnapshotId !== contextSnapshotId;
+        let frozenText: string | undefined;
+        if (isReplay) {
+          const replaySnapshotId = reservation.turn.contextSnapshotId;
+          if (replaySnapshotId === null
+            || (priorTurnContext !== undefined && priorTurnContext.snapshotId !== replaySnapshotId)) {
+            throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          }
+          const frozenPayload = priorTurnContext?.payload
+            ?? this.context.snapshots.readPayload?.(input.workspaceId, replaySnapshotId);
+          if (frozenPayload === undefined) throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          frozenText = frozenPayload.contextText;
+        } else {
+          const selectionInput: TurnContextSelectionInput = {
+            workspaceId: input.workspaceId,
+            conversationId: input.conversationId,
             agentId: input.agentId,
-            maxFrozenHistoryMessages: MAX_FROZEN_HISTORY_MESSAGES,
-            frozenHistoryMessages: frozenHistory.length,
-            frozenHistoryMessageIds: frozenHistory.map(message => message.id),
-            totalConversationMessages: history.length,
+            turnId: input.turnId,
+            createdAt: input.createdAt,
             contextTokenBudget: this.context.contextTokenBudget ?? null,
-            ...(input.runtimeOverrides === undefined && input.additionalInstructions === undefined && input.groupRoleTitle === undefined && input.groupSettingsVersion === undefined
-              ? {}
-              : {
-                groupRuntimeConfig: {
-                  model: input.runtimeOverrides?.model ?? null,
-                  thinkingEffort: input.runtimeOverrides?.thinkingEffort ?? null,
-                  roleTitle: input.groupRoleTitle ?? null,
-                  additionalInstructions: input.additionalInstructions ?? null,
-                  settingsVersion: input.groupSettingsVersion ?? null,
-                },
-              }),
-            ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
-            ...(staleCompactionSummary === undefined
-              ? {}
-              : {
-                rejectedCompactionSummaryId: staleCompactionSummary.summaryId,
-                rejectedCompactionReason: staleCompactionSummary.reason,
-              }),
-          }),
-          selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
-          totalTokens: selection.totalTokens,
-          truncated: selection.truncated,
-          retrievalStrategyVersion: selection.retrievalStrategyVersion,
-          ...(selection.queryHash === undefined ? {} : { queryHash: selection.queryHash }),
-          memoryPayload: {
-            contextText: selection.contextText ?? '',
-            selected: selection.selected ?? [],
-            exclusions: selection.exclusions ?? [],
-            retrievalDegraded: selection.retrievalDegraded ?? false,
-          },
-          createdAt: input.createdAt,
-        });
-        // Inject the text read back from the committed, hash-verified immutable
-        // payload. Older custom snapshot ports keep their original selection seam.
-        const frozenPayload = this.context.snapshots.readPayload?.(input.workspaceId, contextSnapshotId);
-        if (this.context.snapshots.readPayload !== undefined && frozenPayload === undefined) {
-          throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+            retrievalQuery: buildChatMemoryRetrievalQuery(input),
+          };
+          const selector = this.context.selection ?? EMPTY_SELECTION;
+          const selection = selector.selectPrepared === undefined
+            ? selector.select(selectionInput)
+            : await selector.selectPrepared(selectionInput);
+          this.context.snapshots.insert({
+            id: contextSnapshotId,
+            workspaceId: input.workspaceId,
+            conversationId: input.conversationId,
+            ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
+            agentId: input.agentId,
+            turnId: input.turnId,
+            budgetJson: JSON.stringify({
+              agentId: input.agentId,
+              maxFrozenHistoryMessages: MAX_FROZEN_HISTORY_MESSAGES,
+              frozenHistoryMessages: frozenHistory.length,
+              frozenHistoryMessageIds: frozenHistory.map(message => message.id),
+              totalConversationMessages: history.length,
+              contextTokenBudget: this.context.contextTokenBudget ?? null,
+              ...(input.runtimeOverrides === undefined && input.additionalInstructions === undefined && input.groupRoleTitle === undefined && input.groupSettingsVersion === undefined
+                ? {}
+                : {
+                  groupRuntimeConfig: {
+                    model: input.runtimeOverrides?.model ?? null,
+                    thinkingEffort: input.runtimeOverrides?.thinkingEffort ?? null,
+                    roleTitle: input.groupRoleTitle ?? null,
+                    additionalInstructions: input.additionalInstructions ?? null,
+                    settingsVersion: input.groupSettingsVersion ?? null,
+                  },
+                }),
+              ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
+              ...(staleCompactionSummary === undefined
+                ? {}
+                : {
+                  rejectedCompactionSummaryId: staleCompactionSummary.summaryId,
+                  rejectedCompactionReason: staleCompactionSummary.reason,
+                }),
+            }),
+            selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
+            totalTokens: selection.totalTokens,
+            truncated: selection.truncated,
+            retrievalStrategyVersion: selection.retrievalStrategyVersion,
+            ...(selection.queryHash === undefined ? {} : { queryHash: selection.queryHash }),
+            memoryPayload: {
+              contextText: selection.contextText ?? '',
+              selected: selection.selected ?? [],
+              exclusions: selection.exclusions ?? [],
+              retrievalDegraded: selection.retrievalDegraded ?? false,
+            },
+            createdAt: input.createdAt,
+          });
+          // Inject the text read back from the committed, hash-verified immutable
+          // payload. Older custom snapshot ports keep their original selection seam.
+          const frozenPayload = this.context.snapshots.readPayload?.(input.workspaceId, contextSnapshotId);
+          if (this.context.snapshots.readPayload !== undefined && frozenPayload === undefined) {
+            throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          }
+          frozenText = frozenPayload?.contextText ?? selection.contextText;
         }
-        const frozenText = frozenPayload?.contextText ?? selection.contextText;
         if (frozenText !== undefined && frozenText.trim().length > 0) {
           memoryContext = frozenText;
         }

@@ -8,8 +8,7 @@ import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
 import { cleanupConversationAttachments, getAttachmentAbsolutePath, saveConversationAttachments, type ConversationAttachmentInput, type StoredConversationAttachment } from './ConversationAttachmentService.js';
 import { MemoryRetriever } from './MemoryRetriever.js';
-import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
-import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from './MemoryRetrievalRuntime.js';
 import { MAX_MEMORY_CHARACTERS, MAX_MEMORY_ITEMS, RunContextBuilder } from './RunContextBuilder.js';
 import { RuntimeEventProjector } from './RuntimeEventProjector.js';
 import { RuntimeArtifactCollector, type ArtifactCollectionContext } from './RuntimeArtifactCollector.js';
@@ -153,7 +152,11 @@ export class ConversationService {
     preferenceService?: PreferenceLearningService,
     worktreeManager?: WorktreeManager,
   ) {
-    this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store), new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())));
+    const memoryRetrieval = createMemoryRetrievalRuntime(
+      store.getDatabase(),
+      memoryRetrievalRuntimeConfigFromEnvironment(),
+    );
+    this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store), memoryRetrieval.retrieval);
     this.preferenceService = preferenceService ?? new PreferenceService(store);
     this.runStepService = new RunStepService(store, eventBus);
     this.runDecisionService = new RunDecisionService(store);
@@ -258,7 +261,7 @@ export class ConversationService {
       agentId: agent.id, conversationId: input.conversationId,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
-    this.publishMemoryRetrievalDiagnostic(input.workspaceId, input.conversationId, run.id, runContext.retrievalDegraded);
+    this.publishMemoryRetrievalDiagnostic(input.workspaceId, input.conversationId, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({
       runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'direct',
     });
@@ -396,7 +399,7 @@ export class ConversationService {
       agentId: agent.id, conversationId: conversation.id,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
-    this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded);
+    this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({
       runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'direct',
     });
@@ -566,7 +569,7 @@ export class ConversationService {
       conversationId: input.conversationId,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
-    this.publishMemoryRetrievalDiagnostic(input.workspaceId, input.conversationId, run.id, runContext.retrievalDegraded);
+    this.publishMemoryRetrievalDiagnostic(input.workspaceId, input.conversationId, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({
       runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group',
     });
@@ -836,7 +839,7 @@ export class ConversationService {
     input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({ type: 'conversation.message.created', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id, payload: { senderType: 'user' } }));
     const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content, conversationId: conversation.id, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
-    this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded);
+    this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({ runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group' });
     this.preferenceService.recordApplications(preferenceContext.applications);
     const planned = await this.runAgentTurn({ workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: conversation.id, runId: run.id, sourceMessage: userMessage, agent, intent: run.intent ?? 'execute', runtimePolicy: run.runtimePolicy ?? resolveRuntimePolicy('execute', agent), runtimeOverrides: memberSettings === undefined ? undefined : memberRuntimeOverrides(memberSettings), groupRoleTitle: memberSettings?.roleTitle, additionalInstructions: memberSettings?.additionalInstructions, memorySelection: runContext, memoryContext: this.combineContexts(runContext.context, preferenceContext.text), prompt: `原始用户请求：${run.objective}\n本轮运行意图：${run.intent ?? 'execute'}\n上次等待问题：${previousQuestion}\n用户补充信息：${content}\n请继续处理原始请求，不要因为存在补充信息就默认把任务限定为代码或文件操作。`, signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent, onAgentMessage: input.onAgentMessage, finalizeRun: true });
@@ -1266,11 +1269,22 @@ export class ConversationService {
     throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
   }
 
-  private publishMemoryRetrievalDiagnostic(workspaceId: string, conversationId: string, runId: string, degraded?: boolean): void {
+  private publishMemoryRetrievalDiagnostic(
+    workspaceId: string,
+    conversationId: string,
+    runId: string,
+    degraded?: boolean,
+    reason?: string,
+  ): void {
     if (!degraded) return;
     this.publishEvent(createAgentEvent({
       type: 'execution.diagnostic', workspaceId, conversationId, runId,
-      payload: { level: 'warning', code: 'memory.retrieval_degraded', message: '项目记忆全文检索不可用，本次使用结构化筛选和确定性排序。' },
+      payload: {
+        level: 'warning',
+        code: 'memory.retrieval_degraded',
+        message: '项目记忆检索发生降级，本次保留兼容的结构化筛选和确定性排序结果。',
+        ...(reason === undefined ? {} : { reason }),
+      },
     }));
   }
 

@@ -205,6 +205,33 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   }
 }
 
+test('M4 preparation only accepts owned scopes, filters secrets, and leaves baseline available with semantic off', async () => {
+  await withServer(async (url, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    const prepare = (body: unknown) => fetch(`${url}/memory/retrieve/prepare`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const response = await prepare({ query: 'pnpm', taskId: TASK, runId: RUN });
+    assert.equal(response.status, 200);
+    const result = await response.json() as { mode: string; degraded: boolean; semantic: { reason: string }; results?: unknown };
+    assert.equal(result.mode, 'off');
+    assert.equal(result.degraded, false);
+    assert.equal(result.semantic.reason, 'SEMANTIC_DISABLED');
+    assert.equal(result.results, undefined, 'preparation response never returns Entry text');
+    for (const body of [{ query: 'pnpm', taskId: 'foreign' }, { query: 'pnpm', conversationId: 'foreign' },
+      { query: 'pnpm', runId: 'foreign' }, { query: 'pnpm', agentId: 'foreign' }]) {
+      assert.equal((await prepare(body)).status, 404);
+    }
+    for (const body of [{ query: 'pnpm', candidates: [{ content: 'caller text' }] }, { query: 'x'.repeat(2001) },
+      { query: 'API_KEY=sk-fixture-only-value-123456789' }, { query: 'pnpm', limit: 101 }]) {
+      assert.equal((await prepare(body)).status, 400);
+    }
+    const db = store.getDatabase();
+    assert.equal((db.prepare('SELECT count(*) AS count FROM memory_semantic_entry_vectors').get() as { count: number }).count, 0);
+  });
+});
+
 async function postJson(url: string, body: unknown): Promise<{ status: number; json: unknown }> {
   const response = await fetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

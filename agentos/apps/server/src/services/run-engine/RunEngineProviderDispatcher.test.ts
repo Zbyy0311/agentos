@@ -1386,7 +1386,8 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.ok(!(query as string).includes('RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY'));
       assert.ok((query as string).length <= 2000, 'memory query must be capped at 2000 characters');
       assert.ok(fx.capturedInputs.length >= 1, 'stage must be executed');
-      assert.ok(fx.capturedInputs[0].prompt.startsWith('MEMORY_CONTEXT_BODY'), 'memory context must precede the base prompt');
+      assert.ok(fx.capturedInputs[0].prompt.startsWith('Memory provides historical context; the current user instruction overrides'), 'the current-instruction precedence rule must precede memory');
+      assert.ok(fx.capturedInputs[0].prompt.includes('\nMEMORY_CONTEXT_BODY\n\n'), 'frozen memory must precede the base prompt');
     } finally { close(fx); }
   });
 
@@ -1410,6 +1411,39 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.ok((query as string).length <= 2000, 'long task metadata must be bounded before retrieval');
       assert.ok((query as string).includes('Long real task goal'));
       assert.ok((query as string).includes(`Stage key: ${STAGE_KEYS[0]}`), 'truncation must preserve the Stage key');
+    } finally { close(fx); }
+  });
+
+  it('M4 waits for prepared context before provider dispatch and keeps old resolver ports compatible', async () => {
+    let resolved = false;
+    const resolver = {
+      resolve: () => { throw new Error('SYNC_RESOLVER_MUST_NOT_RUN'); },
+      resolvePrepared: async () => {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        resolved = true;
+        return { snapshot: { id: 'mctx_async', runId: RUN }, contextText: 'ASYNC_FROZEN_BODY', reused: false } as never;
+      },
+      isInjectable: () => resolved,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false,
+      { memoryContextResolver: resolver as never });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(resolved, true);
+      assert.ok(fx.capturedInputs[0].prompt.includes('ASYNC_FROZEN_BODY'));
+    } finally { close(fx); }
+  });
+
+  it('M4 prepared snapshot failure prevents any provider process', async () => {
+    const resolver = {
+      resolve: () => { throw new Error('SYNC_RESOLVER_MUST_NOT_RUN'); },
+      resolvePrepared: async () => { throw new Error('MEMORY_CONTEXT_RESOLVER_SNAPSHOT_FAILED'); },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, 0);
     } finally { close(fx); }
   });
 

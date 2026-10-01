@@ -12,6 +12,7 @@ test('MP-01 memory management keeps M1 usage and exposes review, conflict, prefe
   assert.ok(markup.includes('冲突管理'));
   assert.ok(markup.includes('偏好建议'));
   assert.ok(markup.includes('反馈与自动策略'));
+  assert.ok(markup.includes('维护建议'));
   assert.ok(markup.includes('使用记录'));
   assert.ok(markup.includes('旧版记录'));
 });

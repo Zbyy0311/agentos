@@ -29,6 +29,21 @@ const KIND_LABELS: Record<MemoryContextKind, string> = {
 
 const UNRECORDED = '未记录';
 
+const SEMANTIC_FALLBACK_LABELS: Record<string, string> = {
+  SEMANTIC_QUALITY_GATE_REQUIRED: '当前 embedding 模型尚未通过固定查询评测，已回退到全文检索。',
+  REMOTE_DISABLED: '远程 embedding 尚未启用，已回退到全文检索。',
+  SEMANTIC_ADAPTER_UNAVAILABLE: '语义检索服务未配置，已回退到全文检索。',
+  REMOTE_TIMEOUT: '语义检索服务超时，已回退到全文检索。',
+  CACHE_STALE: '向量缓存已失效，已回退到全文检索。',
+  CACHE_MISS: '向量缓存尚未准备，已回退到全文检索。',
+};
+
+function degradedExplanation(strategy: string): string {
+  const reason = strategy.split('+semantic-fallback:')[1];
+  if (!reason) return '生成此记录时的记忆检索处于降级状态。';
+  return SEMANTIC_FALLBACK_LABELS[reason] ?? `语义检索发生降级（${reason}），已回退到全文检索。`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -47,7 +62,7 @@ export function MemoryContextDetails({ context, workspaceId }: { readonly contex
 
       {context.retrievalDegraded === true ? (
         <p role="status" data-field="retrieval-degraded" className="rounded-lg border border-[var(--status-warning,#b8860b)]/40 p-3 text-xs leading-5 text-[var(--status-warning,#b8860b)]">
-          生成此记录时的记忆检索处于降级状态。下方内容和选择说明均来自这条历史记录。
+          {degradedExplanation(context.retrievalStrategyVersion)}下方内容和选择说明均来自这条历史记录。
         </p>
       ) : null}
 

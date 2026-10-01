@@ -26,6 +26,7 @@ import { MemoryConflictManagement } from './MemoryConflictManagement';
 import { MemoryEntryEditor } from './MemoryEntryEditor';
 import { MemoryEntryList, type MemoryEntryCategoryFilter } from './MemoryEntryList';
 import { MemoryFeedbackActions } from './MemoryFeedbackActions';
+import { MemoryMaintenance } from './MemoryMaintenance';
 import { MemoryPreferenceManagement } from './MemoryPreferenceManagement';
 import { MemoryReviewQueue } from './MemoryReviewQueue';
 
@@ -35,7 +36,7 @@ interface MemoryPanelProps {
   onOpenRun(runId: string): void;
 }
 
-type PanelTab = 'entries' | 'review' | 'conflicts' | 'preferences' | 'feedback' | 'legacy' | 'history';
+type PanelTab = 'entries' | 'review' | 'conflicts' | 'preferences' | 'feedback' | 'maintenance' | 'legacy' | 'history';
 
 function asMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -90,7 +91,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
 
   useEffect(() => () => { detailGeneration.current += 1; }, [workspaceId]);
 
-  const selectEntry = async (entry: MemoryEntryDto) => {
+  const selectEntry = async (entry: Pick<MemoryEntryDto, 'id'>) => {
     if (savingRef.current || listLoading) return;
     const generation = ++detailGeneration.current;
     selectedIdRef.current = entry.id;
@@ -218,6 +219,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
             <button type="button" role="tab" aria-selected={tab === 'conflicts'} onClick={() => setTab('conflicts')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'conflicts' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>冲突管理</button>
             <button type="button" role="tab" aria-selected={tab === 'preferences'} onClick={() => setTab('preferences')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'preferences' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>偏好建议</button>
             <button type="button" role="tab" aria-selected={tab === 'feedback'} onClick={() => setTab('feedback')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'feedback' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>反馈与自动策略</button>
+            <button type="button" role="tab" aria-selected={tab === 'maintenance'} onClick={() => setTab('maintenance')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'maintenance' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>维护建议</button>
             <button type="button" role="tab" aria-selected={tab === 'legacy'} onClick={() => setTab('legacy')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'legacy' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>旧版记录</button>
             <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'history' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>使用记录</button>
           </div>
@@ -237,7 +239,9 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
             entry={selected} isNew={isNew} loading={detailLoading} saving={saving} error={error} stale={staleEntry} notice={notice}
             onSave={values => { void saveEntry(values); }} onReload={reloadSelected} onLifecycle={payload => { void applyLifecycle(payload); }} onOpenRun={onOpenRun}
           />
-        </> : tab === 'legacy'
+        </> : tab === 'maintenance'
+          ? <MemoryMaintenance key={workspaceId} workspaceId={workspaceId} onOpenEntry={id => { setTab('entries'); void selectEntry({ id }); }} />
+          : tab === 'legacy'
           ? <LegacyMemoryBrowser key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />
           : tab === 'history'
             ? <MemoryContextHistory key={workspaceId} workspaceId={workspaceId} />

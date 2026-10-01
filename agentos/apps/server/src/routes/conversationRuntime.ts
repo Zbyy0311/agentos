@@ -22,8 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CompactionRepository } from '../store/CompactionRepository.js';
 import { projectConversationCompaction } from '../services/ConversationCompactionInspector.js';
-import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
-import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from '../services/MemoryRetrievalRuntime.js';
 import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import { BoundedGroupError } from '../services/BoundedGroupService.js';
@@ -144,8 +143,12 @@ export function createConversationRuntimeRoutes(
    * selection and no Memory ever reached the Provider. This reuses the same MF-3
    * retrieval and MF-4 budget the Run path uses, scoped to this Agent/Conversation.
    */
+  const memoryRetrieval = createMemoryRetrievalRuntime(
+    store.getDatabase(),
+    memoryRetrievalRuntimeConfigFromEnvironment(),
+  );
   const chatMemorySelection = createChatMemorySelectionPort({
-    retrieval: new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())),
+    retrieval: memoryRetrieval.retrieval,
     onProblem: detail => console.warn('[AgentOS ChatMemory] ' + detail),
   });
 

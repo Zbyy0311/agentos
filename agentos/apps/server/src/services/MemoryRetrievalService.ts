@@ -6,6 +6,11 @@ import {
   type MemoryRetrievalContext,
   type MemorySelectionReasonCode,
 } from '@agentos/shared';
+import type {
+  MemorySemanticOperationStatus,
+  MemorySemanticReason,
+  MemorySemanticRetrieval,
+} from './MemorySemanticRetrieval.js';
 import {
   MemoryEntryRepository,
   MemoryEntryRepositoryError,
@@ -58,13 +63,30 @@ export interface RetrievedMemoryEntry {
 
 export interface RetrieveMemoryResult {
   readonly results: RetrievedMemoryEntry[];
+  /** Optional sidecar status; absent when semantic retrieval is not configured. */
+  readonly semantic?: {
+    readonly degraded: boolean;
+    readonly reason?: MemorySemanticReason;
+    readonly prepared?: boolean;
+    readonly preparedEntryCount?: number;
+  };
   /**
-   * True when a non-blank query was supplied but FTS ranking was not applied
-   * (FTS5 unavailable/error, or the query held no usable tokens after
-   * neutralization). Structured filters and deterministic ranking still ran;
-   * the caller must surface this visibly (MF-3 contract).
+   * True when FTS5 could not be applied or an explicitly configured optional
+   * semantic sidecar degraded. Structured filters and baseline ranking still
+   * ran; the caller must surface the relevant `semantic.reason` when present.
    */
   readonly degraded: boolean;
+}
+
+/** Persist semantic fallback/hybrid provenance in existing strategy-version fields. */
+export function withMemorySemanticStrategyVersion(
+  baseVersion: string,
+  result: Pick<RetrieveMemoryResult, 'semantic'>,
+): string {
+  const semantic = result.semantic;
+  if (semantic === undefined) return baseVersion;
+  if (semantic.degraded) return `${baseVersion}+semantic-fallback:${semantic.reason ?? 'UNKNOWN'}`;
+  return `${baseVersion}+semantic-hybrid`;
 }
 
 function nonBlank(value: unknown): value is string {
@@ -101,6 +123,7 @@ export class MemoryRetrievalService {
   constructor(
     private readonly entries: MemoryEntryRepository,
     private readonly clock: () => number = () => Date.now(),
+    private readonly semantic?: MemorySemanticRetrieval,
   ) {}
 
   retrieve(input: RetrieveMemoryInput): RetrievedMemoryEntry[] {
@@ -112,6 +135,96 @@ export class MemoryRetrievalService {
    * must expose. `retrieve` remains the budget-selector contract.
    */
   retrieveWithStatus(input: RetrieveMemoryInput): RetrieveMemoryResult {
+    const baseline = this.retrieveBaseline(input);
+    if (!this.semantic || !nonBlank(input.query)) {
+      return { ...baseline, results: this.applyLimit(baseline.results, input.limit) };
+    }
+    const reranked = this.rerankSemantic(baseline.results, input.query, input.context.workspaceId);
+    return {
+      ...baseline,
+      degraded: baseline.degraded || reranked.degraded,
+      semantic: {
+        degraded: reranked.degraded,
+        ...(reranked.reason === undefined ? {} : { reason: reranked.reason }),
+        prepared: false,
+      },
+      results: this.applyLimit(reranked.results, input.limit),
+    };
+  }
+
+  /**
+   * Async warm-and-rank seam for callers that can prepare vectors before
+   * selection. Preparation sees every post-eligibility candidate before the
+   * caller's result limit; any failure returns the ordinary MF-3 result set
+   * and carries a visible sidecar reason.
+   */
+  async retrievePrepared(input: RetrieveMemoryInput): Promise<RetrieveMemoryResult> {
+    const baseline = this.retrieveBaseline(input);
+    if (!this.semantic || !nonBlank(input.query)) {
+      return { ...baseline, results: this.applyLimit(baseline.results, input.limit) };
+    }
+
+    const prepared: MemorySemanticOperationStatus = await this.semantic.prepare(input.query, baseline.results, input.context.workspaceId)
+      .catch(() => ({ degraded: true, reason: 'EMBEDDING_FAILED' as const }));
+    // Embeddings can take seconds. Re-prove scope, status, current content and
+    // validity after the await before any fallback or budget choice is used.
+    const current = this.retrieveBaseline(input);
+    if (prepared.degraded) {
+      return {
+        ...current,
+        degraded: true,
+        semantic: {
+          degraded: true,
+          ...(prepared.reason === undefined ? {} : { reason: prepared.reason }),
+          prepared: true,
+          ...(prepared.preparedEntryCount === undefined ? {} : { preparedEntryCount: prepared.preparedEntryCount }),
+        },
+        results: this.applyLimit(current.results, input.limit),
+      };
+    }
+    const reranked = this.rerankSemantic(current.results, input.query, input.context.workspaceId);
+    if (reranked.degraded) {
+      return {
+        ...current,
+        degraded: true,
+        semantic: {
+          degraded: true,
+          ...(reranked.reason === undefined ? {} : { reason: reranked.reason }),
+          prepared: true,
+          preparedEntryCount: prepared.preparedEntryCount,
+        },
+        results: this.applyLimit(current.results, input.limit),
+      };
+    }
+    return {
+      ...current,
+      semantic: {
+        degraded: false,
+        prepared: true,
+        ...(prepared.preparedEntryCount === undefined ? {} : { preparedEntryCount: prepared.preparedEntryCount }),
+      },
+      results: this.applyLimit(reranked.results, input.limit),
+    };
+  }
+
+  private applyLimit(results: RetrievedMemoryEntry[], limit: number | undefined): RetrievedMemoryEntry[] {
+    return limit === undefined ? results : results.slice(0, limit);
+  }
+
+  private rerankSemantic(
+    candidates: readonly RetrievedMemoryEntry[],
+    query: string,
+    workspaceId: string,
+  ) {
+    try {
+      return this.semantic!.rerank(candidates, query, workspaceId);
+    } catch {
+      return { results: [...candidates], degraded: true, reason: 'CACHE_UNAVAILABLE' as const };
+    }
+  }
+
+  /** Build the authoritative MF-3 candidate set; semantic ranking never sees prefilter entries. */
+  private retrieveBaseline(input: RetrieveMemoryInput): RetrieveMemoryResult {
     if (typeof input !== 'object' || input === null || typeof input.context !== 'object' || input.context === null) {
       throw new MemoryRetrievalError('INPUT_INVALID');
     }
@@ -169,16 +282,16 @@ export class MemoryRetrievalService {
     const ranked: MemoryRankedResult[] = rankMemoryCandidates(rankingCandidates, { nowMs });
 
     const byId = new Map(eligible.map(entry => [entry.id, entry]));
-    const limit = input.limit ?? ranked.length;
+    const results = ranked.map(result => ({
+      entry: byId.get(result.memoryId) as MemoryEntryRecord,
+      rank: result.rank,
+      score: result.score,
+      reasons: result.reasons,
+      ftsRank: ftsRanks.get(result.memoryId) ?? null,
+    }));
     return {
       degraded: fts.degraded,
-      results: ranked.slice(0, limit).map(result => ({
-        entry: byId.get(result.memoryId) as MemoryEntryRecord,
-        rank: result.rank,
-        score: result.score,
-        reasons: result.reasons,
-        ftsRank: ftsRanks.get(result.memoryId) ?? null,
-      })),
+      results,
     };
   }
 

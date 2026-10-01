@@ -98,6 +98,32 @@ test('LITE-09-101 CM-01 selects reachable entries and assembles the injected tex
   } finally { fx.close(); }
 });
 
+test('prepared chat selection awaits the retrieval seam and persists a visible semantic fallback reason', async () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'release controls', content: 'keep the release within its budget' });
+    const retrieval = new MemoryRetrievalService(fx.entries);
+    const retrievePrepared = retrieval.retrievePrepared.bind(retrieval);
+    let preparedCalls = 0;
+    retrieval.retrievePrepared = async input => {
+      preparedCalls += 1;
+      const baseline = await retrievePrepared(input);
+      return {
+        ...baseline,
+        degraded: true,
+        semantic: { degraded: true, reason: 'REMOTE_DISABLED', prepared: true },
+      };
+    };
+    const problems: string[] = [];
+    const port = createChatMemorySelectionPort({ retrieval, onProblem: message => problems.push(message) });
+    const selected = await port.selectPrepared!({ ...SELECT_INPUT, retrievalQuery: 'release controls' });
+    assert.equal(preparedCalls, 1);
+    assert.equal(selected.retrievalDegraded, true);
+    assert.match(selected.retrievalStrategyVersion, /semantic-fallback:REMOTE_DISABLED/);
+    assert.ok(problems.some(message => message.includes('reason=REMOTE_DISABLED')));
+  } finally { fx.close(); }
+});
+
 test('LITE-09-101 CM-02 another Workspace, another Agent and a Task-scoped entry stay out of reach', () => {
   const fx = fixture();
   try {
