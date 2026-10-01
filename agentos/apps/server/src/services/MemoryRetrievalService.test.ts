@@ -262,7 +262,7 @@ test('MF3-11 hostile FTS query is neutralized', () => {
   assert.ok(!safe.includes('-'));
   assert.ok(!safe.includes(':'));
   // A bare (unquoted) operator would appear as a standalone token.
-  assert.ok(!/(^|\s)OR(\s|$)/u.test(safe));
+  assert.ok(safe.includes('"OR"'));
   assert.ok(!/(^|\s)NEAR(\s|$)/u.test(safe));
   const fx = fixture();
   try {

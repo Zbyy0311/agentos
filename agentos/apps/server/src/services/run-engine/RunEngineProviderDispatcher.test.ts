@@ -39,6 +39,11 @@ import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { NodeProcessDriver, NodeProcessProbePort } from '@agentos/process-runtime';
 import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
 import type { SqliteStore } from '../../store/SqliteStore.js';
+import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
+import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
+import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
+import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
+import { MemoryContextResolver } from '../MemoryContextResolver.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { all(...params: unknown[]): unknown[]; get(...params: unknown[]): unknown; run(...params: unknown[]): unknown; }; close(): void; } };
 type Db = InstanceType<typeof DatabaseSync>;
@@ -148,7 +153,13 @@ function agentSnapshot(systemPrompt = DEFAULT_STAGE_PROMPT): AgentSnapshotV1 {
   return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt, permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
 }
 
-function snapshotPayload(cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): RunSnapshotPayloadV2 {
+function snapshotPayload(
+  cancelGracePeriodMs = 5000,
+  systemPrompt = DEFAULT_STAGE_PROMPT,
+  runMetadata: RunSnapshotPayloadV2['run'] = {
+    workspaceId: WS, taskId: TASK, origin: ORIGIN, reason: 'initial', parentRunId: null, rootRunId: RUN,
+  },
+): RunSnapshotPayloadV2 {
   const stages = STAGE_KEYS.map((key, index) => ({
     workflowStageKey: key, name: key, sequence: index + 1,
     agent: agentSnapshot(systemPrompt), provider: providerSnapshot(cancelGracePeriodMs),
@@ -156,7 +167,7 @@ function snapshotPayload(cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAG
   }));
   return {
     schemaVersion: 2, capturedAt: NOW,
-    run: { workspaceId: WS, taskId: TASK, origin: ORIGIN, reason: 'initial', parentRunId: null, rootRunId: RUN },
+    run: runMetadata,
     workflow: {
       definitionId: M3_013_LEGACY_WORKFLOW_V2_ID, definitionKey: 'legacy-pipeline', definitionVersion: 2, name: 'legacy-pipeline-v2',
       definitionHash: '9ea35ef455c5fefa45d0b28d1433933b2cc6b3fb9e412b4d4452afb7862a6b6d', worktreeMode: 'preferred',
@@ -176,7 +187,13 @@ function seed(db: Db): void {
 }
 
 function seedGraph(db: Db, cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): void {
-  const payload = snapshotPayload(cancelGracePeriodMs, systemPrompt);
+  const runMetadata = db.prepare(`
+    SELECT workspace_id AS workspaceId, task_id AS taskId, origin, reason,
+      parent_run_id AS parentRunId, root_run_id AS rootRunId
+    FROM runs WHERE workspace_id = ? AND id = ?
+  `).get(WS, RUN) as RunSnapshotPayloadV2['run'] | undefined;
+  if (runMetadata === undefined) throw new Error('fixture run metadata is missing');
+  const payload = snapshotPayload(cancelGracePeriodMs, systemPrompt, runMetadata);
   const snapshot = new RunSnapshotRepository(db).insert({
     workspaceId: WS,
     runId: RUN,
@@ -230,6 +247,68 @@ function seedAdmission(db: Db, input: {
     updatedAt: NOW,
     version: 1,
   });
+}
+
+function seedPriorFailedStage(
+  db: Db,
+  input: { readonly workflowStageKey: string; readonly failureCode: string; readonly failureMessage: string },
+): string {
+  const temporaryTaskId = 'task_m4_prior_failure';
+  db.prepare(`
+    INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at)
+    VALUES (?, ?, 'Prior failure fixture', 'open', 'normal', 'test', ?, ?)
+  `).run(temporaryTaskId, WS, NOW, NOW);
+  const runs = new RunRepository(db);
+  const parent = runs.insert({ workspaceId: WS, taskId: temporaryTaskId, origin: ORIGIN, createdBy: 'test' });
+  const running = runs.transitionStatus(WS, parent.id, parent.version, 'running');
+  const failed = runs.transitionStatus(WS, parent.id, running.version, 'failed', {
+    failureCode: input.failureCode,
+    failureMessage: input.failureMessage,
+  });
+  db.prepare('UPDATE runs SET task_id = ? WHERE workspace_id = ? AND id = ?')
+    .run(TASK, WS, failed.id);
+  db.prepare('DELETE FROM tasks WHERE workspace_id = ? AND id = ?')
+    .run(WS, temporaryTaskId);
+  const snapshot = new RunSnapshotRepository(db).insert({
+    workspaceId: WS,
+    runId: failed.id,
+    workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+    payload: snapshotPayload(5000, DEFAULT_STAGE_PROMPT, {
+      workspaceId: WS,
+      taskId: TASK,
+      origin: ORIGIN,
+      reason: parent.reason,
+      parentRunId: parent.parentRunId ?? null,
+      rootRunId: failed.rootRunId,
+    }),
+  });
+  const stages = new RunStageRepository(db);
+  let stage = stages.insertInitial({
+    workspaceId: WS,
+    runId: failed.id,
+    runSnapshotId: snapshot.id,
+    workflowStageKey: input.workflowStageKey,
+    sequence: 1,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'pending', to: 'ready', timestamp: NOW,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'ready', to: 'starting', timestamp: NOW,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'starting', to: 'running', timestamp: NOW,
+  });
+  stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'running', to: 'failed', timestamp: NOW,
+    failureCode: input.failureCode,
+    failureMessage: input.failureMessage,
+  });
+  return failed.id;
 }
 
 class FakeHandle implements NativeProcessHandle {
@@ -299,12 +378,28 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly deferApprovalContinuation?: boolean;
   readonly approvalNow?: { current: string };
   readonly noOwnedWorktree?: boolean;
+  readonly memoryTaskObjective?: string;
+  readonly priorMemoryFailure?: {
+    readonly workflowStageKey: string;
+    readonly failureCode: string;
+    readonly failureMessage: string;
+  };
 } = {}) {
   // The fake fixture always means the deterministic fake provider, so it states
   // that identity itself instead of inheriting whatever a real gate left behind.
   REAL_EXECUTABLE = KIMI_EXE;
   REAL_PROVIDER_TYPE = 'kimicode';
   const db = migratedDb();
+  if (behavior.priorMemoryFailure !== undefined) {
+    const parentRunId = seedPriorFailedStage(db, behavior.priorMemoryFailure);
+    db.prepare(`
+      UPDATE runs SET parent_run_id = ?, root_run_id = ?, reason = 'retry', objective = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(parentRunId, parentRunId, behavior.memoryTaskObjective ?? null, WS, RUN);
+  } else if (behavior.memoryTaskObjective !== undefined) {
+    db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
+      .run(behavior.memoryTaskObjective, WS, RUN);
+  }
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
   seedAdmission(db, {
     state: behavior.admissionState ?? 'GRANTED',
@@ -435,7 +530,7 @@ function realFailureDetails(root: string, run: { failureCode?: string; failureMe
   });
 }
 
-function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
+function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi', memoryGate = false) {
   const executableEnv = provider === 'codex'
     ? 'AGENTOS_CODEX_CLI'
     : provider === 'opencode' ? 'AGENTOS_OPENCODE_CLI' : 'AGENTOS_KIMICODE_CLI';
@@ -449,7 +544,7 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
   REAL_EXECUTABLE = executable;
   REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : provider === 'opencode' ? 'opencode' : 'kimicode';
   const db = migratedDb();
-  seedGraph(db, 5000, REAL_GATE_PROMPT);
+  seedGraph(db, 5000, memoryGate ? 'Read the M1 memory checkpoint and reply with only its value. Do not use tools.' : REAL_GATE_PROMPT);
   seedAdmission(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
@@ -494,11 +589,16 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   });
+  const entries = new MemoryEntryRepository(db);
+  const snapshots = new MemoryContextSnapshotRepository(db);
+  if (memoryGate) entries.createEntry({id:'m1-real-checkpoint',workspaceId:WS,scope:'workspace',category:'knowledge',status:'active',authority:'user-explicit',
+    confidence:1,importance:1,title:'M1 memory checkpoint',content:'Checkpoint value: AGENTOS_MEMORY_GATE_OK',sources:[],createdAt:NOW});
   const dispatcher = new RunEngineProviderDispatcher({
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => root,
     worktreePathFor: () => root,
     admissionGate: new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db } }),
+    ...(memoryGate ? {memoryContextResolver:new MemoryContextResolver({store:{getDatabase:()=>db},selector:new MemoryContextBudgetSelector(new MemoryRetrievalService(entries),snapshots)})} : {}),
   });
   const restore = () => {
     REAL_EXECUTABLE = previousExecutable;
@@ -508,6 +608,23 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
+  it('M1 real Codex reads frozen versioned memory on all canonical stages (env-gated)', {skip:process.env.M1_REAL_MEMORY_GATE !== '1'}, async () => {
+    const fx=realFixture('codex',true);
+    try {
+      await fx.dispatcher.drive(WS,RUN);
+      const run=fx.runRepo.findById(WS,RUN)!;
+      assert.equal(run.status,'completed',realFailureDetails(fx.root,run,[]));
+      const snapshots=new MemoryContextSnapshotRepository(fx.db);
+      const contexts=snapshots.listForRun(WS,RUN);
+      assert.equal(contexts.length,STAGE_KEYS.length);
+      for(const context of contexts) {
+        assert.equal(context.selected[0]?.memoryVersion,1);
+        assert.match(context.queryHash,/^[a-f0-9]{64}$/);
+        assert.match(snapshots.readContextText(WS,context.id)??'',/AGENTOS_MEMORY_GATE_OK/);
+      }
+      assert.match(readSinkOutput(fx.root,50000),/AGENTOS_MEMORY_GATE_OK/);
+    } finally { fx.restore(); fx.db.close(); rmSync(fx.root,{recursive:true,force:true}); }
+  });
   it('LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once', async () => {
     const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'approved work complete' })]));
     const fx = fixture(driver, false, { runtimeApproval: true });
@@ -1229,7 +1346,7 @@ describe('RunEngineProviderDispatcher E2E', () => {
     } finally { close(fx); }
   });
 
-  it('MF-4 integration: a configured resolver injects the persisted memory context into the stage prompt', async () => {
+  it('M1 integration: sends a bounded durable task-and-stage query with only the prior normalized failure code', async () => {
     const fakeSnapshot = { id: 'mctx_inject', runId: RUN } as never;
     const resolveCalls: Array<Record<string, unknown>> = [];
     const resolver = {
@@ -1239,14 +1356,60 @@ describe('RunEngineProviderDispatcher E2E', () => {
       },
       isInjectable: () => true,
     };
-    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, { memoryContextResolver: resolver as never });
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      {
+        memoryContextResolver: resolver as never,
+        memoryTaskObjective: 'realTaskgoal: recover the signed-in workspace session',
+        priorMemoryFailure: {
+          workflowStageKey: STAGE_KEYS[0],
+          failureCode: 'PROVIDER_AUTH_REQUIRED',
+          failureMessage: 'RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY',
+        },
+      },
+    );
     try {
       await fx.dispatcher.driveSafely(WS, RUN);
       assert.ok(resolveCalls.length >= 1, 'resolver must be called before provider execution');
       assert.equal(resolveCalls[0].workspaceId, WS);
       assert.equal(resolveCalls[0].runId, RUN);
+      assert.equal(resolveCalls[0].taskId, TASK, 'task scope must come from the persisted Run/Snapshot link');
+      assert.equal(resolveCalls[0].stageId, 'stage_m4_0');
+      assert.equal(resolveCalls[0].agentId, undefined, 'query wiring must not widen owner reach to an Agent');
+      assert.equal(resolveCalls[0].conversationId, undefined, 'query wiring must not widen owner reach to a conversation');
+      const query = resolveCalls[0].query;
+      assert.equal(typeof query, 'string');
+      assert.ok((query as string).includes('realTaskgoal: recover the signed-in workspace session'));
+      assert.ok((query as string).includes(`Stage key: ${STAGE_KEYS[0]}`));
+      assert.ok((query as string).includes('Prior failure code for this stage: PROVIDER_AUTH_REQUIRED'));
+      assert.ok(!(query as string).includes('RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY'));
+      assert.ok((query as string).length <= 2000, 'memory query must be capped at 2000 characters');
       assert.ok(fx.capturedInputs.length >= 1, 'stage must be executed');
       assert.ok(fx.capturedInputs[0].prompt.startsWith('MEMORY_CONTEXT_BODY'), 'memory context must precede the base prompt');
+    } finally { close(fx); }
+  });
+
+  it('M1 integration: truncates a long durable objective while retaining the current Stage key', async () => {
+    const resolveCalls: Array<Record<string, unknown>> = [];
+    const resolver = {
+      resolve: (input: Record<string, unknown>) => {
+        resolveCalls.push(input);
+        return { snapshot: { id: 'mctx_long_query', runId: RUN }, contextText: 'MEMORY_CONTEXT_BODY', reused: false } as never;
+      },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, {
+      memoryContextResolver: resolver as never,
+      memoryTaskObjective: `Long real task goal ${'recover workspace state '.repeat(300)}`,
+    });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      const query = resolveCalls[0]?.query;
+      assert.equal(typeof query, 'string');
+      assert.ok((query as string).length <= 2000, 'long task metadata must be bounded before retrieval');
+      assert.ok((query as string).includes('Long real task goal'));
+      assert.ok((query as string).includes(`Stage key: ${STAGE_KEYS[0]}`), 'truncation must preserve the Stage key');
     } finally { close(fx); }
   });
 

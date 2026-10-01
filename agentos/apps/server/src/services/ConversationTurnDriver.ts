@@ -3,10 +3,15 @@ import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos
 import { createHash } from 'node:crypto';
 import type { AgentProfile, ConversationMessage, RunIntent } from '@agentos/shared';
 import type { AgentTurnRecord } from '../store/AgentTurnRepository.js';
+import type { MemorySelectionExplanationV1 } from '@agentos/shared';
 import type { ConversationRepository, MessageRecord } from '../store/ConversationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
-import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
+import {
+  TurnContextSnapshotRepository,
+  type TurnContextMemoryExclusion,
+  type TurnContextMemoryPayloadRecord,
+} from '../store/TurnContextSnapshotRepository.js';
 import type { ConversationStreamService, FinalizeStreamInput, FinalizeStreamResult } from './ConversationStreamService.js';
 import { getAttachmentAbsolutePath } from './ConversationAttachmentService.js';
 
@@ -83,6 +88,8 @@ export class ConversationTurnDriverError extends Error {
 export const MAX_FROZEN_HISTORY_MESSAGES = 12;
 /** Retrieval strategy version persisted with the frozen selection. */
 export const TURN_CONTEXT_STRATEGY_VERSION = 'cr-turn-context.v1';
+/** MF-3 query cap; the retrieval query contains only this request and frozen group role. */
+export const MAX_CHAT_MEMORY_QUERY_CHARS = 2000;
 
 export interface TurnContextSelection {
   readonly selectedEntryIds: readonly string[];
@@ -95,6 +102,11 @@ export interface TurnContextSelection {
    * frozen and what was injected cannot diverge.
    */
   readonly contextText?: string;
+  /** Stable hash of the bounded retrieval query; raw query text is never persisted. */
+  readonly queryHash?: string;
+  readonly selected?: readonly MemorySelectionExplanationV1[];
+  readonly exclusions?: readonly TurnContextMemoryExclusion[];
+  readonly retrievalDegraded?: boolean;
 }
 
 export interface TurnContextSelectionInput {
@@ -104,6 +116,8 @@ export interface TurnContextSelectionInput {
   readonly turnId: string;
   readonly createdAt: string;
   readonly contextTokenBudget: number | null;
+  /** Bounded current-request/group-role query; never includes transcript history. */
+  readonly retrievalQuery?: string;
 }
 
 /** Selection port; the composition root supplies the real Memory selector. */
@@ -123,12 +137,33 @@ export interface TurnContextSnapshotWriteInput {
   readonly totalTokens: number;
   readonly truncated: boolean;
   readonly retrievalStrategyVersion: string;
+  readonly queryHash?: string;
+  readonly memoryPayload?: {
+    readonly contextText: string;
+    readonly selected: readonly MemorySelectionExplanationV1[];
+    readonly exclusions: readonly TurnContextMemoryExclusion[];
+    readonly retrievalDegraded: boolean;
+  };
   readonly createdAt: string;
 }
 
 /** Durable write port; must persist before the Provider is invoked. */
 export interface TurnContextSnapshotPort {
   insert(input: TurnContextSnapshotWriteInput): { readonly id: string };
+  /** Present on the production port; optional for existing test/custom ports. */
+  readPayload?(workspaceId: string, snapshotId: string): TurnContextMemoryPayloadRecord | undefined;
+}
+
+/** Build a deterministic query without transcript history and cap total retrieval input. */
+export function buildChatMemoryRetrievalQuery(input: Pick<ReplyWithTurnInput,
+  'content' | 'intent' | 'groupRoleTitle' | 'additionalInstructions'>): string {
+  const parts = [
+    `Current request: ${input.content}`,
+    ...(input.intent === undefined ? [] : [`Turn stage: ${input.intent}`]),
+    ...(input.groupRoleTitle?.trim() ? [`Group role: ${input.groupRoleTitle.trim()}`] : []),
+    ...(input.additionalInstructions?.trim() ? [`Group role instructions: ${input.additionalInstructions.trim()}`] : []),
+  ];
+  return parts.join('\n').slice(0, MAX_CHAT_MEMORY_QUERY_CHARS);
 }
 
 /**
@@ -312,9 +347,14 @@ export function createDurableTurnContextSnapshotPort(
         selectedEntryIdsJson: input.selectedEntryIdsJson,
         totalTokens: input.totalTokens,
         truncated: input.truncated,
+        ...(input.queryHash === undefined ? {} : { queryHash: input.queryHash }),
+        ...(input.memoryPayload === undefined ? {} : { memoryPayload: input.memoryPayload }),
         retrievalStrategyVersion: input.retrievalStrategyVersion,
         createdAt: input.createdAt,
       }));
+    },
+    readPayload(workspaceId, snapshotId) {
+      return new TurnContextSnapshotRepository(store.getDatabase()).readPayload(workspaceId, snapshotId);
     },
   };
 }
@@ -444,6 +484,7 @@ export class ConversationTurnDriver {
           turnId: input.turnId,
           createdAt: input.createdAt,
           contextTokenBudget: this.context.contextTokenBudget ?? null,
+          retrievalQuery: buildChatMemoryRetrievalQuery(input),
         });
         this.context.snapshots.insert({
           id: contextSnapshotId,
@@ -482,12 +523,24 @@ export class ConversationTurnDriver {
           totalTokens: selection.totalTokens,
           truncated: selection.truncated,
           retrievalStrategyVersion: selection.retrievalStrategyVersion,
+          ...(selection.queryHash === undefined ? {} : { queryHash: selection.queryHash }),
+          memoryPayload: {
+            contextText: selection.contextText ?? '',
+            selected: selection.selected ?? [],
+            exclusions: selection.exclusions ?? [],
+            retrievalDegraded: selection.retrievalDegraded ?? false,
+          },
           createdAt: input.createdAt,
         });
-        // LITE-09-101: the injection is the SAME selection that was just persisted -
-        // read once and reused, so the frozen ids and the injected text cannot diverge.
-        if (selection.contextText !== undefined && selection.contextText.trim().length > 0) {
-          memoryContext = selection.contextText;
+        // Inject the text read back from the committed, hash-verified immutable
+        // payload. Older custom snapshot ports keep their original selection seam.
+        const frozenPayload = this.context.snapshots.readPayload?.(input.workspaceId, contextSnapshotId);
+        if (this.context.snapshots.readPayload !== undefined && frozenPayload === undefined) {
+          throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+        }
+        const frozenText = frozenPayload?.contextText ?? selection.contextText;
+        if (frozenText !== undefined && frozenText.trim().length > 0) {
+          memoryContext = frozenText;
         }
       } catch (error) {
         return this.fail(

@@ -14,6 +14,7 @@ import {
 } from '@/lib/memoryEntries';
 import { uiLayerClass } from '@/lib/uiLayers';
 import { LegacyMemoryBrowser } from './LegacyMemoryBrowser';
+import { MemoryContextHistory } from './MemoryContextHistory';
 import { MemoryEntryEditor } from './MemoryEntryEditor';
 import { MemoryEntryList, type MemoryEntryCategoryFilter } from './MemoryEntryList';
 
@@ -23,7 +24,7 @@ interface MemoryPanelProps {
   onOpenRun(runId: string): void;
 }
 
-type PanelTab = 'entries' | 'legacy';
+type PanelTab = 'entries' | 'legacy' | 'history';
 
 function asMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -185,10 +186,11 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     <div className="mx-auto flex h-full max-w-6xl flex-col">
       <div className="mb-5 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div><div className="text-[11px] tracking-[0.16em] ui-dim">WORKSPACE KNOWLEDGE</div><h2 className="mt-1 text-xl font-semibold ui-text">项目知识</h2></div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <div role="tablist" aria-label="项目知识来源" className="flex rounded-lg border ui-border p-1">
+        <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+          <div role="tablist" aria-label="项目知识来源" className="flex flex-wrap rounded-lg border ui-border p-1">
             <button type="button" role="tab" aria-selected={tab === 'entries'} onClick={() => setTab('entries')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'entries' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>正式记忆</button>
             <button type="button" role="tab" aria-selected={tab === 'legacy'} onClick={() => setTab('legacy')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'legacy' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>旧版记录</button>
+            <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'history' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>使用记录</button>
           </div>
           <button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-3 py-2 text-sm">返回聊天</button>
         </div>
@@ -206,7 +208,9 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
             entry={selected} isNew={isNew} loading={detailLoading} saving={saving} error={error} notice={notice}
             onSave={values => { void saveEntry(values); }} onArchive={selected?.status === 'active' ? () => { void archiveEntry(); } : undefined} onOpenRun={onOpenRun}
           />
-        </> : <LegacyMemoryBrowser key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />}
+        </> : tab === 'legacy'
+          ? <LegacyMemoryBrowser key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />
+          : <MemoryContextHistory key={workspaceId} workspaceId={workspaceId} />}
       </div>
     </div>
   </div>;

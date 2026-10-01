@@ -3,6 +3,8 @@ import { MemoryRetriever } from './MemoryRetriever.js';
 import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
 import { applyBudget, injectedEntryText } from './MemoryContextBudgetSelector.js';
 import { CHAT_MEMORY_RETRIEVAL_LIMIT, DEFAULT_CHAT_MEMORY_BUDGET } from './ChatMemorySelectionPort.js';
+import { createHash } from 'node:crypto';
+import type { ExecutionMemorySelection } from '../store/MemoryExecutionContextRepository.js';
 
 export const MAX_MEMORY_ITEMS = 5;
 export const MAX_MEMORY_CHARACTERS = 6000;
@@ -21,6 +23,12 @@ export interface RunContextResult {
   }[];
   /** MF-3 structured ranking ran without usable FTS ranking. Errors still propagate. */
   retrievalDegraded?: boolean;
+  selection?: {
+    queryHash: string;
+    selected: readonly ExecutionMemorySelection[];
+    exclusions: readonly { memoryId: string; reason: string }[];
+    truncated: boolean;
+  };
 }
 
 export class RunContextBuilder {
@@ -52,6 +60,9 @@ export class RunContextBuilder {
       sections.push(section);
     };
     let retrievalDegraded: boolean | undefined;
+    const selectedRecords: ExecutionMemorySelection[] = [];
+    const excludedRecords: { memoryId: string; reason: string }[] = [];
+    let truncated = false;
 
     if (this.entryRetriever) {
       // A legacy AgentRun UUID is not a canonical Task/Run ownership claim.
@@ -61,7 +72,7 @@ export class RunContextBuilder {
           ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
           ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
         },
-        query: input.query,
+        query: input.query.slice(0, 2000),
         limit: CHAT_MEMORY_RETRIEVAL_LIMIT,
       });
       retrievalDegraded = retrieval.degraded;
@@ -69,12 +80,22 @@ export class RunContextBuilder {
         ...DEFAULT_CHAT_MEMORY_BUDGET,
         maxEntries: Math.min(DEFAULT_CHAT_MEMORY_BUDGET.maxEntries, itemLimit),
       });
+      excludedRecords.push(...outcome.exclusions);
+      truncated = outcome.truncated;
       for (const selected of outcome.selected) {
         const remaining = remainingCharacters();
-        if (sections.length >= itemLimit || remaining <= 0) break;
+        if (sections.length >= itemLimit || remaining <= 0) {
+          excludedRecords.push({ memoryId: selected.entry.id, reason: 'character-budget' });
+          continue;
+        }
         const text = injectedEntryText(selected.entry).slice(0, Math.min(MAX_SINGLE_MEMORY_CHARACTERS, remaining));
         if (!text) continue;
+        const wasTruncated = text !== injectedEntryText(selected.entry);
+        truncated ||= wasTruncated;
         append(text);
+        selectedRecords.push({ memoryId: selected.entry.id, memoryVersion: selected.entry.version,
+          store: 'canonical', rank: sections.length, tokenCost: Math.ceil(text.length / 4),
+          reasons: [...selected.explanation.reasons, ...(wasTruncated ? ['character-truncated'] : [])] });
         entryUsages.push({
           entryId: selected.entry.id,
           version: selected.explanation.memoryVersion,
@@ -104,6 +125,9 @@ export class RunContextBuilder {
       if (!body) continue;
       const text = `${prefix}${body}${suffix}`;
       append(text);
+      truncated ||= body.length < `${item.memory.summary}\n${item.content}`.length;
+      selectedRecords.push({ memoryId: item.memory.id, memoryVersion: null, store: 'legacy',
+        rank: sections.length, tokenCost: Math.ceil(text.length / 4), reasons: ['legacy-fallback'] });
       usages.push({ runId: input.runId, memoryId: item.memory.id, rank: this.entryRetriever ? sections.length : index + 1,
         injectedCharacters: text.length, usedAt: new Date().toISOString() });
     }
@@ -111,6 +135,10 @@ export class RunContextBuilder {
       context: sections.length ? `${heading}${sections.join('\n\n')}` : '',
       usages,
       ...(this.entryRetriever ? { entryUsages, retrievalDegraded } : {}),
+      selection: {
+        queryHash: createHash('sha256').update(input.query.slice(0, 2000)).digest('hex'),
+        selected: selectedRecords, exclusions: excludedRecords, truncated,
+      },
     };
   }
 }

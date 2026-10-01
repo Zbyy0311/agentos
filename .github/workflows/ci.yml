@@ -55,6 +55,9 @@ jobs:
       - name: Server tests
         run: node scripts/capture-lite-verification.mjs server-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/server test; exit $LASTEXITCODE'
 
+      - name: Web tests
+        run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
+
       - name: Lite scope and evidence gates
         run: |
           node scripts/capture-lite-verification.mjs lite-regressions -- node --test --test-reporter=tap scripts/verify-lite-scope.test.mjs scripts/verify-lite-acceptance.test.mjs scripts/run-lite-verification-batches.test.mjs scripts/capture-lite-verification.test.mjs
