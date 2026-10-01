@@ -25,6 +25,7 @@ import { MemoryContextHistory } from './MemoryContextHistory';
 import { MemoryConflictManagement } from './MemoryConflictManagement';
 import { MemoryEntryEditor } from './MemoryEntryEditor';
 import { MemoryEntryList, type MemoryEntryCategoryFilter } from './MemoryEntryList';
+import { MemoryFeedbackActions } from './MemoryFeedbackActions';
 import { MemoryPreferenceManagement } from './MemoryPreferenceManagement';
 import { MemoryReviewQueue } from './MemoryReviewQueue';
 
@@ -34,7 +35,7 @@ interface MemoryPanelProps {
   onOpenRun(runId: string): void;
 }
 
-type PanelTab = 'entries' | 'review' | 'conflicts' | 'preferences' | 'legacy' | 'history';
+type PanelTab = 'entries' | 'review' | 'conflicts' | 'preferences' | 'feedback' | 'legacy' | 'history';
 
 function asMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -216,6 +217,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
             <button type="button" role="tab" aria-selected={tab === 'review'} onClick={() => setTab('review')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'review' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>候选审查</button>
             <button type="button" role="tab" aria-selected={tab === 'conflicts'} onClick={() => setTab('conflicts')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'conflicts' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>冲突管理</button>
             <button type="button" role="tab" aria-selected={tab === 'preferences'} onClick={() => setTab('preferences')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'preferences' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>偏好建议</button>
+            <button type="button" role="tab" aria-selected={tab === 'feedback'} onClick={() => setTab('feedback')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'feedback' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>反馈与自动策略</button>
             <button type="button" role="tab" aria-selected={tab === 'legacy'} onClick={() => setTab('legacy')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'legacy' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>旧版记录</button>
             <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')} className={`rounded-md px-3 py-1.5 text-xs ${tab === 'history' ? 'bg-[var(--app-accent)]/10 ui-accent' : 'ui-muted'}`}>使用记录</button>
           </div>
@@ -249,6 +251,8 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
                 </div>
                 <MemoryReviewQueue key={workspaceId} workspaceId={workspaceId} embedded />
               </div>
+              : tab === 'feedback'
+                ? <MemoryFeedbackActions key={workspaceId} workspaceId={workspaceId} />
           : <MemoryPreferenceManagement key={workspaceId} workspaceId={workspaceId} onOpenRun={onOpenRun} />}
       </div>
     </div>

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import { getWorkflowTemplate, type CollaborationTask } from '@agentos/shared';
+import { getWorkflowTemplate, type CollaborationCandidate, type CollaborationTask } from '@agentos/shared';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { CollaborationRepository } from '../store/CollaborationRepository.js';
 import { CollaborationControlRepository } from '../store/CollaborationControlRepository.js';
@@ -19,6 +19,8 @@ import { CollaborationWorkflowService, type CollaborationWorkflowServiceOptions 
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
 import { WorkspaceAdmissionAuthority } from './WorkspaceAdmissionAuthority.js';
 import { WorkspaceAdmissionStartupReconciler } from './WorkspaceAdmissionStartupReconciler.js';
+import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
+import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { TaskRunService } from './TaskRunService.js';
 import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
 import { recoverInterruptedRuns } from '../runRecovery.js';
@@ -32,6 +34,10 @@ const PATCH = 'diff --git a/README.md b/README.md\nindex df967b9..a9a2f8e 100644
 type CollaborationWorkflowTestOverrides = Partial<CollaborationWorkflowServiceOptions> & {
   readonly runtimeDispatchEnabled?: boolean;
 };
+interface CollaborationWorkflowFixtureSettings {
+  readonly memoryEnabled?: boolean;
+  readonly acceptanceCommands?: readonly string[];
+}
 
 async function disposeFixtureTree(path: string): Promise<void> {
   let entry;
@@ -44,7 +50,7 @@ async function disposeFixtureTree(path: string): Promise<void> {
   await rmdir(path);
 }
 
-function fixture(overrides: CollaborationWorkflowTestOverrides = {}) {
+function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: CollaborationWorkflowFixtureSettings = {}) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'agentos-collaboration-control-'));
   const repositoryRoot = join(root, 'repository');
   const dataRoot = join(root, 'data');
@@ -57,7 +63,7 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}) {
   execFileSync('git', ['commit', '-qm', 'fixture base'], { cwd: repositoryRoot, windowsHide: true });
   const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true }).trim();
   writeFileSync(join(dataRoot, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [{
-    id: 'workspace-a', name: 'Fixture', rootPath: repositoryRoot, gitEnabled: true, memoryEnabled: false,
+    id: 'workspace-a', name: 'Fixture', rootPath: repositoryRoot, gitEnabled: true, memoryEnabled: settings.memoryEnabled ?? false,
     agents: ['planner', 'implementer', 'reviewer'].map(id => ({ id, name: id, role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: [] })),
     lastOpenedAt: NOW, createdAt: NOW, updatedAt: NOW,
   }] }));
@@ -86,7 +92,7 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}) {
   const service = new CollaborationWorkflowService(serviceOptions);
   const plan = repository.create({
     workspaceId: 'workspace-a', title: 'Control regression', objective: 'Change README only',
-    scope: ['README.md'], acceptanceCommands: ['node -e "process.exit(0)"'],
+    scope: ['README.md'], acceptanceCommands: [...(settings.acceptanceCommands ?? ['node -e "process.exit(0)"'])],
     plannerAgentId: 'planner', implementerAgentId: 'implementer', reviewerAgentId: 'reviewer',
     planHash: 'fixture-plan', baseCommit, maxReworkRounds: 2, createdAt: NOW,
   });
@@ -956,6 +962,163 @@ for (let repetition = 1; repetition <= 3; repetition++) {
     } finally { reopened?.close(); await fx.close(); }
   });
 }
+
+function applyVerifiedMemoryFacts046(fx: ReturnType<typeof fixture>): void {
+  migration046.apply({ db: fx.store.getDatabase() as unknown as MinimalDatabaseSync });
+}
+
+async function captureServerAcceptanceCandidate(
+  fx: ReturnType<typeof fixture>,
+  runId: string,
+  worktreePath: string,
+): Promise<CollaborationCandidate> {
+  const task = fx.repository.findById('workspace-a', fx.plan.id)!;
+  const service = fx.service as unknown as {
+    captureAndPersistCandidate(task: CollaborationTask, runId: string, worktreePath: string): Promise<CollaborationCandidate>;
+  };
+  return service.captureAndPersistCandidate(task, runId, worktreePath);
+}
+
+test('M3 runner receipt binds the persisted server acceptance output, exit code and frozen HEAD in one transaction', async () => {
+  const fx = fixture({}, {
+    memoryEnabled: true,
+    acceptanceCommands: ['node -e "process.stdout.write(\'server-acceptance-proof\')"'],
+  });
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    const active = fx.runningWithCompletedStart();
+    const working = join(fx.root, 'implementation');
+    execFileSync('git', ['worktree', 'add', '--detach', working, fx.plan.baseCommit], { cwd: fx.repositoryRoot, windowsHide: true, stdio: 'pipe' });
+    writeFileSync(join(working, 'README.md'), 'candidate\n');
+
+    const candidate = await captureServerAcceptanceCandidate(fx, active.run.id, working);
+    const persistedOutput = fx.store.getDatabase().prepare('SELECT test_output FROM collaboration_candidates WHERE id=?')
+      .get(candidate.id) as { test_output: string };
+    const receipt = fx.store.getDatabase().prepare(`SELECT candidate_id,workspace_id,run_id,commit_id,result,exit_code,
+      output_sha256,runner_version FROM memory_test_runner_receipts WHERE candidate_id=?`).get(candidate.id) as {
+      candidate_id: string; workspace_id: string; run_id: string; commit_id: string; result: string; exit_code: number;
+      output_sha256: string; runner_version: string;
+    };
+    assert.equal(candidate.testStatus, 'passed');
+    assert.equal(candidate.testExitCode, 0);
+    assert.match(persistedOutput.test_output, /server-acceptance-proof/u);
+    assert.deepEqual({ ...receipt }, {
+      candidate_id: candidate.id, workspace_id: 'workspace-a', run_id: active.run.id,
+      commit_id: candidate.headCommit, result: 'passed', exit_code: 0,
+      output_sha256: createHash('sha256').update(persistedOutput.test_output).digest('hex'),
+      runner_version: 'collaboration-acceptance.v1',
+    });
+    assert.throws(() => fx.store.getDatabase().prepare('UPDATE memory_test_runner_receipts SET result=? WHERE candidate_id=?')
+      .run('failed', candidate.id), /MEMORY_TEST_RUNNER_RECEIPT_IMMUTABLE/u);
+  } finally { await fx.close(); }
+});
+
+test('M3 runner receipt records the acceptance process actual nonzero exit code', async () => {
+  const fx = fixture({}, {
+    memoryEnabled: true,
+    acceptanceCommands: ['node -e "process.stdout.write(\'server-runner-failure\');process.exit(7)"'],
+  });
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    const active = fx.runningWithCompletedStart();
+    const working = join(fx.root, 'implementation');
+    execFileSync('git', ['worktree', 'add', '--detach', working, fx.plan.baseCommit], { cwd: fx.repositoryRoot, windowsHide: true, stdio: 'pipe' });
+    writeFileSync(join(working, 'README.md'), 'candidate\n');
+
+    const candidate = await captureServerAcceptanceCandidate(fx, active.run.id, working);
+    const persisted = fx.store.getDatabase().prepare(`SELECT c.head_commit,c.test_status,c.test_exit_code,c.test_output,
+      rr.commit_id,rr.result,rr.exit_code,rr.output_sha256 FROM collaboration_candidates c
+      JOIN memory_test_runner_receipts rr ON rr.candidate_id=c.id WHERE c.id=?`).get(candidate.id) as {
+      head_commit: string; test_status: string; test_exit_code: number; test_output: string;
+      commit_id: string; result: string; exit_code: number; output_sha256: string;
+    };
+    assert.equal(persisted.test_status, 'failed');
+    assert.equal(persisted.test_exit_code, 7);
+    assert.equal(persisted.result, persisted.test_status);
+    assert.equal(persisted.exit_code, persisted.test_exit_code);
+    assert.equal(persisted.commit_id, persisted.head_commit);
+    assert.match(persisted.test_output, /server-runner-failure/u);
+    assert.equal(persisted.output_sha256, createHash('sha256').update(persisted.test_output).digest('hex'));
+  } finally { await fx.close(); }
+});
+
+test('M3 runner receipt is omitted when acceptance changes the frozen candidate', async () => {
+  const fx = fixture({}, {
+    memoryEnabled: true,
+    acceptanceCommands: ['node -e "require(\'fs\').writeFileSync(\'README.md\', \'mutated\\n\')"'],
+  });
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    const active = fx.runningWithCompletedStart();
+    const working = join(fx.root, 'implementation');
+    execFileSync('git', ['worktree', 'add', '--detach', working, fx.plan.baseCommit], { cwd: fx.repositoryRoot, windowsHide: true, stdio: 'pipe' });
+    writeFileSync(join(working, 'README.md'), 'candidate\n');
+
+    const candidate = await captureServerAcceptanceCandidate(fx, active.run.id, working);
+    assert.equal(candidate.testStatus, 'failed');
+    assert.match(candidate.testOutput ?? '', /COLLABORATION_TEST_MUTATED_CANDIDATE/u);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM memory_test_runner_receipts WHERE candidate_id=?')
+      .get(candidate.id) as { count: number }).count, 0);
+  } finally { await fx.close(); }
+});
+
+test('M3 keeps candidate capture compatible before migration 046 and atomically rolls back a failed receipt insert', async () => {
+  const legacy = fixture({}, { memoryEnabled: true });
+  try {
+    const active = legacy.runningWithCompletedStart();
+    const working = join(legacy.root, 'implementation');
+    execFileSync('git', ['worktree', 'add', '--detach', working, legacy.plan.baseCommit], { cwd: legacy.repositoryRoot, windowsHide: true, stdio: 'pipe' });
+    writeFileSync(join(working, 'README.md'), 'candidate\n');
+    const candidate = await captureServerAcceptanceCandidate(legacy, active.run.id, working);
+    assert.equal(candidate.testStatus, 'passed');
+    assert.equal((legacy.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='memory_test_runner_receipts'")
+      .get() as { count: number }).count, 0);
+  } finally { await legacy.close(); }
+
+  const fx = fixture({}, { memoryEnabled: true });
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    fx.store.getDatabase().exec(`CREATE TRIGGER reject_memory_test_receipt BEFORE INSERT ON memory_test_runner_receipts
+      BEGIN SELECT RAISE(ABORT,'receipt insert rejected'); END`);
+    const active = fx.runningWithCompletedStart();
+    const working = join(fx.root, 'implementation');
+    execFileSync('git', ['worktree', 'add', '--detach', working, fx.plan.baseCommit], { cwd: fx.repositoryRoot, windowsHide: true, stdio: 'pipe' });
+    writeFileSync(join(working, 'README.md'), 'candidate\n');
+    await assert.rejects(captureServerAcceptanceCandidate(fx, active.run.id, working), /receipt insert rejected/u);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM collaboration_candidates WHERE canonical_run_id=?')
+      .get(active.run.id) as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM memory_test_runner_receipts').get() as { count: number }).count, 0);
+  } finally { await fx.close(); }
+});
+
+test('M3 terminal hook derives its eventContext from the canonical durable terminal event', async () => {
+  const observed: Array<{ workspaceId: string; runId: string; createdAt: string; eventContext?: unknown }> = [];
+  const fx = fixture({
+    verifiedMemoryFacts: () => ({ accumulateTerminal(input) { observed.push(input); return []; } }),
+  }, { memoryEnabled: true });
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    const active = fx.runningWithCompletedStart();
+    const db = fx.store.getDatabase();
+    db.prepare("UPDATE runs SET status='completed',updated_at=?,version=version+1 WHERE workspace_id=? AND id=?")
+      .run(NOW, 'workspace-a', active.run.id);
+    const sequence = (db.prepare('SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM runtime_events WHERE run_id=?')
+      .get(active.run.id) as { sequence: number }).sequence;
+    db.prepare(`INSERT INTO runtime_events
+      (id,schema_version,type,workspace_id,task_id,run_id,sequence,timestamp,source,correlation_id,severity,visibility,durability,payload_json,created_at)
+      VALUES(?,1,'run.completed',?,?,?,?,?,'test',?,'info','workspace','durable','{}',?)`)
+      .run('evt_terminal_hook', 'workspace-a', active.run.taskId, active.run.id, sequence, NOW, 'corr-terminal-hook', NOW);
+
+    assert.deepEqual(fx.service.accumulateTerminal({ workspaceId: 'workspace-a', runId: active.run.id }), []);
+    assert.equal(observed.length, 1);
+    assert.deepEqual(observed[0], {
+      workspaceId: 'workspace-a', runId: active.run.id, createdAt: NOW,
+      eventContext: { origin: 'persisted_event', eventId: 'evt_terminal_hook', context: {
+        correlationId: 'corr-terminal-hook', causationId: 'evt_terminal_hook',
+      } },
+    });
+  } finally { await fx.close(); }
+});
 
 for (const scenario of ['safe-preimage', 'concurrent-user-edit', 'corrupt-journal', 'wrong-epoch', 'wrong-task', 'wrong-candidate', 'wrong-version', 'wrong-run'] as const) {
   for (let repetition = 1; repetition <= 3; repetition++) {

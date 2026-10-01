@@ -17,6 +17,7 @@ import { RunRepository } from '../store/RunRepository.js';
 import { RunStageRepository } from '../store/RunStageRepository.js';
 import { TaskRepository } from '../store/TaskRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
+import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
 import { MemoryCandidateGenerationService } from './MemoryCandidateGenerationService.js';
 import { TerminalMemoryCandidateReconciler, terminalCandidateId } from './TerminalMemoryCandidateReconciler.js';
 
@@ -47,7 +48,7 @@ function fixture() {
   db.prepare('PRAGMA foreign_keys = ON').run();
   new MigrationRunner(
     db as unknown as MinimalDatabaseSync,
-    new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS),
+    new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id < '046')),
     { backupProvider: createFileBackupProvider(join(root, 'backup')) },
   ).run();
   const tdb = db as unknown as TransactionDatabase;
@@ -112,6 +113,10 @@ function recordingGenerator(calls: RecordedCall[], overrides: Record<string, { o
       return overrides[input.runId] ?? { outcome: 'created' };
     },
   };
+}
+
+function applyVerifiedMemoryFacts046(fx: ReturnType<typeof fixture>): void {
+  migration046.apply({ db: fx.db as unknown as MinimalDatabaseSync });
 }
 
 // LITE-07-102: a terminal Run that lost its Candidate to a crash is repaired
@@ -245,5 +250,88 @@ test('LITE-07-102 startup sweep is bounded per Workspace', () => {
       [WS, 'run_ws_one'],
       [OTHER_WS, 'run_ws_two'],
     ]);
+  } finally { fx.close(); }
+});
+
+test('M3 terminal accumulation retries from its durable Event even when the legacy Candidate already exists', () => {
+  const fx = fixture();
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    seedRun(fx, { runId: 'run_m3_retry', status: 'failed', failureCode: 'PROVIDER_TIMEOUT' });
+    const factsCalls: Array<RecordedCall & { readonly createdAt: string }> = [];
+    const problems: string[] = [];
+    let attempts = 0;
+    const reconciler = new TerminalMemoryCandidateReconciler({
+      store: { getDatabase: () => fx.tdb },
+      generator: realGenerator(fx),
+      verifiedMemoryFacts: () => ({
+        accumulateTerminal(input: RecordedCall & { readonly createdAt: string }) {
+          factsCalls.push(input);
+          attempts++;
+          if (attempts === 1) throw new Error('transient fact write failure');
+          return [];
+        },
+      }),
+      now: () => NOW,
+      onProblem: detail => problems.push(detail),
+    });
+
+    const first = reconciler.reconcileWorkspace(WS);
+    assert.equal(first.generated, 1, 'legacy candidate generation continues after best-effort fact failure');
+    assert.equal(first.unresolved, 1);
+    assert.match(problems[0]!, /^TERMINAL_VERIFIED_FACT_FAILED run=run_m3_retry: transient fact write failure$/u);
+    const second = reconciler.reconcileWorkspace(WS);
+    assert.equal(second.existing, 1, 'legacy Candidate remains idempotent');
+    assert.equal(second.unresolved, 0);
+    assert.equal(factsCalls.length, 2, 'M3 retries despite the legacy Candidate already existing');
+    for (const call of factsCalls) {
+      assert.equal(call.workspaceId, WS);
+      assert.equal(call.runId, 'run_m3_retry');
+      assert.equal(call.createdAt, NOW);
+      assert.deepEqual(call.eventContext, {
+        origin: 'persisted_event', eventId: 'evt_run_m3_retry',
+        context: { correlationId: 'corr_run_m3_retry', causationId: 'evt_run_m3_retry' },
+      });
+    }
+  } finally { fx.close(); }
+});
+
+test('M3 terminal accumulation respects workspace memoryEnabled while legacy reconciliation remains unchanged', () => {
+  const fx = fixture();
+  try {
+    applyVerifiedMemoryFacts046(fx);
+    fx.db.prepare('UPDATE workspaces SET memory_enabled=0 WHERE id=?').run(WS);
+    seedRun(fx, { runId: 'run_m3_disabled', status: 'completed' });
+    let providerCalls = 0;
+    const calls: RecordedCall[] = [];
+    const reconciler = new TerminalMemoryCandidateReconciler({
+      store: { getDatabase: () => fx.tdb },
+      generator: recordingGenerator(calls),
+      verifiedMemoryFacts: () => { providerCalls++; return { accumulateTerminal: () => [] }; },
+      now: () => NOW,
+    });
+
+    const outcome = reconciler.reconcileWorkspace(WS);
+    assert.equal(outcome.generated, 1);
+    assert.equal(calls.length, 1);
+    assert.equal(providerCalls, 0);
+  } finally { fx.close(); }
+});
+
+test('M3 terminal integration stays lazy on pre-046 stores and preserves legacy recovery', () => {
+  const fx = fixture();
+  try {
+    seedRun(fx, { runId: 'run_pre_046', status: 'completed' });
+    let providerCalls = 0;
+    const reconciler = new TerminalMemoryCandidateReconciler({
+      store: { getDatabase: () => fx.tdb },
+      generator: realGenerator(fx),
+      verifiedMemoryFacts: () => { providerCalls++; return { accumulateTerminal: () => [] }; },
+      now: () => NOW,
+    });
+
+    const outcome = reconciler.reconcileWorkspace(WS);
+    assert.equal(outcome.generated, 1);
+    assert.equal(providerCalls, 0, 'migration/schema check precedes lazy fact-service construction');
   } finally { fx.close(); }
 });

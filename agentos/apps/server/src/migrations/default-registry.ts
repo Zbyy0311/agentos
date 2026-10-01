@@ -43,6 +43,8 @@ import { migration042 } from './migrations/042-memory-turn-payloads.js';
 import { migration043 } from './migrations/043-memory-execution-contexts.js';
 import { migration044 } from './migrations/044-preference-confirmations.js';
 import { migration045 } from './migrations/045-memory-lifecycle-audit.js';
+import { migration046 } from './migrations/046-memory-verified-facts.js';
+import { migration047 } from './migrations/047-memory-version-feedback.js';
 import type { Migration } from './types.js';
 
 /**
@@ -136,4 +138,6 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration043,
   migration044,
   migration045,
+  migration046,
+  migration047,
 ];

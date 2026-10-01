@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useApi } from '@/lib/useApi';
+import { MemoryVersionFeedback } from './MemoryVersionFeedback';
 import {
   MEMORY_CONTEXT_KINDS,
   memoryContextsPath,
@@ -36,7 +37,7 @@ function Metadata({ label, value }: { readonly label: string; readonly value?: s
   return <div className="min-w-0"><dt className="ui-dim">{label}</dt><dd className="break-words ui-text-soft">{value ?? UNRECORDED}</dd></div>;
 }
 
-export function MemoryContextDetails({ context }: { readonly context: MemoryContextRecord }) {
+export function MemoryContextDetails({ context, workspaceId }: { readonly context: MemoryContextRecord; readonly workspaceId?: string }) {
   return (
     <article className="space-y-5" data-agentos="memory-context-details" data-context-id={context.id}>
       <header>
@@ -98,6 +99,7 @@ export function MemoryContextDetails({ context }: { readonly context: MemoryCont
                   {item.store ? <span className="font-normal ui-dim"> · {item.store}</span> : null}
                 </div>
                 <p className="mt-1 break-words text-xs leading-5 ui-dim">原因：{item.reasons.length > 0 ? item.reasons.join('、') : UNRECORDED}</p>
+                {workspaceId && <MemoryVersionFeedback workspaceId={workspaceId} context={context} selection={item} />}
               </li>
             ))}
           </ol>
@@ -202,7 +204,7 @@ export function MemoryContextHistory({ workspaceId }: MemoryContextHistoryProps)
         ) : contexts.length === 0 ? (
           <div className="rounded-xl border border-dashed ui-border p-6 text-sm ui-dim">暂无可查看的上下文使用记录。</div>
         ) : selected ? (
-          <MemoryContextDetails context={selected} />
+          <MemoryContextDetails context={selected} workspaceId={workspaceId} />
         ) : (
           <div className="rounded-xl border border-dashed ui-border p-6 text-sm ui-dim">从左侧选择一条上下文使用记录。</div>
         )}

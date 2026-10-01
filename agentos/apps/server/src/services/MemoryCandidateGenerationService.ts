@@ -68,6 +68,7 @@ export type TerminalGenerationOutcome =
 
 /** LITE-07-102: every terminal Run outcome produces one bounded fact. */
 const TERMINAL_RUN_STATUSES = ['completed', 'failed', 'cancelled'] as const;
+const GENERATE_INPUT_KEYS = new Set(['workspaceId', 'runId', 'createdAt', 'eventContext']);
 
 export interface GenerateForRunTerminalInput {
   readonly workspaceId: string;
@@ -128,7 +129,9 @@ export class MemoryCandidateGenerationService {
   }
 
   generateForRunTerminal(input: GenerateForRunTerminalInput): TerminalGenerationResult {
-    if (typeof input !== 'object' || input === null || !nonBlank(input.workspaceId)
+    if (typeof input !== 'object' || input === null || Array.isArray(input)
+      || Object.keys(input).some(key => !GENERATE_INPUT_KEYS.has(key))
+      || !nonBlank(input.workspaceId)
       || !nonBlank(input.runId) || !nonBlank(input.createdAt)) {
       throw new MemoryCandidateGenerationError('INPUT_INVALID');
     }

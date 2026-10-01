@@ -198,7 +198,8 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.get('/memory/entries/:entryId', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    const entry = entries.findById(workspace.id, req.params.entryId);
+    const entry = entries.findById(workspace.id, req.params.entryId)
+      ?? entries.listConfirmedGlobalPreferences(workspace.id).find(item => item.id === req.params.entryId);
     if (entry === undefined) { res.status(404).json({ error: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
     res.json({ entry });
   });

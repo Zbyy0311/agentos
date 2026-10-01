@@ -41,6 +41,9 @@ import { CollaborationApplyJournalService, type ApplyJournal } from './Collabora
 import type { CollaborationStageCompletionInput, CollaborationStagePreparation, CollaborationStagePreparationInput } from './CollaborationStageHooks.js';
 import type { CollaborationStageOutput } from '../store/CollaborationRepository.js';
 import { buildCollaborationReviewPrompt, validateCollaborationReview } from './CollaborationReviewProtocol.js';
+import { isTransactionActive } from '../store/Transaction.js';
+import type { VerifiedMemoryFact, VerifiedMemoryFactService } from './VerifiedMemoryFactService.js';
+import { COLLABORATION_ACCEPTANCE_RUNNER_VERSION } from './VerifiedMemoryFactService.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_OBJECTIVE_BYTES = 16 * 1024;
@@ -73,6 +76,10 @@ export interface CollaborationWorkflowServiceOptions {
   readonly releaseApplicationAdmission?: (input: { workspaceId: string; controlId: string }) => Promise<void>;
   /** Production explicitly supplies its existing Runtime dispatch feature flag. */
   readonly runtimeDispatchEnabled?: boolean;
+  /** Lazily supplied so old databases without migration 046 keep working. */
+  readonly verifiedMemoryFacts?: () => Pick<VerifiedMemoryFactService, 'accumulateTerminal'> | undefined;
+  /** Fact accumulation is best-effort and must never alter canonical Run completion. */
+  readonly onVerifiedMemoryFactProblem?: (detail: string) => void;
   /** Fault-injection seam only; production does not supply it. */
   readonly applyFault?: (point: 'before_prepare' | 'before_write' | 'after_write' | 'before_commit' | 'recovery') => void;
 }
@@ -252,6 +259,46 @@ export class CollaborationWorkflowService {
       return await preparation;
     } finally {
       if (this.reviewPreparations.get(key) === preparation) this.reviewPreparations.delete(key);
+    }
+  }
+
+  /**
+   * Best-effort post-commit hook for the canonical collaboration Run. Authority
+   * is re-derived from its durable terminal Event so callers cannot supply a
+   * model-authored or cross-Run event context. Reconciliation retries failures.
+   */
+  accumulateTerminal(input: { readonly workspaceId: string; readonly runId: string }): readonly VerifiedMemoryFact[] {
+    const db = this.options.store.getDatabase();
+    if (isTransactionActive(db) || !this.options.verifiedMemoryFacts) return [];
+    try {
+      if (!this.requireWorkspace(input.workspaceId).memoryEnabled || !hasVerifiedMemoryFactSchema(db)) return [];
+      const run = db.prepare(`SELECT r.task_id,r.status FROM runs r
+        JOIN collaboration_tasks c ON c.workspace_id=r.workspace_id AND c.canonical_run_id=r.id
+          AND c.canonical_task_id=r.task_id
+        WHERE r.workspace_id=? AND r.id=?`).get(input.workspaceId, input.runId) as
+        { task_id: string; status: string } | undefined;
+      if (!run || !['completed', 'failed', 'cancelled'].includes(run.status)) return [];
+      const eventType = run.status === 'completed' ? 'run.completed'
+        : run.status === 'failed' ? 'run.failed' : 'run.cancelled';
+      const event = db.prepare(`SELECT id,correlation_id,timestamp FROM runtime_events
+        WHERE workspace_id=? AND task_id=? AND run_id=? AND type=? AND durability='durable'
+          AND correlation_id<>'' ORDER BY sequence DESC LIMIT 1`).get(
+        input.workspaceId, run.task_id, input.runId, eventType,
+      ) as { id: string; correlation_id: string; timestamp: string } | undefined;
+      if (!event) return [];
+      return this.options.verifiedMemoryFacts()?.accumulateTerminal({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        createdAt: event.timestamp,
+        eventContext: {
+          origin: 'persisted_event', eventId: event.id,
+          context: { correlationId: event.correlation_id, causationId: event.id },
+        },
+      }) ?? [];
+    } catch (error) {
+      try { this.options.onVerifiedMemoryFactProblem?.(`COLLABORATION_MEMORY_FACT_FAILED run=${input.runId}: ${error instanceof Error ? error.message : String(error)}`); }
+      catch { /* telemetry must not affect terminal Run handling */ }
+      return [];
     }
   }
 
@@ -1069,7 +1116,9 @@ export class CollaborationWorkflowService {
       }
     }
     const afterTests = await captureCollaborationCandidateSnapshot(worktree, task.baseCommit, task.scope).catch(() => undefined);
-    const sourceChangedDuringTests = afterTests?.patchHash !== snapshot.patchHash;
+    const sourceChangedDuringTests = afterTests === undefined
+      || afterTests.patchHash !== snapshot.patchHash
+      || afterTests.headCommit !== snapshot.headCommit;
     if (sourceChangedDuringTests) output = `COLLABORATION_TEST_MUTATED_CANDIDATE: acceptance command changed candidate files; review is blocked.\n${output}`;
     const capture: CandidateCapture = {
       headCommit: snapshot.headCommit, diffText: snapshot.patch, diffHash: snapshot.patchHash,
@@ -1081,14 +1130,37 @@ export class CollaborationWorkflowService {
     try {
       return this.options.store.runInTransaction(() => {
         this.assertExecutionFence(task, runId);
-        return this.repository.createCandidate({
+        const createdAt = new Date().toISOString();
+        const candidate = this.repository.createCandidate({
       id: createEntityId('artifact'), collaborationTaskId: task.id, workspaceId: task.workspaceId,
       canonicalRunId: runId, round: task.reworkRound, baseCommit: task.baseCommit,
       headCommit: capture.headCommit, diffHash: capture.diffHash, diffText: capture.diffText,
       snapshotVersion: 2, manifest: capture.manifest, testStatus: capture.testStatus,
       testCommand: capture.testCommand, testExitCode: capture.testExitCode, testOutput: capture.testOutput,
-      status: 'created', createdAt: new Date().toISOString(),
+      status: 'created', createdAt,
         });
+        // Migration 046 is parent-registered. Keep candidate capture operational
+        // on older stores, and only attest the exact persisted, unchanged run.
+        if (this.requireWorkspace(task.workspaceId).memoryEnabled && !capture.sourceChangedDuringTests
+          && dbTableExists(this.options.store.getDatabase(), 'memory_test_runner_receipts')) {
+          const persisted = this.options.store.getDatabase().prepare(`SELECT head_commit,test_status,test_exit_code,test_output
+            FROM collaboration_candidates WHERE id=? AND workspace_id=? AND canonical_run_id=?`).get(
+            candidate.id, task.workspaceId, runId,
+          ) as { head_commit: string; test_status: string; test_exit_code: number | null; test_output: string | null } | undefined;
+          if (!persisted || !['passed', 'failed'].includes(persisted.test_status)
+            || typeof persisted.test_exit_code !== 'number' || !Number.isSafeInteger(persisted.test_exit_code)
+            || typeof persisted.test_output !== 'string') {
+            throw new Error('COLLABORATION_TEST_RECEIPT_SOURCE_INVALID');
+          }
+          this.options.store.getDatabase().prepare(`INSERT INTO memory_test_runner_receipts
+            (candidate_id,workspace_id,run_id,commit_id,result,exit_code,output_sha256,runner_version,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?)`).run(
+            candidate.id, candidate.workspaceId, candidate.canonicalRunId, persisted.head_commit,
+            persisted.test_status, persisted.test_exit_code, hash(persisted.test_output),
+            COLLABORATION_ACCEPTANCE_RUNNER_VERSION, createdAt,
+          );
+        }
+        return candidate;
       });
     } catch (cause) {
       const existing = this.repository.findCandidateForRun(task.workspaceId, task.id, runId);
@@ -1360,6 +1432,16 @@ export class CollaborationWorkflowService {
       }
     }
   }
+}
+
+function dbTableExists(db: ReturnType<SqliteStore['getDatabase']>, name: string): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name) !== undefined;
+}
+
+function hasVerifiedMemoryFactSchema(db: ReturnType<SqliteStore['getDatabase']>): boolean {
+  return dbTableExists(db, 'memory_verified_facts')
+    && dbTableExists(db, 'memory_test_runner_receipts')
+    && dbTableExists(db, 'memory_auto_accept_policy');
 }
 
 function progressRole(stageKey: string): CollaborationProgressRole {

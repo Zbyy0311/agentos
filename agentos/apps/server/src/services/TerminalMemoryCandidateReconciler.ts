@@ -1,6 +1,7 @@
 import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
+import type { VerifiedMemoryFactService } from './VerifiedMemoryFactService.js';
 
 /**
  * LITE-07-102 restart convergence.
@@ -25,7 +26,6 @@ import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js
  */
 
 const TERMINAL_RUN_STATUSES = ['completed', 'failed', 'cancelled'] as const;
-const TERMINAL_RUN_EVENT_TYPES = ['run.completed', 'run.failed', 'run.cancelled'] as const;
 
 /** Deterministic per-Run Candidate id; the generator owns the same value. */
 export function terminalCandidateId(runId: string): string {
@@ -54,6 +54,8 @@ export interface TerminalMemoryCandidateReconcilerOptions {
     }): { readonly outcome: string };
   };
   readonly candidates?: Pick<MemoryCandidateRepository, 'findCandidateById'>;
+  /** Evaluated only after workspace and migration checks, preserving old stores. */
+  readonly verifiedMemoryFacts?: () => Pick<VerifiedMemoryFactService, 'accumulateTerminal'> | undefined;
   readonly now?: () => string;
   /** Bounded per Workspace, so a first startup on a large store stays bounded. */
   readonly limitPerWorkspace?: number;
@@ -62,15 +64,19 @@ export interface TerminalMemoryCandidateReconcilerOptions {
 
 interface TerminalRunRow {
   readonly id: string;
+  readonly status: string;
+  readonly task_id: string;
 }
 
 interface TerminalEventRow {
   readonly id: string;
   readonly correlation_id: string;
+  readonly timestamp: string;
 }
 
 interface WorkspaceRow {
   readonly id: string;
+  readonly memory_enabled: number;
 }
 
 const DEFAULT_LIMIT_PER_WORKSPACE = 200;
@@ -82,6 +88,7 @@ export class TerminalMemoryCandidateReconciler {
   private readonly now: () => string;
   private readonly limitPerWorkspace: number;
   private readonly onProblem: (detail: string) => void;
+  private readonly verifiedMemoryFacts?: TerminalMemoryCandidateReconcilerOptions['verifiedMemoryFacts'];
 
   constructor(options: TerminalMemoryCandidateReconcilerOptions) {
     this.db = options.store.getDatabase();
@@ -90,11 +97,12 @@ export class TerminalMemoryCandidateReconciler {
     this.now = options.now ?? (() => new Date().toISOString());
     this.limitPerWorkspace = options.limitPerWorkspace ?? DEFAULT_LIMIT_PER_WORKSPACE;
     this.onProblem = options.onProblem ?? (() => undefined);
+    this.verifiedMemoryFacts = options.verifiedMemoryFacts;
   }
 
   reconcileOnStartup(): TerminalCandidateReconcileOutcome {
     const workspaces = this.db
-      .prepare('SELECT id FROM workspaces ORDER BY id')
+      .prepare('SELECT id,memory_enabled FROM workspaces ORDER BY id')
       .all() as WorkspaceRow[];
     let outcome: TerminalCandidateReconcileOutcome = {
       workspaces: 0, terminalRuns: 0, generated: 0, existing: 0, missingAuthority: 0, unresolved: 0,
@@ -106,24 +114,52 @@ export class TerminalMemoryCandidateReconciler {
   }
 
   reconcileWorkspace(workspaceId: string): TerminalCandidateReconcileOutcome {
+    const workspace = this.db.prepare('SELECT memory_enabled FROM workspaces WHERE id=?').get(workspaceId) as
+      { memory_enabled: number } | undefined;
     const runs = this.db.prepare(
-      'SELECT id FROM runs WHERE workspace_id = ? AND status IN (?, ?, ?) ORDER BY updated_at ASC, id ASC LIMIT ?',
+      'SELECT id,status,task_id FROM runs WHERE workspace_id = ? AND status IN (?, ?, ?) ORDER BY updated_at ASC, id ASC LIMIT ?',
     ).all(workspaceId, ...TERMINAL_RUN_STATUSES, this.limitPerWorkspace) as TerminalRunRow[];
 
     let outcome: TerminalCandidateReconcileOutcome = {
       workspaces: 1, terminalRuns: runs.length, generated: 0, existing: 0, missingAuthority: 0, unresolved: 0,
     };
     for (const run of runs) {
-      if (this.candidates.findCandidateById(workspaceId, terminalCandidateId(run.id)) !== undefined) {
-        outcome = { ...outcome, existing: outcome.existing + 1 };
-        continue;
-      }
+      const existing = this.candidates.findCandidateById(workspaceId, terminalCandidateId(run.id)) !== undefined;
+      const eventType = run.status === 'completed' ? 'run.completed'
+        : run.status === 'failed' ? 'run.failed' : 'run.cancelled';
       const event = this.db.prepare(
-        'SELECT id, correlation_id FROM runtime_events WHERE workspace_id = ? AND run_id = ? AND type IN (?, ?, ?) ORDER BY sequence DESC LIMIT 1',
-      ).get(workspaceId, run.id, ...TERMINAL_RUN_EVENT_TYPES) as TerminalEventRow | undefined;
+        `SELECT id,correlation_id,timestamp FROM runtime_events WHERE workspace_id=? AND task_id=? AND run_id=?
+          AND type=? AND durability='durable' AND correlation_id<>'' ORDER BY sequence DESC LIMIT 1`,
+      ).get(workspaceId, run.task_id, run.id, eventType) as TerminalEventRow | undefined;
       if (event === undefined || typeof event.correlation_id !== 'string' || event.correlation_id.length === 0) {
+        if (existing) {
+          // Preserve the legacy existing-Candidate result. M3 simply cannot
+          // replay without a durable event context.
+          outcome = { ...outcome, existing: outcome.existing + 1 };
+          continue;
+        }
         this.onProblem(`TERMINAL_CANDIDATE_NO_AUTHORITY run=${run.id} workspace=${workspaceId}`);
         outcome = { ...outcome, missingAuthority: outcome.missingAuthority + 1 };
+        continue;
+      }
+      const eventContext: RuntimeEventContextAuthoritySourceV1 = {
+        origin: 'persisted_event',
+        eventId: event.id,
+        context: { correlationId: event.correlation_id, causationId: event.id },
+      };
+      if (workspace?.memory_enabled === 1 && this.verifiedMemoryFacts && hasVerifiedMemoryFactSchema(this.db)) {
+        try {
+          this.verifiedMemoryFacts()?.accumulateTerminal({
+            workspaceId, runId: run.id, createdAt: event.timestamp, eventContext,
+          });
+        } catch (error) {
+          try { this.onProblem(`TERMINAL_VERIFIED_FACT_FAILED run=${run.id}: ${error instanceof Error ? error.message : String(error)}`); }
+          catch { /* reporting must not block legacy recovery */ }
+          outcome = { ...outcome, unresolved: outcome.unresolved + 1 };
+        }
+      }
+      if (existing) {
+        outcome = { ...outcome, existing: outcome.existing + 1 };
         continue;
       }
       try {
@@ -131,11 +167,7 @@ export class TerminalMemoryCandidateReconciler {
           workspaceId,
           runId: run.id,
           createdAt: this.now(),
-          eventContext: {
-            origin: 'persisted_event',
-            eventId: event.id,
-            context: { correlationId: event.correlation_id, causationId: event.id },
-          },
+          eventContext,
         });
         if (result.outcome === 'created' || result.outcome === 'converged') {
           outcome = { ...outcome, generated: outcome.generated + 1 };
@@ -154,6 +186,14 @@ export class TerminalMemoryCandidateReconciler {
     }
     return outcome;
   }
+}
+
+function hasVerifiedMemoryFactSchema(db: TransactionDatabase): boolean {
+  const exists = (name: string) => db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+  ).get(name) !== undefined;
+  return exists('memory_verified_facts') && exists('memory_test_runner_receipts')
+    && exists('memory_auto_accept_policy');
 }
 
 function sumOutcomes(
