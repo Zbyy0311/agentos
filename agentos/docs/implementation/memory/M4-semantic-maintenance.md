@@ -25,10 +25,13 @@ The old synchronous retrieval API remains available; it uses only fresh cached
 vectors. `POST /memory/retrieve/prepare` validates durable owners before warming
 the same filtered candidate set and returns status without exposing Entry text.
 
-New direct and group chat selections honor the current workspace memory switch
+New canonical Run/Stage, compatibility execution, direct and group chat selections
+honor the current workspace memory switch
 before retrieval and after asynchronous preparation. A disabled workspace freezes
 an empty payload with a `memory-disabled` strategy; replay retains its original
 frozen payload. Disabling memory during preparation cannot inject a new selection.
+Compatibility selection also rechecks after its legacy file retrieval completes.
+The production factories read the persisted workspace switch for each new call.
 
 The fixed corpus contains 80 Entries and 96 labeled queries: English, Chinese,
 terminology, paraphrases and 16 no-match cases. The production quality evaluator

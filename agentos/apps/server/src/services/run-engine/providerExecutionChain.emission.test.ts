@@ -10,7 +10,9 @@ import { createEntityId } from '../../store/Identity.js';
 import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
 import { SqliteStore } from '../../store/SqliteStore.js';
 import { MemoryContextResolver, MemoryContextResolverError } from '../MemoryContextResolver.js';
+import { SnapshotService, type ResolvedRunConfiguration } from '../SnapshotService.js';
 import { TaskRunService } from '../TaskRunService.js';
+import { WorkflowDefinitionResolver } from '../WorkflowDefinitionResolver.js';
 import { createProviderExecutionChain, type ProviderExecutionChain } from './providerExecutionChain.js';
 
 /**
@@ -90,7 +92,7 @@ interface SnapshotRow {
  * The existing route-fixture shape (operations.test.ts) plus the M4-P4
  * composition root under test and a real accepted `run.start` Operation.
  */
-function createFixture(): ChainFixture {
+function createFixture(options: { readonly canonicalStages?: boolean } = {}): ChainFixture {
   const root = mkdtempSync(join(tmpdir(), 'agentos-provider-chain-emission-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
@@ -104,7 +106,54 @@ function createFixture(): ChainFixture {
       readme: false,
       docs: false,
     });
-    const service = new TaskRunService(store);
+    // Bootstrap without creating the workspace memory files, then explicitly
+    // enable the authoritative persisted switch used by positive test cases.
+    const persistedWorkspace = store.workspaceRepo.findById(workspace.id);
+    assert.ok(persistedWorkspace);
+    store.workspaceRepo.update({
+      ...persistedWorkspace,
+      memoryEnabled: true,
+      updatedAt: NOW,
+    });
+    assert.equal(store.workspaceRepo.findById(workspace.id)?.memoryEnabled, true);
+    let service: TaskRunService;
+    if (options.canonicalStages) {
+      // The default unbound Run graph intentionally has no Stages. Give the
+      // switch cases the persisted legacy workflow's actual Stage scopes; no
+      // Provider is launched by this test.
+      const workflow = store.workflowDefinitionRepository().findLatestAvailableByKey('legacy-pipeline');
+      if (!workflow) {
+        throw new Error('legacy V2 workflow fixture is unavailable');
+      }
+      const workflowPayload = workflow.payload;
+      if (workflowPayload.schemaVersion !== 2) {
+        throw new Error('legacy V2 workflow fixture is unavailable');
+      }
+      const snapshotService = new SnapshotService({
+        workflowDefinitionResolver: new WorkflowDefinitionResolver(store.workflowDefinitionRepository()),
+        runSnapshotRepository: () => store.runSnapshotRepository(),
+        runStageRepository: () => store.runStageRepository(),
+        providerConfigurationRepository: () => store.providerConfigurationRepository(),
+        findAgentSnapshotSource: (workspaceId, agentId) => store.findAgentSnapshotSource(workspaceId, agentId),
+      });
+      snapshotService.resolveUnbound = (_workspaceId): ResolvedRunConfiguration => ({
+        workflow,
+        stages: workflowPayload.stages.map(stage => ({
+          workflowStageKey: stage.key,
+          name: stage.key,
+          sequence: stage.sequence,
+          dependsOn: [...stage.dependsOn],
+          agent: null,
+          provider: null,
+          runnerAgent: null,
+        })),
+        worktreeMode: workflowPayload.worktreeMode,
+        redactionApplied: false,
+      });
+      service = new TaskRunService(store, { snapshotService });
+    } else {
+      service = new TaskRunService(store);
+    }
     const task = service.createTask(workspace.id, { title: 'provider chain emission', createdBy: 'test' });
     const run = service.createRun(workspace.id, { taskId: task.id, createdBy: 'test' });
     const start = service.startRunOperationForV2(workspace.id, run.id);
@@ -208,6 +257,50 @@ function addActiveEntry(fx: ChainFixture): string {
     tokenEstimate: 12,
   });
   return entryId;
+}
+
+function setWorkspaceMemoryEnabled(fx: ChainFixture, memoryEnabled: boolean): void {
+  const workspace = fx.store.workspaceRepo.findById(fx.workspaceId);
+  assert.ok(workspace);
+  fx.store.workspaceRepo.update({
+    ...workspace,
+    memoryEnabled,
+    updatedAt: new Date().toISOString(),
+  });
+  assert.equal(fx.store.workspaceRepo.findById(fx.workspaceId)?.memoryEnabled, memoryEnabled);
+}
+
+function assertContextEmission(
+  fx: ChainFixture,
+  resolved: ReturnType<MemoryContextResolver['resolve']>,
+  selectedCount: number,
+  expectedMemoryEventCount: number,
+): void {
+  const db = fx.store.getDatabase();
+  const events = eventsOfType(db, 'memory.context_created');
+  assert.equal(events.length, expectedMemoryEventCount);
+  const event = events.at(-1);
+  assert.ok(event);
+  assert.equal(event.workspace_id, fx.workspaceId);
+  assert.equal(event.run_id, fx.runId);
+  assert.equal(event.correlation_id, fx.correlationId);
+  assert.equal(event.causation_id, fx.operationId);
+
+  const payload = JSON.parse(event.payload_json) as Record<string, unknown>;
+  assert.equal(payload.memoryContextId, resolved.snapshot.id);
+  assert.equal(payload.runId, fx.runId);
+  assert.equal(payload.selectedCount, selectedCount);
+
+  const outbox = outboxRowsForEvent(db, event.id);
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0]!.aggregate_type, 'run');
+  assert.equal(outbox[0]!.aggregate_id, fx.runId);
+
+  const persisted = db.prepare(
+    'SELECT context_text FROM memory_context_snapshot_payloads WHERE snapshot_id = ?',
+  ).get(resolved.snapshot.id) as { context_text: string } | undefined;
+  assert.ok(persisted);
+  assert.equal(persisted.context_text, resolved.contextText);
 }
 
 function assertResolverError(error: unknown, code: 'INPUT_INVALID' | 'SNAPSHOT_FAILED' | 'INJECTION_BLOCKED'): true {
@@ -387,5 +480,116 @@ test('MF5W-04 replaying the same input reuses the snapshot and appends no event'
     assert.equal(count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots'), snapshotCount);
     assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), eventCount);
     assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), outboxCount);
+  } finally { fx.close(); }
+});
+
+// MF5W-05 — the canonical persisted Workspace switch controls each NEW
+// Run/Stage scope, while frozen replay remains immutable across switch changes.
+test('MF5W-05 persisted workspace memory switch applies to new stage scopes and preserves replay', () => {
+  const fx = createFixture({ canonicalStages: true });
+  try {
+    const db = fx.store.getDatabase();
+    const stages = fx.store.runStageRepository().listByRun(fx.workspaceId, fx.runId);
+    assert.ok(stages.length >= 3, 'the canonical Run fixture must provide distinct persisted Stage scopes');
+    const originalStage = stages[0]!;
+    const disabledStage = stages[1]!;
+    const reenabledStage = stages[2]!;
+    const entryId = addActiveEntry(fx);
+    const resolver = fx.chain.memoryContextResolver;
+    const baselineEvents = count(db, 'SELECT COUNT(*) AS c FROM runtime_events');
+    const baselineOutbox = count(db, 'SELECT COUNT(*) AS c FROM outbox_messages');
+    const originalInput = {
+      workspaceId: fx.workspaceId,
+      runId: fx.runId,
+      stageId: originalStage.id,
+      createdAt: NOW,
+      eventContext: eventContextFor(fx),
+    } as const;
+
+    assert.equal(fx.store.workspaceRepo.findById(fx.workspaceId)?.memoryEnabled, true);
+    const original = resolver.resolve(originalInput);
+    assert.equal(original.reused, false);
+    assert.equal(original.snapshot.stageId, originalStage.id);
+    assert.deepEqual(original.snapshot.selected.map(selected => selected.memoryId), [entryId]);
+    assert.ok(original.contextText.includes(ENTRY_TEXT), original.contextText);
+    assert.ok(original.snapshot.totalTokens > 0);
+    assertContextEmission(fx, original, 1, 1);
+    const originalVersion = original.snapshot.retrievalStrategyVersion;
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), baselineEvents + 1);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), baselineOutbox + 1);
+
+    setWorkspaceMemoryEnabled(fx, false);
+    const disabled = resolver.resolve({ ...originalInput, stageId: disabledStage.id });
+    assert.equal(disabled.reused, false);
+    assert.equal(disabled.snapshot.stageId, disabledStage.id);
+    assert.deepEqual(disabled.snapshot.selected, []);
+    assert.equal(disabled.contextText, '');
+    assert.equal(disabled.snapshot.totalTokens, 0);
+    assert.equal(disabled.snapshot.retrievalStrategyVersion, 'mf3-ranking-v1+memory-disabled');
+    assertContextEmission(fx, disabled, 0, 2);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots'), 2);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), baselineEvents + 2);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), baselineOutbox + 2);
+
+    // Switch changes cannot rewrite the already-frozen original Stage payload.
+    const beforeReplayEvents = count(db, 'SELECT COUNT(*) AS c FROM runtime_events');
+    const beforeReplayOutbox = count(db, 'SELECT COUNT(*) AS c FROM outbox_messages');
+    const beforeReplaySnapshots = count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots');
+    const replay = resolver.resolve(originalInput);
+    assert.equal(replay.reused, true);
+    assert.equal(replay.snapshot.id, original.snapshot.id);
+    assert.equal(replay.contextText, original.contextText);
+    assert.equal(replay.snapshot.retrievalStrategyVersion, originalVersion);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), beforeReplayEvents);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), beforeReplayOutbox);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots'), beforeReplaySnapshots);
+
+    setWorkspaceMemoryEnabled(fx, true);
+    const reenabled = resolver.resolve({ ...originalInput, stageId: reenabledStage.id });
+    assert.equal(reenabled.reused, false);
+    assert.equal(reenabled.snapshot.stageId, reenabledStage.id);
+    assert.deepEqual(reenabled.snapshot.selected.map(selected => selected.memoryId), [entryId]);
+    assert.ok(reenabled.contextText.includes(ENTRY_TEXT), reenabled.contextText);
+    assert.ok(reenabled.snapshot.totalTokens > 0);
+    assert.equal(reenabled.snapshot.retrievalStrategyVersion, originalVersion);
+    assertContextEmission(fx, reenabled, 1, 3);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots'), 3);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), baselineEvents + 3);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), baselineOutbox + 3);
+  } finally { fx.close(); }
+});
+
+// MF5W-06 — a Workspace disabled before its first scope is frozen gets a
+// durable empty context and never selects the available Entry for injection.
+test('MF5W-06 a workspace disabled before its first stage scope freezes no memory', () => {
+  const fx = createFixture({ canonicalStages: true });
+  try {
+    const db = fx.store.getDatabase();
+    const stage = fx.store.runStageRepository().listByRun(fx.workspaceId, fx.runId)[0];
+    assert.ok(stage, 'the canonical Run fixture must provide a persisted Stage');
+    addActiveEntry(fx);
+    setWorkspaceMemoryEnabled(fx, false);
+    const baselineEvents = count(db, 'SELECT COUNT(*) AS c FROM runtime_events');
+    const baselineOutbox = count(db, 'SELECT COUNT(*) AS c FROM outbox_messages');
+
+    const resolved = fx.chain.memoryContextResolver.resolve({
+      workspaceId: fx.workspaceId,
+      runId: fx.runId,
+      stageId: stage.id,
+      createdAt: NOW,
+      eventContext: eventContextFor(fx),
+    });
+
+    assert.equal(resolved.reused, false);
+    assert.equal(resolved.snapshot.stageId, stage.id);
+    assert.deepEqual(resolved.snapshot.selected, []);
+    assert.equal(resolved.contextText, '');
+    assert.equal(resolved.snapshot.totalTokens, 0);
+    assert.equal(resolved.snapshot.retrievalStrategyVersion, 'mf3-ranking-v1+memory-disabled');
+    assert.equal(resolved.contextText.includes(ENTRY_TEXT), false);
+    assertContextEmission(fx, resolved, 0, 1);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM memory_context_snapshots'), 1);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM runtime_events'), baselineEvents + 1);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM outbox_messages'), baselineOutbox + 1);
   } finally { fx.close(); }
 });

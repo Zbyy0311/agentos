@@ -425,3 +425,49 @@ test('concurrent prepared replays share one original snapshot and subsequent rep
     assert.equal(calls, previousCalls);
   } finally { fx.close(); }
 });
+
+test('new canonical scopes check the current workspace switch before retrieval and after preparation', async () => {
+  const fx = fixture();
+  try {
+    const memoryId = addEntry(fx);
+    let enabled = false;
+    let calls = 0;
+    const selector = new MemoryContextBudgetSelector(fx.retrieval, fx.snapshots);
+    const resolver = new MemoryContextResolver({
+      store: { getDatabase: () => fx.db as unknown as TransactionDatabase },
+      selector, snapshots: fx.snapshots, isMemoryEnabled: () => enabled,
+    });
+    const original = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    fx.retrieval.retrievePrepared = async input => { calls += 1; return original(input); };
+    fx.retrieval.retrieveWithStatus = () => { throw new Error('disabled synchronous retrieval must not run'); };
+    const disabledSync = resolver.resolve(resolveInput({ stageId: 'disabled-sync' }));
+    assert.equal(disabledSync.contextText, '');
+    assert.equal(disabledSync.snapshot.totalTokens, 0);
+    assert.match(disabledSync.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const disabledPrepared = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-prepared' }));
+    assert.deepEqual(disabledPrepared.snapshot.selected, []);
+    assert.equal(calls, 0);
+
+    enabled = true;
+    const first = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.deepEqual(first.snapshot.selected.map(row => row.memoryId), [memoryId]);
+    const firstBody = first.contextText;
+    fx.retrieval.retrievePrepared = async input => {
+      calls += 1;
+      const result = await original(input);
+      enabled = false;
+      return result;
+    };
+    const disabledAfterAwait = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-after-await' }));
+    assert.equal(disabledAfterAwait.contextText, '');
+    assert.equal(disabledAfterAwait.snapshot.totalTokens, 0);
+    assert.deepEqual(disabledAfterAwait.snapshot.selected, []);
+    assert.match(disabledAfterAwait.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const beforeReplay = calls;
+    const replay = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, firstBody);
+    assert.equal(calls, beforeReplay);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), firstBody);
+  } finally { fx.close(); }
+});

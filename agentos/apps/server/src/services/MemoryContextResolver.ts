@@ -13,7 +13,9 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import {
   MemoryContextBudgetSelector,
   RETRIEVAL_STRATEGY_VERSION_V1,
+  hashRetrievalQuery,
   type SelectMemoryContextInput,
+  type PlannedMemoryContextSnapshot,
 } from './MemoryContextBudgetSelector.js';
 import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
 
@@ -109,6 +111,8 @@ export interface MemoryContextResolverOptions {
    * share one transaction and one rollback boundary.
    */
   readonly emitter?: MemoryRuntimeEventEmitter;
+  /** Current workspace switch for new selections; frozen replay is unchanged. */
+  readonly isMemoryEnabled?: (workspaceId: string) => boolean;
 }
 
 export class MemoryContextResolver {
@@ -116,6 +120,7 @@ export class MemoryContextResolver {
   private readonly selector: MemoryContextBudgetSelector;
   private readonly createSnapshotId: (input: ResolveRunMemoryContextInput) => string;
   private readonly emitter: MemoryRuntimeEventEmitter | undefined;
+  private readonly isMemoryEnabled: (workspaceId: string) => boolean;
 
   constructor(options: MemoryContextResolverOptions) {
     const db = options.store.getDatabase();
@@ -124,6 +129,7 @@ export class MemoryContextResolver {
     this.createSnapshotId = options.createSnapshotId
       ?? (input => `mctx_${input.runId}_${input.stageId ?? 'run'}_${RETRIEVAL_STRATEGY_VERSION_V1}`);
     this.emitter = options.emitter;
+    this.isMemoryEnabled = options.isMemoryEnabled ?? (() => true);
   }
 
   /**
@@ -172,7 +178,9 @@ export class MemoryContextResolver {
 
     let snapshot: MemoryContextSnapshotRecord;
     try {
-      if (this.emitter === undefined) {
+      if (!this.isMemoryEnabled(input.workspaceId)) {
+        snapshot = this.persistPlan(this.disabledPlan(selection), input);
+      } else if (this.emitter === undefined) {
         snapshot = this.selector.select(selection).snapshot;
       } else {
         snapshot = this.emitter.emitContextCreated({
@@ -232,25 +240,60 @@ export class MemoryContextResolver {
 
     let snapshot: MemoryContextSnapshotRecord;
     try {
-      const planned = await this.selector.planPrepared(selection);
+      const planned = this.isMemoryEnabled(input.workspaceId)
+        ? await this.selector.planPrepared(selection)
+        : this.disabledPlan(selection);
       // A concurrent replay may freeze this scope while preparation awaits.
       const raced = this.findExisting(input);
       if (raced !== undefined) return { snapshot: raced, contextText: this.assemble(raced), reused: true };
-      if (this.emitter === undefined) {
-        snapshot = this.snapshots.createSnapshot(planned.snapshotInput);
-      } else {
-        snapshot = this.emitter.emitContextCreated({
-          ...planned.snapshotInput,
-          eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1,
-          timestamp: input.createdAt,
-        }).record;
-      }
+      snapshot = this.persistPlan(
+        this.isMemoryEnabled(input.workspaceId) ? planned : this.disabledPlan(selection),
+        input,
+      );
     } catch {
       throw new MemoryContextResolverError('SNAPSHOT_FAILED');
     }
     const persistedText = this.snapshots.readContextText(snapshot.workspaceId, snapshot.id);
     if (persistedText === undefined) throw new MemoryContextResolverError('SNAPSHOT_FAILED');
     return { snapshot, contextText: persistedText, reused: false };
+  }
+
+  private disabledPlan(input: SelectMemoryContextInput): PlannedMemoryContextSnapshot {
+    return {
+      contextText: '',
+      snapshotInput: {
+        id: input.snapshotId,
+        workspaceId: input.retrieval.context.workspaceId,
+        agentId: input.agentId,
+        taskId: input.taskId,
+        runId: input.retrieval.context.runId as string,
+        stageId: input.stageId,
+        providerConfigId: input.providerConfigId,
+        queryHash: hashRetrievalQuery(input.retrieval),
+        retrievalStrategyVersion: `${RETRIEVAL_STRATEGY_VERSION_V1}+memory-disabled`,
+        budget: input.budget,
+        totalTokens: 0,
+        truncated: false,
+        retrievalDegraded: false,
+        contextText: '',
+        createdAt: input.createdAt,
+        selected: [],
+        exclusions: [],
+      },
+    };
+  }
+
+  private persistPlan(
+    planned: PlannedMemoryContextSnapshot,
+    input: ResolveRunMemoryContextInput,
+  ): MemoryContextSnapshotRecord {
+    return this.emitter === undefined
+      ? this.snapshots.createSnapshot(planned.snapshotInput)
+      : this.emitter.emitContextCreated({
+        ...planned.snapshotInput,
+        eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1,
+        timestamp: input.createdAt,
+      }).record;
   }
 
   /**

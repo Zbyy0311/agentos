@@ -207,7 +207,11 @@ test('disabled memory prevents both real retrievers from running', async () => {
     fx.retrieval.retrieveWithStatus = input => { calls += 1; return retrieve(input); };
     fx.legacy.search = async (...args) => { calls += 1; return search(...args); };
     const result = await fx.builder.build(fx.input({ memoryEnabled: false }));
-    assert.deepEqual(result, { context: '', usages: [], entryUsages: [] });
+    assert.equal(result.context, '');
+    assert.deepEqual(result.usages, []);
+    assert.deepEqual(result.entryUsages, []);
+    assert.deepEqual(result.selection?.selected, []);
+    assert.match(result.selection?.retrievalStrategyVersion ?? '', /memory-disabled/);
     assert.equal(calls, 0);
   } finally { fx.close(); }
 });
@@ -279,6 +283,56 @@ test('canonical conversation retrieval awaits semantic preparation and surfaces 
     assert.equal(result.retrievalDegraded, true);
     assert.equal(result.retrievalDegradedReason, 'CACHE_MISS');
     assert.match(result.selection?.retrievalStrategyVersion ?? '', /semantic-fallback:CACHE_MISS/);
+  } finally { fx.close(); }
+});
+
+test('a current workspace switch blocks compatibility retrieval and rechecks both asynchronous sources', async () => {
+  const fx = fixture();
+  try {
+    fx.addEntry();
+    await fx.addLegacy();
+    let enabled = false;
+    let preparedCalls = 0;
+    let legacyCalls = 0;
+    const prepare = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    const search = fx.legacy.search.bind(fx.legacy);
+    const builder = new RunContextBuilder(fx.legacy, fx.retrieval, () => enabled);
+    fx.retrieval.retrievePrepared = async input => { preparedCalls += 1; return prepare(input); };
+    fx.legacy.search = async (...args) => { legacyCalls += 1; return search(...args); };
+
+    const initiallyDisabled = await builder.build(fx.input());
+    assert.equal(initiallyDisabled.context, '');
+    assert.equal(preparedCalls, 0);
+    assert.equal(legacyCalls, 0);
+
+    enabled = true;
+    fx.retrieval.retrievePrepared = async input => {
+      preparedCalls += 1;
+      const result = await prepare(input);
+      enabled = false;
+      return result;
+    };
+    const disabledDuringPreparation = await builder.build(fx.input());
+    assert.equal(disabledDuringPreparation.context, '');
+    assert.deepEqual(disabledDuringPreparation.entryUsages, []);
+    assert.deepEqual(disabledDuringPreparation.selection?.selected, []);
+    assert.match(disabledDuringPreparation.selection?.retrievalStrategyVersion ?? '', /memory-disabled/);
+    assert.equal(legacyCalls, 0, 'disabled preparation must not proceed to legacy retrieval');
+
+    enabled = true;
+    fx.retrieval.retrievePrepared = prepare;
+    fx.legacy.search = async (...args) => {
+      legacyCalls += 1;
+      const result = await search(...args);
+      enabled = false;
+      return result;
+    };
+    const disabledDuringLegacy = await builder.build(fx.input());
+    assert.equal(disabledDuringLegacy.context, '');
+    assert.deepEqual(disabledDuringLegacy.usages, []);
+    assert.deepEqual(disabledDuringLegacy.entryUsages, []);
+    assert.deepEqual(disabledDuringLegacy.selection?.selected, []);
+    assert.equal(legacyCalls, 1);
   } finally { fx.close(); }
 });
 

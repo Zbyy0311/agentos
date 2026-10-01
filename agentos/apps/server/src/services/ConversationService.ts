@@ -156,7 +156,10 @@ export class ConversationService {
       store.getDatabase(),
       memoryRetrievalRuntimeConfigFromEnvironment(),
     );
-    this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store), memoryRetrieval.retrieval);
+    this.contextBuilder = new RunContextBuilder(
+      new MemoryRetriever(store), memoryRetrieval.retrieval,
+      workspaceId => store.workspaceRepo.findById(workspaceId)?.memoryEnabled === true,
+    );
     this.preferenceService = preferenceService ?? new PreferenceService(store);
     this.runStepService = new RunStepService(store, eventBus);
     this.runDecisionService = new RunDecisionService(store);
@@ -1328,6 +1331,9 @@ export class ConversationService {
         queryHash: context?.selection?.queryHash ?? createHash('sha256').update('').digest('hex'),
         selected: context?.selection?.selected ?? [], exclusions: context?.selection?.exclusions ?? [],
         truncated: context?.selection?.truncated ?? false, retrievalDegraded: context?.retrievalDegraded ?? false,
+        retrievalStrategyVersion: context?.selection?.retrievalStrategyVersion === undefined
+          ? 'compat-memory.v2'
+          : `compat-memory.v2+${context.selection.retrievalStrategyVersion}`,
         createdAt: execution.createdAt,
       }).contextText;
     } catch (error) {

@@ -162,6 +162,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
       new MemoryContextSnapshotRepository(store.getDatabase()),
     ),
     emitter: memoryEventEmitter,
+    isMemoryEnabled: workspaceId => store.workspaceRepo.findById(workspaceId)?.memoryEnabled === true,
   });
   // LITE-07-102: ONE generator instance serves both the dispatch-time trigger
   // and the startup sweep, so a Run can never receive two different facts for

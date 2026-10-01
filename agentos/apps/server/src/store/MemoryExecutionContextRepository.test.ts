@@ -49,3 +49,20 @@ test('unsafe payload or aborted parent transaction leaves no partial execution c
     assert.equal(fx.repo.findForExecution('w','e'),undefined);
   } finally {fx.db.close();}
 });
+
+test('execution context preserves an explicit retrieval fallback strategy and rejects unsafe strategy metadata',()=>{
+  const fx=fixture();
+  try {
+    for (const strategy of ['secret token=private-value', '', 'x'.repeat(201)]) {
+      assert.throws(()=>fx.repo.freeze({...fx.input,retrievalStrategyVersion:strategy}),/INPUT_INVALID/);
+      assert.equal(fx.repo.findForExecution('w','e'),undefined);
+    }
+    const strategy='compat-memory.v2+mf3-ranking-v1+semantic-fallback:REMOTE_TIMEOUT';
+    const frozen=fx.repo.freeze({...fx.input,retrievalStrategyVersion:strategy,retrievalDegraded:true});
+    assert.equal(frozen.retrievalStrategyVersion,strategy);
+    assert.equal(frozen.retrievalDegraded,true);
+    const replay=fx.repo.freeze({...fx.input,retrievalStrategyVersion:'compat-memory.v2+memory-disabled'});
+    assert.equal(replay.retrievalStrategyVersion,strategy);
+    assert.equal(replay.contextText,frozen.contextText);
+  } finally {fx.db.close();}
+});
