@@ -108,6 +108,11 @@ function sourceMatchesAssertion(source, assertion) {
 function readSourceForAssertion(repositoryRoot, baseline, assertion, label) {
   const historical = readSourceAtCommit(repositoryRoot, baseline, assertion.file, label);
   if (sourceMatchesAssertion(historical, assertion)) return historical;
+  // Final Lite captures include tests finalized after their production baseline.
+  // PR #192 is the unchanged source checkpoint for those original receipts.
+  // Validate the exact recorded line and test, never remap to a moved assertion.
+  const frozenTests = readSourceAtCommit(repositoryRoot, '553aea5deaeebb7e3f90af3da9384090768859cb', assertion.file, label);
+  if (sourceMatchesAssertion(frozenTests, assertion)) return frozenTests;
   return readFileSync(existingPath(repositoryRoot, assertion.file, label), 'utf8');
 }
 
