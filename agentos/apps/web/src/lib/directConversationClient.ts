@@ -8,7 +8,7 @@
  * No secret value is ever sent or stored.
  */
 
-import type { AgentCapability, RunIntent, ThinkingEffort } from '@agentos/shared';
+import type { AgentCapability, ConversationAttachment, RunIntent, ThinkingEffort } from '@agentos/shared';
 
 export interface ConversationRuntimeError extends Error {
   readonly status: number;
@@ -16,11 +16,14 @@ export interface ConversationRuntimeError extends Error {
 
 export interface ForwardConversation {
   readonly id: string;
+  readonly workspaceId?: string;
   readonly kind: string;
   readonly title: string;
   readonly status: string;
   readonly version: number;
   readonly settingsVersion?: number;
+  readonly createdAt?: string;
+  readonly updatedAt?: string;
 }
 
 export interface ForwardAgent {
@@ -54,7 +57,9 @@ export interface ForwardConversationMember {
 }
 
 export interface GroupMemberSettingsUpdate {
-  readonly memberId: string;
+  /** Existing clients may address a member by stable row id or Agent id. */
+  readonly memberId?: string;
+  readonly agentId?: string;
   readonly roleTitle?: string | null;
   readonly model?: string | null;
   readonly thinkingEffort?: ThinkingEffort | null;
@@ -70,8 +75,11 @@ export interface ForwardMessage {
   readonly senderAgentId: string | null;
   readonly status: string;
   readonly content: string;
+  readonly attachments?: readonly ConversationAttachment[];
   readonly taskId: string | null;
   readonly runId: string | null;
+  readonly createdAt?: string;
+  readonly updatedAt?: string;
 }
 
 export interface ForwardTurn {
@@ -113,6 +121,12 @@ export function directConversationClient(options: DirectConversationClientOption
       `/api/workspaces/${encodeURIComponent(options.workspaceId)}/agents`,
     ),
     listConversations: () => apiFetch<{ conversations: ForwardConversation[] }>(base, '/conversations'),
+    updateConversation: (conversationId: string, body: Record<string, unknown>) =>
+      apiFetch<{ conversation: ForwardConversation }>(base, `/conversations/${encodeURIComponent(conversationId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }),
+    archiveConversation: (conversationId: string, expectedVersion: number) =>
+      jsonPost(`/conversations/${encodeURIComponent(conversationId)}/archive`, { expectedVersion }) as Promise<{ conversation: ForwardConversation }>,
     listMembers: (conversationId: string) =>
       apiFetch<{ members: ForwardConversationMember[] }>(base, `/conversations/${encodeURIComponent(conversationId)}/members`),
     updateGroupMemberSettings: (
@@ -131,6 +145,10 @@ export function directConversationClient(options: DirectConversationClientOption
       jsonPost(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
         content, ...(clientMessageId === undefined ? {} : { clientMessageId }),
       }) as Promise<{ message: ForwardMessage }>,
+    createDiscussion: (conversationId: string, body: Record<string, unknown>) =>
+      jsonPost(`/conversations/${encodeURIComponent(conversationId)}/discussions`, body) as Promise<{ message: ForwardMessage; interaction: { id: string; conversationId: string; sourceMessageId: string | null; status: string; version: number; maxAgentsPerTurn: number; maxRepliesPerAgent: number; maxTotalReplies: number; maxAgentHops: number; replyCount: number; hopCount: number; stopReason: string | null; loopGuardSignal: string | null } }>,
+    listInteractions: (conversationId: string) =>
+      apiFetch<{ interactions: Array<{ id: string; conversationId: string; sourceMessageId: string | null; status: string; version: number; maxAgentsPerTurn: number; maxRepliesPerAgent: number; maxTotalReplies: number; maxAgentHops: number; replyCount: number; hopCount: number; stopReason: string | null; loopGuardSignal: string | null }> }>(base, `/conversations/${encodeURIComponent(conversationId)}/interactions`),
     /**
      * The reply stream (SSE). Returns the raw Response; the controller consumes it.
      * Not OK responses throw before the stream is read.

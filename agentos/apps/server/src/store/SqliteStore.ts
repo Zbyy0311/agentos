@@ -1339,7 +1339,7 @@ export class SqliteStore implements Store {
       FROM message_attachments
       WHERE workspace_id = ? AND id = ?
     `).get(workspaceId, attachmentId) as MessageAttachmentRow | undefined;
-    return row ? this.toStoredAttachment(row) : undefined;
+    return row ? this.toStoredAttachment(row) : this.conversationRepository().getStoredMessageAttachment(workspaceId, attachmentId);
   }
 
   listConversationAttachments(workspaceId: string, conversationId: string): StoredConversationAttachment[] {
@@ -3134,7 +3134,7 @@ export class SqliteStore implements Store {
       workspace.id,
       `${agent.name} Provider`,
       providerConfigurationType(agent),
-      `builtin.${agent.role}`,
+      `builtin.${providerConfigurationType(agent) === 'custom-cli' ? agent.role : providerConfigurationType(agent)}`,
       agent.cliCommand,
       JSON.stringify(agent.cliArgs),
       agent.model ?? null,

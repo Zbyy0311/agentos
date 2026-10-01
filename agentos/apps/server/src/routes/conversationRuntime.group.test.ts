@@ -64,26 +64,96 @@ async function seedConversation(baseUrl: string): Promise<{ conversationId: stri
   return { conversationId: conversation.id, messageId: message.id };
 }
 
-test('bounded group interaction: create, reply, budget status, stop', async () => {
+for (let repetition = 1; repetition <= 3; repetition += 1) {
+  test(`F27 empty speaker plan ends durably and permits the next HTTP discussion (${repetition}/3)`, async () => {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'group', replyMode: 'manual', memberAgentIds: ['codex', 'kimi'] });
+      assert.equal(created.status, 201);
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+      const budget = { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 };
+      const sent = await postJson(`${baseUrl}/conversations/${conversationId}/discussions`, { content: 'No named participant', clientMessageId: 'empty-first', budget });
+      assert.equal(sent.status, 201);
+      const pair = sent.json as { message: { id: string }; interaction: { id: string } };
+      const respondUrl = `${baseUrl}/conversations/${conversationId}/interactions/${pair.interaction.id}/respond`;
+      const response = await fetch(respondUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceMessageId: pair.message.id }) });
+      assert.equal(response.status, 200);
+      const stream = await response.text();
+      assert.match(stream, /"endedBy":"no-speakers"/);
+      const followUp = await postJson(`${baseUrl}/conversations/${conversationId}/discussions`, { content: 'Next source', clientMessageId: 'empty-second', budget });
+      assert.equal(followUp.status, 201, JSON.stringify(followUp.json));
+      const interaction = store.boundedGroupService().findInteraction('workspace-a', pair.interaction.id)!;
+      assert.equal(interaction.status, 'completed');
+      assert.equal(interaction.replyCount, 0);
+      const owner = store.groupInteractionRepository().findExecutionOwner('workspace-a', pair.interaction.id)!;
+      assert.equal(owner.status, 'completed');
+      assert.equal(owner.terminalReason, 'no-speakers');
+      assert.deepEqual(owner.participantAgentIds, []);
+      const events = store.boundedGroupService().listExecutionEvents('workspace-a', conversationId, pair.interaction.id, 0);
+      assert.deepEqual(events.map(event => event.eventType), ['group.claimed', 'group.plan', 'group.done']);
+      assert.equal(store.agentTurnRepository().listTurnsByConversation('workspace-a', conversationId).length, 0);
+      assert.equal(store.groupInteractionRepository().listReplies(pair.interaction.id).length, 0);
+      const duplicate = await postJson(respondUrl, { sourceMessageId: pair.message.id });
+      assert.equal(duplicate.status, 409);
+      assert.equal((duplicate.json as { error: string }).error, 'GROUP_INTERACTION_TERMINATED');
+      assert.equal(store.boundedGroupService().listExecutionEvents('workspace-a', conversationId, pair.interaction.id, 0).length, events.length);
+    });
+  });
+}
+
+for (let repetition = 1; repetition <= 3; repetition += 1) {
+  test(`F10 interrupted and already owned discussions reject before SSE headers and zero replay (${repetition}/3)`, async () => {
+    await withServer(async (baseUrl, store) => {
+      const { conversationId, messageId } = await seedConversation(baseUrl);
+      const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+        budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 }, sourceMessageId: messageId,
+      });
+      const interaction = (created.json as { interaction: { id: string } }).interaction;
+      store.boundedGroupService().claimExecution({ workspaceId: 'workspace-a', conversationId, interactionId: interaction.id,
+        sourceMessageId: messageId, participantAgentIds: ['codex', 'kimi'], ownerId: 'fixture-owner', createdAt: new Date().toISOString() });
+      const before = store.groupInteractionRepository().findExecutionOwner('workspace-a', interaction.id);
+      for (const interrupted of [false, true]) {
+        if (interrupted) {
+          store.getDatabase().prepare("UPDATE cr_group_interaction_executions SET status='interrupted' WHERE interaction_id=?").run(interaction.id);
+          store.getDatabase().prepare("UPDATE cr_group_interactions SET integrity_status='unusable',integrity_reason='execution-owner-unknown-after-restart' WHERE id=?").run(interaction.id);
+        }
+        const response = await fetch(`${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceMessageId: messageId }),
+        });
+        const text = await response.text();
+        assert.equal(response.status, 409, text);
+        const refusal = JSON.parse(text) as { error: string };
+        assert.equal(refusal.error, interrupted ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED');
+        const after = store.groupInteractionRepository().findExecutionOwner('workspace-a', interaction.id);
+        assert.equal(after?.ownerEpoch, before?.ownerEpoch);
+        assert.equal(store.agentTurnRepository().listTurnsByConversation('workspace-a', conversationId).length, 0);
+        assert.equal(store.groupInteractionRepository().listReplies(interaction.id).length, 0);
+      }
+    });
+  });
+}
+
+test('bounded group interaction: freeze source, reject ledger-only replies, inspect budget, stop', async () => {
   await withServer(async (baseUrl, store) => {
     const { conversationId, messageId } = await seedConversation(baseUrl);
     const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
       budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 },
+      sourceMessageId: messageId,
     });
     assert.equal(created.status, 201);
     const interaction = (created.json as { interaction: { id: string; status: string } }).interaction;
     assert.equal(interaction.status, 'active');
 
     const reply = await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'codex', messageId, content: 'reply one' });
-    assert.equal(reply.status, 201);
+    assert.equal(reply.status, 409);
+    assert.equal((reply.json as { error: string }).error, 'GROUP_REPLY_FINALIZATION_REQUIRED');
 
     const read = await fetch(`${baseUrl}/interactions/${interaction.id}`).then(r => r.json()) as {
       budget: { repliesUsed: number; repliesRemaining: number; distinctAgents: number };
       replies: unknown[];
     };
-    assert.equal(read.budget.repliesUsed, 1);
-    assert.equal(read.budget.repliesRemaining, 2);
-    assert.equal(read.replies.length, 1);
+    assert.equal(read.budget.repliesUsed, 0);
+    assert.equal(read.budget.repliesRemaining, 3);
+    assert.equal(read.replies.length, 0);
 
     const current = store.boundedGroupService().findInteraction('workspace-a', interaction.id);
     const stopped = await postJson(`${baseUrl}/interactions/${interaction.id}/stop`, { expectedVersion: current!.version });
@@ -92,37 +162,89 @@ test('bounded group interaction: create, reply, budget status, stop', async () =
 
     const afterStop = await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'kimi', messageId, content: 'late' });
     assert.equal(afterStop.status, 409);
-    assert.equal((afterStop.json as { error: string }).error, 'GROUP_INTERACTION_TERMINATED');
+    assert.equal((afterStop.json as { error: string }).error, 'GROUP_REPLY_FINALIZATION_REQUIRED');
   });
 });
 
-test('budget exhaustion and loop guard return the stable reason via HTTP', async () => {
-  await withServer(async (baseUrl) => {
+test('budget=1 respond commits one final reply and returns the stable exhaustion reason via HTTP', async () => {
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl) => {
     const { conversationId, messageId } = await seedConversation(baseUrl);
     const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
       budget: { maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1, maxAgentHops: 2 },
+      sourceMessageId: messageId,
     });
     const interaction = (created.json as { interaction: { id: string } }).interaction;
-    await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'codex', messageId, content: 'only one' });
-    const exceeded = await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'kimi', messageId, content: 'over the cap' });
-    assert.equal(exceeded.status, 409);
-    assert.equal((exceeded.json as { error: string }).error, 'GROUP_INTERACTION_TERMINATED');
-  });
+    const response = await fetch(`${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceMessageId: messageId }),
+    });
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /event: group\.done/);
+    const read = await fetch(`${baseUrl}/interactions/${interaction.id}`).then(r => r.json()) as {
+      interaction: { replyCount: number; status: string; stopReason: string };
+      budget: { repliesUsed: number; repliesRemaining: number };
+      replies: Array<{ messageId: string; turnId: string; ownerEpoch: number }>;
+    };
+    assert.equal(read.interaction.status, 'exhausted');
+    assert.equal(read.interaction.stopReason, 'budget-total-replies');
+    assert.equal(read.interaction.replyCount, 1);
+    assert.equal(read.budget.repliesUsed, 1);
+    assert.equal(read.budget.repliesRemaining, 0);
+    assert.equal(read.replies.length, 1);
+    assert.ok(read.replies[0]?.messageId);
+    assert.ok(read.replies[0]?.turnId);
+    assert.ok(read.replies[0]?.ownerEpoch >= 1);
+    });
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+  }
 });
 
 test('create interaction fails closed for an invalid budget or missing conversation', async () => {
   await withServer(async (baseUrl) => {
-    const { conversationId } = await seedConversation(baseUrl);
+    const { conversationId, messageId } = await seedConversation(baseUrl);
     const bad = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
       budget: { maxAgentsPerTurn: 0, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 },
+      sourceMessageId: messageId,
     });
     assert.equal(bad.status, 400);
     const noConv = await postJson(`${baseUrl}/conversations/conv_missing/interactions`, {
       budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 },
+      sourceMessageId: 'msg_missing',
     });
     assert.equal(noConv.status, 404);
   });
 });
+
+test('F22: the compatibility interaction creator rejects direct and archived conversations before inserting rows', async () => {
+  await withServer(async (baseUrl, store) => {
+    const budget = { maxAgentsPerTurn: 2, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 };
+    const direct = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    const directId = (direct.json as { conversation: { id: string } }).conversation.id;
+    const directMessage = await postJson(`${baseUrl}/conversations/${directId}/messages`, { content: 'direct source' });
+    const directMessageId = (directMessage.json as { message: { id: string } }).message.id;
+    const before = Number((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions').get() as { n: number | bigint }).n);
+    const directResult = await postJson(`${baseUrl}/conversations/${directId}/interactions`, {
+      budget, sourceMessageId: directMessageId,
+    });
+    assert.equal(directResult.status, 409);
+    assert.equal(Number((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions').get() as { n: number | bigint }).n), before);
+
+    const { conversationId, messageId } = await seedConversation(baseUrl);
+    const conversation = store.conversationRepository().findConversationById('workspace-a', conversationId)!;
+    const archived = await postJson(`${baseUrl}/conversations/${conversationId}/archive`, { expectedVersion: conversation.version });
+    assert.equal(archived.status, 200);
+    const archivedResult = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget, sourceMessageId: messageId,
+    });
+    assert.equal(archivedResult.status, 409);
+    assert.equal(Number((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions').get() as { n: number | bigint }).n), before);
+  });
+});
+
 test('bounded group respond: the runtime selects speakers, streams the walk, and records replies', async () => {
   process.env.AGENTOS_FORCE_MOCK = 'true';
   try {
@@ -130,6 +252,7 @@ test('bounded group respond: the runtime selects speakers, streams the walk, and
       const { conversationId, messageId } = await seedConversation(baseUrl);
       const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
         budget: { maxAgentsPerTurn: 4, maxRepliesPerAgent: 2, maxTotalReplies: 6, maxAgentHops: 4 },
+        sourceMessageId: messageId,
       });
       assert.equal(created.status, 201);
       const interaction = (created.json as { interaction: { id: string } }).interaction;
@@ -161,6 +284,34 @@ test('bounded group respond: the runtime selects speakers, streams the walk, and
       };
       assert.equal(read.interaction.replyCount, 2);
       assert.deepEqual(read.replies.map(reply => reply.agentId), ['codex', 'kimi']);
+
+      // The owner stream is a read-only replay contract: every event exposes a
+      // resumable cursor plus interaction status/version and durable epoch.
+      const versionBeforeObservation = store.boundedGroupService().findInteraction('workspace-a', interaction.id)!.version;
+      const eventsResponse = await fetch(
+        `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/events?after=0`,
+      );
+      assert.equal(eventsResponse.status, 200);
+      assert.match(eventsResponse.headers.get('content-type') ?? '', /text\/event-stream/);
+      const eventText = await eventsResponse.text();
+      assert.match(eventText, /event: group\.claimed/);
+      assert.match(eventText, /event: group\.reply\.final/);
+      const records = [...eventText.matchAll(/id: (\d+)\nevent: [^\n]+\ndata: ([^\n]+)/g)];
+      assert.ok(records.length > 0);
+      for (const [, id, json] of records) {
+        const payload = JSON.parse(json!) as Record<string, unknown>;
+        assert.equal(payload.interactionId, interaction.id);
+        assert.equal(typeof payload.status, 'string');
+        assert.equal(typeof payload.version, 'number');
+        assert.equal(typeof payload.ownerEpoch, 'number');
+        assert.equal(payload.cursor, Number(id));
+      }
+      const lastCursor = Number(records.at(-1)![1]);
+      const resumed = await fetch(
+        `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/events?after=${lastCursor}`,
+      );
+      assert.equal(await resumed.text(), '');
+      assert.equal(store.boundedGroupService().findInteraction('workspace-a', interaction.id)!.version, versionBeforeObservation);
 
       const db = store.getDatabase();
       // The interaction reply must reuse the exact LITE-09-101 snapshot that
@@ -199,6 +350,7 @@ test('bounded group respond: validation and lifecycle failures fail closed', asy
     const { conversationId, messageId } = await seedConversation(baseUrl);
     const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
       budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 },
+      sourceMessageId: messageId,
     });
     const interaction = (created.json as { interaction: { id: string; version: number } }).interaction;
     const respond = `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`;
@@ -207,6 +359,11 @@ test('bounded group respond: validation and lifecycle failures fail closed', asy
     assert.equal(missingMessage.status, 400);
     const badMessage = await postJson(respond, { sourceMessageId: 'msg_missing' });
     assert.equal(badMessage.status, 400);
+    const differentSource = await postJson(`${baseUrl}/conversations/${conversationId}/messages`, { content: 'different finalized source' });
+    const differentSourceId = (differentSource.json as { message: { id: string } }).message.id;
+    const sourceMismatch = await postJson(respond, { sourceMessageId: differentSourceId });
+    assert.equal(sourceMismatch.status, 409);
+    assert.equal((sourceMismatch.json as { error: string }).error, 'GROUP_SOURCE_MISMATCH');
     const badList = await postJson(respond, { sourceMessageId: messageId, orchestratedOrder: 'codex' });
     assert.equal(badList.status, 400);
 
@@ -231,6 +388,41 @@ test('bounded group respond: validation and lifecycle failures fail closed', asy
       { sourceMessageId: directMessageId },
     );
     assert.equal(onDirect.status, 400);
+  });
+});
+
+test('unified group discussion persists image attachments in the canonical message chain and retries idempotently', async () => {
+  await withServer(async (baseUrl, store) => {
+    const created = await postJson(`${baseUrl}/conversations`, {
+      kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex', 'kimi'],
+    });
+    assert.equal(created.status, 201);
+    const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+    const body = {
+      content: '请查看这张图片',
+      clientMessageId: 'client-image-1',
+      attachments: [{ name: 'screen.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,aGVsbG8=' }],
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+    };
+
+    const first = await postJson(`${baseUrl}/conversations/${conversationId}/discussions`, body);
+    assert.equal(first.status, 201);
+    const firstMessage = (first.json as { message: { id: string; attachments?: Array<{ id: string; url: string }> } }).message;
+    assert.equal(firstMessage.attachments?.length, 1);
+    assert.match(firstMessage.attachments![0]!.url, /\/attachments\//);
+
+    const second = await postJson(`${baseUrl}/conversations/${conversationId}/discussions`, body);
+    assert.equal(second.status, 200);
+    const secondBody = second.json as { message: { id: string; attachments?: Array<{ id: string }> }; interaction: { id: string } };
+    assert.equal(secondBody.message.id, firstMessage.id);
+    assert.deepEqual(secondBody.message.attachments?.map(item => item.id), firstMessage.attachments?.map(item => item.id));
+
+    const db = store.getDatabase();
+    const attachmentCount = db.prepare('SELECT COUNT(*) AS n FROM cr_message_attachments WHERE conversation_id = ?').get(conversationId) as { n: number | bigint };
+    assert.equal(Number(attachmentCount.n), 1);
+    const message = store.conversationRepository().listMessages('workspace-a', conversationId)[0]!;
+    assert.equal(message.attachments?.length, 1);
+    assert.equal(message.attachments![0]!.id, firstMessage.attachments![0]!.id);
   });
 });
 
@@ -261,6 +453,7 @@ test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', 
       const { conversationId, messageId } = await seedConversation(baseUrl);
       const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
         budget: { maxAgentsPerTurn: 4, maxRepliesPerAgent: 2, maxTotalReplies: 6, maxAgentHops: 4 },
+        sourceMessageId: messageId,
       });
       assert.equal(created.status, 201);
       const interaction = (created.json as { interaction: { id: string } }).interaction;
@@ -363,6 +556,7 @@ test('LITE-GROUP-032 runtime group create/edit validates and freezes member sett
       const sourceMessageId = (sent.json as { message: { id: string } }).message.id;
       const interaction = await postJson(`${baseUrl}/conversations/${createdBody.conversation.id}/interactions`, {
         budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+        sourceMessageId,
       });
       assert.equal(interaction.status, 201);
       const interactionId = (interaction.json as { interaction: { id: string } }).interaction.id;

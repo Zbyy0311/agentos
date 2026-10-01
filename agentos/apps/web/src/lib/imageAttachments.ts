@@ -8,8 +8,10 @@ export interface ImageDraft {
   name: string;
   mimeType: string;
   size: number;
-  dataUrl: string;
+  /** Kept in memory for the current legacy upload contract; never serialized to localStorage. */
+  dataUrl?: string;
   previewUrl: string;
+  blob?: Blob;
 }
 
 export type ImageValidationResult = { ok: true } | { ok: false; error: string };
@@ -59,5 +61,17 @@ export async function fileToImageDraft(file: File): Promise<ImageDraft> {
     size: file.size,
     dataUrl: `data:${file.type};base64,${btoa(binary)}`,
     previewUrl: URL.createObjectURL(file),
+    blob: file.slice(0, file.size, file.type),
   };
+}
+
+export async function imageDraftDataUrl(draft: ImageDraft): Promise<string> {
+  if (draft.dataUrl) return draft.dataUrl;
+  if (!draft.blob) throw new Error(`图片 ${draft.name} 的本地内容不可用`);
+  const bytes = new Uint8Array(await draft.blob.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return `data:${draft.mimeType};base64,${btoa(binary)}`;
 }

@@ -61,6 +61,8 @@ import {
   WorkspaceAdmissionStartupReconciliationError,
 } from './services/WorkspaceAdmissionStartupReconciler.js';
 import { TerminalMemoryCandidateReconciler } from './services/TerminalMemoryCandidateReconciler.js';
+import { CollaborationWorkflowService } from './services/CollaborationWorkflowService.js';
+import { createCollaborationRoutes } from './routes/collaborations.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -155,6 +157,7 @@ async function bootstrap(): Promise<void> {
   let phase: StartupPhase = 'ownership';
   try {
     const security = resolveLocalApiSecurityConfig(process.env);
+    const runtimeDispatchEnabled = process.env.AGENTOS_RUNTIME_DISPATCH_ENABLED === 'true';
 
     // Project-Root ownership must be acquired before any SQLite, recovery,
     // reconcile, route, or listen side effect.
@@ -165,6 +168,8 @@ async function bootstrap(): Promise<void> {
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(PROJECT_ROOT, '.agentos', 'worktrees'));
     const workspaceManager = new WorkspaceManager(store);
     const taskRunService = new TaskRunService(store);
+    const collaborationWorktreePaths = new Map<string, string>();
+    let collaborationService!: CollaborationWorkflowService;
     const providerExecutionChain = createProviderExecutionChain({
       store,
       artifactRoot: join(PROJECT_ROOT, '.agentos', 'artifacts'),
@@ -173,6 +178,28 @@ async function bootstrap(): Promise<void> {
         if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND: ' + workspaceId);
         return workspace.rootPath;
       },
+      worktreePathFor: (_workspaceId, runId) => collaborationWorktreePaths.get(runId),
+      continueOwnedRun: (workspaceId, runId) => collaborationService.resumeRun(workspaceId, runId),
+      collaborationStageHooks: {
+        canDispatch: (workspaceId, runId) => collaborationService.canDispatch(workspaceId, runId),
+        beforeStage: input => collaborationService.beforeStage(input),
+        completedStage: input => collaborationService.completedStage(input),
+      },
+    });
+    collaborationService = new CollaborationWorkflowService({
+      store,
+      workspaces: workspaceManager,
+      worktrees: worktreeManager,
+      dispatchRun: async (workspaceId, runId) => {
+        await providerExecutionChain.dispatcher.driveSafely(workspaceId, runId);
+      },
+      requestRunAdmission: input => providerExecutionChain.admissionAuthority.requestCanonicalRun(input),
+      releaseRunAdmission: input => providerExecutionChain.admissionAuthority.releaseCanonicalRun(input),
+      requestApplicationAdmission: async input => Boolean((await providerExecutionChain.admissionAuthority.requestCollaborationApplication(input)).grantedAdmission),
+      releaseApplicationAdmission: async input => { await providerExecutionChain.admissionAuthority.releaseCollaborationApplication(input); },
+      cancelRun: input => providerExecutionChain.dispatcher.cancelRun(input),
+      registerWorktreePath: (runId, path) => collaborationWorktreePaths.set(runId, path),
+      runtimeDispatchEnabled,
     });
 
     phase = 'recovery';
@@ -194,6 +221,8 @@ async function bootstrap(): Promise<void> {
         createPreflightProcessRecoveryPort(processRecoveryClassifications),
       );
       recoveredRuns = recoverInterruptedRuns(store);
+      const interruptedDiscussions = store.groupInteractionRepository().reconcileInterruptedOnStartup(new Date().toISOString());
+      diagLog(`GROUP_RECOVERY interrupted=${interruptedDiscussions}`);
     } catch {
       // The recovery transaction already rolled back; only the stable code escapes.
       throw new StartupFailure('STARTUP_RECOVERY_FAILED');
@@ -213,6 +242,11 @@ async function bootstrap(): Promise<void> {
       void (error instanceof WorkspaceAdmissionStartupReconciliationError);
       throw new StartupAdmissionReconciliationFailure();
     }
+
+    // The collaboration projection converges only from persisted evidence;
+    // startup observation never replays Provider calls or candidate writes.
+    const collaborationRecovery = await collaborationService.reconcileOnStartup();
+    diagLog(`COLLABORATION_RECOVERY tasks=${collaborationRecovery.tasks} controls=${collaborationRecovery.controls} unresolved=${collaborationRecovery.unresolved}`);
 
     // LITE-07-102 restart convergence. A terminal Run whose Candidate was lost
     // to a crash between the terminal commit and the dispatch-time trigger is
@@ -284,7 +318,6 @@ async function bootstrap(): Promise<void> {
     // route never crashes and no run strands silently. Legacy execution,
     // Process ownership, spawning authority, StageExecutor, and the
     // Conversation model are unchanged.
-    const runtimeDispatchEnabled = process.env.AGENTOS_RUNTIME_DISPATCH_ENABLED === 'true';
     app.use('/api', createRunLifecycleRoutes(store, {
       runtimeDispatch: {
         enabled: runtimeDispatchEnabled,
@@ -324,6 +357,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
+    app.use('/api/workspaces/:workspaceId', createCollaborationRoutes(collaborationService, workspaceManager));
     app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, {
       taskRunService,
@@ -359,8 +393,12 @@ async function bootstrap(): Promise<void> {
     // Background side effects start only after ownership + recovery + listen succeeded.
     outboxPublisher.reclaimExpired();
     stopOutboxPublisher = outboxPublisher.start();
-    void providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
-      .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    if (runtimeDispatchEnabled) {
+      void collaborationService.resumeGrantedQueuedRuns()
+        .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+      void providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
+        .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    }
     void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     try {
       const result = retentionService.run();

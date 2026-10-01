@@ -2,6 +2,9 @@ import type { GroupInteractionBudgetV1, GroupStopReason, LoopGuardSignal } from 
 import { createHash } from 'node:crypto';
 import { createEntityId } from '../store/Identity.js';
 import type {
+  ClaimGroupExecutionInput,
+  GroupExecutionEventRecord,
+  GroupExecutionOwnerRecord,
   GroupInteractionRecord,
   GroupInteractionRepository,
   GroupReplyRecord,
@@ -10,6 +13,7 @@ import { GroupInteractionRepositoryError } from '../store/GroupInteractionReposi
 import type { TurnContextSnapshotRecord } from '../store/TurnContextSnapshotRepository.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import type { FinalizeStreamInput, FinalizeStreamResult } from './ConversationStreamService.js';
 
 /**
  * CR-5 bounded Group Conversation service.
@@ -22,7 +26,9 @@ import { inTransaction, type TransactionDatabase } from '../store/Transaction.js
  * - a group interaction declares its budget at creation; the budget is immutable;
  * - every reply is accounted transactionally; a reply that would exceed a budget
  *   ends the interaction with a stable reason BEFORE it is recorded;
- * - Stop blocks new replies and never cancels a Run;
+ * - Stop blocks new replies and never cancels a Run; a Provider result that had
+ *   already finalized when the stop won the race is reconciled as one durable
+ *   reply so the visible Message and interaction accounting cannot diverge;
  * - the Loop Guard terminates the interaction on a same-Agent cycle, repeated
  *   content, a repeated mention with no new information, or hops beyond the limit;
  * - every recorded reply resolves an isolated per-Agent Memory Context snapshot;
@@ -36,7 +42,13 @@ export type BoundedGroupErrorCode =
   | 'GROUP_INTERACTION_TERMINATED'
   | 'GROUP_BUDGET_EXCEEDED'
   | 'GROUP_LOOP_GUARD'
-  | 'GROUP_PERSISTENCE_FAILED';
+  | 'GROUP_PERSISTENCE_FAILED'
+  | 'GROUP_VERSION_CONFLICT'
+  | 'GROUP_REPLY_ASSOCIATION_INVALID'
+  | 'GROUP_EXECUTION_ALREADY_OWNED'
+  | 'GROUP_EXECUTION_INTERRUPTED'
+  | 'GROUP_SOURCE_MISMATCH'
+  | 'GROUP_CONVERSATION_NOT_ACTIVE';
 
 export class BoundedGroupError extends Error {
   readonly stopReason?: GroupStopReason;
@@ -67,6 +79,8 @@ export interface RecordGroupReplyInput {
   readonly agentId: string;
   readonly messageId: string;
   readonly turnId?: string;
+  readonly ownerId?: string;
+  readonly ownerEpoch?: number;
   /** The snapshot actually used by the Provider Turn, when one was persisted. */
   readonly contextSnapshotId?: string;
   readonly content: string;
@@ -80,6 +94,10 @@ export interface RecordGroupReplyResult {
   readonly interaction: GroupInteractionRecord;
   readonly contextSnapshot: TurnContextSnapshotRecord;
 }
+
+export type FinalizeGroupReplyOutcome =
+  | { readonly kind: 'recorded'; readonly result: RecordGroupReplyResult; readonly finalization: FinalizeStreamResult }
+  | { readonly kind: 'terminated'; readonly error: BoundedGroupError; readonly finalization: FinalizeStreamResult };
 
 /**
  * Internal outcome: a terminated interaction commits its terminal state and the
@@ -134,6 +152,7 @@ export class BoundedGroupService {
     readonly workspaceId: string;
     readonly conversationId: string;
     readonly budget: GroupInteractionBudgetV1;
+    readonly sourceMessageId?: string;
     readonly createdAt: string;
   }): GroupInteractionRecord {
     try {
@@ -142,6 +161,7 @@ export class BoundedGroupService {
         conversationId: input.conversationId,
         workspaceId: input.workspaceId,
         budget: input.budget,
+        ...(input.sourceMessageId === undefined ? {} : { sourceMessageId: input.sourceMessageId }),
         createdAt: input.createdAt,
       });
     } catch (error) {
@@ -164,6 +184,270 @@ export class BoundedGroupService {
     };
   }
 
+  claimExecution(input: ClaimGroupExecutionInput): GroupExecutionOwnerRecord {
+    try {
+      return this.interactions.claimExecution(input);
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  findExecutionOwner(workspaceId: string, interactionId: string): GroupExecutionOwnerRecord | undefined {
+    return this.interactions.findExecutionOwner(workspaceId, interactionId);
+  }
+
+  listExecutionEvents(workspaceId: string, conversationId: string, interactionId: string, afterCursor: number): GroupExecutionEventRecord[] {
+    return this.interactions.listExecutionEvents(workspaceId, conversationId, interactionId, afterCursor);
+  }
+
+  reconcileInterruptedOnStartup(updatedAt: string): number {
+    return this.interactions.reconcileInterruptedOnStartup(updatedAt);
+  }
+
+  setExecutionCurrentTurn(input: {
+    readonly workspaceId: string;
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly agentId: string;
+    readonly turnId: string;
+    readonly messageId: string;
+    readonly updatedAt: string;
+  }): GroupExecutionOwnerRecord {
+    return inTransaction(this.db, () => {
+      const interaction = this.interactions.findInteractionById(input.workspaceId, input.interactionId);
+      const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+      if (interaction === undefined) throw new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
+      if (owner === undefined || owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch) {
+        throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
+      if (owner.status === 'stop_requested' || interaction.status !== 'active') {
+        throw new BoundedGroupError('GROUP_INTERACTION_TERMINATED', {
+          ...(interaction.stopReason === null ? {} : { stopReason: interaction.stopReason }),
+        });
+      }
+      return this.interactions.transitionExecutionWithinTransaction({
+        workspaceId: input.workspaceId,
+        interactionId: input.interactionId,
+        ownerId: input.ownerId,
+        ownerEpoch: input.ownerEpoch,
+        status: 'running',
+        eventType: 'group.turn.start',
+        payload: { agentId: input.agentId, turnId: input.turnId, messageId: input.messageId },
+        currentAgentId: input.agentId,
+        currentTurnId: input.turnId,
+        currentMessageId: input.messageId,
+        updatedAt: input.updatedAt,
+      });
+    });
+  }
+
+  appendExecutionEvent(input: {
+    readonly workspaceId: string;
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly eventType: string;
+    readonly payload?: Readonly<Record<string, unknown>>;
+    readonly updatedAt: string;
+  }): GroupExecutionEventRecord {
+    return inTransaction(this.db, () => this.interactions.appendExecutionEventWithinTransaction(input));
+  }
+
+  isExecutionStopRequested(workspaceId: string, interactionId: string, ownerId: string, ownerEpoch: number): boolean {
+    const owner = this.interactions.findExecutionOwner(workspaceId, interactionId);
+    return owner !== undefined && owner.ownerId === ownerId && owner.ownerEpoch === ownerEpoch
+      && owner.status === 'stop_requested';
+  }
+
+  /** Final Message, Turn, reply row, counters, and event commit in one SQLite transaction. */
+  finalizeExecutionReply(input: RecordGroupReplyInput & {
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly expectedTurnVersion: number;
+    readonly expectedMessageVersion: number;
+  }, finalization: FinalizeStreamInput,
+  finalizeWithinTransaction: (input: FinalizeStreamInput) => FinalizeStreamResult): FinalizeGroupReplyOutcome {
+    if (finalization.workspaceId !== input.workspaceId || finalization.turnId !== input.turnId
+      || finalization.messageId !== input.messageId || finalization.outcome !== 'final'
+      || finalization.expectedTurnVersion !== input.expectedTurnVersion
+      || finalization.expectedMessageVersion !== input.expectedMessageVersion) {
+      throw new BoundedGroupError('GROUP_REPLY_ASSOCIATION_INVALID');
+    }
+    try {
+      const outcome = inTransaction(this.db, (): FinalizeGroupReplyOutcome => {
+        const interaction = this.interactions.findInteractionById(input.workspaceId, input.interactionId);
+        const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+        if (interaction === undefined) throw new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
+        if (owner === undefined || owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch
+          || owner.currentAgentId !== input.agentId || owner.currentTurnId !== input.turnId
+          || owner.currentMessageId !== input.messageId
+          || (owner.status !== 'running' && owner.status !== 'stop_requested')) {
+          throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+        }
+        const stoppedFinal = owner.status === 'stop_requested'
+          && interaction.status === 'stopped' && interaction.stopReason === 'user-stop';
+        if (interaction.status !== 'active' && !stoppedFinal) {
+          throw new BoundedGroupError('GROUP_INTERACTION_TERMINATED', {
+            ...(interaction.stopReason === null ? {} : { stopReason: interaction.stopReason }),
+          });
+        }
+        const replyInput = { ...input, content: finalization.content ?? input.content, createdAt: finalization.updatedAt };
+        const termination = this.replyTermination(interaction, replyInput);
+        if (termination !== undefined) {
+          const terminated = this.terminate(interaction, termination.stopReason, termination.loopGuardSignal, finalization.updatedAt);
+          const failedFinalization = finalizeWithinTransaction({
+            ...finalization,
+            outcome: 'failed',
+            failureCode: termination.stopReason === 'loop-guard' ? 'GROUP_LOOP_GUARD' : 'GROUP_BUDGET_EXCEEDED',
+            failureMessage: termination.stopReason,
+          });
+          this.interactions.transitionExecutionWithinTransaction({
+            workspaceId: input.workspaceId, interactionId: input.interactionId,
+            ownerId: input.ownerId, ownerEpoch: input.ownerEpoch,
+            status: 'completed', terminalReason: termination.stopReason,
+            eventType: 'group.reply.rejected',
+            payload: { stopReason: termination.stopReason, ...(termination.loopGuardSignal === undefined ? {} : { loopGuardSignal: termination.loopGuardSignal }) },
+            updatedAt: finalization.updatedAt,
+          });
+          return { kind: 'terminated', error: terminated.error, finalization: failedFinalization };
+        }
+        const finalized = finalizeWithinTransaction(finalization);
+        if (finalized.turn.status !== 'final' || finalized.message.status !== 'final') {
+          throw new BoundedGroupError('GROUP_REPLY_ASSOCIATION_INVALID');
+        }
+        const recorded = this.recordReplyWithinTransaction({
+          ...replyInput,
+          content: finalized.message.content,
+          contextSnapshotId: finalized.turn.contextSnapshotId ?? input.contextSnapshotId,
+        }, stoppedFinal);
+        if (recorded.kind === 'terminated') throw recorded.error;
+        const latest = recorded.result.interaction;
+        this.interactions.transitionExecutionWithinTransaction({
+          workspaceId: input.workspaceId,
+          interactionId: input.interactionId,
+          ownerId: input.ownerId,
+          ownerEpoch: input.ownerEpoch,
+          status: latest.status === 'active' ? 'running' : 'completed',
+          ...(latest.status === 'active' ? {} : { terminalReason: latest.stopReason }),
+          eventType: 'group.reply.final',
+          payload: {
+            agentId: input.agentId, turnId: input.turnId, messageId: input.messageId,
+            replyId: recorded.result.reply.id, replyCount: latest.replyCount,
+          },
+          updatedAt: finalization.updatedAt,
+        });
+        return { kind: 'recorded', result: recorded.result, finalization: finalized };
+      });
+      return outcome;
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /** Finalize failed/cancelled group Turns and owner events atomically as well. */
+  finalizeExecutionFailure(input: {
+    readonly workspaceId: string;
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly eventType: string;
+    readonly terminalReason: string;
+    readonly updatedAt: string;
+  }, finalizeWithinTransaction: (input: FinalizeStreamInput) => FinalizeStreamResult,
+  finalizeInput: FinalizeStreamInput): FinalizeStreamResult {
+    return inTransaction(this.db, () => {
+      const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+      if (owner === undefined || owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch
+        || (owner.status !== 'running' && owner.status !== 'stop_requested')) {
+        throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
+      const settled = finalizeWithinTransaction(finalizeInput);
+      const cancelledByStop = owner.status === 'stop_requested';
+      this.interactions.transitionExecutionWithinTransaction({
+        workspaceId: input.workspaceId,
+        interactionId: input.interactionId,
+        ownerId: input.ownerId,
+        ownerEpoch: input.ownerEpoch,
+        status: cancelledByStop ? 'completed' : 'failed',
+        terminalReason: cancelledByStop ? 'user-stop' : input.terminalReason,
+        eventType: cancelledByStop ? 'group.turn.cancelled' : input.eventType,
+        payload: { turnId: finalizeInput.turnId, messageId: finalizeInput.messageId, reason: input.terminalReason },
+        updatedAt: input.updatedAt,
+      });
+      return settled;
+    });
+  }
+
+  failExecution(input: {
+    readonly workspaceId: string;
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly reason: string;
+    readonly updatedAt: string;
+  }): GroupExecutionOwnerRecord {
+    return inTransaction(this.db, () => {
+      const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+      if (owner === undefined || owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch) {
+        throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
+      const stopped = owner.status === 'stop_requested';
+      return this.interactions.transitionExecutionWithinTransaction({
+        workspaceId: input.workspaceId,
+        interactionId: input.interactionId,
+        ownerId: input.ownerId,
+        ownerEpoch: input.ownerEpoch,
+        status: stopped ? 'completed' : 'failed',
+        terminalReason: stopped ? 'user-stop' : input.reason,
+        eventType: stopped ? 'group.turn.cancelled' : 'group.turn.failed',
+        payload: { reason: input.reason },
+        updatedAt: input.updatedAt,
+      });
+    });
+  }
+
+  completeExecution(input: {
+    readonly workspaceId: string;
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+    readonly completedAt: string;
+    readonly reason?: string;
+  }): GroupInteractionRecord {
+    return inTransaction(this.db, () => {
+      let interaction = this.interactions.findInteractionById(input.workspaceId, input.interactionId);
+      if (interaction === undefined) throw new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
+      if (interaction.status === 'active') {
+        interaction = this.interactions.advanceInteractionWithinTransaction({
+          workspaceId: input.workspaceId,
+          interactionId: input.interactionId,
+          expectedVersion: interaction.version,
+          replyIncrement: 0,
+          hopIncrement: 0,
+          status: 'completed',
+          stopReason: 'completed',
+          endedAt: input.completedAt,
+          updatedAt: input.completedAt,
+        });
+      }
+      const terminalReason = interaction.status === 'completed'
+        ? input.reason ?? interaction.stopReason : interaction.stopReason ?? input.reason;
+      this.interactions.transitionExecutionWithinTransaction({
+        workspaceId: input.workspaceId,
+        interactionId: input.interactionId,
+        ownerId: input.ownerId,
+        ownerEpoch: input.ownerEpoch,
+        status: 'completed',
+        terminalReason,
+        eventType: 'group.done',
+        payload: { reason: terminalReason, replyCount: interaction.replyCount },
+        updatedAt: input.completedAt,
+      });
+      return interaction;
+    });
+  }
+
   /**
    * Record one bounded reply. The loop guard is evaluated BEFORE the budget so a
    * cyclic or repeated reply always terminates with `loop-guard`. A reply that would
@@ -181,53 +465,55 @@ export class BoundedGroupService {
     }
   }
 
-  recordReplyWithinTransaction(input: RecordGroupReplyInput): RecordReplyOutcome {
+  /**
+   * Reconcile a final Provider result when a user stop wins between stream
+   * finalization and reply accounting. This is deliberately narrower than
+   * recordReply: only a stopped interaction whose reason is user-stop may use
+   * it, and the interaction remains stopped after the accounting increment.
+   */
+  recordFinalReplyAfterUserStop(input: RecordGroupReplyInput): RecordGroupReplyResult {
+    try {
+      const outcome = inTransaction(this.db, () => this.recordReplyWithinTransaction(input, true));
+      if (outcome.kind === 'terminated') throw outcome.error;
+      return outcome.result;
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  recordReplyWithinTransaction(input: RecordGroupReplyInput, allowStoppedFinal = false): RecordReplyOutcome {
     this.assertRecordInput(input);
     const interaction = this.interactions.findInteractionById(input.workspaceId, input.interactionId);
     if (interaction === undefined) throw new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
-    if (interaction.status !== 'active') {
+    if (interaction.integrityStatus !== 'valid') throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+    const isStoppedFinal = allowStoppedFinal
+      && interaction.status === 'stopped'
+      && interaction.stopReason === 'user-stop';
+    if (interaction.status !== 'active' && !isStoppedFinal) {
       throw new BoundedGroupError('GROUP_INTERACTION_TERMINATED', {
         ...(interaction.stopReason === null ? {} : { stopReason: interaction.stopReason }),
       });
     }
+    const existingReply = this.interactions.findReplyByMessageId(interaction.id, input.messageId);
+    if (existingReply !== undefined) {
+      const contextSnapshot = existingReply.contextSnapshotId === null
+        ? undefined
+        : this.snapshots.findById(input.workspaceId, existingReply.contextSnapshotId);
+      if (contextSnapshot === undefined) throw new BoundedGroupError('GROUP_PERSISTENCE_FAILED');
+      return {
+        kind: 'recorded',
+        result: {
+          reply: existingReply,
+          interaction,
+          contextSnapshot,
+        },
+      };
+    }
     const contentHash = hashGroupReplyContent(input.content);
-
-    // Loop guard, evaluated before budgets over the durable reply history.
     const priorReplies = this.interactions.listReplies(interaction.id);
-    if (input.hopFromAgentId !== undefined && input.hopFromAgentId === input.agentId) {
-      return this.terminate(interaction, 'loop-guard', 'same-agent-cycle', input.createdAt);
-    }
-    if (this.interactions.findReplyByContentHash(interaction.id, contentHash) !== undefined) {
-      return this.terminate(interaction, 'loop-guard', 'repeated-content', input.createdAt);
-    }
-    // Frozen proxy for "repeated mention with no new information": the SAME Agent
-    // re-mentions a target it already mentioned earlier in this interaction.
-    if (input.mentionTargets !== undefined && input.mentionTargets.length > 0
-      && priorReplies.some(reply => reply.agentId === input.agentId
-        && reply.mentionTargetsJson !== null
-      && this.mentionsOverlap(reply.mentionTargetsJson, input.mentionTargets!))) {
-      return this.terminate(interaction, 'loop-guard', 'repeated-mention-no-new-information', input.createdAt);
-    }
+    const termination = this.replyTermination(interaction, input);
+    if (termination !== undefined) return this.terminate(interaction, termination.stopReason, termination.loopGuardSignal, input.createdAt);
     const hopIncrement = input.hopFromAgentId !== undefined && input.hopFromAgentId !== input.agentId ? 1 : 0;
-    if (interaction.hopCount + hopIncrement > interaction.maxAgentHops) {
-      return this.terminate(interaction, 'budget-hops', 'hops-exceeded', input.createdAt);
-    }
-
-    // Budget gates.
-    if (interaction.replyCount + 1 > interaction.maxTotalReplies) {
-      return this.terminate(interaction, 'budget-total-replies', undefined, input.createdAt);
-    }
-    if (this.interactions.countRepliesByAgent(interaction.id, input.agentId) + 1 > interaction.maxRepliesPerAgent) {
-      return this.terminate(interaction, 'budget-replies-per-agent', undefined, input.createdAt);
-    }
-    const isNewAgent = priorReplies.every(reply => reply.agentId !== input.agentId);
-    if (isNewAgent && this.interactions.countDistinctAgents(interaction.id) + 1 > interaction.maxAgentsPerTurn) {
-      return this.terminate(interaction, 'budget-agents', undefined, input.createdAt);
-    }
-    if (interaction.timeoutMs !== null
-      && Date.parse(input.createdAt) - Date.parse(interaction.createdAt) > interaction.timeoutMs) {
-      return this.terminate(interaction, 'budget-timeout', undefined, input.createdAt);
-    }
 
     // Per-Agent isolated context resolution is normally persisted by the
     // ConversationTurnDriver before the Provider. Reuse that exact snapshot for
@@ -289,6 +575,8 @@ export class BoundedGroupService {
       ...(input.hopFromAgentId === undefined ? {} : { hopFromAgentId: input.hopFromAgentId }),
       ...(input.mentionTargets === undefined ? {} : { mentionTargetsJson: JSON.stringify(input.mentionTargets) }),
       contextSnapshotId: contextSnapshot.id,
+      ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+      ...(input.ownerEpoch === undefined ? {} : { ownerEpoch: input.ownerEpoch }),
     });
     const advanced = this.interactions.advanceInteractionWithinTransaction({
       workspaceId: input.workspaceId,
@@ -298,7 +586,9 @@ export class BoundedGroupService {
       hopIncrement,
       updatedAt: input.createdAt,
       // reaching the total cap exhausts the interaction with a stable reason
-      ...(interaction.replyCount + 1 === interaction.maxTotalReplies
+      // If stop won while the Provider was already finalizing, account that
+      // one in-flight final result but preserve the user-stop terminal state.
+      ...(!isStoppedFinal && interaction.replyCount + 1 === interaction.maxTotalReplies
         ? { status: 'exhausted' as const, stopReason: 'budget-total-replies' as const, endedAt: input.createdAt }
         : {}),
     });
@@ -313,16 +603,17 @@ export class BoundedGroupService {
     readonly endedAt: string;
   }): GroupInteractionRecord {
     try {
-      return this.interactions.advanceInteractionWithinTransaction({
-        workspaceId: input.workspaceId,
-        interactionId: input.interactionId,
-        expectedVersion: input.expectedVersion,
-        replyIncrement: 0,
-        hopIncrement: 0,
-        status: 'stopped',
-        stopReason: 'user-stop',
-        endedAt: input.endedAt,
-        updatedAt: input.endedAt,
+      return inTransaction(this.db, () => {
+        const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+        const result = this.interactions.requestStopWithinTransaction({
+          workspaceId: input.workspaceId,
+          interactionId: input.interactionId,
+          expectedVersion: input.expectedVersion,
+          ownerId: owner?.ownerId ?? 'stop-' + input.interactionId,
+          ownerEpoch: owner?.ownerEpoch ?? 1,
+          stoppedAt: input.endedAt,
+        });
+        return result.interaction;
       });
     } catch (error) {
       throw this.publicError(error);
@@ -358,7 +649,7 @@ export class BoundedGroupService {
     stopReason: GroupStopReason,
     loopGuardSignal: LoopGuardSignal | undefined,
     endedAt: string,
-  ): RecordReplyOutcome {
+  ): Extract<RecordReplyOutcome, { readonly kind: 'terminated' }> {
     this.interactions.advanceInteractionWithinTransaction({
       workspaceId: interaction.workspaceId,
       interactionId: interaction.id,
@@ -377,6 +668,43 @@ export class BoundedGroupService {
     }) };
   }
 
+  private replyTermination(
+    interaction: GroupInteractionRecord,
+    input: RecordGroupReplyInput,
+  ): { readonly stopReason: GroupStopReason; readonly loopGuardSignal?: LoopGuardSignal } | undefined {
+    const priorReplies = this.interactions.listReplies(interaction.id);
+    const contentHash = hashGroupReplyContent(input.content);
+    if (input.hopFromAgentId !== undefined && input.hopFromAgentId === input.agentId) {
+      return { stopReason: 'loop-guard', loopGuardSignal: 'same-agent-cycle' };
+    }
+    if (this.interactions.findReplyByContentHash(interaction.id, contentHash) !== undefined) {
+      return { stopReason: 'loop-guard', loopGuardSignal: 'repeated-content' };
+    }
+    if (input.mentionTargets !== undefined && input.mentionTargets.length > 0
+      && priorReplies.some(reply => reply.agentId === input.agentId
+        && reply.mentionTargetsJson !== null
+        && this.mentionsOverlap(reply.mentionTargetsJson, input.mentionTargets!))) {
+      return { stopReason: 'loop-guard', loopGuardSignal: 'repeated-mention-no-new-information' };
+    }
+    const hopIncrement = input.hopFromAgentId !== undefined && input.hopFromAgentId !== input.agentId ? 1 : 0;
+    if (interaction.hopCount + hopIncrement > interaction.maxAgentHops) {
+      return { stopReason: 'budget-hops', loopGuardSignal: 'hops-exceeded' };
+    }
+    if (interaction.replyCount + 1 > interaction.maxTotalReplies) return { stopReason: 'budget-total-replies' };
+    if (this.interactions.countRepliesByAgent(interaction.id, input.agentId) + 1 > interaction.maxRepliesPerAgent) {
+      return { stopReason: 'budget-replies-per-agent' };
+    }
+    const isNewAgent = priorReplies.every(reply => reply.agentId !== input.agentId);
+    if (isNewAgent && this.interactions.countDistinctAgents(interaction.id) + 1 > interaction.maxAgentsPerTurn) {
+      return { stopReason: 'budget-agents' };
+    }
+    if (interaction.timeoutMs !== null
+      && Date.parse(input.createdAt) - Date.parse(interaction.createdAt) > interaction.timeoutMs) {
+      return { stopReason: 'budget-timeout' };
+    }
+    return undefined;
+  }
+
   private mentionsOverlap(priorJson: string, next: readonly string[]): boolean {
     try {
       const prior: unknown = JSON.parse(priorJson);
@@ -389,7 +717,9 @@ export class BoundedGroupService {
 
   private assertRecordInput(input: RecordGroupReplyInput): void {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.interactionId) || !nonBlank(input.agentId)
-      || !nonBlank(input.messageId) || typeof input.content !== 'string' || !nonBlank(input.createdAt)) {
+      || !nonBlank(input.messageId) || !nonBlank(input.turnId) || !nonBlank(input.ownerId)
+      || !Number.isSafeInteger(input.ownerEpoch) || input.ownerEpoch! < 1
+      || typeof input.content !== 'string' || !nonBlank(input.createdAt)) {
       throw new BoundedGroupError('GROUP_INPUT_INVALID');
     }
   }
@@ -399,7 +729,15 @@ export class BoundedGroupService {
     if (error instanceof GroupInteractionRepositoryError) {
       if (error.code === 'INTERACTION_NOT_FOUND') return new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
       if (error.code === 'INTERACTION_INPUT_INVALID') return new BoundedGroupError('GROUP_INPUT_INVALID');
+      if (error.code === 'GROUP_VERSION_CONFLICT') return new BoundedGroupError('GROUP_VERSION_CONFLICT');
       if (error.code === 'INTERACTION_NOT_TRANSITIONABLE') return new BoundedGroupError('GROUP_BUDGET_EXCEEDED');
+      if (error.code === 'GROUP_REPLY_ASSOCIATION_INVALID') return new BoundedGroupError('GROUP_REPLY_ASSOCIATION_INVALID');
+      if (error.code === 'EXECUTION_ALREADY_OWNED') return new BoundedGroupError('GROUP_EXECUTION_ALREADY_OWNED');
+      if (error.code === 'EXECUTION_INTERRUPTED' || error.code === 'EXECUTION_STALE_OWNER' || error.code === 'INTERACTION_UNUSABLE') {
+        return new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
+      if (error.code === 'INTERACTION_SOURCE_MISMATCH') return new BoundedGroupError('GROUP_SOURCE_MISMATCH');
+      if (error.code === 'CONVERSATION_NOT_ACTIVE_GROUP') return new BoundedGroupError('GROUP_CONVERSATION_NOT_ACTIVE');
       return new BoundedGroupError('GROUP_PERSISTENCE_FAILED');
     }
     return new BoundedGroupError('GROUP_PERSISTENCE_FAILED');

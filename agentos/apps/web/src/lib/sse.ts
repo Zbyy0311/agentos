@@ -1,4 +1,5 @@
 export interface SseEvent {
+  id?: string;
   event: string;
   data: string;
 }
@@ -26,6 +27,7 @@ export function parseSseChunk(buffer: string, chunk: string): SseParseResult {
     if (!rawEvent.trim()) continue;
 
     let event = 'message';
+    let id: string | undefined;
     const dataLines: string[] = [];
 
     for (const line of rawEvent.split('\n')) {
@@ -34,13 +36,18 @@ export function parseSseChunk(buffer: string, chunk: string): SseParseResult {
         event = line.slice(6).trim();
         continue;
       }
+      if (line.startsWith('id:')) {
+        const value = line.slice(3).trim();
+        if (!value.includes('\0')) id = value;
+        continue;
+      }
       if (line.startsWith('data:')) {
         dataLines.push(line.slice(5).trimStart());
       }
     }
 
     if (dataLines.length === 0) continue;
-    events.push({ event, data: dataLines.join('\n') });
+    events.push({ ...(id === undefined ? {} : { id }), event, data: dataLines.join('\n') });
   }
 
   return { events, remainder };

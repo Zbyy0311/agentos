@@ -39,6 +39,19 @@ export interface SaveConversationAttachmentsInput {
   attachments: ConversationAttachmentInput[];
 }
 
+export function parseConversationAttachmentInputs(value: unknown): ConversationAttachmentInput[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('attachments must be an array');
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object') throw new Error(`attachment ${index + 1} is invalid`);
+    const attachment = item as Record<string, unknown>;
+    if (typeof attachment.name !== 'string' || typeof attachment.mimeType !== 'string' || typeof attachment.dataUrl !== 'string') {
+      throw new Error(`attachment ${index + 1} is invalid`);
+    }
+    return { name: attachment.name, mimeType: attachment.mimeType, dataUrl: attachment.dataUrl };
+  });
+}
+
 export function validateConversationAttachmentInputs(attachments: ConversationAttachmentInput[]): void {
   validateAttachmentCount(attachments);
   const decoded = attachments.map(decodeAttachment);

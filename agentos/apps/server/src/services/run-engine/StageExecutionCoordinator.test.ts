@@ -42,7 +42,7 @@ import {
   DurableProcessRepositoryAdapter,
   DurableSessionRepositoryAdapter,
 } from '../../store/process-runtime-adapters.js';
-import { StageExecutionCoordinator, type StageExecutionInput, StageExecutionOutcome } from './StageExecutionCoordinator.js';
+import { StageExecutionCoordinator, type StageExecutionInput, type StageExecutionOutcome, type StageAttemptCancelOutcome, type StageLaunchIdentity } from './StageExecutionCoordinator.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -635,6 +635,7 @@ interface FixtureOptions {
   readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
   readonly failStderrOutput?: boolean;
   readonly adapter?: KimiCodeProviderAdapter;
+  readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
 }
 
 function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolean = false) {
@@ -683,6 +684,7 @@ function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolea
     now: () => NOW,
     clock: opts.clock,
     runEventObservation: opts.observation,
+    canLaunch: opts.canLaunch,
   });
   return { db, root, events, outbox, sessionRepo, processRepo, outputRepo, coordinator, driver, adapter };
 }
@@ -785,6 +787,78 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
+  for (let repetition = 1; repetition <= 3; repetition++) {
+    it(`collaboration launch fence rejects before discovery or reservation (${repetition}/3)`, async () => {
+      const driver = new FakeDriver(new FakeHandle([]));
+      const cp = countingProbe();
+      const fx = fixture(driver, { probe: cp.probe, canLaunch: () => false });
+      try {
+        const result = await fx.coordinator.execute(stageInput());
+        assert.equal(result.kind, 'failed');
+        assert.equal(driver.spawnCalls, 0);
+        assert.deepEqual(cp.counts, { version: 0, help: 0, auth: 0 });
+        assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 0);
+      } finally { close(fx); }
+    });
+
+    it(`collaboration cancellation during validation prevents a later native launch (${repetition}/3)`, async () => {
+      let authorized = true;
+      const entered = testDeferred<void>();
+      const release = testDeferred<void>();
+      const normalProbe = probeFor(false);
+      const probe: ProcessProbePort = { probe: async request => {
+        entered.resolve(undefined);
+        await release.promise;
+        return normalProbe.probe(request);
+      } };
+      const driver = new FakeDriver(new FakeHandle([]));
+      const fx = fixture(driver, { probe, canLaunch: () => authorized });
+      const execution = fx.coordinator.execute(stageInput());
+      try {
+        await entered.promise;
+        authorized = false;
+        const stopped = await fx.coordinator.cancelAttempt({
+          workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+          correlationId: OP, causationId: OP,
+        });
+        assert.deepEqual(stopped, { kind: 'not-started', proven: true });
+        release.resolve(undefined);
+        const result = await execution;
+        assert.equal(result.kind, 'failed');
+        assert.equal(driver.spawnCalls, 0);
+        assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 0);
+      } finally { release.resolve(undefined); await Promise.allSettled([execution]); close(fx); }
+    });
+
+    it(`collaboration cancellation during spawn-right CAS denies native spawn (${repetition}/3)`, async () => {
+      let authorized = true;
+      let gate!: SpawnRightGateProcessAdapter;
+      const driver = new FakeDriver(new FakeHandle([]));
+      const fx = fixture(driver, {
+        canLaunch: () => authorized,
+        processAdapterFactory: repo => { gate = new SpawnRightGateProcessAdapter(repo); return gate; },
+      });
+      const execution = fx.coordinator.execute(stageInput());
+      try {
+        await gate.spawnRightEntered.promise;
+        authorized = false;
+        gate.releaseSpawnRight.resolve(undefined);
+        const result = await execution;
+        assert.equal(result.kind, 'failed');
+        assert.equal(driver.spawnCalls, 0);
+        assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'failed');
+      } finally { gate.releaseSpawnRight.resolve(undefined); await Promise.allSettled([execution]); close(fx); }
+    });
+  }
+  it('absence of a Process without an accepted launch fence is not cancellation proof', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), { canLaunch: () => true });
+    try {
+      await assert.rejects(fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: OP, causationId: OP,
+      }), /exact Stage-attempt claim is unavailable/);
+    } finally { close(fx); }
+  });
   it('EVID-ID-01 proven explicit active cancellation exposes the exact durable root Process identity', async () => {
     const prepared = await prepareSyntheticFinalizer();
     const exactProcessId = prepared.process.id;
@@ -916,8 +990,8 @@ describe('StageExecutionCoordinator', () => {
     const execution = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
     }));
-    let firstCancel!: Promise<StageExecutionOutcome>;
-    let secondCancel!: Promise<StageExecutionOutcome>;
+    let firstCancel!: Promise<StageAttemptCancelOutcome>;
+    let secondCancel!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
@@ -1016,7 +1090,7 @@ describe('StageExecutionCoordinator', () => {
     const executePromise = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
     }));
-    let cancelPromise!: Promise<StageExecutionOutcome>;
+    let cancelPromise!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.spawnEntered.promise;
       cancelPromise = fx.coordinator.cancelAttempt({
@@ -1065,7 +1139,7 @@ describe('StageExecutionCoordinator', () => {
       },
     });
     const executePromise = fx.coordinator.execute(stageInput());
-    let cancelPromise!: Promise<StageExecutionOutcome>;
+    let cancelPromise!: Promise<StageAttemptCancelOutcome>;
     try {
       await processAdapter.spawnRightEntered.promise;
       cancelPromise = fx.coordinator.cancelAttempt({
@@ -1114,7 +1188,7 @@ describe('StageExecutionCoordinator', () => {
       },
     });
     const executePromise = fx.coordinator.execute(stageInput());
-    let cancelPromise!: Promise<StageExecutionOutcome>;
+    let cancelPromise!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       driver.handle.releaseExit();
@@ -1199,7 +1273,7 @@ describe('StageExecutionCoordinator', () => {
       providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
     });
     const executePromise = fx.coordinator.execute(input);
-    let cancelPromise: Promise<StageExecutionOutcome> | undefined;
+    let cancelPromise: Promise<StageAttemptCancelOutcome> | undefined;
     try {
       await driver.handle.waitExitEntered.promise;
       cancelPromise = fx.coordinator.cancelAttempt({
@@ -1282,7 +1356,7 @@ describe('StageExecutionCoordinator', () => {
     const executePromise = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
     }));
-    let cancelPromise!: Promise<StageExecutionOutcome>;
+    let cancelPromise!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       cancelPromise = fx.coordinator.cancelAttempt({
@@ -1321,7 +1395,7 @@ describe('StageExecutionCoordinator', () => {
     const executePromise = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
     }));
-    let cancelPromise!: Promise<StageExecutionOutcome>;
+    let cancelPromise!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       cancelPromise = fx.coordinator.cancelAttempt({
@@ -2232,7 +2306,7 @@ describe('StageExecutionCoordinator', () => {
     const execution = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...base, timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 100, totalTimeoutMs: 500 } },
     }));
-    let cancel!: Promise<StageExecutionOutcome>;
+    let cancel!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       cancel = fx.coordinator.cancelAttempt({
@@ -2270,7 +2344,7 @@ describe('StageExecutionCoordinator', () => {
     const execution = fx.coordinator.execute(stageInput({
       providerSnapshot: { ...base, timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 100, totalTimeoutMs: 500 } },
     }));
-    let cancel!: Promise<StageExecutionOutcome>;
+    let cancel!: Promise<StageAttemptCancelOutcome>;
     try {
       await driver.handle.waitExitEntered.promise;
       clock.advance(100);

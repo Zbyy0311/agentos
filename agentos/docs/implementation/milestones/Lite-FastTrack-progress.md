@@ -1,11 +1,18 @@
 # Lite Fast Track — Progress Summary
 
+Current status (2026-10-01): the merged [final Lite closeout](../lite-closeout/FINAL-CLOSEOUT-90E2E5A1.md)
+and [matrix v26](../lite-closeout/matrix.json) supersede the historical slice
+status below. Memory records 23 PASS, 8 DEFERRED, 0 GAP and 0 RUNTIME-VERIFY.
+The separate [project-knowledge integration follow-up](MF-project-knowledge-integration.md)
+repairs the management UI's legacy/canonical disconnect and has its own checks.
+
 > Final Lite closeout uses [S0's frozen acceptance matrix](../lite-closeout/README.md)
 > as the only scope authority (baseline main `b3c3a982`, migrations 001–026).
 > The historical merged-slice labels below are not end-to-end Lite acceptance.
-> S1-A / PR #143 addresses only `LITE-07-003/107`; the full goal remains OPEN.
+> S1-A / PR #143 addressed only `LITE-07-003/107`; later S1–S9 closeout
+> superseded the OPEN status recorded at that earlier point.
 
-Status: IN PROGRESS — merged slice evidence is recorded below. Controlled Group speaker orchestration (incl. the forward-UI walk wiring) is merged (PR #129/#130/#132). The one Fast-Track step still PARTIAL is Memory Foundation: the explicit user-save trigger (PR #136 + #137) and the accepted-approval-decision trigger (PR #139 + #140) are now wired, and the remaining MF-2 candidate-generation triggers — review/test artifact, compaction, explicit import — each need a new durable seam (new schema or feature) and therefore a new authorization before any implementation.
+Historical status: IN PROGRESS — the following record describes the earlier merged slices and the durable seams still missing at that point. Controlled Group speaker orchestration (PR #129/#130/#132), explicit user-save (PR #136/#137), and accepted approval decisions (PR #139/#140) were merged; review/test artifact, compaction and explicit import were implemented in the later S1–S9 sequence. Use the final closeout linked above for current acceptance status.
 
 ## 1. Purpose
 

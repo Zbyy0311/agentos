@@ -13,8 +13,11 @@ import { createFileBackupProvider } from '../migrations/backup.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import { ConversationRepository } from '../store/ConversationRepository.js';
+import { AgentTurnRepository } from '../store/AgentTurnRepository.js';
 import { GroupInteractionRepository } from '../store/GroupInteractionRepository.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
+import { createEntityId } from '../store/Identity.js';
+import { ConversationStreamService } from './ConversationStreamService.js';
 import {
   BoundedGroupError,
   BoundedGroupService,
@@ -46,6 +49,7 @@ const NOW6 = '2026-09-10T00:00:05.000Z';
 const NOW7 = '2026-09-10T00:00:06.000Z';
 const WS = 'ws_cr5s';
 const CONV = 'conv_' + 'b'.repeat(26);
+const SOURCE = 'msg_' + 'a'.repeat(26);
 
 const BUDGET: GroupInteractionBudgetV1 = {
   maxAgentsPerTurn: 3,
@@ -66,13 +70,23 @@ function fixture(selector?: TurnContextSelector) {
   ).run(WS, WS, 'C:/tmp/ws_cr5s', 'C:/tmp/ws_cr5s', NOW, NOW, NOW);
   const conversations = new ConversationRepository(db as unknown as TransactionDatabase);
   conversations.createConversation({ id: CONV, workspaceId: WS, kind: 'group', title: 'G', replyMode: 'sequential', createdAt: NOW });
+  conversations.appendMessage({
+    id: SOURCE, conversationId: CONV, workspaceId: WS,
+    senderType: 'user', kind: 'text', status: 'final', content: 'source', createdAt: NOW,
+  });
   const interactions = new GroupInteractionRepository(db as unknown as TransactionDatabase);
+  const turns = new AgentTurnRepository(db as unknown as TransactionDatabase);
+  const stream = new ConversationStreamService(db as unknown as TransactionDatabase, conversations, turns);
   const snapshots = new TurnContextSnapshotRepository(db as unknown as TransactionDatabase);
   const service = new BoundedGroupService(
     db as unknown as TransactionDatabase, interactions, snapshots, selector,
   );
+  const createInteraction = service.createInteraction.bind(service);
+  service.createInteraction = input => createInteraction({
+    ...input, sourceMessageId: input.sourceMessageId ?? SOURCE,
+  });
   return {
-    db, conversations, interactions, snapshots, service,
+    db, conversations, interactions, turns, stream, snapshots, service,
     close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } },
   };
 }
@@ -90,11 +104,44 @@ function agentMessage(fx: ReturnType<typeof fixture>, agentId: string, content: 
 }
 
 function replyInput(fx: ReturnType<typeof fixture>, agentId: string, content: string, extra: Record<string, unknown> = {}) {
-  const message = agentMessage(fx, agentId, content);
+  const createdAt = typeof extra.createdAt === 'string' ? extra.createdAt : NOW2;
+  const interaction = fx.interactions.listInteractions(WS, CONV).slice(-1)[0];
+  if (interaction === undefined || interaction.status !== 'active' || interaction.sourceMessageId === null) {
+    const message = agentMessage(fx, agentId, content);
+    const owner = interaction === undefined ? undefined : fx.service.findExecutionOwner(WS, interaction.id);
+    return {
+      workspaceId: WS, agentId, content, messageId: message.id,
+      turnId: createEntityId('turn'), ownerId: owner?.ownerId ?? createEntityId('event'), ownerEpoch: owner?.ownerEpoch ?? 1,
+      createdAt, ...extra,
+    };
+  }
+  let owner = fx.service.findExecutionOwner(WS, interaction.id);
+  if (owner === undefined) {
+    owner = fx.service.claimExecution({
+      workspaceId: WS, conversationId: CONV, interactionId: interaction.id,
+      sourceMessageId: interaction.sourceMessageId, participantAgentIds: [agentId],
+      ownerId: createEntityId('event'), createdAt,
+    });
+  }
+  const turnId = createEntityId('turn');
+  const messageId = createEntityId('message');
+  fx.service.setExecutionCurrentTurn({
+    workspaceId: WS, interactionId: interaction.id, ownerId: owner.ownerId,
+    ownerEpoch: owner.ownerEpoch, agentId, turnId, messageId, updatedAt: createdAt,
+  });
+  const reservation = fx.stream.beginAgentTurnStream({
+    workspaceId: WS, conversationId: CONV, turnId, messageId, agentId,
+    sourceMessageId: interaction.sourceMessageId, createdAt,
+  });
+  fx.stream.finalizeStream({
+    workspaceId: WS, turnId, messageId,
+    expectedTurnVersion: reservation.turn.version, expectedMessageVersion: reservation.message.version,
+    outcome: 'final', content, updatedAt: createdAt,
+  });
   return {
-    workspaceId: WS, agentId, content,
-    messageId: message.id,
-    createdAt: NOW2,
+    workspaceId: WS, agentId, content, messageId, turnId,
+    ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch,
+    createdAt,
     ...extra,
   };
 }
@@ -221,6 +268,100 @@ test('CR5S-07 Stop blocks new replies and never cancels a Run', () => {
     }));
     // no Run was ever created by the group interaction
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n, 0);
+  } finally { fx.close(); }
+});
+
+test('CR5S-07b a final Provider result that races with stop is accounted once', () => {
+  const fx = fixture();
+  try {
+    const interaction = fx.service.createInteraction({ workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW });
+    // The Provider's final Message and Turn are already durable when stop wins;
+    // reconciliation must attach that exact owner/current Turn once.
+    const finalReply = replyInput(fx, 'agent_a', 'already finalized');
+    const stopped = fx.service.stopInteraction({
+      workspaceId: WS, interactionId: interaction.id,
+      expectedVersion: interaction.version, endedAt: NOW2,
+    });
+    const reconciled = fx.service.recordFinalReplyAfterUserStop({
+      ...finalReply,
+      interactionId: interaction.id,
+      createdAt: NOW3,
+    });
+    assert.equal(reconciled.reply.agentId, 'agent_a');
+    assert.equal(reconciled.interaction.status, 'stopped');
+    assert.equal(reconciled.interaction.stopReason, 'user-stop');
+    assert.equal(reconciled.interaction.replyCount, 1);
+    assert.equal(fx.interactions.listReplies(interaction.id).length, 1);
+    assert.equal(stopped.version + 1, reconciled.interaction.version);
+  } finally { fx.close(); }
+});
+
+test('F09: a stale stop version is a version conflict, never a budget error', () => {
+  const fx = fixture();
+  try {
+    const interaction = fx.service.createInteraction({ workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW });
+    const afterReply = fx.service.recordReply({ ...replyInput(fx, 'agent_a', 'one'), interactionId: interaction.id }).interaction;
+    assert.equal(afterReply.version, interaction.version + 1);
+    const error = expectError('GROUP_VERSION_CONFLICT', () => fx.service.stopInteraction({
+      workspaceId: WS, interactionId: interaction.id,
+      expectedVersion: interaction.version, endedAt: NOW3,
+    }));
+    assert.equal(error.code, 'GROUP_VERSION_CONFLICT');
+    const latest = fx.service.findInteraction(WS, interaction.id)!;
+    assert.equal(latest.status, 'active');
+    assert.equal(latest.version, afterReply.version);
+    assert.equal(latest.replyCount, 1);
+  } finally { fx.close(); }
+});
+
+test('F11: a reply message from another workspace and conversation is rejected without ledger or budget writes', () => {
+  const fx = fixture();
+  try {
+    fx.db.prepare(
+      `INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run('ws_foreign', 'Foreign', 'C:/tmp/foreign', 'C:/tmp/foreign', NOW, NOW, NOW);
+    const foreignConversation = 'conv_' + 'f'.repeat(26);
+    fx.conversations.createConversation({
+      id: foreignConversation, workspaceId: 'ws_foreign', kind: 'group', title: 'Foreign',
+      replyMode: 'sequential', createdAt: NOW,
+    });
+    const foreignMessage = fx.conversations.appendMessage({
+      id: 'msg_' + 'f'.repeat(26), conversationId: foreignConversation, workspaceId: 'ws_foreign',
+      senderType: 'agent', senderAgentId: 'agent_a', kind: 'text', status: 'final',
+      content: 'foreign reply', createdAt: NOW,
+    });
+    const interaction = fx.service.createInteraction({ workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW });
+    const associatedReply = replyInput(fx, 'agent_a', 'foreign reply');
+    expectError('GROUP_REPLY_ASSOCIATION_INVALID', () => fx.service.recordReply({
+      ...associatedReply,
+      interactionId: interaction.id,
+      messageId: foreignMessage.id,
+    }));
+    const unrelatedTurnId = createEntityId('turn');
+    const unrelatedMessageId = createEntityId('message');
+    const reservation = fx.stream.beginAgentTurnStream({
+      workspaceId: WS, conversationId: CONV, turnId: unrelatedTurnId,
+      messageId: unrelatedMessageId, agentId: 'agent_a', sourceMessageId: SOURCE, createdAt: NOW2,
+    });
+    fx.stream.finalizeStream({
+      workspaceId: WS, turnId: unrelatedTurnId, messageId: unrelatedMessageId,
+      expectedTurnVersion: reservation.turn.version, expectedMessageVersion: reservation.message.version,
+      outcome: 'final', content: 'unrelated final message', updatedAt: NOW2,
+    });
+    expectError('GROUP_REPLY_ASSOCIATION_INVALID', () => fx.service.recordReply({
+      ...associatedReply, interactionId: interaction.id, turnId: unrelatedTurnId,
+    }));
+    expectError('GROUP_REPLY_ASSOCIATION_INVALID', () => fx.service.recordReply({
+      ...associatedReply, interactionId: interaction.id, agentId: 'agent_b',
+    }));
+    expectError('GROUP_REPLY_ASSOCIATION_INVALID', () => fx.service.recordReply({
+      ...associatedReply, interactionId: interaction.id, content: 'content hash does not match final Message',
+    }));
+    assert.equal(fx.interactions.listReplies(interaction.id).length, 0);
+    const latest = fx.service.findInteraction(WS, interaction.id)!;
+    assert.equal(latest.replyCount, 0);
+    assert.equal(latest.version, interaction.version);
   } finally { fx.close(); }
 });
 

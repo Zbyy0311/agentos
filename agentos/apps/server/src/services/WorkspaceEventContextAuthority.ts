@@ -171,15 +171,16 @@ implements WorkspaceEventContextAuthorityV1 {
         conflictVersion: origin.conflictVersion,
       };
     }
-    if (origin.kind === 'memory.entry_save') {
-      if (!nonBlank(origin.entryId) || !isPositiveSafeInteger(origin.entryVersion)) {
+    if (origin.kind === 'memory.entry_save' || origin.kind === 'memory.entry_edit') {
+      if (!nonBlank(origin.entryId) || !isPositiveSafeInteger(origin.entryVersion)
+        || (origin.kind === 'memory.entry_edit' && origin.entryVersion < 2)) {
         throw new WorkspaceEventContextAuthorityError(
           'INPUT_INVALID',
           'memory.entry_save origin requires entryId and a positive integer entryVersion',
         );
       }
       return {
-        kind: 'memory.entry_save',
+        kind: origin.kind,
         entryId: origin.entryId,
         entryVersion: origin.entryVersion,
       };
@@ -272,7 +273,7 @@ implements WorkspaceEventContextAuthorityV1 {
 
   private proveEntrySave(
     workspaceId: string,
-    origin: Extract<WorkspaceEventOriginV1, { readonly kind: 'memory.entry_save' }>,
+    origin: Extract<WorkspaceEventOriginV1, { readonly kind: 'memory.entry_save' | 'memory.entry_edit' }>,
   ): number {
     const row = this.db.prepare(
       'SELECT id, version FROM memory_entries WHERE workspace_id = ? AND id = ? AND version = ?',

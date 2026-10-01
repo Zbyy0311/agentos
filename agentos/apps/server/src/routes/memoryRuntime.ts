@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import { MEMORY_CANDIDATE_OUTCOMES, type MemoryCandidateOutcome, type MemoryRetrievalContext } from '@agentos/shared';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { MemoryEntryRepository, type CreateMemoryEntryInput, type MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
+import { MemoryEntryRepository, type CreateMemoryEntryInput, type MemoryEntryRecord, type UpdateMemoryEntryInput } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
@@ -52,7 +52,7 @@ interface ErrorMapping { readonly status: number; readonly code: string }
 function mapError(error: unknown): ErrorMapping {
   const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
   if (/NOT_FOUND/.test(code)) return { status: 404, code };
-  if (/NOT_RESOLVABLE|NOT_REVIEWABLE|CONFLICT/.test(code) && !/NOT_FOUND/.test(code)) return { status: 409, code };
+  if (/NOT_RESOLVABLE|NOT_REVIEWABLE|NOT_UPDATABLE|CONFLICT/.test(code) && !/NOT_FOUND/.test(code)) return { status: 409, code };
   if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
   return { status: 500, code };
 }
@@ -164,6 +164,88 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     return workspace;
   };
 
+  // Project knowledge manages the same Entries the Run/chat selectors read.
+  router.get('/memory/entries', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const { status, category, query } = req.query;
+    if ([status, category, query].some(value => value !== undefined && typeof value !== 'string')) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+    }
+    try {
+      res.json({ entries: entries.listEntries(workspace.id, {
+        ...(status === undefined ? {} : { status: status as MemoryEntryRecord['status'] | 'all' }),
+        ...(category === undefined ? {} : { category: category as MemoryEntryRecord['category'] }),
+        ...(query === undefined ? {} : { query: query as string }),
+      }) });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.get('/memory/entries/:entryId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const entry = entries.findById(workspace.id, req.params.entryId);
+    if (entry === undefined) { res.status(404).json({ error: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
+    res.json({ entry });
+  });
+
+  const appendEditEvent = (entry: MemoryEntryRecord, timestamp: string, type: 'memory.entry_updated' | 'memory.entry_archived') => {
+    const origin = { kind: 'memory.entry_edit', entryId: entry.id, entryVersion: entry.version } as const;
+    store.workspaceEventWriter().appendWithinTransaction({
+      type, workspaceId: entry.workspaceId, timestamp, origin, context: deriveWorkspaceEventContext(origin),
+      payload: { memoryEntryId: entry.id, version: entry.version, scope: entry.scope, category: entry.category, authority: entry.authority },
+    });
+  };
+
+  router.patch('/memory/entries/:entryId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    const body = req.body;
+    const keys = ['title', 'summary', 'content', 'tags', 'category', 'confidence', 'importance', 'pinned'];
+    if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion' && !keys.includes(key))
+      || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1
+      || !keys.some(key => Object.prototype.hasOwnProperty.call(body, key))
+      || keys.some(key => Object.prototype.hasOwnProperty.call(body, key) && body[key] === null)) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+    }
+    try {
+      const updatedAt = new Date().toISOString();
+      const entry = inTransaction(store.getDatabase(), () => {
+        const record = entries.updateEntryWithinTransaction({ ...body, workspaceId: workspace.id,
+          entryId: req.params.entryId, updatedAt } as unknown as UpdateMemoryEntryInput);
+        appendEditEvent(record, updatedAt, 'memory.entry_updated');
+        return record;
+      });
+      res.json({ entry });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post('/memory/entries/:entryId/archive', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    const body = req.body;
+    if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion')
+      || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+    }
+    try {
+      const updatedAt = new Date().toISOString();
+      const entry = inTransaction(store.getDatabase(), () => {
+        const current = entries.findById(workspace.id, req.params.entryId);
+        if (current === undefined) throw new Error('MEMORY_ENTRY_NOT_FOUND');
+        if (current.version !== body.expectedVersion) throw new Error('MEMORY_ENTRY_VERSION_CONFLICT');
+        if (current.status !== 'active') throw new Error('MEMORY_ENTRY_NOT_UPDATABLE');
+        const record = entries.updateStatusWithinTransaction({ workspaceId: workspace.id,
+          entryId: current.id, expectedVersion: body.expectedVersion as number, status: 'archived', updatedAt });
+        appendEditEvent(record, updatedAt, 'memory.entry_archived');
+        return record;
+      });
+      res.json({ entry });
+    } catch (error) { fail(res, error); }
+  });
+
   // ---- Retrieval (read-only explanation surface) --------------------------
 
   router.post('/memory/retrieve', (req: Request, res: Response) => {
@@ -238,6 +320,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.post('/memory/entries', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
+    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const content = typeof body.content === 'string' ? body.content : '';
@@ -288,6 +371,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
           status: 'active',
           exactContentHash: exactHash,
           normalizedTextHash: normalizedHash,
+          tokenEstimate: Math.max(1, Math.ceil(('### ' + title + '\n' + content).length / 4)),
           sources: (body.sources === undefined ? [] : body.sources) as CreateMemoryEntryInput['sources'],
           createdAt: now,
         });

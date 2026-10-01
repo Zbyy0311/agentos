@@ -13,6 +13,7 @@ import {
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
+import { createHash } from 'node:crypto';
 
 /**
  * MF-1 Memory Entry persistence primitive.
@@ -32,6 +33,7 @@ export type MemoryEntryRepositoryErrorCode =
   | 'WORKSPACE_NOT_FOUND'
   | 'ENTRY_NOT_FOUND'
   | 'ENTRY_NOT_UPDATABLE'
+  | 'VERSION_CONFLICT'
   | 'SOURCE_REQUIRED'
   | 'PERSISTENCE_FAILED';
 
@@ -83,6 +85,21 @@ export interface UpdateMemoryEntryStatusInput {
   readonly expectedVersion: number;
   readonly status: MemoryEntryStatus;
   readonly updatedAt: string;
+}
+
+export interface UpdateMemoryEntryInput {
+  readonly workspaceId: string;
+  readonly entryId: string;
+  readonly expectedVersion: number;
+  readonly updatedAt: string;
+  readonly title?: string;
+  readonly summary?: string;
+  readonly content?: string;
+  readonly tags?: readonly string[];
+  readonly category?: MemoryCategory;
+  readonly confidence?: number;
+  readonly importance?: number;
+  readonly pinned?: boolean;
 }
 
 export interface ListMemoryRetrievalCandidatesInput {
@@ -328,6 +345,63 @@ export class MemoryEntryRepository {
     ).get(workspaceId, entryId) as EntryRow | undefined;
     if (row === undefined || !isSafeEntryRow(row)) return undefined;
     return toRecord(row, this.readSources(entryId));
+  }
+
+  /** Management reads include accepted candidates, without widening retrieval reach. */
+  listEntries(workspaceId: string, filter: { status?: MemoryEntryStatus | 'all'; category?: MemoryCategory; query?: string } = {}): MemoryEntryRecord[] {
+    if (!nonBlank(workspaceId) || (filter.status !== undefined && filter.status !== 'all' && !isStatus(filter.status))
+      || (filter.category !== undefined && !isCategory(filter.category))
+      || (filter.query !== undefined && typeof filter.query !== 'string')) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    const conditions = ['workspace_id = ?'];
+    const params: unknown[] = [workspaceId];
+    if (filter.status !== 'all') { conditions.push('status = ?'); params.push(filter.status ?? 'active'); }
+    if (filter.category !== undefined) { conditions.push('category = ?'); params.push(filter.category); }
+    if (filter.query?.trim()) {
+      const query = '%' + filter.query.trim().replace(/[\\%_]/gu, '\\$&') + '%';
+      conditions.push("(title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags_json LIKE ? ESCAPE '\\')");
+      params.push(query, query, query, query);
+    }
+    const rows = this.db.prepare('SELECT ' + SELECT_COLUMNS + ' FROM memory_entries WHERE '
+      + conditions.join(' AND ') + ' ORDER BY updated_at DESC, id ASC').all(...params) as EntryRow[];
+    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
+  }
+
+  /** Preserve identity, ownership, authority and provenance; caller commits the Event. */
+  updateEntryWithinTransaction(input: UpdateMemoryEntryInput): MemoryEntryRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.entryId) || !nonBlank(input.updatedAt)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    const current = this.findById(input.workspaceId, input.entryId);
+    if (current === undefined) throw new MemoryEntryRepositoryError('ENTRY_NOT_FOUND');
+    if (current.version !== input.expectedVersion) throw new MemoryEntryRepositoryError('VERSION_CONFLICT');
+    if (current.status !== 'active' && current.status !== 'archived') throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
+    const next = {
+      title: input.title ?? current.title, summary: input.summary ?? current.summary,
+      content: input.content ?? current.content, tags: input.tags ?? current.tags,
+      category: input.category ?? current.category, confidence: input.confidence ?? current.confidence,
+      importance: input.importance ?? current.importance, pinned: input.pinned ?? current.pinned,
+    };
+    if (!nonBlank(next.title) || !nonBlank(next.content) || typeof next.summary !== 'string'
+      || parseTags(next.tags) === undefined || !isCategory(next.category)
+      || !unitInterval(next.confidence) || !unitInterval(next.importance) || typeof next.pinned !== 'boolean'
+      || !areMemoryTextFieldsSafe([next.title, next.summary, next.content, ...next.tags])) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+    const result = this.db.prepare(
+      'UPDATE memory_entries SET title = ?, summary = ?, content = ?, tags_json = ?, category = ?, confidence = ?, importance = ?, pinned = ?, '
+      + 'exact_content_hash = ?, normalized_text_hash = ?, token_estimate = ?, version = version + 1, updated_at = ? '
+      + 'WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run(next.title, next.summary, next.content, JSON.stringify(next.tags), next.category, next.confidence, next.importance,
+      next.pinned ? 1 : 0, hash(next.content), hash(next.content.toLowerCase().replace(/\s+/gu, ' ').trim()),
+      Math.max(1, Math.ceil(('### ' + next.title + '\n' + next.content).length / 4)), input.updatedAt,
+      input.workspaceId, input.entryId, input.expectedVersion) as { changes: number | bigint };
+    if (Number(result.changes) !== 1) throw new MemoryEntryRepositoryError('VERSION_CONFLICT');
+    this.replaceFts(current.id, next.title, next.content, next.summary, next.tags.join(' '));
+    return this.requireEntry(input.workspaceId, input.entryId);
   }
 
   /**

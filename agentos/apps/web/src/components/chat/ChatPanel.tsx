@@ -7,6 +7,7 @@ import { getChatTarget } from '@/lib/conversationSelection';
 import { chunkResponseBlocks, getResponseLineCount, RESPONSE_CHUNK_THRESHOLD, type ResponseBlock } from '@/lib/responseRendering';
 import { getSendButtonState } from '@/lib/uiFeedback';
 import { isNearBottom } from '@/lib/chatScroll';
+import { handleComposerKeyDown } from '@/lib/composerKeyboard';
 import { ComposerControls } from './ComposerControls';
 import { ImageAttachments } from './ImageAttachments';
 import { ImagePreviewModal, type ImagePreviewItem } from './ImagePreviewModal';
@@ -17,6 +18,9 @@ import { MarkdownMessage } from './MarkdownMessage';
 import { VirtualMessageList } from './VirtualMessageList';
 import { MentionPicker } from './MentionPicker';
 import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
+import { CollaborationTaskProgressCard } from './CollaborationTaskProgressCard';
+import type { CollaborationProgressState } from '@/lib/useCollaborationProgress';
+import { groupInteractionRecoveryReason, type GroupBudgetStatus, type GroupInteraction } from '@/lib/groupConversationClient';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string; runtimeEvent?: AgentEvent };
 
@@ -26,6 +30,8 @@ export interface ChatLayoutControls {
   historyVisible: boolean;
   inspectorVisible: boolean;
   focusMode: boolean;
+  view?: 'chat' | 'execution';
+  onViewChange?(view: 'chat' | 'execution'): void;
   onToggleWorkspace(): void;
   onToggleHistory(): void;
   onToggleInspector(): void;
@@ -70,9 +76,23 @@ interface ChatPanelProps {
   onRunIntentChange?(value: RunIntent): void;
   onSend(): void;
   onCancel(): void;
+  onResumeQueue?(): void;
   onOpenRuntimeDetails?(runId: string): void;
+  onOpenRuntime?(runId?: string): void;
+  onCreateCollaborationTask?(): void;
+  onOpenCollaborationTask?(): void;
+  collaborationProgressState?: CollaborationProgressState;
+  groupInteraction?: GroupInteraction | null;
+  groupBudget?: GroupBudgetStatus | null;
+  groupSpeakingAgentName?: string;
+  groupDiscussionError?: string;
   mentionedAgentIds?: string[];
   onMentionedAgentIdsChange?(agentIds: string[]): void;
+  draftReady?: boolean;
+  draftPersistenceWarning?: string;
+  scrollIdentityKey?: string;
+  savedScrollPosition?: number;
+  onScrollPositionChange?(scrollPosition: number): void;
   layoutControls?: ChatLayoutControls;
 }
 
@@ -193,6 +213,17 @@ function clampComposerHeight(height: number): number {
   return Math.min(COMPOSER_MAX_HEIGHT, Math.max(COMPOSER_MIN_HEIGHT, height));
 }
 
+function hasChangingChatGeometry(element: HTMLElement): boolean {
+  return element.getAnimations().some(animation => (
+    (animation.playState === 'running' || animation.pending)
+    && animation.effect instanceof KeyframeEffect
+    && animation.effect.getKeyframes().some(frame => (
+      ['height', 'minHeight', 'maxHeight', 'width', 'padding', 'paddingTop', 'paddingBottom', 'marginTop', 'marginBottom', 'top', 'bottom', 'transform', 'translate', 'scale']
+        .some(property => property in frame)
+    ))
+  ));
+}
+
 function RuntimeTimeline({ events }: { events: AgentEvent[] }) {
   const visibleEvents = mergeToolEvents(events);
   if (!visibleEvents.length) return null;
@@ -234,14 +265,14 @@ function mergeToolEvents(events: AgentEvent[]): AgentEvent[] {
   return merged;
 }
 
-function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: VisibleExecutionEvent[]; runtimeEvents?: AgentEvent[]; sending: boolean }) {
+function ThinkingProcess({ events, runtimeEvents = [], sending, interrupted = false }: { events: VisibleExecutionEvent[]; runtimeEvents?: AgentEvent[]; sending: boolean; interrupted?: boolean }) {
   const [expanded, setExpanded] = useState(sending);
   useEffect(() => setExpanded(sending), [sending]);
   const projectedRuntimeEvents = runtimeEvents.length > 0 ? runtimeEvents : events.flatMap(event => event.runtimeEvent ? [event.runtimeEvent] : []);
   if (!events.length && !projectedRuntimeEvents.length && !sending) return null;
   const latest = events.at(-1);
   const label = latest ? executionLabels[latest.status] ?? latest.activity : '正在准备执行过程';
-  const latestLabel = latest?.agentName ? `${latest.agentName} · ${label}` : label;
+  const latestLabel = interrupted ? '历史执行记录（讨论已中断）' : latest?.agentName ? `${latest.agentName} · ${label}` : label;
   return (
     <div className="thinking-process">
     <button type="button" className="thinking-process-header w-full text-left" aria-expanded={expanded} aria-controls="thinking-process-body" onClick={() => setExpanded(current => !current)}>
@@ -251,7 +282,7 @@ function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: Visi
         <span className="truncate text-xs ui-muted">{latestLabel}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1 text-[11px] ui-dim">
-        <span>{events.length ? `${events.length} 个步骤` : '进行中'}</span>
+        <span>{events.length ? `${events.length} 个步骤` : interrupted ? '历史事件' : '进行中'}</span>
         <span>· {expanded ? '收起' : '展开'}</span>
         <span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
       </span>
@@ -267,14 +298,14 @@ function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: Visi
           </div>
         </div>
       ))}
-      {!events.length && <div className="text-xs ui-muted">正在等待 Agent 返回第一个执行阶段...</div>}
+      {!events.length && <div className="text-xs ui-muted">{interrupted ? '保留的历史执行事件' : '正在等待 Agent 返回第一个执行阶段...'}</div>}
       <RuntimeTimeline events={projectedRuntimeEvents} />
     </div>}
     </div>
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onOpenRuntimeDetails, mentionedAgentIds = [], onMentionedAgentIdsChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onResumeQueue, onOpenRuntimeDetails, onOpenRuntime, onCreateCollaborationTask, onOpenCollaborationTask, collaborationProgressState, groupInteraction, groupBudget, groupSpeakingAgentName, groupDiscussionError, mentionedAgentIds = [], onMentionedAgentIdsChange, draftReady = true, draftPersistenceWarning, scrollIdentityKey, savedScrollPosition = 0, onScrollPositionChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -308,6 +339,11 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
     return () => observer.disconnect();
   }, [chromeEl]);
   const wasNearBottomRef = useRef(true);
+  const restoredScrollIdentityRef = useRef<string>();
+  const [restoredScrollIdentity, setRestoredScrollIdentity] = useState<string>();
+  const readerNavigationRef = useRef({ identity: scrollIdentityKey, navigated: false });
+  const scrollSaveTimerRef = useRef<number | null>(null);
+  const pendingScrollSaveRef = useRef<{ identity: string | undefined; position: number; save(position: number): void } | null>(null);
   useEffect(() => {
     return () => {
       if (composerResizeFrameRef.current !== null) window.cancelAnimationFrame(composerResizeFrameRef.current);
@@ -315,10 +351,70 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   }, []);
 
   useEffect(() => {
+    restoredScrollIdentityRef.current = undefined;
+    setRestoredScrollIdentity(undefined);
+    readerNavigationRef.current = { identity: scrollIdentityKey, navigated: false };
+    wasNearBottomRef.current = !scrollIdentityKey;
+  }, [scrollIdentityKey]);
+
+  useEffect(() => {
     if (composerResizingRef.current) return;
+    if (scrollIdentityKey && restoredScrollIdentityRef.current !== scrollIdentityKey) return;
     if (!wasNearBottomRef.current) return;
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, streamingContent, activeEvents, activeRuntimeEvents]);
+  }, [messages, streamingContent, activeEvents, activeRuntimeEvents, scrollIdentityKey]);
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scrollIdentityKey || !draftReady || !scroll || !headerEl || !chromeEl || restoredScrollIdentityRef.current === scrollIdentityKey) return;
+    // A saved position cannot be restored into the temporary empty message
+    // surface. Wait for this identity's content, and never persist its clamped
+    // zero or reapply an old position on subsequent streaming updates.
+    if (savedScrollPosition > 0 && messages.length === 0) return;
+    // The first render has only estimated chrome padding. Setting scrollTop
+    // there clamps a saved bottom position and would overwrite this identity's
+    // draft. Wait for the actual header/Composer safe area and a stable layout.
+    let frame = 0;
+    let previousLayout = '';
+    let stableFrames = 0;
+    const restore = () => {
+      const host = scroll.closest('[data-signal-chat]');
+      if (!host || scrollRef.current !== scroll || !scroll.isConnected) return;
+      const hostRect = host.getBoundingClientRect();
+      const padding = window.getComputedStyle(scroll);
+      const top = headerEl.getBoundingClientRect().bottom - hostRect.top + 28;
+      const bottom = hostRect.bottom - chromeEl.getBoundingClientRect().top + 28;
+      // Consecutive frames can temporarily have the same geometry at an
+      // animation's start. Wait for size/position animations, not decorative
+      // opacity or color effects, before advertising restoration as ready.
+      const measured = !hasChangingChatGeometry(headerEl) && !hasChangingChatGeometry(chromeEl)
+        && Math.abs(parseFloat(padding.paddingTop) - top) < 1
+        && Math.abs(parseFloat(padding.paddingBottom) - bottom) < 1;
+      const layout = `${top}:${bottom}:${scroll.scrollHeight}:${scroll.clientHeight}`;
+      stableFrames = measured && layout === previousLayout ? stableFrames + 1 : 0;
+      previousLayout = layout;
+      if (stableFrames < 2) { frame = window.requestAnimationFrame(restore); return; }
+      // A wheel/touch/key gesture during measurement takes precedence over the
+      // old saved position. Do not drag a reader back after they navigate.
+      const readerNavigated = readerNavigationRef.current.identity === scrollIdentityKey && readerNavigationRef.current.navigated;
+      if (!readerNavigated) scroll.scrollTop = Math.max(0, savedScrollPosition);
+      wasNearBottomRef.current = isNearBottom(scroll);
+      restoredScrollIdentityRef.current = scrollIdentityKey;
+      setRestoredScrollIdentity(scrollIdentityKey);
+      if (readerNavigated) onScrollPositionChange?.(scroll.scrollTop);
+    };
+    frame = window.requestAnimationFrame(restore);
+    return () => window.cancelAnimationFrame(frame);
+  }, [draftReady, messages.length, savedScrollPosition, scrollIdentityKey, headerEl, chromeEl, chromeTop, chromeBottom, onScrollPositionChange]);
+
+  useEffect(() => () => {
+    if (scrollSaveTimerRef.current !== null) window.clearTimeout(scrollSaveTimerRef.current);
+    const pending = pendingScrollSaveRef.current;
+    if (pending && pending.identity === scrollIdentityKey) {
+      pendingScrollSaveRef.current = null;
+      pending.save(pending.position);
+    }
+  }, [scrollIdentityKey]);
 
   const startComposerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -371,8 +467,35 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   const target = getChatTarget({ groupTitle: isGroup ? groupName : undefined, agentName });
   const chatArtifacts = getChatVisibleArtifacts(artifacts);
   const title = conversationTitle ?? (agentName ? `${agentName} · ${roleTitle ?? 'Agent'}` : '选择一个 Agent 开始对话');
-  const status = activeStatus ? statusLabels[activeStatus] : undefined;
-  const sendButtonState = getSendButtonState({ canSend: canSendMessage(draft, attachments), sending });
+  const recoveryReason = isGroup ? groupInteractionRecoveryReason(groupInteraction) : undefined;
+  const groupReadOnly = recoveryReason !== undefined;
+  const effectiveSending = sending && !groupReadOnly;
+  const status = !groupReadOnly && activeStatus ? statusLabels[activeStatus] : undefined;
+  const baseSendButtonState = getSendButtonState({ canSend: canSendMessage(draft, attachments), sending: effectiveSending });
+  const sendButtonState = { ...baseSendButtonState, disabled: baseSendButtonState.disabled || !draftReady || groupReadOnly };
+  const groupStatusLabel = groupReadOnly ? '讨论已中断 · 等待处理' : groupInteraction?.status === 'active'
+    ? groupSpeakingAgentName ? `正在发言：${groupSpeakingAgentName}` : '正在准备下一位 Agent'
+    : groupInteraction?.status === 'completed' ? '讨论已完成'
+      : groupInteraction?.status === 'exhausted' ? '讨论已达到预算上限'
+        : groupInteraction?.status === 'stopped' ? '讨论已停止'
+          : undefined;
+  const markReaderNavigation = () => {
+    if (readerNavigationRef.current.identity === scrollIdentityKey) readerNavigationRef.current.navigated = true;
+  };
+  const handleScroll = (element: HTMLDivElement) => {
+    if (scrollIdentityKey && restoredScrollIdentityRef.current !== scrollIdentityKey) return;
+    wasNearBottomRef.current = isNearBottom(element);
+    if (!onScrollPositionChange) return;
+    if (scrollSaveTimerRef.current !== null) window.clearTimeout(scrollSaveTimerRef.current);
+    const pending = { identity: scrollIdentityKey, position: element.scrollTop, save: onScrollPositionChange };
+    pendingScrollSaveRef.current = pending;
+    scrollSaveTimerRef.current = window.setTimeout(() => {
+      if (pendingScrollSaveRef.current !== pending) return;
+      pendingScrollSaveRef.current = null;
+      scrollSaveTimerRef.current = null;
+      pending.save(pending.position);
+    }, 140);
+  };
   const renderMessage = (message: ConversationMessage) => {
     const sender = message.senderAgentId ? agents.find(agent => agent.id === message.senderAgentId) : undefined;
     const userMessage = message.senderType === 'user';
@@ -382,27 +505,30 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   return <main data-signal-chat className="signal-chat flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
     <div className="ambient-backdrop" aria-hidden="true" />
     <header ref={bindHeaderRef} className="signal-chat-header absolute inset-x-3 top-3 z-10 flex min-h-[4.25rem] items-center justify-between gap-3 rounded-2xl border ui-border px-5 py-3">
-      <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${sending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} /><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1></div>{target.kind !== 'none' && <p className="mt-1 truncate text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
-      <div className="flex shrink-0 items-center gap-2">{layoutControls && <div className="chat-layout-controls" role="group" aria-label="工作区布局">
+      <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${effectiveSending ? 'signal-timeline-dot-current bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} /><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1></div>{target.kind !== 'none' && <p className="mt-1 truncate text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
+      <div className="flex shrink-0 items-center gap-2">{isGroup && (onOpenCollaborationTask || onCreateCollaborationTask) && <button type="button" className="ui-button-secondary rounded-lg px-2.5 py-1.5 text-xs" onClick={() => (onOpenCollaborationTask ?? onCreateCollaborationTask)?.()}>协作任务</button>}{layoutControls?.view && layoutControls.onViewChange && <div className="flex items-center gap-1 rounded-xl border ui-border p-1" role="tablist" aria-label="工作区视图"><button type="button" role="tab" aria-selected={layoutControls.view === 'chat'} data-agentos="workspace-chat-tab" onClick={() => layoutControls.onViewChange?.('chat')} className={`rounded-lg px-2.5 py-1.5 text-xs ${layoutControls.view === 'chat' ? 'ui-selected' : 'ui-button-ghost'}`}>对话</button><button type="button" role="tab" aria-selected={layoutControls.view === 'execution'} data-agentos="workspace-execution-tab" onClick={() => layoutControls.onViewChange?.('execution')} className={`rounded-lg px-2.5 py-1.5 text-xs ${layoutControls.view === 'execution' ? 'ui-selected' : 'ui-button-ghost'}`}>执行详情</button></div>}{layoutControls && <div className="chat-layout-controls" role="group" aria-label="工作区布局">
         <button type="button" data-layout-toggle="workspace" aria-label={layoutControls.workspaceMode === 'compact' ? '展开 Agent 导航' : '收起 Agent 导航'} title={layoutControls.workspaceMode === 'compact' ? '展开 Agent 导航' : '收起 Agent 导航'} aria-pressed={layoutControls.workspaceMode === 'compact'} onClick={layoutControls.onToggleWorkspace} className="chat-layout-toggle ui-button-ghost"
         ><span aria-hidden="true">{layoutControls.workspaceMode === 'compact' ? '›' : '‹'}</span><span className="chat-layout-toggle-label">导航</span></button>
         {layoutControls.historyAvailable && <button type="button" data-layout-toggle="history" aria-label={layoutControls.historyVisible ? '收起会话列表' : '打开会话列表'} title={layoutControls.historyVisible ? '收起会话列表' : '打开会话列表'} aria-pressed={!layoutControls.historyVisible} onClick={layoutControls.onToggleHistory} className="chat-layout-toggle ui-button-ghost"><span aria-hidden="true">▤</span><span className="chat-layout-toggle-label">会话</span></button>}
         <button type="button" data-layout-toggle="inspector" aria-label={layoutControls.inspectorVisible ? '收起执行状态面板' : '打开执行状态面板'} title={layoutControls.inspectorVisible ? '收起执行状态面板' : '打开执行状态面板'} aria-pressed={!layoutControls.inspectorVisible} onClick={layoutControls.onToggleInspector} className="chat-layout-toggle ui-button-ghost"><span aria-hidden="true">◧</span><span className="chat-layout-toggle-label">状态</span></button>
         <button type="button" data-layout-toggle="focus" aria-label={layoutControls.focusMode ? '退出专注模式' : '进入专注模式'} title={layoutControls.focusMode ? '退出专注模式' : '进入专注模式'} aria-pressed={layoutControls.focusMode} onClick={layoutControls.onToggleFocus} className={`chat-layout-toggle ui-button-ghost ${layoutControls.focusMode ? 'ui-selected' : ''}`}><span aria-hidden="true">✦</span><span className="chat-layout-toggle-label">专注</span></button>
-      </div>}{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">中断执行</button>}</div>
+      </div>}{sending && <button type="button" onClick={onCancel} disabled={groupReadOnly} title={recoveryReason} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10 disabled:cursor-not-allowed disabled:opacity-50">{isGroup ? '停止讨论' : '中断执行'}</button>}</div>
     </header>
 
     {target.kind === 'none' ? <div className="signal-empty m-6 grid flex-1 place-items-center px-6 text-center" style={{ marginTop: chromeTop + 24 }}><div className="relative z-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
-      <div ref={scrollRef} onScroll={event => { wasNearBottomRef.current = isNearBottom(event.currentTarget); }} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="message-content-column mx-auto max-w-[70rem] min-w-0 space-y-3">
-        {messages.length === 0 && !streamingContent && <div className="signal-empty px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始协作。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
+      <div ref={scrollRef} data-scroll-restoration={!scrollIdentityKey || (draftReady && restoredScrollIdentity === scrollIdentityKey) ? 'ready' : 'pending'} onWheel={markReaderNavigation} onTouchMove={markReaderNavigation} onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markReaderNavigation(); }} onScroll={event => handleScroll(event.currentTarget)} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="message-content-column mx-auto max-w-[70rem] min-w-0 space-y-3">
+        {isGroup && (groupInteraction || groupDiscussionError) && <div className="rounded-2xl border ui-border bg-[var(--app-surface-raised)] px-4 py-3 text-sm ui-text-soft"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${!groupReadOnly && groupInteraction?.status === 'active' ? 'bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} /><span className="font-medium ui-text">轮流讨论</span>{groupStatusLabel && <span className="ui-muted">· {groupStatusLabel}</span>}</div><span className="text-xs ui-muted">{groupBudget ? `${groupBudget.repliesUsed}/${groupBudget.repliesUsed + groupBudget.repliesRemaining} 次回复 · ${groupBudget.distinctAgents} 位 Agent` : '预算准备中'}</span></div>{groupReadOnly && <div role="status" className="mt-2 text-xs ui-text-soft">等待处理：{recoveryReason}。该讨论无法安全续接；保留历史供查看，发送、继续和停止已禁用。</div>}{groupInteraction?.stopReason && <div className="mt-1 text-xs ui-muted">结束原因：{groupInteraction.stopReason}</div>}{groupDiscussionError && <div role="alert" className="mt-2 text-xs text-[var(--app-danger)]">{groupDiscussionError}</div>}</div>}
+        {messages.length === 0 && !streamingContent && !collaborationProgressState?.progress && !collaborationProgressState?.error && !groupInteraction && <div className="signal-empty px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始轮流讨论。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
+        {isGroup && collaborationProgressState?.error && <section role="alert" className="mx-auto w-full max-w-[70rem] rounded-2xl border border-[var(--app-danger)]/40 bg-[var(--app-surface-raised)] px-4 py-3 text-sm leading-6 text-[var(--app-danger)]">协作任务无法加载：{collaborationProgressState.error}</section>}
+        {isGroup && collaborationProgressState?.progress && <CollaborationTaskProgressCard state={collaborationProgressState} agents={agents} onOpenTask={() => (onOpenCollaborationTask ?? onCreateCollaborationTask)?.()} onCreateTask={() => onCreateCollaborationTask?.()} onOpenRuntime={runId => onOpenRuntime?.(runId)} />}
         {messages.length > 100 && <VirtualMessageList messages={messages} scrollElementRef={scrollRef} renderMessage={renderMessage} />}
         {messages.length <= 100 && messages.map(renderMessage)}
         {runtimeResult && <RuntimeResultProjection projection={runtimeResult} apiBase={apiBase} onOpenDetails={onOpenRuntimeDetails ? () => onOpenRuntimeDetails(runtimeResult.run.id) : undefined} />}
-        <ThinkingProcess events={activeEvents} runtimeEvents={activeRuntimeEvents} sending={sending} />
-        {streamingContent && <div className="signal-message-row flex min-w-0 gap-3"><MessageSurface content={streamingContent} streaming /></div>}
+        <ThinkingProcess events={activeEvents} runtimeEvents={activeRuntimeEvents} sending={effectiveSending} interrupted={groupReadOnly} />
+        {streamingContent && <div className="signal-message-row flex min-w-0 gap-3"><MessageSurface content={streamingContent} senderName={isGroup ? groupSpeakingAgentName : undefined} senderType="agent" streaming={!groupReadOnly} /></div>}
         {status && <div className="signal-status-card rounded-xl border px-4 py-3 text-sm">{status}</div>}
         {connectionNotice && <div className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-4 py-3 text-sm ui-text-soft">{connectionNotice}</div>}
-        {activeStatus === 'waiting_user' && waitingQuestion && <div className="rounded-xl border border-[var(--app-accent)]/40 bg-[var(--app-accent-soft)] px-4 py-3 text-sm ui-text-soft"><div className="mb-1 text-xs font-medium ui-accent">Agent 需要补充信息</div>{waitingQuestion}</div>}
+        {!groupReadOnly && activeStatus === 'waiting_user' && waitingQuestion && <div className="rounded-xl border border-[var(--app-accent)]/40 bg-[var(--app-accent-soft)] px-4 py-3 text-sm ui-text-soft"><div className="mb-1 text-xs font-medium ui-accent">Agent 需要补充信息</div>{waitingQuestion}</div>}
         {error && <div className="ui-error rounded-xl border px-4 py-3 text-sm">{error}</div>}
         {!runtimeResult && !sending && chatArtifacts.length > 0 && apiBase && <div className="rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-4"><ArtifactShelf artifacts={chatArtifacts} apiBase={apiBase} /></div>}
          <div ref={endRef} />
@@ -411,15 +537,17 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
       <div ref={bindChromeRef} className="signal-chat-chrome">
       <div className="signal-composer-shell border-t ui-border px-4 py-4 sm:px-6"><div ref={composerGlassRef} className="signal-composer mx-auto max-w-[70rem] min-w-0 rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-3 transition focus-within:border-[var(--app-accent)]" onPaste={event => { const imageFiles = Array.from(event.clipboardData.items).filter(isImageClipboardItem).map(item => item.getAsFile()).filter((file): file is File => Boolean(file)); if (imageFiles.length > 0) { event.preventDefault(); onFiles(imageFiles); } }}>
         <button type="button" role="slider" data-testid="composer-resize-handle" className="composer-resize-handle" aria-label="调整输入框高度" aria-controls="message-input" aria-orientation="vertical" aria-valuemin={COMPOSER_MIN_HEIGHT} aria-valuemax={COMPOSER_MAX_HEIGHT} aria-valuenow={composerHeight} aria-valuetext={`${composerHeight}px`} onPointerDown={startComposerResize} onPointerMove={moveComposerResize} onPointerUp={finishComposerResize} onPointerCancel={finishComposerResize} onKeyDown={handleComposerResizeKeyDown}><span aria-hidden="true" /></button>
-        <textarea id="message-input" aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} placeholder={sending ? `正在运行——输入补充指示，回车加入队列${queuedMessageCount ? `（已排队 ${queuedMessageCount} 条）` : ''}` : activeStatus === 'waiting_user' ? '补充信息…' : target.kind === 'group' ? '' : `向 ${target.label} 发送消息…`} className="w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none focus-visible:outline-none placeholder:ui-dim" style={{ height: `${composerHeight}px` }} />
+        <textarea id="message-input" aria-label="消息输入框" disabled={!draftReady} value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => handleComposerKeyDown({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.nativeEvent.keyCode, preventDefault: () => event.preventDefault() }, { canSend: draftReady && !groupReadOnly, onSend, focus: () => event.currentTarget.focus() })} placeholder={groupReadOnly ? '讨论已中断，等待处理；可保留未发送草稿…' : effectiveSending ? `正在运行——输入补充指示，回车加入队列${queuedMessageCount ? `（已排队 ${queuedMessageCount} 条）` : ''}` : !draftReady ? '正在恢复此会话草稿…' : activeStatus === 'waiting_user' ? '补充信息…' : target.kind === 'group' ? '向群聊发起轮流讨论…' : `向 ${target.label} 发送消息…`} className="w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none focus-visible:outline-none placeholder:ui-dim disabled:cursor-wait" style={{ height: `${composerHeight}px` }} />
         {validationError && <div role="alert" className="ui-error mt-2 rounded-lg border px-2.5 py-1.5 text-xs">{validationError}</div>}
         {attachmentError && <div role="alert" className="ui-error mt-2 rounded-lg border px-2.5 py-1.5 text-xs">{attachmentError}</div>}
+        {onResumeQueue && !effectiveSending && (queuedMessageCount > 0 || groupDiscussionError) && <button type="button" disabled={!draftReady || groupReadOnly} title={recoveryReason} onClick={onResumeQueue} className="ui-button-ghost mt-2 rounded-lg px-2.5 py-1.5 text-xs">核对后恢复原发送</button>}
+        {draftPersistenceWarning && <div role="status" className="mt-2 rounded-lg border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-2.5 py-1.5 text-xs ui-text-soft">{draftPersistenceWarning}</div>}
         <div className={`composer-action-row mt-2 flex items-center justify-between gap-3 ${isGroup ? 'composer-group-actions' : ''}`}>
           <div className={isGroup ? 'composer-group-targets' : 'min-w-0'}>
-            <ImageAttachments drafts={attachments} disabled={sending} onFiles={onFiles} onRemove={onRemoveAttachment} />
-            {isGroup && onMentionedAgentIdsChange && <MentionPicker agents={agents} selectedAgentIds={mentionedAgentIds} disabled={sending} onChange={onMentionedAgentIdsChange} />}
+            <ImageAttachments drafts={attachments} disabled={!draftReady} onFiles={onFiles} onRemove={onRemoveAttachment} />
+            {isGroup && onMentionedAgentIdsChange && <MentionPicker agents={agents} selectedAgentIds={mentionedAgentIds} disabled={sending || !draftReady} onChange={onMentionedAgentIdsChange} />}
           </div>
-          <div className="ml-auto flex min-w-0 items-center gap-2"><ComposerControls isGroup={isGroup} modelOptions={modelOptions} model={composerModel} thinkingEffort={composerThinkingEffort} thinkingEfforts={composerThinkingEfforts} modelSource={modelSource} disabled={sending} runIntent={runIntent} onRunIntentChange={onRunIntentChange} onModelChange={onComposerModelChange} onThinkingEffortChange={onComposerThinkingEffortChange} />{sending && <button type="button" onClick={onCancel} title="中断当前运行" aria-label="中断执行" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[color:var(--app-danger)]/60 bg-[color:var(--app-danger)]/15 text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/25 active:scale-95"><span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-[var(--app-danger)]" /></button>}<button type="button" onClick={onSend} disabled={sendButtonState.disabled} aria-busy={sendButtonState.ariaBusy} aria-label={sendButtonState.label} className="ui-button-primary grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg disabled:cursor-not-allowed disabled:opacity-50">{sendButtonState.showSpinner ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <span aria-hidden="true">↑</span>}</button></div></div>
+          <div className="ml-auto flex min-w-0 items-center gap-2"><ComposerControls isGroup={isGroup} modelOptions={modelOptions} model={composerModel} thinkingEffort={composerThinkingEffort} thinkingEfforts={composerThinkingEfforts} modelSource={modelSource} disabled={sending || !draftReady} runIntent={runIntent} onRunIntentChange={onRunIntentChange} onModelChange={onComposerModelChange} onThinkingEffortChange={onComposerThinkingEffortChange} />{sending && <button type="button" onClick={onCancel} disabled={groupReadOnly} title={recoveryReason ?? (isGroup ? '停止当前群聊讨论' : '中断当前运行')} aria-label={isGroup ? '停止讨论' : '中断执行'} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[color:var(--app-danger)]/60 bg-[color:var(--app-danger)]/15 text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] bg-[var(--app-danger)]" /></button>}<button type="button" onClick={onSend} disabled={sendButtonState.disabled} title={recoveryReason} aria-busy={sendButtonState.ariaBusy} aria-label={sendButtonState.label} className="ui-button-primary grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg disabled:cursor-not-allowed disabled:opacity-50">{sendButtonState.showSpinner ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <span aria-hidden="true">↑</span>}</button></div></div>
       </div></div></div>
     </>}
   </main>;

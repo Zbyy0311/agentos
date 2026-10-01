@@ -27,13 +27,19 @@ export function RunInspectorPanel(props: {
   readonly workspaceId: string;
   readonly apiBase: string;
   readonly runIds: readonly string[];
+  readonly initialRunId?: string;
   readonly theme: UiTheme;
+  readonly readOnly?: boolean;
+  readonly refreshSignal?: number;
 }) {
   const [selected, setSelected] = useState('');
   const [createdRunIds, setCreatedRunIds] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
   const runIds = [...new Set([...props.runIds, ...createdRunIds])];
   const runId = runIds.includes(selected) ? selected : runIds[0] ?? '';
+  useEffect(() => {
+    if (props.initialRunId && runIds.includes(props.initialRunId) && selected !== props.initialRunId) setSelected(props.initialRunId);
+  }, [props.initialRunId, runIds, selected]);
   const refresh = () => setRevision(value => value + 1);
   const controlStyle = { backgroundColor: 'var(--surface-elevated)', color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '4px 6px', maxWidth: '100%' };
@@ -52,6 +58,8 @@ export function RunInspectorPanel(props: {
         apiBase={props.apiBase}
         theme={props.theme}
         onChanged={refresh}
+        readOnly={props.readOnly ?? false}
+        refreshSignal={props.refreshSignal ?? 0}
         onRunCreated={id => {
           setCreatedRunIds(previous => previous.includes(id) ? previous : [id, ...previous]);
           setSelected(id);
@@ -71,6 +79,8 @@ function InspectorRequest(props: {
   readonly theme: UiTheme;
   readonly onChanged: () => void;
   readonly onRunCreated: (runId: string) => void;
+  readonly readOnly: boolean;
+  readonly refreshSignal: number;
 }) {
   const client = useMemo(
     () => runtimeInspectorClient({ workspaceId: props.workspaceId, apiBase: props.apiBase }),
@@ -94,18 +104,18 @@ function InspectorRequest(props: {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Inspector unavailable');
     });
     return () => controller.abort();
-  }, [client, props.runId]);
+  }, [client, props.runId, props.refreshSignal]);
 
   const operation = projection?.operations?.find(item => (
     item.type === 'run.start' && CANCELLABLE_OPERATION_STATUSES.has(item.status)
   ));
-  const canCancelQueuedRun = projection?.overview.status === 'queued'
+  const canCancelQueuedRun = !props.readOnly && projection?.overview.status === 'queued'
     && typeof projection.overview.version === 'number';
   const retryAlreadyAccepted = projection?.operations?.some(item => (
     item.type === 'run.retry'
       && (item.status === 'completed' || CANCELLABLE_OPERATION_STATUSES.has(item.status))
   )) ?? false;
-  const canRetry = projection?.overview.status === 'failed'
+  const canRetry = !props.readOnly && projection?.overview.status === 'failed'
     && typeof projection.overview.version === 'number'
     && !retryAlreadyAccepted;
 

@@ -74,6 +74,29 @@ test('L1A-03b granted subject union enforces exactly one subject ID', () => {
   void bad;
 });
 
+test('L1A collaboration application admission binds only a control ID', () => {
+  const subject: WorkspaceAdmissionSubject = {
+    subjectKind: 'COLLABORATION_APPLICATION',
+    controlId: 'control-apply-1',
+  };
+  assert.equal(subject.subjectKind, 'COLLABORATION_APPLICATION');
+  // @ts-expect-error application admissions cannot masquerade as a Run
+  const badApplication: WorkspaceAdmissionSubject = {
+    subjectKind: 'COLLABORATION_APPLICATION',
+    controlId: 'control-apply-1',
+    canonicalRunId: 'run-1',
+  };
+  void badApplication;
+
+  const granted: GrantedAdmissionSubject = {
+    admissionId: 'adm-apply-1',
+    workspaceId: 'ws-1',
+    subjectKind: 'COLLABORATION_APPLICATION',
+    controlId: 'control-apply-1',
+  };
+  assert.equal(granted.controlId, 'control-apply-1');
+});
+
 // Same-Workspace validation contract: globally unique IDs are not authority.
 test('same-workspace subject validation fails closed on mismatch', () => {
   const subject: WorkspaceAdmissionSubject = {

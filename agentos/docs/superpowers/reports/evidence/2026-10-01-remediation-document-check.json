@@ -1,0 +1,29 @@
+{
+  "checkedAt": "2026-09-30T20:28:22.298Z",
+  "documents": [
+    {
+      "path": "docs/superpowers/reports/2026-10-01-collaboration-workflow-remediation-handoff.md",
+      "sha256": "e1bf997d412357e6ce47e7fbca91b2458f4e58e12cb97178cd47026b12a6cdd6",
+      "localLinks": 13,
+      "missing": []
+    },
+    {
+      "path": "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+      "sha256": "725a6a5b03bd5b82359d90b29662f0be2a2f8e6898955fa42a9f75e495ed46af",
+      "localLinks": 21,
+      "missing": []
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+      "sha256": "f31a0defb782a9105eee286b061aafde924445441d9317fceb9547a3db4e0e03",
+      "localLinks": 5,
+      "missing": []
+    }
+  ],
+  "sourceDigest": "4e32b9fd8d7272ff90b45d5732514c5361aa2088a3080b452f80e987a9baec33",
+  "sourceFileCount": 136,
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "branch": "codex/collaboration-workflow-closure",
+  "sourceUnchanged": true,
+  "publicationUnchanged": "No commit/push/merge/deploy/candidate apply was performed; immutable HEAD checked here, external publication was not queried or changed."
+}

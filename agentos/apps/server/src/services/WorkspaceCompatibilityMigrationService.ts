@@ -145,6 +145,17 @@ function providerFromType(value: ProviderType): WorkspaceAgent['provider'] {
   return 'custom';
 }
 
+function providerAdapterId(provider: WorkspaceAgent['provider'], role: WorkspaceAgent['role']): string {
+  if (provider === 'kimi') return 'builtin.kimicode';
+  if (provider === 'codex') return 'builtin.codex';
+  if (provider === 'opencode') return 'builtin.opencode';
+  return `builtin.${role}`;
+}
+
+function canonicalProviderAdapterId(providerType: ProviderType, adapterId: string): string {
+  return providerType === 'kimicode' && adapterId === 'builtin.kimi' ? 'builtin.kimicode' : adapterId;
+}
+
 function normalizeAgent(value: Record<string, unknown>): WorkspaceAgent {
   const role = value.role as WorkspaceAgent['role'];
   const provider = value.provider === undefined
@@ -174,7 +185,7 @@ function expectedProvider(workspaceId: string, agent: WorkspaceAgent, now: strin
     workspaceId,
     name: `${agent.name} Provider`,
     providerType: providerType(agent.provider),
-    adapterId: `builtin.${agent.role}`,
+    adapterId: providerAdapterId(agent.provider, agent.role),
     runtimeMode: 'cli',
     executable: agent.cliCommand,
     argsTemplate: [...agent.cliArgs],
@@ -239,7 +250,8 @@ function sameProvider(expected: ProviderConfiguration, existing: ProviderConfigu
     && expected.workspaceId === existing.workspaceId
     && expected.name === existing.name
     && expected.providerType === existing.providerType
-    && expected.adapterId === existing.adapterId
+    && canonicalProviderAdapterId(expected.providerType, expected.adapterId)
+      === canonicalProviderAdapterId(existing.providerType, existing.adapterId)
     && expected.runtimeMode === existing.runtimeMode
     && (expected.executable ?? undefined) === (existing.executable ?? undefined)
     && sameJson(expected.argsTemplate ?? [], existing.argsTemplate ?? [])

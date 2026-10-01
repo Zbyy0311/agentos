@@ -39,7 +39,7 @@ const IDLE_STREAM: ConversationStreamState = {
   checkpointCount: 0, finalMessageStatus: null, failureCode: null, terminal: false,
 };
 
-export function useDirectConversation(workspaceId: string, apiBase: string) {
+export function useDirectConversation(workspaceId: string, apiBase: string, preferredConversationId?: string | null) {
   const client: DirectConversationClient = useMemo(
     () => directConversationClient({ workspaceId, apiBase }),
     [workspaceId, apiBase],
@@ -69,13 +69,21 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
       .then(result => {
         if (cancelled) return;
         setConversations(result.conversations);
-        setActiveConversationId(current => current !== null && result.conversations.some(item => item.id === current)
-          ? current
-          : result.conversations[0]?.id ?? null);
+        setActiveConversationId(current => preferredConversationId && result.conversations.some(item => item.id === preferredConversationId)
+          ? preferredConversationId
+          : current !== null && result.conversations.some(item => item.id === current)
+            ? current
+            : result.conversations[0]?.id ?? null);
       })
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
-  }, [client]);
+  }, [client, preferredConversationId]);
+
+  useEffect(() => {
+    if (preferredConversationId && conversations.some(conversation => conversation.id === preferredConversationId)) {
+      setActiveConversationId(preferredConversationId);
+    }
+  }, [conversations, preferredConversationId]);
 
   useEffect(() => {
     let cancelled = false;

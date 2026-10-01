@@ -1,128 +1,35 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { DirectConversationWorkbench } from '@/components/chat/DirectConversationWorkbench';
-import { RunInspectorPanel } from '@/components/chat/RunInspectorPanel';
-import { RuntimeGroupCreator, type RuntimeGroupCreateInput } from '@/components/chat/RuntimeGroupCreator';
-import { RuntimeGroupSettings, type RuntimeGroupMemberUpdate } from '@/components/chat/RuntimeGroupSettings';
-import { useDirectConversation } from '@/lib/useDirectConversation';
-import { useApi } from '@/lib/useApi';
-import type { UiTheme } from '@/lib/uiFoundation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
 
 /**
- * Direct Conversation UX page (forward Conversation runtime).
- *
- * Composes the four-column workbench (Agents / Conversations / Canvas / Inspector)
- * over the forward runtime. This is an additive route; the legacy workspace page is
- * untouched (COMPATIBILITY).
+ * Compatibility entry for old Runtime links. Runtime now lives in the regular
+ * workspace shell; the query is preserved so the unified page can select the
+ * same conversation, view and Run without starting another execution.
  */
-export default function DirectConversationPage() {
+export default function RuntimeCompatibilityPage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = typeof params.id === 'string' ? params.id : '';
-  const { API_BASE } = useApi();
-  const state = useDirectConversation(workspaceId, API_BASE);
-  const [viewportWidth, setViewportWidth] = useState(1600);
-  const [creatingGroup, setCreatingGroup] = useState(false);
-  const [editingGroup, setEditingGroup] = useState(false);
 
   useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth);
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    if (!workspaceId) return;
+    const query = new URLSearchParams(searchParams.toString());
+    // A collaboration ID does not establish the conversation's storage source.
+    // Preserve an explicit legacy source; otherwise restore via the runtime
+    // adapter, which the destination page validates before selection.
+    query.set('conversationSource', query.get('conversationSource') === 'workspace' ? 'workspace' : 'runtime');
+    query.set('view', query.get('runId') || query.get('collaborationId') ? 'execution' : 'chat');
+    if (query.get('runId')) {
+      const requestedRunSource = query.get('runSource');
+      query.set('runSource', requestedRunSource === 'workspace' || requestedRunSource === 'canonical'
+        ? requestedRunSource
+        : query.get('collaborationId') ? 'canonical' : 'workspace');
+    }
+    router.replace(`/workspace/${encodeURIComponent(workspaceId)}?${query.toString()}`);
+  }, [router, searchParams, workspaceId]);
 
-  const active = state.conversations.find(c => c.id === state.activeConversationId);
-  const theme: UiTheme = 'dark';
-  const runIds = [...new Set(state.messages.flatMap(message =>
-    message.conversationId === state.activeConversationId && message.runId ? [message.runId] : []))].reverse();
-  const createConversation = () => { void state.createConversation(); };
-  const createGroup = async (input: RuntimeGroupCreateInput) => {
-    const created = await state.createGroupConversation(input);
-    if (created !== null) setCreatingGroup(false);
-  };
-  const saveGroupSettings = async (members: readonly RuntimeGroupMemberUpdate[]) => {
-    const saved = await state.updateGroupMemberSettings(members);
-    if (saved) setEditingGroup(false);
-    return saved;
-  };
-
-  return (
-    <>
-      <DirectConversationWorkbench
-        theme={theme}
-        workspaceId={workspaceId}
-        apiBase={API_BASE}
-        inspector={<RunInspectorPanel key={state.activeConversationId ?? workspaceId} workspaceId={workspaceId}
-          apiBase={API_BASE} runIds={runIds} theme={theme} />}
-        toolbar={(
-          <>
-            <span data-agentos="workspace-breadcrumb" aria-label="Workspace breadcrumb">
-              Workspace / {state.activeConversationId ?? workspaceId}
-            </span>
-            <span role="status" data-agentos="runtime-status">
-              Runtime · {state.stream.phase}
-            </span>
-            <button
-              type="button"
-              data-agentos="toolbar-new-conversation"
-              onClick={createConversation}
-              disabled={state.agents.length === 0}
-            >
-              New Conversation
-            </button>
-            {active?.kind === 'group' && (
-              <button
-                type="button"
-                data-agentos="toolbar-group-settings"
-                onClick={() => setEditingGroup(true)}
-              >
-                群聊设置
-              </button>
-            )}
-          </>
-        )}
-        viewportWidth={viewportWidth}
-        workspaceName={workspaceId}
-        agents={state.agents}
-        activeAgentId={state.activeAgentId}
-        conversations={state.conversations}
-        activeConversationId={state.activeConversationId}
-        activeConversationTitle={active?.title ?? 'Conversation'}
-        activeConversationKind={active?.kind ?? 'direct'}
-        messages={state.messages}
-        stream={state.stream}
-        composerMode={state.mode}
-        composerContent={state.content}
-        sending={state.sending}
-        {...(state.error === undefined ? {} : { error: state.error })}
-        onSelectAgent={state.selectAgent}
-        onSelectConversation={state.selectConversation}
-        onCreateConversation={createConversation}
-        onCreateGroupConversation={() => setCreatingGroup(true)}
-        onModeChange={state.setMode}
-        onContentChange={state.setContent}
-        onSend={() => { void state.send(); }}
-      />
-      {creatingGroup && (
-        <RuntimeGroupCreator
-          agents={state.agents}
-          {...(state.error === undefined ? {} : { error: state.error })}
-          onClose={() => setCreatingGroup(false)}
-          onCreate={createGroup}
-        />
-      )}
-      {editingGroup && active?.kind === 'group' && (
-        <RuntimeGroupSettings
-          agents={state.agents}
-          members={state.groupMembers}
-          saving={state.groupSettingsSaving}
-          {...(state.error === undefined ? {} : { error: state.error })}
-          onClose={() => setEditingGroup(false)}
-          onSave={saveGroupSettings}
-        />
-      )}
-    </>
-  );
+  return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在打开统一工作台…</div>;
 }

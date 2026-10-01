@@ -110,6 +110,10 @@ function fixture(
   const snapshots = new TurnContextSnapshotRepository(tx);
   const stream = new ConversationStreamService(tx, conversations, turns);
   const boundedGroups = new BoundedGroupService(tx, interactions, snapshots);
+  const createInteraction = boundedGroups.createInteraction.bind(boundedGroups);
+  boundedGroups.createInteraction = input => createInteraction({
+    ...input, sourceMessageId: input.sourceMessageId ?? USER_MSG,
+  });
 
   let callIndex = 0;
   const walkLog: WalkLogEntry[] = [];
@@ -164,14 +168,30 @@ function fixture(
 
   const counts = (table: string) => Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
   return {
-    db, boundedGroups, interactions, driver, walkLog, deltas, counts, runnerFactory,
+    db, root, boundedGroups, interactions, driver, walkLog, deltas, counts, runnerFactory,
     executionOrder, providerInputs, providerHistories,
     close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } },
   };
 }
+
+function siblingDriver(db: SqliteDb) {
+  db.exec('PRAGMA foreign_keys = ON');
+  const tx = db as unknown as TransactionDatabase;
+  const conversations = new ConversationRepository(tx);
+  const turns = new AgentTurnRepository(tx);
+  const interactions = new GroupInteractionRepository(tx);
+  const snapshots = new TurnContextSnapshotRepository(tx);
+  const stream = new ConversationStreamService(tx, conversations, turns);
+  const boundedGroups = new BoundedGroupService(tx, interactions, snapshots);
+  const driver = new GroupTurnDriver(
+    boundedGroups, interactions, conversations, stream,
+    (_workspaceId, agentId) => (AGENTS as readonly string[]).includes(agentId) ? ({} as never) : undefined,
+  );
+  return { driver };
+}
 function walkInput(fx: ReturnType<typeof fixture>, overrides: Record<string, unknown> = {}) {
   const interaction = fx.boundedGroups.createInteraction({
-    workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW,
+    workspaceId: WS, conversationId: CONV, budget: BUDGET, sourceMessageId: USER_MSG, createdAt: NOW,
   });
   return {
     workspaceId: WS, workspaceRoot: 'C:/tmp/ws_cgw', conversationId: CONV,
@@ -232,7 +252,7 @@ test('CG-walk: the resolved plan executes strictly in order and records one repl
     );
 
     const after = fx.boundedGroups.findInteraction(WS, interaction.id)!;
-    assert.equal(after.status, 'active');
+    assert.equal(after.status, 'completed');
     assert.equal(after.replyCount, 3);
     assert.equal(after.hopCount, 2);
     const replies = fx.interactions.listReplies(interaction.id);
@@ -412,25 +432,13 @@ test('CG-S7: a failed Provider Turn adds no reply and does not move the interact
   }
 });
 
-test('CG-S4 (driver): budget exhaustion ends the walk at the stable reason with no extra Provider call', async () => {
+test('F09: budget=1 finalizes exactly one Message, Turn, reply, budget unit, and versioned owner event', async () => {
   const fx = fixture(COMPLETE);
   try {
-    // One reply is already durable, and the cap leaves room for exactly one more.
-    const conversations = new ConversationRepository(fx.db as unknown as TransactionDatabase);
     const interaction = fx.boundedGroups.createInteraction({
       workspaceId: WS, conversationId: CONV,
-      // AGENT_LIMIT_EXCEEDS_TOTAL requires maxAgentsPerTurn <= maxTotalReplies.
-      budget: { ...BUDGET, maxAgentsPerTurn: 2, maxTotalReplies: 2 },
+      budget: { ...BUDGET, maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1 },
       createdAt: NOW,
-    });
-    const first = conversations.appendMessage({
-      id: createEntityId('message'), conversationId: CONV, workspaceId: WS,
-      senderType: 'agent', senderAgentId: AGENTS[0], kind: 'text', status: 'final',
-      content: '先答了', createdAt: NOW,
-    });
-    fx.boundedGroups.recordReply({
-      workspaceId: WS, interactionId: interaction.id, agentId: AGENTS[0],
-      messageId: first.id, content: '先答了', createdAt: NOW,
     });
 
     const result = await fx.driver.run(
@@ -441,9 +449,8 @@ test('CG-S4 (driver): budget exhaustion ends the walk at the stable reason with 
       { runnerFactory: fx.runnerFactory as never },
     );
 
-    // The plan pre-check leaves only the returning Agent; the second and third
-    // would exceed the total budget, so the Provider is called exactly once and
-    // the walk ends at the same stable reason `recordReply` produced.
+    // The only allowed reply consumes the sole budget unit; the interaction is
+    // exhausted only after that final Message, Turn, ledger row and counter commit.
     assert.equal(result.endedBy, 'budget-total-replies');
     assert.deepEqual(result.plan.speakers.map(speaker => speaker.agentId), [AGENTS[0]]);
     assert.deepEqual(result.speakers.map(speaker => speaker.agentId), [AGENTS[0]]);
@@ -451,11 +458,116 @@ test('CG-S4 (driver): budget exhaustion ends the walk at the stable reason with 
     const after = fx.boundedGroups.findInteraction(WS, interaction.id)!;
     assert.equal(after.status, 'exhausted');
     assert.equal(after.stopReason, 'budget-total-replies');
-    assert.equal(after.replyCount, 2);
+    assert.equal(after.replyCount, 1);
+    assert.equal(fx.boundedGroups.budgetStatus(after).repliesUsed, 1);
+    assert.equal(fx.counts('cr_group_interaction_replies'), 1);
+    assert.equal(fx.counts('cr_messages'), 2, 'one source plus one final provider message');
+    assert.equal(fx.counts('cr_agent_turns'), 1);
+    const reply = fx.interactions.listReplies(interaction.id)[0]!;
+    const message = new ConversationRepository(fx.db as unknown as TransactionDatabase).findMessageById(WS, reply.messageId)!;
+    const turn = new AgentTurnRepository(fx.db as unknown as TransactionDatabase).findTurnById(WS, reply.turnId!)!;
+    assert.equal(message.status, 'final');
+    assert.equal(message.replyToMessageId, USER_MSG);
+    assert.equal(turn.status, 'final');
+    assert.equal(turn.sourceMessageId, message.id);
+    const owner = fx.boundedGroups.findExecutionOwner(WS, interaction.id)!;
+    assert.equal(owner.status, 'completed');
+    const finalEvent = fx.boundedGroups.listExecutionEvents(WS, CONV, interaction.id, owner.eventCursor - 1)[0]!;
+    assert.equal(finalEvent.payload.interactionId, interaction.id);
+    assert.equal(finalEvent.payload.status, after.status);
+    assert.equal(finalEvent.payload.version, after.version);
+    assert.equal(finalEvent.payload.ownerEpoch, owner.ownerEpoch);
+    assert.equal(finalEvent.cursor, owner.eventCursor);
   } finally {
     fx.close();
   }
 });
+
+test('server stop aborts the owner signal but commits a Provider final that wins the finalization race once', async () => {
+  const fx = fixture(COMPLETE);
+  let releaseProvider!: () => void;
+  let markProviderStarted!: () => void;
+  const gate = new Promise<void>(resolve => { releaseProvider = resolve; });
+  const started = new Promise<void>(resolve => { markProviderStarted = resolve; });
+  try {
+    const interaction = fx.boundedGroups.createInteraction({
+      workspaceId: WS, conversationId: CONV, budget: { ...BUDGET, maxTotalReplies: 1, maxAgentsPerTurn: 1 }, createdAt: NOW,
+    });
+    let providerSignal: AbortSignal | undefined;
+    const runnerFactory = ((options: { signal?: AbortSignal }) => {
+      providerSignal = options.signal;
+      return { run: async () => { markProviderStarted(); await gate; return makeResult('completed', 'final raced with stop'); } };
+    }) as never;
+    const running = fx.driver.run({
+      workspaceId: WS, workspaceRoot: 'C:/tmp/ws_cgw', conversationId: CONV,
+      interactionId: interaction.id, sourceMessageId: USER_MSG, createdAt: NOW,
+    }, { runnerFactory });
+    await started;
+    const current = fx.boundedGroups.findInteraction(WS, interaction.id)!;
+    const stopped = fx.boundedGroups.stopInteraction({
+      workspaceId: WS, interactionId: interaction.id, expectedVersion: current.version, endedAt: NOW2,
+    });
+    assert.equal(stopped.status, 'stopped');
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('owner cancellation signal was not delivered')), 1500);
+      providerSignal?.addEventListener('abort', () => { clearTimeout(timeout); resolve(); }, { once: true });
+    });
+    assert.equal(providerSignal?.aborted, true);
+    releaseProvider();
+    const result = await running;
+    assert.equal(result.endedBy, 'user-stop');
+    assert.equal(result.speakers[0]?.status, 'final', JSON.stringify({
+      speaker: result.speakers[0],
+      owner: fx.boundedGroups.findExecutionOwner(WS, interaction.id),
+      events: fx.boundedGroups.listExecutionEvents(WS, CONV, interaction.id, 0),
+    }));
+    assert.equal(fx.interactions.listReplies(interaction.id).length, 1);
+    assert.equal(fx.boundedGroups.findInteraction(WS, interaction.id)?.replyCount, 1);
+    assert.equal(fx.counts('cr_group_interaction_replies'), 1);
+    assert.equal(fx.counts('cr_messages'), 2);
+    assert.equal(fx.counts('cr_agent_turns'), 1);
+  } finally {
+    releaseProvider();
+    fx.close();
+  }
+});
+test('startup reconciliation marks an unknown owner interrupted and prevents Provider replay', async () => {
+  const fx = fixture(COMPLETE);
+  try {
+    const interaction = fx.boundedGroups.createInteraction({
+      workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW,
+    });
+    const owner = fx.boundedGroups.claimExecution({
+      workspaceId: WS, conversationId: CONV, interactionId: interaction.id,
+      sourceMessageId: USER_MSG, participantAgentIds: [AGENTS[0]], ownerId: createEntityId('event'), createdAt: NOW,
+    });
+    // This is the no-argument hook SqliteStore runs after migrations/recovery.
+    assert.equal(fx.interactions.reconcileInterruptedOnStartup(), 1);
+    assert.equal(fx.interactions.reconcileInterruptedOnStartup(), 0);
+    const reconciled = fx.boundedGroups.findInteraction(WS, interaction.id)!;
+    const reconciledOwner = fx.boundedGroups.findExecutionOwner(WS, interaction.id)!;
+    assert.equal(reconciled.integrityStatus, 'unusable');
+    assert.equal(reconciled.version, interaction.version + 1);
+    assert.equal(reconciledOwner.ownerId, owner.ownerId);
+    assert.equal(reconciledOwner.ownerEpoch, owner.ownerEpoch);
+    assert.equal(reconciledOwner.status, 'interrupted');
+    const event = fx.boundedGroups.listExecutionEvents(WS, CONV, interaction.id, owner.eventCursor).at(-1)!;
+    assert.equal(event.eventType, 'group.interrupted');
+    assert.equal(event.payload.version, reconciled.version);
+    assert.equal(event.payload.ownerEpoch, owner.ownerEpoch);
+
+    let providerCalls = 0;
+    await assert.rejects(fx.driver.run({
+      workspaceId: WS, workspaceRoot: 'C:/tmp/ws_cgw', conversationId: CONV,
+      interactionId: interaction.id, sourceMessageId: USER_MSG, createdAt: NOW,
+    }, { runnerFactory: (() => { providerCalls += 1; return { run: async () => makeResult('completed', 'must not replay') }; }) as never }),
+    (error: unknown) => error instanceof GroupTurnDriverError && error.code === 'GROUP_WALK_NOT_ACTIVE');
+    assert.equal(providerCalls, 0);
+  } finally {
+    fx.close();
+  }
+});
+
 test('CG-walk input validation: wrong kind, unknown interaction, and a stopped interaction fail closed', async () => {
   const fx = fixture(COMPLETE);
   try {
@@ -499,6 +611,161 @@ test('CG-walk input validation: wrong kind, unknown interaction, and a stopped i
     fx.close();
   }
 });
+
+test('F20: respond rejects a same-conversation message different from the frozen source before Provider work', async () => {
+  const fx = fixture(COMPLETE);
+  try {
+    const input = walkInput(fx);
+    const otherSourceId = 'msg_' + 'e'.repeat(26);
+    fx.db.prepare(
+      `INSERT INTO cr_messages (
+        id, conversation_id, workspace_id, sequence, sender_type, sender_agent_id, kind,
+        status, content, version, created_at, updated_at
+      ) VALUES (?, ?, ?, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM cr_messages WHERE conversation_id = ?),
+        'user', NULL, 'text', 'final', 'another source', 1, ?, ?)`,
+    ).run(otherSourceId, CONV, WS, CONV, NOW, NOW);
+    let providerCalls = 0;
+    await assert.rejects(fx.driver.run(
+      { ...input, sourceMessageId: otherSourceId },
+      { runnerFactory: (() => { providerCalls += 1; return { run: async () => makeResult('completed', 'unexpected') }; }) as never },
+    ), /GROUP_WALK_SOURCE_MISMATCH/);
+    assert.equal(providerCalls, 0);
+  } finally { fx.close(); }
+});
+
+test('F10: 2 and 10 concurrent walks across two SQLite connections claim one Provider owner in three fresh fixtures', async () => {
+  for (const concurrency of [2, 10]) {
+    for (let fresh = 0; fresh < 3; fresh += 1) {
+      const fx = fixture(COMPLETE);
+      const peerDb = new DatabaseSync(join(fx.root, 'agentos.sqlite'));
+      let releaseProvider!: () => void;
+      const providerGate = new Promise<void>(resolve => { releaseProvider = resolve; });
+      let providerStarted!: () => void;
+      const started = new Promise<void>(resolve => { providerStarted = resolve; });
+      let providerCalls = 0;
+      try {
+        const peer = siblingDriver(peerDb);
+        const interaction = fx.boundedGroups.createInteraction({
+          workspaceId: WS, conversationId: CONV, sourceMessageId: USER_MSG,
+          budget: { ...BUDGET, maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1 },
+          createdAt: NOW,
+        });
+        const input = {
+          workspaceId: WS, workspaceRoot: 'C:/tmp/ws_cgw', conversationId: CONV,
+          interactionId: interaction.id, sourceMessageId: USER_MSG, createdAt: NOW,
+        };
+        const runnerFactory = (() => ({
+          run: async () => {
+            providerCalls += 1;
+            providerStarted();
+            await providerGate;
+            return makeResult('completed', 'one reply');
+          },
+        })) as never;
+        const requests = Array.from({ length: concurrency }, (_, index) =>
+          (index % 2 === 0 ? fx.driver : peer.driver).run(input, { runnerFactory }));
+        await started;
+        releaseProvider();
+        const settled = await Promise.allSettled(requests);
+        assert.equal(providerCalls, 1, `${concurrency} competing requests, fixture ${fresh + 1}`);
+        assert.equal(settled.filter(result => result.status === 'fulfilled').length, 1);
+        assert.equal(fx.counts('cr_group_interaction_replies'), 1);
+        assert.equal(fx.counts('cr_messages'), 2, 'one user source plus one final reply and no duplicate Provider messages');
+        assert.equal(fx.boundedGroups.findInteraction(WS, interaction.id)!.replyCount, 1);
+      } finally {
+        releaseProvider();
+        peerDb.close();
+        fx.close();
+      }
+    }
+  }
+});
+
+for (let repetition = 1; repetition <= 3; repetition += 1) {
+  test(`F27: an empty participant claim remains invalid without the internal finalization flag (${repetition}/3)`, () => {
+    const fx = fixture(COMPLETE, 'manual');
+    try {
+      const input = walkInput(fx);
+      assert.throws(() => fx.boundedGroups.claimExecution({
+        workspaceId: WS, conversationId: CONV, interactionId: input.interactionId,
+        sourceMessageId: USER_MSG, participantAgentIds: [], ownerId: createEntityId('event'), createdAt: NOW,
+      }), /GROUP_INPUT_INVALID/);
+      assert.equal(fx.boundedGroups.findExecutionOwner(WS, input.interactionId), undefined);
+      assert.equal(fx.boundedGroups.findInteraction(WS, input.interactionId)!.status, 'active');
+      assert.equal(fx.boundedGroups.listExecutionEvents(WS, CONV, input.interactionId, 0).length, 0);
+    } finally { fx.close(); }
+  });
+
+  test(`F27: empty plans serialize 2 and 10 competitors across independent SQLite connections (${repetition}/3)`, async () => {
+    for (const concurrency of [2, 10]) {
+      const fx = fixture(COMPLETE, 'manual');
+      const peerDb = new DatabaseSync(join(fx.root, 'agentos.sqlite'));
+      try {
+        const peer = siblingDriver(peerDb);
+        const input = walkInput(fx);
+        let providerCalls = 0;
+        const runnerFactory = (() => { providerCalls += 1; throw new Error('empty plan must not construct a Provider runner'); }) as never;
+        let competitors: PromiseSettledResult<unknown>[] = [];
+        let competing: Promise<PromiseSettledResult<unknown>[]> | undefined;
+        const result = await fx.driver.run(input, {
+          runnerFactory,
+          onPlan: plan => {
+            assert.equal(plan.speakers.length, 0);
+            competing = Promise.allSettled(Array.from({ length: concurrency - 1 }, (_, index) =>
+              (index % 2 === 0 ? peer.driver : fx.driver).run(input, { runnerFactory })));
+          },
+        });
+        assert.ok(competing);
+        competitors = await competing;
+        assert.equal(competitors.length, concurrency - 1);
+        assert.ok(competitors.every(entry => entry.status === 'rejected'
+          && /GROUP_EXECUTION_ALREADY_OWNED/.test(String(entry.reason))));
+        assert.equal(result.endedBy, 'no-speakers');
+        assert.equal(result.interaction!.status, 'completed');
+        assert.equal(result.interaction!.replyCount, 0);
+        assert.equal(providerCalls, 0);
+        const owner = fx.boundedGroups.findExecutionOwner(WS, input.interactionId)!;
+        assert.equal(owner.status, 'completed');
+        assert.equal(owner.terminalReason, 'no-speakers');
+        assert.deepEqual(owner.participantAgentIds, []);
+        const events = fx.boundedGroups.listExecutionEvents(WS, CONV, input.interactionId, 0);
+        assert.deepEqual(events.map(event => event.eventType), ['group.claimed', 'group.plan', 'group.done']);
+        assert.equal(fx.counts('cr_messages'), 1);
+        assert.equal(fx.interactions.listReplies(input.interactionId).length, 0);
+        await assert.rejects(() => peer.driver.run(input, { runnerFactory }), /GROUP_WALK_NOT_ACTIVE/);
+        assert.equal(fx.boundedGroups.listExecutionEvents(WS, CONV, input.interactionId, 0).length, 3);
+        assert.equal(providerCalls, 0);
+      } finally { peerDb.close(); fx.close(); }
+    }
+  });
+
+  test(`F27: a user stop during empty-plan publication retains its reason and zero Provider calls (${repetition}/3)`, async () => {
+    const fx = fixture(COMPLETE, 'manual');
+    try {
+      const input = walkInput(fx);
+      let providerCalls = 0;
+      const result = await fx.driver.run(input, {
+        runnerFactory: (() => { providerCalls += 1; throw new Error('empty stopped plan must not start a Provider'); }) as never,
+        onPlan: () => {
+          const current = fx.boundedGroups.findInteraction(WS, input.interactionId)!;
+          fx.boundedGroups.stopInteraction({ workspaceId: WS, interactionId: input.interactionId,
+            expectedVersion: current.version, endedAt: LATER });
+        },
+      });
+      assert.equal(result.endedBy, 'user-stop');
+      assert.equal(result.interaction!.status, 'stopped');
+      assert.equal(result.interaction!.stopReason, 'user-stop');
+      const owner = fx.boundedGroups.findExecutionOwner(WS, input.interactionId)!;
+      assert.equal(owner.status, 'completed');
+      assert.equal(owner.terminalReason, 'user-stop');
+      const events = fx.boundedGroups.listExecutionEvents(WS, CONV, input.interactionId, 0);
+      assert.equal((events.at(-1)!.payload as { reason: string }).reason, 'user-stop');
+      assert.equal(fx.counts('cr_messages'), 1);
+      assert.equal(fx.interactions.listReplies(input.interactionId).length, 0);
+      assert.equal(providerCalls, 0);
+    } finally { fx.close(); }
+  });
+}
 
 test('CG-S2/S3 at the driver: manual and orchestrated orders drive the walk', async () => {
   const manual = fixture(COMPLETE, 'manual');

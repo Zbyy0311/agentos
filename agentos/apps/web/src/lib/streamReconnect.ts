@@ -100,7 +100,10 @@ export async function consumeSseResponse(
     for (const event of events) {
       const data = parseSseEventData<Record<string, unknown>>(event.data);
       if (!data) continue;
-      if (typeof data.cursor === 'number' && Number.isFinite(data.cursor)) lastCursor = Math.max(lastCursor, data.cursor);
+      const eventIdCursor = event.id === undefined ? Number.NaN : Number(event.id);
+      const payloadCursor = typeof data.cursor === 'number' ? data.cursor : Number.NaN;
+      const cursor = Number.isSafeInteger(eventIdCursor) && eventIdCursor >= 0 ? eventIdCursor : payloadCursor;
+      if (Number.isSafeInteger(cursor) && cursor >= 0) lastCursor = Math.max(lastCursor, cursor);
       if (terminalEvents.has(event.event)) terminal = true;
       await onEvent(event, data);
     }

@@ -9,6 +9,8 @@ import type {
   RuntimeEventRecord,
 } from './m3-runtime.js';
 
+export * from './collaboration.js';
+
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
 export type AgentRole = 'codex' | 'kimi' | 'opencode' | 'mimo';

@@ -22,6 +22,7 @@ import { RunEngine } from './RunEngine.js';
 import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
 import type { ResolveRunMemoryContextInput, ResolvedMemoryContext } from '../MemoryContextResolver.js';
 import { ARTIFACT_RESULT_INSTRUCTION, type CanonicalArtifactResultInput } from '../CanonicalArtifactResultService.js';
+import type { CollaborationStageHooks, CollaborationStagePreparation } from '../CollaborationStageHooks.js';
 
 export interface CanonicalRunAdmissionGate {
   authorizeCanonicalRun(input: {
@@ -78,6 +79,7 @@ export interface RunEngineProviderDispatcherOptions {
   readonly memoryCandidateGenerator?: MemoryCandidateGenerationPort;
   readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
   readonly artifactResults?: { capture(input: CanonicalArtifactResultInput): Promise<string[]> };
+  readonly collaborationStageHooks?: CollaborationStageHooks;
 }
 
 export interface MemoryCandidateGenerationPort {
@@ -142,6 +144,26 @@ function isTerminalRun(status: Run['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
+function collaborationStageGuidance(stageKey: string): string {
+  switch (stageKey) {
+    case 'plan':
+      return 'You are the planning Agent. Work read-only: inspect the repository and return a bounded implementation plan. Do not create, edit, delete, stage, or commit files.';
+    case 'implement':
+      return 'You are the implementation Agent. Modify only the isolated worktree to satisfy the objective and acceptance commands. Do not commit, push, merge, deploy, or modify the original workspace.';
+    case 'review':
+      return 'You are the independent review Agent. Inspect the current isolated candidate read-only, compare it with the objective and acceptance commands, and report concrete evidence. Do not modify files. If the review is complete, return the exact AgentOS review JSON contract appended below.';
+    default:
+      return 'This is a collaboration workflow stage. Stay within the frozen objective and do not expand scope.';
+  }
+}
+
+function collaborationProgressRole(stageKey: string): 'planner' | 'implementer' | 'reviewer' | 'other' {
+  if (stageKey === 'plan') return 'planner';
+  if (stageKey === 'implement') return 'implementer';
+  if (stageKey === 'review') return 'reviewer';
+  return 'other';
+}
+
 export class RunEngineProviderDispatcher {
   private readonly engine: RunEngine;
   private readonly coordinator: StageExecutionCoordinator;
@@ -159,6 +181,8 @@ export class RunEngineProviderDispatcher {
   private readonly memoryCandidateGenerator: MemoryCandidateGenerationPort | undefined;
   private readonly onCandidateGenerationError: ((error: unknown, runId: string) => void) | undefined;
   private readonly artifactResults: RunEngineProviderDispatcherOptions['artifactResults'];
+  private readonly collaborationStageHooks: CollaborationStageHooks | undefined;
+  private readonly preparedCollaborationStages = new Map<string, CollaborationStagePreparation>();
 
   constructor(options: RunEngineProviderDispatcherOptions) {
     this.engine = options.engine;
@@ -177,6 +201,7 @@ export class RunEngineProviderDispatcher {
     this.memoryCandidateGenerator = options.memoryCandidateGenerator;
     this.onCandidateGenerationError = options.onCandidateGenerationError;
     this.artifactResults = options.artifactResults;
+    this.collaborationStageHooks = options.collaborationStageHooks;
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
@@ -189,6 +214,7 @@ export class RunEngineProviderDispatcher {
     if (!authorization.authorized) {
       return { outcome: 'noop', reason: `WORKSPACE_${authorization.reason}` };
     }
+    if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return { outcome: 'noop', reason: 'collaboration-control-fenced' };
     const claim = this.engine.tick({ workspaceId, runId });
     if (claim.outcome !== 'claimed') {
       const current = this.runRepository.findById(workspaceId, runId);
@@ -199,11 +225,26 @@ export class RunEngineProviderDispatcher {
       // completed; continue that Run instead of claiming or creating another.
     }
     for (let step = 0; step < this.maxDispatchSteps; step += 1) {
+      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) break;
       const run = this.requireRun(workspaceId, runId);
       if (isTerminalRun(run.status)) break;
       const stages = this.runStageRepository.listByRun(workspaceId, runId);
       const active = stages.find(stage => stage.status === 'running' || stage.status === 'starting');
       if (active !== undefined && active.status === 'running') {
+        if (active.workflowStageKey === 'review' && this.collaborationStageHooks
+          && !this.preparedCollaborationStages.has(`${workspaceId}:${runId}:${active.id}`)) {
+          const prepared = await this.collaborationStageHooks.beforeStage({
+            workspaceId,
+            runId,
+            stage: active,
+            workspaceRoot: this.workspaceRootFor(workspaceId),
+            ...(this.worktreePathFor?.(workspaceId, runId) === undefined
+              ? {}
+              : { worktreePath: this.worktreePathFor(workspaceId, runId) }),
+          });
+          if (prepared) this.preparedCollaborationStages.set(`${workspaceId}:${runId}:${active.id}`, prepared);
+        }
+        if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) break;
         const stageOutcome = await this.executeProviderStage(workspaceId, runId, active, stages);
         if (stageOutcome === 'active') {
           // Another durable authority owns/completes this stage; this drive has
@@ -214,6 +255,20 @@ export class RunEngineProviderDispatcher {
         if (stageOutcome === 'stopped') break;
         continue;
       }
+      const readyStage = stages.find(stage => stage.status === 'ready');
+      if (readyStage && this.collaborationStageHooks) {
+        const prepared = await this.collaborationStageHooks.beforeStage({
+          workspaceId,
+          runId,
+          stage: readyStage,
+          workspaceRoot: this.workspaceRootFor(workspaceId),
+          ...(this.worktreePathFor?.(workspaceId, runId) === undefined
+            ? {}
+            : { worktreePath: this.worktreePathFor(workspaceId, runId) }),
+        });
+        if (prepared) this.preparedCollaborationStages.set(`${workspaceId}:${runId}:${readyStage.id}`, prepared);
+      }
+      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) break;
       const result = this.engine.dispatch({ workspaceId, runId });
       if (result.outcome === 'noop') break;
     }
@@ -421,6 +476,9 @@ export class RunEngineProviderDispatcher {
       correlationId: input.correlationId,
       causationId: input.causationId ?? input.correlationId,
     });
+    if (outcome.kind === 'not-started' && outcome.proven === true) {
+      return { expectedRunVersion: run.version, terminatedProcessIds: [], worktreePreserved: true };
+    }
     if (
       outcome.kind !== 'stopped'
       || outcome.stopOrigin !== 'EXPLICIT_CANCEL'
@@ -456,17 +514,28 @@ export class RunEngineProviderDispatcher {
       throw new Error('RUN_ENGINE_SNAPSHOT_INVALID: provider stage snapshots are missing');
     }
     const operation = this.requireStartOperation(workspaceId, runId);
+    const currentRun = this.requireRun(workspaceId, runId);
+    const preparedCollaborationStage = this.preparedCollaborationStages.get(`${workspaceId}:${runId}:${stage.id}`);
+    const worktreePath = preparedCollaborationStage?.worktreePath ?? this.worktreePathFor?.(workspaceId, runId);
+    if (snapshot.payload.workflow.worktreeMode === 'required' && !worktreePath) {
+      throw new Error('RUN_ENGINE_WORKTREE_REQUIRED: isolated worktree is unavailable');
+    }
     const basePrompt = stageDefinition.agent.systemPrompt || 'Execute the requested task.';
     // MF-4 Run startup integration: resolve, freeze, and gate Memory BEFORE
     // provider execution. A snapshot failure throws and blocks the stage.
     const memoryContext = this.resolveStageMemoryContext(
       workspaceId, runId, stage, snapshot.payload.run.taskId, operation,
     );
+    const isCollaborationRun = currentRun.objective?.startsWith('[AgentOS collaboration task]') === true;
+    const collaborationPrompt = isCollaborationRun
+      ? `\n\n${collaborationStageGuidance(stage.workflowStageKey)}\n\nFrozen collaboration objective:\n${currentRun.objective}${preparedCollaborationStage?.promptAddition ?? ''}`
+      : '';
     const prompt = memoryContext === null || memoryContext.contextText.length === 0
-      ? basePrompt
-      : `${memoryContext.contextText}
-
-${basePrompt}`;
+      ? `${basePrompt}${collaborationPrompt}`
+      : `${memoryContext.contextText}\n\n${basePrompt}${collaborationPrompt}`;
+    const executionProviderSnapshot = isCollaborationRun
+      ? { ...stageDefinition.provider, workingDirectoryMode: 'worktree' as const, workspaceRelativeWorkingDirectory: null }
+      : stageDefinition.provider;
     const input: StageExecutionInput = {
       workspaceId,
       taskId: snapshot.payload.run.taskId,
@@ -475,12 +544,13 @@ ${basePrompt}`;
       stageAttempt: stage.attempt,
       workflowStageKey: stage.workflowStageKey,
       agentSnapshot: stageDefinition.agent,
-      providerSnapshot: stageDefinition.provider,
-      workspaceRoot: this.workspaceRootFor(workspaceId),
-      worktreePath: this.worktreePathFor === undefined ? undefined : this.worktreePathFor(workspaceId, runId),
-      prompt: this.artifactResults ? prompt + ARTIFACT_RESULT_INSTRUCTION : prompt,
+      providerSnapshot: executionProviderSnapshot,
+      workspaceRoot: preparedCollaborationStage?.workspaceRoot ?? this.workspaceRootFor(workspaceId),
+      worktreePath,
+      prompt: this.artifactResults && !isCollaborationRun ? prompt + ARTIFACT_RESULT_INSTRUCTION : prompt,
       operationId: operation.id,
     };
+    if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
     const outcome = await this.coordinator.execute(input);
     if (outcome.kind === 'stopped') {
       // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
@@ -488,6 +558,7 @@ ${basePrompt}`;
       return 'stopped';
     }
     const freshRun = this.requireRun(workspaceId, runId);
+    if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
     const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
     if (freshStage === undefined) {
       throw new Error('RUN_ENGINE_STAGE_NOT_FOUND: provider stage disappeared');
@@ -497,7 +568,18 @@ ${basePrompt}`;
       return 'active';
     }
     if (outcome.kind === 'completed') {
-      const resultArtifacts = this.artifactResults ? await this.artifactResults.capture({ workspaceId, runId,
+      if (isCollaborationRun && this.collaborationStageHooks) {
+        await this.collaborationStageHooks.completedStage({
+          workspaceId,
+          runId,
+          stage: freshStage,
+          agentId: stageDefinition.agent.agentId,
+          role: collaborationProgressRole(stage.workflowStageKey),
+          ...(outcome.output === undefined ? {} : { output: outcome.output }),
+        });
+      }
+      this.preparedCollaborationStages.delete(`${workspaceId}:${runId}:${stage.id}`);
+      const resultArtifacts = this.artifactResults && !isCollaborationRun ? await this.artifactResults.capture({ workspaceId, runId,
         stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
         agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
       const artifactIds = [...outcome.artifactIds, ...resultArtifacts];

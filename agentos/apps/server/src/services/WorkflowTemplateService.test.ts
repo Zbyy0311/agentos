@@ -87,6 +87,46 @@ test('LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage p
   } finally { fx.close(); }
 });
 
+test('WF-05 repeated template instantiation reuses the immutable definition row', () => {
+  const fx = fixture();
+  try {
+    const first = fx.service.instantiateTemplateRun({
+      workspace: fx.workspace,
+      template: template('plan-implement-review'),
+      roleBindings: { planner: 'codex', implementer: 'codex', reviewer: 'codex' },
+      createdBy: 'user',
+      createdAt: NOW,
+    });
+    const second = fx.service.instantiateTemplateRun({
+      workspace: fx.workspace,
+      template: template('plan-implement-review'),
+      roleBindings: { planner: 'codex', implementer: 'codex', reviewer: 'codex' },
+      createdBy: 'user',
+      createdAt: NOW,
+    });
+    assert.equal(second.definition.id, first.definition.id);
+    assert.equal(fx.store.workflowDefinitionRepository().findLatestAvailableByKey('plan-implement-review')?.id, first.definition.id);
+    assert.notEqual(second.run.id, first.run.id);
+  } finally { fx.close(); }
+});
+
+test('required worktrees override Provider cwd in the frozen snapshot without mutating its configuration', () => {
+  const fx = fixture();
+  try {
+    const result = fx.service.instantiateTemplateRun({
+      workspace: fx.workspace, template: template('plan-implement-review'),
+      roleBindings: { planner: 'codex', implementer: 'codex', reviewer: 'codex' },
+      worktreeMode: 'required', createdBy: 'user', createdAt: NOW,
+    });
+    for (const stage of result.snapshot.payload.workflow.stages) {
+      assert.equal(stage.provider?.workingDirectoryMode, 'worktree');
+      assert.equal(stage.provider?.workspaceRelativeWorkingDirectory, null);
+      const persisted = fx.store.providerConfigurationRepository().findById(stage.provider!.providerConfigId);
+      assert.equal(persisted?.workingDirectoryMode, 'workspace');
+    }
+  } finally { fx.close(); }
+});
+
 test('WF-02 an unbound role fails closed before anything is persisted', () => {
   const fx = fixture();
   try {

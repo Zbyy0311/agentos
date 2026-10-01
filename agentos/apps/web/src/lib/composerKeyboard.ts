@@ -4,6 +4,7 @@ export interface ComposerKeyInput {
   readonly key: string;
   readonly shiftKey: boolean;
   readonly isComposing?: boolean;
+  readonly keyCode?: number;
   readonly canSend: boolean;
 }
 
@@ -14,7 +15,7 @@ export interface ComposerSubmitInput {
 }
 
 export function resolveComposerKeyAction(input: ComposerKeyInput): ComposerKeyAction {
-  if (input.key !== 'Enter' || input.isComposing === true) return 'ignore';
+  if (input.key !== 'Enter' || input.isComposing === true || input.keyCode === 229) return 'ignore';
   if (input.shiftKey) return 'newline';
   return input.canSend ? 'send' : 'ignore';
 }
@@ -28,7 +29,7 @@ export function submitComposer(input: ComposerSubmitInput): void {
 
 /** Apply the shared Enter/Shift+Enter contract to a textarea-like event. */
 export function handleComposerKeyDown(
-  event: Pick<ComposerKeyInput, 'key' | 'shiftKey' | 'isComposing'> & { preventDefault(): void },
+  event: Pick<ComposerKeyInput, 'key' | 'shiftKey' | 'isComposing' | 'keyCode'> & { preventDefault(): void },
   input: ComposerSubmitInput,
 ): void {
   if (resolveComposerKeyAction({ ...event, canSend: input.canSend }) !== 'send') return;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   groupConversationClient,
+  mergeGroupInteractionVersionEvent,
   type GroupBudgetStatus,
   type GroupInteraction,
   type GroupInteractionBudgetInput,
@@ -57,6 +58,7 @@ export function useGroupConversation(
 
   // Switching conversations resets the whole canvas.
   useEffect(() => {
+    walkAbortRef.current?.abort();
     setInteraction(null);
     setBudget(null);
     setReplies([]);
@@ -108,13 +110,35 @@ export function useGroupConversation(
     const abort = new AbortController();
     walkAbortRef.current = abort;
     try {
-      const response = await clientRef.current.respond(interactionId, conversationId, {
+      const startResponse = await clientRef.current.respond(interactionId, conversationId, {
         sourceMessageId,
         ...(mentionedAgentIds === undefined || mentionedAgentIds.length === 0 ? {} : { mentionedAgentIds: [...mentionedAgentIds] }),
-      }, abort.signal);
-      await consumeSseResponse(response, (event, data) => {
-        setWalk(current => applyGroupWalkEvent(current, event.event, data));
-      }, { terminalEvents: ['group.done'] });
+      });
+      await startResponse.body?.cancel().catch(() => undefined);
+      let cursor = 0;
+      let attempts = 0;
+      while (!abort.signal.aborted) {
+        try {
+          const response = await clientRef.current.observeEvents(conversationId, interactionId, cursor, abort.signal);
+          await consumeSseResponse(response, (event, data) => {
+            cursor = Math.max(cursor, typeof data.cursor === 'number' ? data.cursor : Number(event.id) || 0);
+            setInteraction(current => mergeGroupInteractionVersionEvent(current, data));
+            setWalk(current => applyGroupWalkEvent(current, event.event, data));
+          }, { terminalEvents: ['group.done', 'group.stopped', 'group.interrupted'] });
+          attempts = 0;
+        } catch (observationError) {
+          if (abort.signal.aborted) throw observationError;
+          const latest = await clientRef.current.getInteraction(interactionId);
+          applyDetail(latest);
+          if (latest.interaction.status !== 'active') break;
+          attempts += 1;
+          if (attempts > 5) throw observationError;
+          await new Promise(resolve => window.setTimeout(resolve, Math.min(1000 * (2 ** (attempts - 1)), 8000)));
+        }
+        const latest = await clientRef.current.getInteraction(interactionId);
+        applyDetail(latest);
+        if (latest.interaction.status !== 'active') break;
+      }
       // Re-read the interaction so the budget, hop chain, and terminal state the
       // view shows are the committed ones, not the stream's view.
       applyDetail(await clientRef.current.getInteraction(interactionId));
@@ -139,11 +163,21 @@ export function useGroupConversation(
     setBusy(true);
     setError(undefined);
     try {
-      // Cut the live stream first so no further delta lands, then persist the stop.
-      walkAbortRef.current?.abort();
-      await clientRef.current.stopInteraction(currentInteraction.id, currentInteraction.version);
+      const latest = await clientRef.current.getInteraction(currentInteraction.id);
+      setInteraction(latest.interaction);
+      const result = await clientRef.current.stopInteraction(
+        latest.interaction.id,
+        latest.interaction.version,
+        `group-ui-stop-${latest.interaction.id}-${latest.interaction.version}`,
+      );
+      setInteraction(result.interaction);
       applyDetail(await clientRef.current.getInteraction(currentInteraction.id));
     } catch (stopError) {
+      if ((stopError as { code?: string })?.code === 'GROUP_VERSION_CONFLICT') {
+        try { applyDetail(await clientRef.current.getInteraction(currentInteraction.id)); } catch { /* keep the last confirmed snapshot */ }
+        setError('群聊版本已变化，已刷新状态；未自动重试停止操作，请确认后再点击。');
+        return;
+      }
       setError(describeError(stopError));
     } finally {
       setBusy(false);

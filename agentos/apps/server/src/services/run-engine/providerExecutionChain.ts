@@ -39,6 +39,7 @@ import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEvent
 import { CanonicalArtifactResultService } from '../CanonicalArtifactResultService.js';
 import { RuntimeArtifactService } from '../RuntimeArtifactService.js';
 import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
+import type { CollaborationStageHooks } from '../CollaborationStageHooks.js';
 import { dirname } from 'node:path';
 
 export interface ProviderExecutionChainOptions {
@@ -46,10 +47,12 @@ export interface ProviderExecutionChainOptions {
   readonly artifactRoot: string;
   readonly workspaceRootFor: (workspaceId: string) => string;
   readonly worktreePathFor?: (workspaceId: string, runId: string) => string | undefined;
+  readonly continueOwnedRun?: (workspaceId: string, runId: string) => Promise<boolean>;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly probe?: ProcessProbePort;
   readonly claimOwner?: string;
   readonly claimLeaseMs?: number;
+  readonly collaborationStageHooks?: CollaborationStageHooks;
 }
 
 export interface ProviderExecutionChain {
@@ -88,7 +91,10 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   ]);
   let dispatcher!: RunEngineProviderDispatcher;
   const approvalGate = new RuntimeApprovalGate(store, {
-    continueRun: async (workspaceId, runId) => { await dispatcher.driveSafely(workspaceId, runId); },
+    continueRun: async (workspaceId, runId) => {
+      if (await options.continueOwnedRun?.(workspaceId, runId)) return;
+      await dispatcher.driveSafely(workspaceId, runId);
+    },
   });
   const runEventObservation: CanonicalRunEventObservationPort = {
     subscribe: input => store.runStreamService().subscribe({
@@ -111,6 +117,14 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     claimOwner: options.claimOwner,
     claimLeaseMs: options.claimLeaseMs,
     approvalGate,
+    canLaunch: input => {
+      const run = store.runRepository().findById(input.workspaceId, input.runId);
+      const stage = store.runStageRepository().listByRun(input.workspaceId, input.runId)
+        .find(candidate => candidate.id === input.stageId);
+      return run?.status === 'running' && stage?.attempt === input.stageAttempt
+        && stage.status === 'running'
+        && options.collaborationStageHooks?.canDispatch?.(input.workspaceId, input.runId) !== false;
+    },
   });
   const engine = new RunEngine({
     runRepository: store.runRepository(),
@@ -172,6 +186,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     lifecycleTransactionService: store.lifecycleTransactionService(),
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
+    collaborationStageHooks: options.collaborationStageHooks,
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,

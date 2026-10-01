@@ -1,10 +1,23 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: PARTIAL — merged slices do not yet constitute an end-to-end Memory Foundation closeout
+Current status (2026-10-01): the merged Lite closeout matrix records 23 Memory
+requirements PASS and 8 explicitly DEFERRED, with no registered Memory GAP or
+RUNTIME-VERIFY. See [matrix v26](../lite-closeout/matrix.json) and the
+[final closeout report](../lite-closeout/FINAL-CLOSEOUT-90E2E5A1.md). These are
+historical revision-bound acceptance results, not proof that every later UI
+path is complete.
+
+The current follow-up repairs a concrete project-knowledge disconnect:
+the UI used compatibility `memories`, while Run/chat read `memory_entries`.
+See [the integration contract](MF-project-knowledge-integration.md). This
+follow-up has its own verification and does not rewrite the frozen receipts.
+
+Historical slice status: PARTIAL — the following progress record describes the
+earlier merged slices; its remaining-work claims were superseded by S1–S9.
 
 Final Lite acceptance is governed by [S0](../lite-closeout/README.md), not by
 historical slice labels. S1-A / PR #143 repairs terminal dedup provenance under
-`LITE-07-003/107`; those IDs remain open for the explicit-save and review paths.
+`LITE-07-003/107`; the later matrix closes those explicit-save and review paths.
 
 ## 1. Purpose
 

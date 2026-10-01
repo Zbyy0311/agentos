@@ -88,11 +88,12 @@ test('direct Conversation lifecycle: create, send, list, archive, restore', asyn
   });
 });
 
-test('group Conversation requires two Agents and a reply mode', async () => {
+test('group Conversation defaults to sequential discussion and requires two Agents', async () => {
   await withServer(async (baseUrl) => {
-    const missingMode = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex', 'kimi'] });
-    assert.equal(missingMode.status, 400);
-    const oneAgent = await postJson(`${baseUrl}/conversations`, { kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex'] });
+    const defaultDiscussion = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex', 'kimi'] });
+    assert.equal(defaultDiscussion.status, 201);
+    assert.equal((defaultDiscussion.json as { conversation: { replyMode: string } }).conversation.replyMode, 'sequential');
+    const oneAgent = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex'] });
     assert.equal(oneAgent.status, 400);
     const created = await postJson(`${baseUrl}/conversations`, { kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex', 'kimi'] });
     assert.equal(created.status, 201);
