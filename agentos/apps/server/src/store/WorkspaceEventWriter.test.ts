@@ -342,17 +342,19 @@ test('MF5W-A7: a type outside the frozen allowlist is refused before any sequenc
   try {
     committedReview(fx);
     const before = nextSequence(fx);
-    // `memory.entry_conflicted`/`_archived`/`_expired` are REGISTERED types that
+    // `memory.entry_conflicted`/`_expired` are REGISTERED types that
     // the Workspace allowlist deliberately excludes, so a status change that
     // would need one fails the transaction closed instead of being narrowed.
     for (const type of [
-      'memory.entry_conflicted', 'memory.entry_archived', 'memory.entry_expired',
+      'memory.entry_conflicted', 'memory.entry_expired',
       'memory.context_created', 'run.started', 'not.a.type',
     ]) {
       assertRefused(fx, draft({ type }), 'WORKSPACE_EVENT_TYPE_NOT_ALLOWED');
     }
     // S2-027 adds this type for Artifact completion only, not review origins.
     assertRefused(fx, draft({ type: 'memory.candidate_created' }), 'WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+    // Project knowledge archive requires its own persisted entry-edit origin.
+    assertRefused(fx, draft({ type: 'memory.entry_archived' }), 'WORKSPACE_EVENT_ORIGIN_UNPROVEN');
     assertNothingConsumed(fx, before);
   } finally {
     fx.close();

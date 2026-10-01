@@ -1,5 +1,8 @@
 import type { MemorySearchInput, MemoryUsage } from '@agentos/shared';
 import { MemoryRetriever } from './MemoryRetriever.js';
+import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { applyBudget, injectedEntryText } from './MemoryContextBudgetSelector.js';
+import { CHAT_MEMORY_RETRIEVAL_LIMIT, DEFAULT_CHAT_MEMORY_BUDGET } from './ChatMemorySelectionPort.js';
 
 export const MAX_MEMORY_ITEMS = 5;
 export const MAX_MEMORY_CHARACTERS = 6000;
@@ -8,30 +11,106 @@ export const MAX_SINGLE_MEMORY_CHARACTERS = 1800;
 export interface RunContextResult {
   context: string;
   usages: MemoryUsage[];
+  /** Read-only canonical attribution, never written to legacy memory_usages. */
+  entryUsages?: readonly {
+    readonly entryId: string;
+    readonly version: number;
+    /** One-based position in the combined, actually injected context. */
+    readonly rank: number;
+    readonly injectedCharacters: number;
+  }[];
+  /** MF-3 structured ranking ran without usable FTS ranking. Errors still propagate. */
+  retrievalDegraded?: boolean;
 }
 
 export class RunContextBuilder {
-  constructor(private readonly retriever: MemoryRetriever) {}
+  constructor(
+    private readonly retriever: MemoryRetriever,
+    private readonly entryRetriever?: MemoryRetrievalService,
+  ) {}
 
-  async build(input: MemorySearchInput & { runId: string; workspaceRoot: string; memoryEnabled: boolean }): Promise<RunContextResult> {
-    if (!input.memoryEnabled) return { context: '', usages: [] };
-    const memories = await this.retriever.search(input.workspaceRoot, {
-      ...input,
-      limit: Math.min(MAX_MEMORY_ITEMS, input.limit),
-      maxCharacters: Math.min(MAX_MEMORY_CHARACTERS, input.maxCharacters),
-    });
+  async build(input: MemorySearchInput & {
+    runId: string;
+    workspaceRoot: string;
+    memoryEnabled: boolean;
+    agentId?: string;
+    conversationId?: string;
+  }): Promise<RunContextResult> {
+    const entryUsages: NonNullable<RunContextResult['entryUsages']>[number][] = [];
+    const empty = { context: '', usages: [], ...(this.entryRetriever ? { entryUsages } : {}) };
+    if (!input.memoryEnabled) return empty;
+    const itemLimit = Math.max(0, Math.min(MAX_MEMORY_ITEMS, Math.floor(input.limit)));
+    const characterLimit = Math.max(0, Math.min(MAX_MEMORY_CHARACTERS, Math.floor(input.maxCharacters)));
+    if (!(itemLimit > 0) || !(characterLimit > 0)) return empty;
+    const heading = '## 与本次任务相关的项目记忆\n\n';
     let usedCharacters = 0;
     const sections: string[] = [];
     const usages: MemoryUsage[] = [];
-    for (const [index, item] of memories.entries()) {
-      const remaining = MAX_MEMORY_CHARACTERS - usedCharacters;
-      if (remaining <= 0) break;
-      const body = `${item.memory.summary}\n${item.content}`.slice(0, Math.min(MAX_SINGLE_MEMORY_CHARACTERS, remaining));
-      if (!body) continue;
-      usedCharacters += body.length;
-      sections.push(`### [${item.memory.type}] ${item.memory.title}\n${body}\n来源记忆：${item.memory.id}`);
-      usages.push({ runId: input.runId, memoryId: item.memory.id, rank: index + 1, injectedCharacters: body.length, usedAt: new Date().toISOString() });
+    const remainingCharacters = () => characterLimit - usedCharacters - (sections.length ? 2 : heading.length);
+    const append = (section: string) => {
+      usedCharacters += section.length + (sections.length ? 2 : heading.length);
+      sections.push(section);
+    };
+    let retrievalDegraded: boolean | undefined;
+
+    if (this.entryRetriever) {
+      // A legacy AgentRun UUID is not a canonical Task/Run ownership claim.
+      const retrieval = this.entryRetriever.retrieveWithStatus({
+        context: {
+          workspaceId: input.workspaceId,
+          ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
+          ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
+        },
+        query: input.query,
+        limit: CHAT_MEMORY_RETRIEVAL_LIMIT,
+      });
+      retrievalDegraded = retrieval.degraded;
+      const outcome = applyBudget(retrieval.results, {
+        ...DEFAULT_CHAT_MEMORY_BUDGET,
+        maxEntries: Math.min(DEFAULT_CHAT_MEMORY_BUDGET.maxEntries, itemLimit),
+      });
+      for (const selected of outcome.selected) {
+        const remaining = remainingCharacters();
+        if (sections.length >= itemLimit || remaining <= 0) break;
+        const text = injectedEntryText(selected.entry).slice(0, Math.min(MAX_SINGLE_MEMORY_CHARACTERS, remaining));
+        if (!text) continue;
+        append(text);
+        entryUsages.push({
+          entryId: selected.entry.id,
+          version: selected.explanation.memoryVersion,
+          rank: sections.length,
+          injectedCharacters: text.length,
+        });
+      }
     }
-    return sections.length ? { context: `## 与本次任务相关的项目记忆\n\n${sections.join('\n\n')}`, usages } : { context: '', usages: [] };
+
+    // The compatibility store can only fill the capacity left by canonical Entries.
+    const remainingItems = itemLimit - sections.length;
+    const memories = remainingItems > 0 && remainingCharacters() > 0
+      ? await this.retriever.search(input.workspaceRoot, {
+        ...input,
+        limit: remainingItems,
+        maxCharacters: remainingCharacters(),
+      })
+      : [];
+    for (const [index, item] of memories.entries()) {
+      const remaining = remainingCharacters();
+      if (sections.length >= itemLimit || remaining <= 0) break;
+      const prefix = `### [${item.memory.type}] ${item.memory.title}\n`;
+      const suffix = `\n来源记忆：${item.memory.id}`;
+      const bodyLimit = Math.min(MAX_SINGLE_MEMORY_CHARACTERS, remaining) - prefix.length - suffix.length;
+      if (bodyLimit <= 0) continue;
+      const body = `${item.memory.summary}\n${item.content}`.slice(0, bodyLimit);
+      if (!body) continue;
+      const text = `${prefix}${body}${suffix}`;
+      append(text);
+      usages.push({ runId: input.runId, memoryId: item.memory.id, rank: this.entryRetriever ? sections.length : index + 1,
+        injectedCharacters: text.length, usedAt: new Date().toISOString() });
+    }
+    return {
+      context: sections.length ? `${heading}${sections.join('\n\n')}` : '',
+      usages,
+      ...(this.entryRetriever ? { entryUsages, retrievalDegraded } : {}),
+    };
   }
 }

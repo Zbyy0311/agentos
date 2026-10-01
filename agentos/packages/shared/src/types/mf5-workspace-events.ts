@@ -34,6 +34,7 @@ export const WORKSPACE_EVENT_STREAM_TYPES = Object.freeze([
   'memory.conflict_resolved',
   'memory.entry_created',
   'memory.entry_updated',
+  'memory.entry_archived',
   'memory.entry_rejected',
   'memory.entry_superseded',
   'memory.entry_deduplicated',

@@ -70,6 +70,11 @@ export type WorkspaceEventOriginV1 =
       readonly kind: 'memory.entry_save';
       readonly entryId: string;
       readonly entryVersion: number;
+    }
+  | {
+      readonly kind: 'memory.entry_edit';
+      readonly entryId: string;
+      readonly entryVersion: number;
     };
 
 export type WorkspaceEventOriginKind = WorkspaceEventOriginV1['kind'];
@@ -147,7 +152,7 @@ export function deriveWorkspaceEventContext(origin: WorkspaceEventOriginV1): Wor
       causationId: origin.conflictId,
     };
   }
-  if (origin.kind === 'memory.entry_save') {
+  if (origin.kind === 'memory.entry_save' || origin.kind === 'memory.entry_edit') {
     return {
       correlationId: 'memory-entry:' + origin.entryId + ':v' + origin.entryVersion,
       causationId: origin.entryId,
@@ -299,6 +304,9 @@ export class WorkspaceEventWriter {
     }
 
     const origin = this.requireOrigin(input.origin);
+    if (input.type === 'memory.entry_archived' && origin.kind !== 'memory.entry_edit') {
+      throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+    }
     const context = this.requireContext(input.context);
     const eventId = this.createEventId();
     if (!isValidEntityId(eventId, 'event')) {
@@ -311,6 +319,16 @@ export class WorkspaceEventWriter {
     const authorized = this.authorize(input.workspaceId, origin, context);
     // Prove, then allocate, then insert: a refused append consumes nothing.
     this.assertAuthorityOriginProven(input.workspaceId, authorized);
+    if (origin.kind === 'memory.entry_edit') {
+      const row = this.db.prepare('SELECT scope, category, authority, status FROM memory_entries WHERE workspace_id = ? AND id = ? AND version = ?')
+        .get(input.workspaceId, origin.entryId, origin.entryVersion) as { scope: string; category: string; authority: string; status: string } | undefined;
+      if (row === undefined || input.payload.memoryEntryId !== origin.entryId || input.payload.version !== origin.entryVersion
+        || input.payload.scope !== row.scope || input.payload.category !== row.category || input.payload.authority !== row.authority
+        || !((input.type === 'memory.entry_updated' && (row.status === 'active' || row.status === 'archived'))
+          || (input.type === 'memory.entry_archived' && row.status === 'archived'))) {
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+      }
+    }
     if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion' || origin.kind === 'memory.compaction' || origin.kind === 'memory.import') {
       const proof = origin.kind === 'memory.artifact_completion'
         ? proveWorkspaceArtifactCompletion(this.db, input.workspaceId, origin.completionId)
@@ -401,15 +419,16 @@ export class WorkspaceEventWriter {
         conflictVersion: value.conflictVersion,
       };
     }
-    if (value.kind === ENTRY_SAVE_ORIGIN) {
-      if (!nonBlank(value.entryId) || !isPositiveSafeInteger(value.entryVersion)) {
+    if (value.kind === ENTRY_SAVE_ORIGIN || value.kind === 'memory.entry_edit') {
+      if (!nonBlank(value.entryId) || !isPositiveSafeInteger(value.entryVersion)
+        || (value.kind === 'memory.entry_edit' && value.entryVersion < 2)) {
         throw new WorkspaceEventWriterError(
           'WORKSPACE_EVENT_INPUT_INVALID',
           'memory.entry_save origin requires entryId and a positive integer entryVersion',
         );
       }
       return {
-        kind: ENTRY_SAVE_ORIGIN,
+        kind: value.kind,
         entryId: value.entryId,
         entryVersion: value.entryVersion,
       };
@@ -543,7 +562,7 @@ export class WorkspaceEventWriter {
       }
       return;
     }
-    if (authorized.origin === ENTRY_SAVE_ORIGIN) {
+    if (authorized.origin === ENTRY_SAVE_ORIGIN || authorized.origin === 'memory.entry_edit') {
       const row = this.db.prepare(
         'SELECT 1 AS present FROM memory_entries'
           + ' WHERE workspace_id = ? AND id = ? AND version = ?',
