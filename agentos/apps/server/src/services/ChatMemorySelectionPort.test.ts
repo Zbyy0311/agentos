@@ -98,6 +98,57 @@ test('LITE-09-101 CM-01 selects reachable entries and assembles the injected tex
   } finally { fx.close(); }
 });
 
+test('prepared chat selection awaits the retrieval seam and persists a visible semantic fallback reason', async () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'release controls', content: 'keep the release within its budget' });
+    const retrieval = new MemoryRetrievalService(fx.entries);
+    const retrievePrepared = retrieval.retrievePrepared.bind(retrieval);
+    let preparedCalls = 0;
+    retrieval.retrievePrepared = async input => {
+      preparedCalls += 1;
+      const baseline = await retrievePrepared(input);
+      return {
+        ...baseline,
+        degraded: true,
+        semantic: { degraded: true, reason: 'REMOTE_DISABLED', prepared: true },
+      };
+    };
+    const problems: string[] = [];
+    const port = createChatMemorySelectionPort({ retrieval, onProblem: message => problems.push(message) });
+    const selected = await port.selectPrepared!({ ...SELECT_INPUT, retrievalQuery: 'release controls' });
+    assert.equal(preparedCalls, 1);
+    assert.equal(selected.retrievalDegraded, true);
+    assert.match(selected.retrievalStrategyVersion, /semantic-fallback:REMOTE_DISABLED/);
+    assert.ok(problems.some(message => message.includes('reason=REMOTE_DISABLED')));
+  } finally { fx.close(); }
+});
+
+test('disabled chat memory skips all retrieval and a disable during preparation freezes an empty selection', async () => {
+  let enabled = false;
+  let reads = 0;
+  const port = createChatMemorySelectionPort({
+    isMemoryEnabled: workspaceId => workspaceId === WS && enabled,
+    retrieval: {
+      retrieveWithStatus() { reads += 1; return { results: [], degraded: false }; },
+      async retrievePrepared() { reads += 1; enabled = false; return { results: [], degraded: false }; },
+    },
+  });
+  const sync = port.select(SELECT_INPUT);
+  const asyncDisabled = await port.selectPrepared!(SELECT_INPUT);
+  assert.equal(reads, 0);
+  for (const selected of [sync, asyncDisabled]) {
+    assert.deepEqual(selected.selectedEntryIds, []);
+    assert.equal(selected.contextText, undefined);
+    assert.equal(selected.totalTokens, 0);
+    assert.match(selected.retrievalStrategyVersion, /memory-disabled$/);
+  }
+  enabled = true;
+  const disabledWhilePreparing = await port.selectPrepared!(SELECT_INPUT);
+  assert.equal(reads, 1);
+  assert.match(disabledWhilePreparing.retrievalStrategyVersion, /memory-disabled$/);
+});
+
 test('LITE-09-101 CM-02 another Workspace, another Agent and a Task-scoped entry stay out of reach', () => {
   const fx = fixture();
   try {

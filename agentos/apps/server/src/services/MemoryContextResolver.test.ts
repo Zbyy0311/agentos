@@ -74,9 +74,10 @@ function fixture(clock?: () => number) {
   const tx = db as unknown as TransactionDatabase;
   const entries = new MemoryEntryRepository(tx);
   const snapshots = new MemoryContextSnapshotRepository(tx);
-  const selector = new MemoryContextBudgetSelector(new MemoryRetrievalService(entries, clock), snapshots);
+  const retrieval = new MemoryRetrievalService(entries, clock);
+  const selector = new MemoryContextBudgetSelector(retrieval, snapshots);
   const resolver = new MemoryContextResolver({ store: { getDatabase: () => tx }, selector, entries, snapshots });
-  return { db, entries, snapshots, resolver, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
+  return { db, entries, retrieval, snapshots, resolver, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
 
 let seq = 0;
@@ -120,6 +121,40 @@ test('M2 new canonical stages reflect edits and lifecycle while every previous s
     assert.equal(replay.contextText,first.contextText);
     assert.equal(replay.snapshot.selected[0].memoryVersion,1);
     assert.equal(fx.snapshots.readContextText(WS,edited.snapshot.id),edited.contextText);
+  } finally { fx.close(); }
+});
+
+test('prepared Run resolution records semantic degradation and replay reads the saved snapshot without preparing again', async () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    addEntry(fx, { title: 'prepared checkpoint', content: 'frozen context' });
+    const retrievePrepared = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    let prepareCalls = 0;
+    fx.retrieval.retrievePrepared = async input => {
+      prepareCalls += 1;
+      const baseline = await retrievePrepared(input);
+      return {
+        ...baseline,
+        degraded: true,
+        semantic: { degraded: true, reason: 'REMOTE_DISABLED', prepared: true },
+      };
+    };
+
+    const input = resolveInput({ stageId: 'prepared-stage', query: 'prepared checkpoint' });
+    const first = await fx.resolver.resolvePrepared(input);
+    assert.equal(first.reused, false);
+    assert.equal(prepareCalls, 1);
+    assert.equal(first.snapshot.retrievalDegraded, true);
+    assert.match(first.snapshot.retrievalStrategyVersion, /semantic-fallback:REMOTE_DISABLED/);
+    assert.match(first.contextText, /frozen context/);
+
+    const replay = await fx.resolver.resolvePrepared(resolveInput({
+      stageId: 'prepared-stage', query: 'different replay query',
+    }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, first.contextText);
+    assert.equal(replay.snapshot.id, first.snapshot.id);
+    assert.equal(prepareCalls, 1, 'replay must use the durable payload without another prepare/embed call');
   } finally { fx.close(); }
 });
 
@@ -364,5 +399,75 @@ test('LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval deg
       stageId: STAGE, query: 'alpha', createdAt: '2026-09-14T01:00:00.000Z',
     }));
     assert.equal(healthy.snapshot.retrievalDegraded, false);
+  } finally { fx.close(); }
+});
+
+test('concurrent prepared replays share one original snapshot and subsequent replays skip preparation', async () => {
+  const fx = fixture();
+  try {
+    const memoryId = addEntry(fx);
+    let calls = 0;
+    const original = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    fx.retrieval.retrievePrepared = async input => { calls += 1; return original(input); };
+    const [first, second] = await Promise.all([
+      fx.resolver.resolvePrepared(resolveInput()), fx.resolver.resolvePrepared(resolveInput()),
+    ]);
+    assert.equal(first.snapshot.id, second.snapshot.id);
+    assert.equal(second.contextText, first.contextText);
+    assert.equal(first.reused, false);
+    assert.equal(second.reused, true);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 1);
+    fx.db.prepare("UPDATE memory_entries SET status='archived',version=version+1 WHERE id=?").run(memoryId);
+    const previousCalls = calls;
+    const replay = await fx.resolver.resolvePrepared(resolveInput({ query: 'changed request must not replace invocation context' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, first.contextText);
+    assert.equal(calls, previousCalls);
+  } finally { fx.close(); }
+});
+
+test('new canonical scopes check the current workspace switch before retrieval and after preparation', async () => {
+  const fx = fixture();
+  try {
+    const memoryId = addEntry(fx);
+    let enabled = false;
+    let calls = 0;
+    const selector = new MemoryContextBudgetSelector(fx.retrieval, fx.snapshots);
+    const resolver = new MemoryContextResolver({
+      store: { getDatabase: () => fx.db as unknown as TransactionDatabase },
+      selector, snapshots: fx.snapshots, isMemoryEnabled: () => enabled,
+    });
+    const original = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    fx.retrieval.retrievePrepared = async input => { calls += 1; return original(input); };
+    fx.retrieval.retrieveWithStatus = () => { throw new Error('disabled synchronous retrieval must not run'); };
+    const disabledSync = resolver.resolve(resolveInput({ stageId: 'disabled-sync' }));
+    assert.equal(disabledSync.contextText, '');
+    assert.equal(disabledSync.snapshot.totalTokens, 0);
+    assert.match(disabledSync.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const disabledPrepared = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-prepared' }));
+    assert.deepEqual(disabledPrepared.snapshot.selected, []);
+    assert.equal(calls, 0);
+
+    enabled = true;
+    const first = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.deepEqual(first.snapshot.selected.map(row => row.memoryId), [memoryId]);
+    const firstBody = first.contextText;
+    fx.retrieval.retrievePrepared = async input => {
+      calls += 1;
+      const result = await original(input);
+      enabled = false;
+      return result;
+    };
+    const disabledAfterAwait = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-after-await' }));
+    assert.equal(disabledAfterAwait.contextText, '');
+    assert.equal(disabledAfterAwait.snapshot.totalTokens, 0);
+    assert.deepEqual(disabledAfterAwait.snapshot.selected, []);
+    assert.match(disabledAfterAwait.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const beforeReplay = calls;
+    const replay = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, firstBody);
+    assert.equal(calls, beforeReplay);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), firstBody);
   } finally { fx.close(); }
 });

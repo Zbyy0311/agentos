@@ -17,6 +17,7 @@ export interface ExecutionMemoryContextInput {
   readonly selected: readonly ExecutionMemorySelection[];
   readonly exclusions: readonly { memoryId: string; reason: string }[];
   readonly retrievalDegraded: boolean; readonly truncated: boolean; readonly createdAt: string;
+  readonly retrievalStrategyVersion?: string;
 }
 export interface ExecutionMemoryContextRecord extends ExecutionMemoryContextInput {
   readonly id: string; readonly totalTokens: number; readonly retrievalStrategyVersion: string;
@@ -35,7 +36,9 @@ export class MemoryExecutionContextRepository {
       }
       const existing = this.findForExecution(input.workspaceId, input.executionId);
       if (existing) return existing;
+      const strategyVersion = input.retrievalStrategyVersion ?? 'compat-memory.v2';
       if (!/^[a-f0-9]{64}$/.test(input.queryHash) || input.contextText.length > 10000
+        || typeof strategyVersion !== 'string' || !/^[A-Za-z0-9._:+-]{1,200}$/.test(strategyVersion)
         || !isMemoryTextSafe(input.contextText) || !isMemoryTextSafe(JSON.stringify([input.selected,input.exclusions]))) {
         throw new Error('MEMORY_EXECUTION_CONTEXT_INPUT_INVALID');
       }
@@ -44,7 +47,7 @@ export class MemoryExecutionContextRepository {
          context_text,content_sha256,selected_json,exclusions_json,total_tokens,truncated,retrieval_degraded,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         `mexec_${input.executionId}`,input.workspaceId,input.runId,input.executionId,input.conversationId,input.agentId,
-        input.queryHash,'compat-memory.v2',input.contextText,hash(input.contextText),JSON.stringify(input.selected),
+        input.queryHash,strategyVersion,input.contextText,hash(input.contextText),JSON.stringify(input.selected),
         JSON.stringify(input.exclusions),Math.ceil(input.contextText.length/4),input.truncated?1:0,input.retrievalDegraded?1:0,input.createdAt,
       );
       return this.findForExecution(input.workspaceId,input.executionId)!;

@@ -2,7 +2,8 @@ import {
   validateMemoryBudgetPolicy,
   type MemoryBudgetPolicyV1,
 } from '@agentos/shared';
-import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import type { MemoryRetrievalService, RetrieveMemoryResult } from './MemoryRetrievalService.js';
+import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
 import { applyBudget, hashRetrievalQuery, injectedEntryText } from './MemoryContextBudgetSelector.js';
 import type { TurnContextSelection, TurnContextSelectionInput, TurnContextSelectionPort } from './ConversationTurnDriver.js';
 import type { TurnContextMemoryExclusion } from '../store/TurnContextSnapshotRepository.js';
@@ -41,11 +42,14 @@ export const CHAT_MEMORY_RETRIEVAL_LIMIT = 40;
 export const CHAT_MEMORY_STRATEGY_VERSION = 'chat-memory.v1';
 
 export interface ChatMemorySelectionPortOptions {
-  readonly retrieval: Pick<MemoryRetrievalService, 'retrieveWithStatus'>;
+  readonly retrieval: Pick<MemoryRetrievalService, 'retrieveWithStatus'>
+    & Partial<Pick<MemoryRetrievalService, 'retrievePrepared'>>;
   readonly budgetPolicy?: MemoryBudgetPolicyV1;
   readonly retrievalLimit?: number;
   /** Reported with every selection so a reader can tell what actually ran. */
   readonly strategyVersion?: string;
+  /** Read the current workspace switch for each new selection. Replay uses its frozen payload. */
+  readonly isMemoryEnabled?: (workspaceId: string) => boolean;
   readonly onProblem?: (detail: string) => void;
 }
 
@@ -57,12 +61,66 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
   const strategyVersion = options.strategyVersion ?? CHAT_MEMORY_STRATEGY_VERSION;
   const report = options.onProblem ?? (() => undefined);
 
+  const buildSelection = (input: TurnContextSelectionInput, result: RetrieveMemoryResult): TurnContextSelection => {
+    // The Turn's own budget, when supplied, only ever lowers the ceiling.
+    const maxTokens = input.contextTokenBudget === null
+      ? policy.maxTokens
+      : Math.max(1, Math.min(policy.maxTokens, input.contextTokenBudget));
+    const outcome = applyBudget(result.results, { ...policy, maxTokens });
+    if (result.degraded) {
+      const reason = result.semantic?.reason;
+      report(`CHAT_MEMORY_SELECTION_DEGRADED workspace=${input.workspaceId} turn=${input.turnId}${reason ? ` reason=${reason}` : ''}`);
+    }
+    const selectedIds = new Set(outcome.selected.map(selected => selected.entry.id));
+    const exclusions: TurnContextMemoryExclusion[] = result.results
+      .filter(item => !selectedIds.has(item.entry.id))
+      .map(item => {
+        const exclusion = outcome.exclusions.find(candidate => candidate.memoryId === item.entry.id);
+        return {
+          memoryId: item.entry.id,
+          memoryVersion: item.entry.version,
+          rank: item.rank,
+          reason: exclusion?.reason ?? 'status-excluded',
+          reasons: [...item.reasons, exclusion?.reason ?? 'status-excluded'],
+        };
+      });
+    const retrievalInput = {
+      context: {
+        workspaceId: input.workspaceId,
+        agentId: input.agentId,
+        conversationId: input.conversationId,
+      },
+      ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
+      limit,
+    };
+    return {
+      selectedEntryIds: outcome.selected.map(selected => selected.entry.id),
+      totalTokens: outcome.totalTokens,
+      truncated: outcome.truncated,
+      retrievalStrategyVersion: withMemorySemanticStrategyVersion(strategyVersion, result),
+      queryHash: hashRetrievalQuery(retrievalInput),
+      selected: outcome.selected.map(selected => selected.explanation),
+      exclusions,
+      retrievalDegraded: result.degraded,
+      ...(outcome.selected.length === 0
+        ? {}
+        : {
+          contextText: outcome.selected
+            .map(selected => injectedEntryText(selected.entry))
+            .join('\n\n'),
+        }),
+    };
+  };
+
+  const disabledSelection = (input: TurnContextSelectionInput): TurnContextSelection => ({
+    ...buildSelection(input, { results: [], degraded: false }),
+    retrievalStrategyVersion: `${strategyVersion}+memory-disabled`,
+  });
+  const memoryEnabled = (input: TurnContextSelectionInput) => options.isMemoryEnabled?.(input.workspaceId) ?? true;
+
   return {
     select(input: TurnContextSelectionInput): TurnContextSelection {
-      // The Turn's own budget, when supplied, only ever lowers the ceiling.
-      const maxTokens = input.contextTokenBudget === null
-        ? policy.maxTokens
-        : Math.max(1, Math.min(policy.maxTokens, input.contextTokenBudget));
+      if (!memoryEnabled(input)) return disabledSelection(input);
       const result = options.retrieval.retrieveWithStatus({
         context: {
           workspaceId: input.workspaceId,
@@ -72,25 +130,10 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
         ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
         limit,
       });
-      const outcome = applyBudget(result.results, { ...policy, maxTokens });
-      if (result.degraded) {
-        // Retained rather than swallowed: the selection is still whatever the structured
-        // ranking produced, and the degradation is reported to the caller's sink.
-        report(`CHAT_MEMORY_SELECTION_DEGRADED workspace=${input.workspaceId} turn=${input.turnId}`);
-      }
-      const selectedIds = new Set(outcome.selected.map(selected => selected.entry.id));
-      const exclusions: TurnContextMemoryExclusion[] = result.results
-        .filter(item => !selectedIds.has(item.entry.id))
-        .map(item => {
-          const exclusion = outcome.exclusions.find(candidate => candidate.memoryId === item.entry.id);
-          return {
-            memoryId: item.entry.id,
-            memoryVersion: item.entry.version,
-            rank: item.rank,
-            reason: exclusion?.reason ?? 'status-excluded',
-            reasons: [...item.reasons, exclusion?.reason ?? 'status-excluded'],
-          };
-        });
+      return buildSelection(input, result);
+    },
+    async selectPrepared(input: TurnContextSelectionInput): Promise<TurnContextSelection> {
+      if (!memoryEnabled(input)) return disabledSelection(input);
       const retrievalInput = {
         context: {
           workspaceId: input.workspaceId,
@@ -100,23 +143,12 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
         ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
         limit,
       };
-      return {
-        selectedEntryIds: outcome.selected.map(selected => selected.entry.id),
-        totalTokens: outcome.totalTokens,
-        truncated: outcome.truncated,
-        retrievalStrategyVersion: strategyVersion,
-        queryHash: hashRetrievalQuery(retrievalInput),
-        selected: outcome.selected.map(selected => selected.explanation),
-        exclusions,
-        retrievalDegraded: result.degraded,
-        ...(outcome.selected.length === 0
-          ? {}
-          : {
-            contextText: outcome.selected
-              .map(selected => injectedEntryText(selected.entry))
-              .join('\n\n'),
-          }),
-      };
+      const result = options.retrieval.retrievePrepared === undefined
+        ? options.retrieval.retrieveWithStatus(retrievalInput)
+        : await options.retrieval.retrievePrepared(retrievalInput);
+      // Configuration can change while embeddings await. Do not inject a
+      // newly prepared selection after the workspace disables memory.
+      return memoryEnabled(input) ? buildSelection(input, result) : disabledSelection(input);
     },
   };
 }

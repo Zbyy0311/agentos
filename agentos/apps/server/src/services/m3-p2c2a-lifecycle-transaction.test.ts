@@ -935,6 +935,15 @@ function runConcurrentLifecycleChild(databasePath: string, correlationId: string
     const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
     const db = new DatabaseSync(process.env.LIFECYCLE_DB);
     db.exec('PRAGMA foreign_keys = ON');
+    // Match the production connection's lock wait policy.
+    db.exec('PRAGMA busy_timeout = 5000');
+    let phase = 'transition';
+    const executeSql = db.exec.bind(db);
+    db.exec = sql => {
+      if (sql === 'BEGIN IMMEDIATE' || sql === 'COMMIT') phase = sql;
+      executeSql(sql);
+      if (sql === 'BEGIN IMMEDIATE') phase = 'transition';
+    };
     const runtimeEventRepository = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
     const service = new LifecycleTransactionService({
       runRepository: new RunRepository(db),
@@ -953,6 +962,7 @@ function runConcurrentLifecycleChild(databasePath: string, correlationId: string
     } catch (error) {
       process.stdout.write(JSON.stringify({
         ok: false,
+        phase,
         name: error instanceof Error ? error.name : 'unknown',
         code: error && typeof error === 'object' && 'code' in error ? error.code : undefined,
         message: error instanceof Error ? error.message : String(error),
@@ -998,8 +1008,10 @@ test('P2C-2A file database concurrency allows one conditional transition and rej
       runConcurrentLifecycleChild(databasePath, 'concurrent-a'),
       runConcurrentLifecycleChild(databasePath, 'concurrent-b'),
     ]);
-    assert.equal(results.filter(result => result.ok === true).length, 1);
-    assert.equal(results.filter(result => result.ok === false).length, 1);
+    const diagnostics = JSON.stringify(results);
+    assert.equal(results.filter(result => result.ok === true).length, 1, diagnostics);
+    assert.equal(results.filter(result => result.ok === false).length, 1, diagnostics);
+    assert.equal(results.find(result => result.ok === false)?.code, 'LIFECYCLE_STATE_MISMATCH', diagnostics);
     const check = new DatabaseSync(databasePath);
     try {
       const run = check.prepare('SELECT status, version, next_event_sequence FROM runs WHERE id = ?').get(RUN_ID) as {

@@ -32,8 +32,7 @@ import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
 import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
 import { VerifiedMemoryFactService } from '../VerifiedMemoryFactService.js';
-import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
-import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from '../MemoryRetrievalRuntime.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
 import { MemoryRuntimeEventEmitter } from '../MemoryRuntimeEventEmitter.js';
 import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEventContextAuthority.js';
@@ -149,16 +148,21 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     factWriter: store.runtimeEventOutboxWriter(),
     eventAuthority: new DurableMemoryRuntimeEventContextAuthority(store.getDatabase()),
   });
+  const memoryRetrieval = createMemoryRetrievalRuntime(
+    store.getDatabase(),
+    memoryRetrievalRuntimeConfigFromEnvironment(options.environment ?? process.env),
+  );
   // MF-4 Run startup integration: the dispatcher resolves, freezes, and gates
   // Memory through the MF-3 retrieval + MF-4 snapshot contracts before any
   // provider work, and injects only the bounded persisted context.
   const memoryContextResolver = new MemoryContextResolver({
     store,
     selector: new MemoryContextBudgetSelector(
-      new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())),
+      memoryRetrieval.retrieval,
       new MemoryContextSnapshotRepository(store.getDatabase()),
     ),
     emitter: memoryEventEmitter,
+    isMemoryEnabled: workspaceId => store.workspaceRepo.findById(workspaceId)?.memoryEnabled === true,
   });
   // LITE-07-102: ONE generator instance serves both the dispatch-time trigger
   // and the startup sweep, so a Run can never receive two different facts for

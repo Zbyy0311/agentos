@@ -8,6 +8,7 @@ import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/M
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment, type MemoryRetrievalRuntimeConfig } from '../services/MemoryRetrievalRuntime.js';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
@@ -149,13 +150,14 @@ function parseReviewEdits(value: unknown): MemoryCandidateEdits | undefined {
   return value as MemoryCandidateEdits;
 }
 
-export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager, semanticConfig?: MemoryRetrievalRuntimeConfig): Router {
   const router = Router({ mergeParams: true });
 
   const entries = new MemoryEntryRepository(store.getDatabase());
   const candidates = new MemoryCandidateRepository(store.getDatabase());
   const snapshots = new MemoryContextSnapshotRepository(store.getDatabase());
-  const retrieval = new MemoryRetrievalService(entries);
+  const runtime = createMemoryRetrievalRuntime(store.getDatabase(), semanticConfig ?? memoryRetrievalRuntimeConfigFromEnvironment());
+  const retrieval = runtime.retrieval;
 
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -277,6 +279,43 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     } catch(error) {fail(res,error);}
   });
 
+  // Preparation only sees server-selected, eligible Entries. Caller-authored
+  // text and foreign owners cannot warm a workspace's derived vector cache.
+  router.post('/memory/retrieve/prepare', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    const body = req.body;
+    const allowed = ['query', 'limit', 'agentId', 'conversationId', 'taskId', 'runId', 'includeGlobal'];
+    if (!isPlainRecord(body) || Object.keys(body).some(key => !allowed.includes(key))
+      || !nonBlank(body.query) || body.query.length > 2000 || !areMemoryTextFieldsSafe([body.query])
+      || (body.limit !== undefined && (!Number.isSafeInteger(body.limit) || (body.limit as number) < 1 || (body.limit as number) > 100))
+      || (body.includeGlobal !== undefined && typeof body.includeGlobal !== 'boolean')
+      || ['agentId', 'conversationId', 'taskId', 'runId'].some(key => body[key] !== undefined && !nonBlank(body[key]))) {
+      res.status(400).json({ error: 'MEMORY_RETRIEVAL_INPUT_INVALID' }); return;
+    }
+    const { agentId, conversationId, taskId, runId } = body as Record<string, string | undefined>;
+    const db = store.getDatabase();
+    const run = runId === undefined ? undefined : store.runRepository().findById(workspace.id, runId);
+    if ((agentId !== undefined && !workspace.agents.some(agent => agent.id === agentId))
+      || (conversationId !== undefined && !db.prepare('SELECT 1 FROM cr_conversations WHERE workspace_id = ? AND id = ?').get(workspace.id, conversationId))
+      || (taskId !== undefined && !store.taskRepository().findById(workspace.id, taskId))
+      || (runId !== undefined && (run === undefined || (taskId !== undefined && run.taskId !== taskId)))) {
+      res.status(404).json({ error: 'MEMORY_RETRIEVAL_OWNER_NOT_FOUND' }); return;
+    }
+    try {
+      const result = await retrieval.retrievePrepared({
+        context: { workspaceId: workspace.id, agentId, conversationId, taskId, runId,
+          ...(typeof body.includeGlobal === 'boolean' ? { includeGlobal: body.includeGlobal } : {}) },
+        query: body.query as string,
+        limit: (body.limit as number | undefined) ?? 100,
+      });
+      res.json({ mode: runtime.mode, degraded: result.degraded,
+        semantic: result.semantic ?? { degraded: false, reason: 'SEMANTIC_DISABLED', prepared: false, preparedEntryCount: 0 },
+        eligibleCount: result.results.length });
+    } catch (error) { fail(res, error); }
+  });
+
   router.post('/memory/retrieve', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
@@ -312,6 +351,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       res.json({
         degraded: result.degraded,
         results: result.results,
+        ...(result.semantic === undefined ? {} : { semantic: result.semantic }),
       });
     } catch (error) {
       fail(res, error);

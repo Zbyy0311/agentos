@@ -143,6 +143,78 @@ test('M1 production Turn query freezes actual versions/text/reasons; later edits
   } finally {fx.close();}
 });
 
+test('new Turn awaits async memory preparation before freezing and invoking the Provider', async () => {
+  const context: ConversationTurnContextOptions = {};
+  const order: string[] = [];
+  const fx = fixture(undefined, context, (_history, options) => {
+    order.push('provider');
+    assert.equal(options.memoryContext, 'prepared context text');
+  });
+  try {
+    const db = fx.db as unknown as TransactionDatabase;
+    const durable = createDurableTurnContextSnapshotPort({ getDatabase: () => db });
+    const snapshots: TurnContextSnapshotPort = {
+      insert: value => { order.push('snapshot'); return durable.insert(value); },
+      readPayload: (workspaceId, snapshotId) => durable.readPayload?.(workspaceId, snapshotId),
+      readForTurn: (workspaceId, turnId) => durable.readForTurn?.(workspaceId, turnId),
+    };
+    Object.assign(context, {
+      snapshots,
+      selection: {
+        select() { throw new Error('the prepared selector should be preferred'); },
+        async selectPrepared() {
+          order.push('prepare-start');
+          await Promise.resolve();
+          order.push('prepare-finished');
+          return {
+            selectedEntryIds: ['prepared-entry'],
+            totalTokens: 5,
+            truncated: false,
+            retrievalStrategyVersion: 'chat-memory.v1+semantic-hybrid',
+            contextText: 'prepared context text',
+          };
+        },
+      },
+    });
+    const result = await fx.driver.replyWithTurn(input());
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(order, ['prepare-start', 'prepare-finished', 'snapshot', 'provider']);
+  } finally { fx.close(); }
+});
+
+test('idempotent Turn replay reuses the saved memory payload and skips async selection', async () => {
+  const context: ConversationTurnContextOptions = {};
+  const providerContexts: Array<string | undefined> = [];
+  const fx = fixture(undefined, context, (_history, options) => { providerContexts.push(options.memoryContext); });
+  try {
+    const db = fx.db as unknown as TransactionDatabase;
+    const durable = createDurableTurnContextSnapshotPort({ getDatabase: () => db });
+    let preparedCalls = 0;
+    Object.assign(context, {
+      snapshots: durable,
+      selection: {
+        select() { throw new Error('sync selection must not run'); },
+        async selectPrepared() {
+          preparedCalls += 1;
+          return {
+            selectedEntryIds: ['prepared-entry'],
+            totalTokens: 5,
+            truncated: false,
+            retrievalStrategyVersion: 'chat-memory.v1+semantic-hybrid',
+            contextText: 'the first frozen payload',
+          };
+        },
+      },
+    });
+    const first = await fx.driver.replyWithTurn(input());
+    const replay = await fx.driver.replyWithTurn(input());
+    assert.equal(first.status, 'completed');
+    assert.equal(replay.status, 'completed');
+    assert.equal(preparedCalls, 1);
+    assert.deepEqual(providerContexts, ['the first frozen payload', 'the first frozen payload']);
+  } finally { fx.close(); }
+});
+
 test('M1 Turn payload failure rolls back header and blocks Provider; old snapshots stay metadata-only', async () => {
   const context: ConversationTurnContextOptions = {};
   let called=false;

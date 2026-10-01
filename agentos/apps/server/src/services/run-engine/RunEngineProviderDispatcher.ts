@@ -41,6 +41,7 @@ export interface CanonicalRunAdmissionGate {
  */
 export interface MemoryContextResolverPort {
   resolve(input: ResolveRunMemoryContextInput): ResolvedMemoryContext;
+  resolvePrepared?(input: ResolveRunMemoryContextInput): Promise<ResolvedMemoryContext>;
   /** Fail-closed gate: false means injection must not proceed. */
   isInjectable(resolved: ResolvedMemoryContext | undefined): boolean;
 }
@@ -564,7 +565,7 @@ export class RunEngineProviderDispatcher {
     const basePrompt = stageDefinition.agent.systemPrompt || 'Execute the requested task.';
     // MF-4 Run startup integration: resolve, freeze, and gate Memory BEFORE
     // provider execution. A snapshot failure throws and blocks the stage.
-    const memoryContext = this.resolveStageMemoryContext(
+    const memoryContext = await this.resolveStageMemoryContext(
       workspaceId, runId, stage, snapshot.id, snapshot.payload.run.taskId, operation, currentRun,
     );
     const isCollaborationRun = currentRun.objective?.startsWith('[AgentOS collaboration task]') === true;
@@ -721,7 +722,7 @@ export class RunEngineProviderDispatcher {
    * resolver is configured (feature off). When configured, a snapshot failure
    * propagates so the stage is not dispatched.
    */
-  private resolveStageMemoryContext(
+  private async resolveStageMemoryContext(
     workspaceId: string,
     runId: string,
     stage: RunStage,
@@ -729,7 +730,7 @@ export class RunEngineProviderDispatcher {
     snapshotTaskId: string,
     operation: ApiOperation,
     currentRun: Run,
-  ): ResolvedMemoryContext | null {
+  ): Promise<ResolvedMemoryContext | null> {
     const resolver = this.memoryContextResolver;
     if (resolver === undefined) return null;
     // The objective and scope identifiers must come from the workspace-scoped
@@ -746,7 +747,7 @@ export class RunEngineProviderDispatcher {
       throw new Error('RUN_ENGINE_MEMORY_QUERY_AUTHORITY_UNPROVEN');
     }
     const priorFailureCode = this.relevantPriorStageFailureCode(workspaceId, currentRun, stage);
-    const resolved = resolver.resolve({
+    const input: ResolveRunMemoryContextInput = {
       workspaceId,
       runId,
       taskId: currentRun.taskId,
@@ -757,7 +758,10 @@ export class RunEngineProviderDispatcher {
       // `run.start` Operation. An emitter-wired resolver re-proves that row in
       // the same transaction, so an unproven origin fails closed.
       eventContext: authoritativeContext(operation),
-    });
+    };
+    const resolved = resolver.resolvePrepared === undefined
+      ? resolver.resolve(input)
+      : await resolver.resolvePrepared(input);
     if (!resolver.isInjectable(resolved)) {
       throw new Error('MEMORY_CONTEXT_INJECTION_BLOCKED');
     }

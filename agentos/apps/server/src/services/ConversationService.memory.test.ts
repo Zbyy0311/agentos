@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryExecutionContextRepository } from '../store/MemoryExecutionContextRepository.js';
 import { ConversationService } from './ConversationService.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
 
@@ -112,6 +113,65 @@ for (const waitingAgentId of [AGENT, undefined]) {
     } finally {
       if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
       else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+      fx?.store.close();
+      if (fx) rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const operation of ['direct', 'group-resume'] as const) {
+  test(`${operation} uses the persisted workspace switch even if the caller enables memory`, async () => {
+    const previousMock = process.env.AGENTOS_FORCE_MOCK;
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    let fx: ReturnType<typeof fixture> | undefined;
+    try {
+      fx = fixture(AGENT);
+      const { store, run, workspaceEntry, conversationEntry, privateEntry } = fx;
+      const service = new ConversationService(store);
+      const contexts = new MemoryExecutionContextRepository(store.getDatabase());
+      let earlierExecutionId: string | undefined;
+      let earlierBody: string | undefined;
+      if (operation === 'direct') {
+        store.createConversation({
+          id: 'switch-direct', workspaceId: WORKSPACE, type: 'direct', title: 'switch direct',
+          agentId: AGENT, createdAt: NOW, updatedAt: NOW,
+        });
+        const first = await service.sendDirectMessage({
+          workspaceId: WORKSPACE, workspaceRoot: fx.root, conversationId: 'switch-direct',
+          agentId: AGENT, content: QUERY, memoryEnabled: true,
+        });
+        assert.equal(first.execution.status, 'completed');
+        earlierExecutionId = first.execution.id;
+        earlierBody = contexts.findForExecution(WORKSPACE, earlierExecutionId)?.contextText;
+        assert.ok(earlierBody?.includes(workspaceEntry.content));
+      }
+
+      store.getDatabase().prepare('UPDATE workspaces SET memory_enabled=0 WHERE id=?').run(WORKSPACE);
+      const execution = operation === 'direct'
+        ? (await service.sendDirectMessage({
+          workspaceId: WORKSPACE, workspaceRoot: fx.root, conversationId: 'switch-direct',
+          agentId: AGENT, content: `${QUERY} next call`, memoryEnabled: true,
+        })).execution
+        : (await service.resumeGroupMessage({
+          workspaceId: WORKSPACE, workspaceRoot: fx.root, conversationId: GROUP,
+          runId: run.id, content: QUERY, memoryEnabled: true,
+        })).executions[0];
+      assert.equal(execution.status, 'completed');
+      const disabled = contexts.findForExecution(WORKSPACE, execution.id);
+      assert.ok(disabled);
+      assert.equal(disabled.contextText, '');
+      assert.deepEqual(disabled.selected, []);
+      assert.match(disabled.retrievalStrategyVersion, /memory-disabled/);
+      const prompt = readFileSync(fx.promptPath, 'utf8');
+      for (const entry of [workspaceEntry, conversationEntry, privateEntry]) {
+        assert.equal(prompt.includes(entry.content), false, `disabled prompt contains ${entry.id}`);
+      }
+      if (earlierExecutionId !== undefined) {
+        assert.equal(contexts.findForExecution(WORKSPACE, earlierExecutionId)?.contextText, earlierBody);
+      }
+    } finally {
+      if (previousMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+      else process.env.AGENTOS_FORCE_MOCK = previousMock;
       fx?.store.close();
       if (fx) rmSync(fx.root, { recursive: true, force: true });
     }

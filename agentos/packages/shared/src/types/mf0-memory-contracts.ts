@@ -410,6 +410,7 @@ export function validateMemoryBudgetPolicy(input: unknown): {
 export const MEMORY_SELECTION_REASONS = [
   'scope-match',
   'fts-relevance',
+  'semantic-relevance',
   'importance',
   'confidence',
   'authority',

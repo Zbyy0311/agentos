@@ -88,6 +88,9 @@ jobs:
       - name: Shared workflow template instantiation harness
         run: node scripts/capture-lite-verification.mjs shared-wf-instantiation apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-template-instantiation.test.ts
 
+      - name: Shared complete contract harness
+        run: node scripts/capture-lite-verification.mjs shared-complete apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/*test.ts
+
       - name: Workspace build
         run: node scripts/capture-lite-verification.mjs workspace-build -- pwsh -NoProfile -Command 'pnpm build; exit $LASTEXITCODE'
 

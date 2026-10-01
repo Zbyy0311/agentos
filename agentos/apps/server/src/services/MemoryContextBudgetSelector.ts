@@ -7,7 +7,8 @@ import {
   type MemorySelectionReasonCode,
 } from '@agentos/shared';
 import { createHash } from 'node:crypto';
-import type { MemoryRetrievalService, RetrievedMemoryEntry, RetrieveMemoryInput } from './MemoryRetrievalService.js';
+import type { MemoryRetrievalService, RetrievedMemoryEntry, RetrieveMemoryInput, RetrieveMemoryResult } from './MemoryRetrievalService.js';
+import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
 import {
   MemoryContextSnapshotRepository,
   MemoryContextSnapshotError,
@@ -115,17 +116,31 @@ export class MemoryContextBudgetSelector {
    * retrieval, budget selection and persistence still run exactly once.
    */
   plan(input: SelectMemoryContextInput): PlannedMemoryContextSnapshot {
+    this.validateInput(input);
+    const retrieval = this.retrieval.retrieveWithStatus(input.retrieval);
+    return this.planWithResult(input, retrieval);
+  }
+
+  /** Async seam for a caller that must warm vectors before this snapshot is frozen. */
+  async planPrepared(input: SelectMemoryContextInput): Promise<PlannedMemoryContextSnapshot> {
+    this.validateInput(input);
+    const retrieval = await this.retrieval.retrievePrepared(input.retrieval);
+    return this.planWithResult(input, retrieval);
+  }
+
+  private validateInput(input: SelectMemoryContextInput): void {
     if (typeof input !== 'object' || input === null || !nonBlank(input.snapshotId)
       || !nonBlank(input.createdAt)) {
       throw new MemoryBudgetSelectionError('INPUT_INVALID');
     }
     const policyCheck = validateMemoryBudgetPolicy(input.budget);
     if (!policyCheck.valid) throw new MemoryBudgetSelectionError('INPUT_INVALID');
+  }
 
-    // LITE-07-013: take the retrieval WITH its status, so a ranking produced in a
-    // degraded FTS mode is recorded on the snapshot instead of being discarded. The
-    // selection itself is unchanged: the structured ranking still drives the budget.
-    const retrieval = this.retrieval.retrieveWithStatus(input.retrieval);
+  private planWithResult(
+    input: SelectMemoryContextInput,
+    retrieval: RetrieveMemoryResult,
+  ): PlannedMemoryContextSnapshot {
     const ranked = retrieval.results;
     const { selected, exclusions, totalTokens, truncated } = applyBudget(ranked, input.budget);
 
@@ -144,7 +159,7 @@ export class MemoryContextBudgetSelector {
         stageId: input.stageId,
         providerConfigId: input.providerConfigId,
         queryHash: hashRetrievalQuery(input.retrieval),
-        retrievalStrategyVersion: RETRIEVAL_STRATEGY_VERSION_V1,
+        retrievalStrategyVersion: withMemorySemanticStrategyVersion(RETRIEVAL_STRATEGY_VERSION_V1, retrieval),
         budget: input.budget,
         totalTokens,
         truncated,

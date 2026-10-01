@@ -35,6 +35,7 @@ import { createMemoryRoutes } from './routes/memories.js';
 import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
 import { createMemoryRuntimeRoutes } from './routes/memoryRuntime.js';
 import { createMemoryActionRoutes } from './routes/memoryActions.js';
+import { createMemoryMaintenanceRoutes } from './routes/memoryMaintenance.js';
 import { createMemoryImportRoutes } from './routes/memoryImport.js';
 import { createApiNotFoundHandler, createProblemErrorHandler, createRequestIdMiddleware } from './problemDetails.js';
 import { getSignalExitCode } from './signals.js';
@@ -353,6 +354,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
     app.use('/api/workspaces/:workspaceId', createMemoryRuntimeRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createMemoryActionRoutes(store, workspaceManager));
+    app.use('/api/workspaces/:workspaceId', createMemoryMaintenanceRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createMemoryImportRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));

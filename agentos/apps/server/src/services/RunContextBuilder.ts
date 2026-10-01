@@ -1,7 +1,8 @@
 import type { MemorySearchInput, MemoryUsage } from '@agentos/shared';
 import { MemoryRetriever } from './MemoryRetriever.js';
 import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
-import { applyBudget, injectedEntryText } from './MemoryContextBudgetSelector.js';
+import { applyBudget, injectedEntryText, RETRIEVAL_STRATEGY_VERSION_V1 } from './MemoryContextBudgetSelector.js';
+import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
 import { CHAT_MEMORY_RETRIEVAL_LIMIT, DEFAULT_CHAT_MEMORY_BUDGET } from './ChatMemorySelectionPort.js';
 import { createHash } from 'node:crypto';
 import type { ExecutionMemorySelection } from '../store/MemoryExecutionContextRepository.js';
@@ -23,8 +24,11 @@ export interface RunContextResult {
   }[];
   /** MF-3 structured ranking ran without usable FTS ranking. Errors still propagate. */
   retrievalDegraded?: boolean;
+  /** Optional semantic degradation cause; the frozen strategy also carries it. */
+  retrievalDegradedReason?: string;
   selection?: {
     queryHash: string;
+    retrievalStrategyVersion?: string;
     selected: readonly ExecutionMemorySelection[];
     exclusions: readonly { memoryId: string; reason: string }[];
     truncated: boolean;
@@ -35,6 +39,7 @@ export class RunContextBuilder {
   constructor(
     private readonly retriever: MemoryRetriever,
     private readonly entryRetriever?: MemoryRetrievalService,
+    private readonly isMemoryEnabled?: (workspaceId: string) => boolean,
   ) {}
 
   async build(input: MemorySearchInput & {
@@ -46,7 +51,20 @@ export class RunContextBuilder {
   }): Promise<RunContextResult> {
     const entryUsages: NonNullable<RunContextResult['entryUsages']>[number][] = [];
     const empty = { context: '', usages: [], ...(this.entryRetriever ? { entryUsages } : {}) };
-    if (!input.memoryEnabled) return empty;
+    const memoryEnabled = () => input.memoryEnabled && (this.isMemoryEnabled?.(input.workspaceId) ?? true);
+    const disabled = (): RunContextResult => ({
+      ...empty,
+      ...(this.entryRetriever ? {
+        entryUsages: [],
+        retrievalDegraded: false,
+        selection: {
+          queryHash: createHash('sha256').update(input.query.slice(0, 2000)).digest('hex'),
+          retrievalStrategyVersion: `${RETRIEVAL_STRATEGY_VERSION_V1}+memory-disabled`,
+          selected: [], exclusions: [], truncated: false,
+        },
+      } : {}),
+    });
+    if (!memoryEnabled()) return disabled();
     const itemLimit = Math.max(0, Math.min(MAX_MEMORY_ITEMS, Math.floor(input.limit)));
     const characterLimit = Math.max(0, Math.min(MAX_MEMORY_CHARACTERS, Math.floor(input.maxCharacters)));
     if (!(itemLimit > 0) || !(characterLimit > 0)) return empty;
@@ -60,13 +78,15 @@ export class RunContextBuilder {
       sections.push(section);
     };
     let retrievalDegraded: boolean | undefined;
+    let retrievalDegradedReason: string | undefined;
+    let retrievalStrategyVersion: string | undefined;
     const selectedRecords: ExecutionMemorySelection[] = [];
     const excludedRecords: { memoryId: string; reason: string }[] = [];
     let truncated = false;
 
     if (this.entryRetriever) {
       // A legacy AgentRun UUID is not a canonical Task/Run ownership claim.
-      const retrieval = this.entryRetriever.retrieveWithStatus({
+      const retrieval = await this.entryRetriever.retrievePrepared({
         context: {
           workspaceId: input.workspaceId,
           ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
@@ -75,7 +95,12 @@ export class RunContextBuilder {
         query: input.query.slice(0, 2000),
         limit: CHAT_MEMORY_RETRIEVAL_LIMIT,
       });
+      if (!memoryEnabled()) return disabled();
       retrievalDegraded = retrieval.degraded;
+      retrievalDegradedReason = retrieval.semantic?.degraded ? retrieval.semantic.reason : undefined;
+      if (retrieval.semantic !== undefined) {
+        retrievalStrategyVersion = withMemorySemanticStrategyVersion(RETRIEVAL_STRATEGY_VERSION_V1, retrieval);
+      }
       const outcome = applyBudget(retrieval.results, {
         ...DEFAULT_CHAT_MEMORY_BUDGET,
         maxEntries: Math.min(DEFAULT_CHAT_MEMORY_BUDGET.maxEntries, itemLimit),
@@ -114,6 +139,7 @@ export class RunContextBuilder {
         maxCharacters: remainingCharacters(),
       })
       : [];
+    if (!memoryEnabled()) return disabled();
     for (const [index, item] of memories.entries()) {
       const remaining = remainingCharacters();
       if (sections.length >= itemLimit || remaining <= 0) break;
@@ -134,9 +160,14 @@ export class RunContextBuilder {
     return {
       context: sections.length ? `${heading}${sections.join('\n\n')}` : '',
       usages,
-      ...(this.entryRetriever ? { entryUsages, retrievalDegraded } : {}),
+      ...(this.entryRetriever ? {
+        entryUsages,
+        retrievalDegraded,
+        ...(retrievalDegradedReason === undefined ? {} : { retrievalDegradedReason }),
+      } : {}),
       selection: {
         queryHash: createHash('sha256').update(input.query.slice(0, 2000)).digest('hex'),
+        ...(retrievalStrategyVersion === undefined ? {} : { retrievalStrategyVersion }),
         selected: selectedRecords, exclusions: excludedRecords, truncated,
       },
     };
