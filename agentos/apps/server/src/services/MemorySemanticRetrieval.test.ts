@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
@@ -377,6 +379,7 @@ test('the optional HTTPS adapter parses OpenAI-compatible vectors and keeps requ
     apiKey: 'test-key',
     fetch: async (_input, init) => {
       assert.equal(init?.method, 'POST');
+      assert.equal(init?.redirect, 'error');
       const body = JSON.parse(String(init?.body)) as { model: string; input: string[] };
       assert.equal(body.model, 'remote-model');
       assert.deepEqual(body.input, ['first', 'second']);
@@ -390,6 +393,36 @@ test('the optional HTTPS adapter parses OpenAI-compatible vectors and keeps requ
   assert.throws(() => new HttpMemoryEmbeddingPort({
     endpoint: 'http://insecure.example.test', modelId: 'm', modelVersion: '1',
   }), /REMOTE_CONFIG_INVALID/);
+});
+
+test('loopback embedding redirects never transmit text to another endpoint', async () => {
+  let redirectedRequests = 0;
+  const server = createServer((request, response) => {
+    request.resume();
+    if (request.url === '/redirected') {
+      redirectedRequests += 1;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ data: [{ index: 0, embedding: [1, 0] }] }));
+    } else {
+      response.writeHead(307, { location: '/redirected' });
+      response.end();
+    }
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  try {
+    const port = new HttpMemoryEmbeddingPort({
+      endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}/embeddings`,
+      modelId: 'loopback-test', modelVersion: '1',
+    });
+    await assert.rejects(port.embed(['test-memory-body']), /REMOTE_NETWORK_ERROR/u);
+    assert.equal(redirectedRequests, 0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });
 
 test('prepared retrieval warms every post-eligibility candidate before limiting; cached sync path falls back visibly', async () => {

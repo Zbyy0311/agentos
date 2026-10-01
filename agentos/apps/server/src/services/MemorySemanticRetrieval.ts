@@ -276,6 +276,9 @@ export class HttpMemoryEmbeddingPort implements MemoryEmbeddingPort {
     try {
       response = await this.fetcher(this.endpoint, {
         method: 'POST',
+        // A loopback service or HTTPS endpoint must not redirect text to a
+        // different origin or an insecure destination outside this opt-in.
+        redirect: 'error',
         headers: {
           'content-type': 'application/json',
           ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
