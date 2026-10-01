@@ -10,6 +10,7 @@ test('LITE-12-014 Enter submits while Shift+Enter and IME composition stay local
   assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: false, canSend: true }), 'send');
   assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: true, canSend: true }), 'newline');
   assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: false, isComposing: true, canSend: true }), 'ignore');
+  assert.equal(resolveComposerKeyAction({ key: 'Enter', shiftKey: false, keyCode: 229, canSend: true }), 'ignore');
   assert.equal(resolveComposerKeyAction({ key: 'Escape', shiftKey: false, canSend: true }), 'ignore');
 });
 

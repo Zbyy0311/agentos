@@ -15,9 +15,26 @@ const REAL_SPAWN_TIMEOUT_MS = 30_000;
 
 /** Every root/child/grandchild/control PID created by this suite (W12 audit). */
 const auditPids: number[] = [];
+type AuditOwnership = 'driver-owned-job' | 'test-owned-control';
+interface AuditRecord {
+  readonly pid: number;
+  readonly ownership: AuditOwnership;
+  readonly trackedAtMs: number;
+  readonly origin: string;
+  readonly identityAtTrack?: WindowsProcessObservation;
+  readonly identityCaptureError?: string;
+}
+interface WindowsProcessObservation {
+  readonly pid: number;
+  readonly parentPid: number;
+  readonly name: string;
+  readonly creationTimeUtc: string;
+  readonly commandLine: string | null;
+}
+const auditRecords: AuditRecord[] = [];
 
-/** powershell.exe helper PIDs observed before this suite started (W12 audit). */
-const baselineHelperPids = listPowerShellPids();
+/** Exact AgentOS helper process instances already present before this suite. */
+const baselineJobHelperKeys = new Set(listAgentOsJobHelpers().map(processIdentityKey));
 
 function listPowerShellPids(): readonly number[] {
   if (process.platform !== 'win32') return [];
@@ -37,10 +54,85 @@ function listPowerShellPids(): readonly number[] {
   }
 }
 
-function track(pid: number | undefined): number {
+function track(pid: number | undefined, ownership: AuditOwnership = 'driver-owned-job'): number {
   if (pid === undefined || pid <= 0) throw new Error('expected a positive pid');
   auditPids.push(pid);
+  const identity = describeWindowsProcesses([pid]);
+  const identityAtTrack = typeof identity === 'string' ? undefined : identity.find(item => item.pid === pid);
+  auditRecords.push({
+    pid,
+    ownership,
+    trackedAtMs: Date.now(),
+    origin: new Error().stack?.split(/\r?\n/).slice(2, 4).join(' | ') ?? 'unknown',
+    identityAtTrack,
+    identityCaptureError: typeof identity === 'string' ? identity : undefined,
+  });
   return pid;
+}
+
+/** Failure-only W12 diagnostics; never signals or modifies observed processes. */
+function describeWindowsProcesses(pids: readonly number[]): readonly WindowsProcessObservation[] | string {
+  if (process.platform !== 'win32' || pids.length === 0) return [];
+  const wanted = '@(' + [...new Set(pids)].join(',') + ')';
+  const script = [
+    '$wanted = ' + wanted,
+    'Get-CimInstance Win32_Process | Where-Object { $wanted -contains [int]$_.ProcessId -or $wanted -contains [int]$_.ParentProcessId } | ForEach-Object {',
+    '  [pscustomobject]@{ pid = [int]$_.ProcessId; parentPid = [int]$_.ParentProcessId; name = $_.Name; creationTimeUtc = $_.CreationDate.ToUniversalTime().ToString("o"); commandLine = $_.CommandLine }',
+    '} | ConvertTo-Json -Compress',
+  ].join('; ');
+  try {
+    const output = execFileSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+      shell: false,
+      windowsHide: true,
+      encoding: 'utf8',
+    }).trim();
+    if (output.length === 0) return [];
+    const parsed = JSON.parse(output) as WindowsProcessObservation | WindowsProcessObservation[];
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch (error) {
+    return 'identity-query-failed: ' + (error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** AgentOS Job server helper processes owned by this Vitest worker. */
+function listAgentOsJobHelpers(): readonly WindowsProcessObservation[] {
+  const processes = describeWindowsProcesses(listPowerShellPids());
+  if (typeof processes === 'string') throw new Error(processes);
+  return processes.filter(isAgentOsJobHelper);
+}
+
+function isAgentOsJobHelper(item: WindowsProcessObservation): boolean {
+  const commandLine = item.commandLine ?? '';
+  return item.name.toLowerCase() === 'powershell.exe'
+    && item.parentPid === process.pid
+    && commandLine.includes('Add-Type')
+    && commandLine.includes('AgentOsJobServer');
+}
+
+function processIdentityKey(item: WindowsProcessObservation): string {
+  return item.pid + ':' + item.creationTimeUtc;
+}
+
+function findTrackedSurvivors(
+  records: readonly AuditRecord[],
+  observed: readonly WindowsProcessObservation[],
+): readonly AuditRecord[] {
+  const observedByPid = new Map(observed.map(item => [item.pid, item] as const));
+  return records.filter(record => {
+    const current = observedByPid.get(record.pid);
+    if (current === undefined) return false;
+    const trackedIdentity = record.identityAtTrack;
+    // Missing identity evidence is not proof of absence: fail closed if the PID
+    // still exists when W12 takes its one process snapshot.
+    if (trackedIdentity === undefined || trackedIdentity.creationTimeUtc.length === 0) return true;
+    return trackedIdentity.creationTimeUtc === current.creationTimeUtc;
+  });
+}
+
+function findNewJobHelpers(
+  observed: readonly WindowsProcessObservation[],
+): readonly WindowsProcessObservation[] {
+  return observed.filter(item => isAgentOsJobHelper(item) && !baselineJobHelperKeys.has(processIdentityKey(item)));
 }
 
 function longRunning(): string {
@@ -111,14 +203,17 @@ function readAbortedPid(error: unknown): number {
   return pid;
 }
 
-async function waitForHelperDrain(baseline: readonly number[]): Promise<void> {
+async function waitForHelperDrain(baseline: readonly WindowsProcessObservation[]): Promise<void> {
+  const baselineKeys = new Set(baseline.map(processIdentityKey));
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    const leaked = listPowerShellPids().filter(pid => !baseline.includes(pid));
+    const leaked = listAgentOsJobHelpers().filter(item => !baselineKeys.has(processIdentityKey(item)));
     if (leaked.length === 0) return;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
-  throw new Error('new PowerShell helper survived: ' + listPowerShellPids().join(','));
+  throw new Error('new AgentOS Job helper survived: ' + JSON.stringify(
+    listAgentOsJobHelpers().filter(item => !baselineKeys.has(processIdentityKey(item))),
+  ));
 }
 
 async function waitForFile(path: string): Promise<string> {
@@ -162,17 +257,110 @@ class ExitObservationController implements ProcessTreeController {
 }
 
 describe('NodeProcessDriver', () => {
+  it('W12 identity audit distinguishes PID reuse and preserves same-instance survivors', () => {
+    const trackedIdentity: WindowsProcessObservation = {
+      pid: 73_421,
+      parentPid: 1_300,
+      name: 'node.exe',
+      creationTimeUtc: '2026-09-30T09:00:00.0000000Z',
+      commandLine: 'node.exe owned-provider.js',
+    };
+    const record: AuditRecord = {
+      pid: trackedIdentity.pid,
+      ownership: 'driver-owned-job',
+      trackedAtMs: Date.parse(trackedIdentity.creationTimeUtc),
+      origin: 'controlled-owned-job-fixture',
+      identityAtTrack: trackedIdentity,
+    };
+    const reusedPid: WindowsProcessObservation = {
+      ...trackedIdentity,
+      parentPid: 9_999,
+      creationTimeUtc: '2026-09-30T09:00:01.0000000Z',
+      commandLine: 'node.exe unrelated.js',
+    };
+
+    expect(findTrackedSurvivors([record], [reusedPid])).toEqual([]);
+    expect(findTrackedSurvivors([record], [trackedIdentity])).toEqual([record]);
+  });
+
+  it('W12 identity audit fails closed when the tracked birth identity is missing', () => {
+    const record: AuditRecord = {
+      pid: 73_422,
+      ownership: 'test-owned-control',
+      trackedAtMs: Date.parse('2026-09-30T09:00:00.0000000Z'),
+      origin: 'missing-birth-fixture',
+    };
+    const observed: WindowsProcessObservation = {
+      pid: record.pid,
+      parentPid: 9_999,
+      name: 'node.exe',
+      creationTimeUtc: '2026-09-30T09:00:01.0000000Z',
+      commandLine: 'node.exe unrelated.js',
+    };
+    // A later wall-clock birth or a different parent cannot replace the
+    // missing spawn identity. Unknown ownership must still fail the audit.
+    expect(findTrackedSurvivors([record], [observed])).toEqual([record]);
+  });
+
+  it.skipIf(process.platform !== 'win32')(
+    'W12 identity audit retains a live member of a real AgentOS Job',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const driver = new NodeProcessDriver();
+      const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
+      track(handle.pid, 'driver-owned-job');
+      const record = auditRecords[auditRecords.length - 1]!;
+      try {
+        const ownership = await driver.verifySurvivors(handle);
+        expect(ownership.classification).toBe('survivors');
+        expect(ownership.knownPids).toContain(handle.pid);
+        const current = describeWindowsProcesses([handle.pid]);
+        if (typeof current === 'string') throw new Error(current);
+        expect(findTrackedSurvivors([record], current)).toContain(record);
+        expect(listAgentOsJobHelpers().some(item => item.parentPid === process.pid)).toBe(true);
+      } finally {
+        await driver.terminateTree(handle);
+        await handle.waitExit();
+        await driver.verifySurvivors(handle);
+      }
+    },
+  );
+
   it('observes natural exits for ownership-session hygiene', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const processTreeController = new ExitObservationController();
     const driver = new NodeProcessDriver({ processTreeController });
-    const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', 'process.exit(0);']));
-    track(handle.pid);
-    await handle.waitExit();
-    const deadline = Date.now() + 1_000;
-    while (processTreeController.verifyCalls === 0 && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 5));
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'agentos-natural-exit-'));
+    const readyPath = join(fixtureDir, 'ready');
+    const releasePath = join(fixtureDir, 'release');
+    const childScript = [
+      "const fs = require('node:fs');",
+      'fs.writeFileSync(' + JSON.stringify(readyPath) + ', String(process.pid));',
+      'const timer = setInterval(() => { if (fs.existsSync(' + JSON.stringify(releasePath) + ')) { clearInterval(timer); process.exit(0); } }, 10);',
+    ].join(' ');
+    try {
+      const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', childScript]));
+      try {
+        expect(Number(await waitForFile(readyPath))).toBe(handle.pid);
+        // This controller intentionally is not an owned Windows Job. Hold
+        // the control child alive until its birth identity is captured; an
+        // immediate exit could leave only a PID that another suite reuses.
+        track(handle.pid, 'test-owned-control');
+        if (process.platform === 'win32') {
+          expect(auditRecords[auditRecords.length - 1]?.identityAtTrack?.creationTimeUtc).toBeTruthy();
+        }
+        expect(processTreeController.verifyCalls).toBe(0);
+      } finally {
+        writeFileSync(releasePath, 'exit');
+        await expect(handle.waitExit()).resolves.toMatchObject({ exitCode: 0 });
+      }
+      const deadline = Date.now() + 1_000;
+      while (processTreeController.verifyCalls === 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      expect(processTreeController.verifyCalls).toBe(1);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
     }
-    expect(processTreeController.verifyCalls).toBe(1);
   });
 
   it('spawns a validated launch and observes stdout and exit evidence', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
@@ -322,7 +510,7 @@ describe('NodeProcessDriver', () => {
         "setInterval(() => {}, 1000);",
       ].join(' ');
       const control = spawn(process.execPath, ['-e', longRunning()], { detached: true, windowsHide: true, stdio: 'ignore' });
-      track(control.pid);
+      track(control.pid, 'test-owned-control');
       let rootHandle: Awaited<ReturnType<NodeProcessDriver['spawn']>> | undefined;
       let childPid: number | undefined;
       let grandchildPid: number | undefined;
@@ -471,7 +659,7 @@ describe('NodeProcessDriver', () => {
       const driver = new NodeProcessDriver({ processTreeController: controller });
       const fixtureDir = mkdtempSync(join(tmpdir(), 'agentos-p5b-assign-failure-'));
       const marker = join(fixtureDir, 'provider-ran');
-      const helpersBefore = listPowerShellPids();
+      const helpersBefore = listAgentOsJobHelpers();
       let providerPid: number | undefined;
       try {
         const error = await driver.spawn(basicLaunch(process.execPath, [
@@ -543,7 +731,7 @@ describe('NodeProcessDriver', () => {
     { timeout: REAL_SPAWN_TIMEOUT_MS },
     async () => {
       const transportEvents: string[] = [];
-      const helpersBefore = listPowerShellPids();
+      const helpersBefore = listAgentOsJobHelpers();
       const controller = new WindowsProcessTreeController({
         transportTrace: event => transportEvents.push(event.kind),
       });
@@ -625,11 +813,66 @@ describe('NodeProcessDriver', () => {
     },
   );
 
+  it.skipIf(process.platform !== 'win32')(
+    'W12: an unrelated PowerShell child of another parent is not an AgentOS Job helper',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const ownerScript = [
+        "const { spawn } = require('node:child_process');",
+        "const helper = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 60'], { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });",
+        "helper.once('spawn', () => process.stdout.write(String(helper.pid) + '\\n'));",
+        "process.stdin.setEncoding('utf8');",
+        "process.stdin.once('data', () => { helper.kill(); helper.once('exit', () => process.exit(0)); });",
+      ].join(' ');
+      const unrelatedOwner = spawn(process.execPath, ['-e', ownerScript], {
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let helperPid: number | undefined;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          unrelatedOwner.once('spawn', () => resolve());
+          unrelatedOwner.once('error', reject);
+        });
+        track(unrelatedOwner.pid, 'test-owned-control');
+        if (unrelatedOwner.stdout === null || unrelatedOwner.stdin === null) throw new Error('expected helper control pipes');
+        helperPid = Number(await readLine(unrelatedOwner.stdout));
+
+        const identityRows = describeWindowsProcesses([helperPid]);
+        if (typeof identityRows === 'string') throw new Error(identityRows);
+        const identity = identityRows.find(row => row.pid === helperPid);
+        expect(identity).toBeDefined();
+        expect(identity?.parentPid).toBe(unrelatedOwner.pid);
+        expect(Date.parse(identity?.creationTimeUtc ?? '')).toBeGreaterThan(0);
+        expect(identity?.commandLine).toContain('Start-Sleep -Seconds 60');
+        expect(listPowerShellPids()).toContain(helperPid);
+        expect(listAgentOsJobHelpers().map(item => item.pid)).not.toContain(helperPid);
+      } finally {
+        unrelatedOwner.stdin?.write('stop\n');
+        unrelatedOwner.stdin?.end();
+        if (unrelatedOwner.exitCode === null) {
+          await new Promise<void>(resolve => unrelatedOwner.once('exit', () => resolve()));
+        }
+        if (helperPid !== undefined) await waitForPidGone(helperPid);
+      }
+    },
+  );
+
 
   it.skipIf(process.platform !== 'win32')('W12: no test-owned or helper survivors remain after the suite', () => {
-    const alive = auditPids.filter(pid => pidIsAlive(pid));
-    expect(alive).toEqual([]);
-    const helperSurvivors = listPowerShellPids().filter(pid => !baselineHelperPids.includes(pid));
-    expect(helperSurvivors).toEqual([]);
+    const helperPids = listPowerShellPids();
+    const processSnapshot = describeWindowsProcesses([...new Set([...auditPids, ...helperPids])]);
+    if (typeof processSnapshot === 'string') throw new Error('W12 process identity snapshot failed closed: ' + processSnapshot);
+    const alive = findTrackedSurvivors(auditRecords, processSnapshot);
+    const helperSurvivors = findNewJobHelpers(processSnapshot);
+    const diagnostics = alive.length === 0 && helperSurvivors.length === 0 ? '' : JSON.stringify({
+      runnerPid: process.pid,
+      checkedAtUtc: new Date().toISOString(),
+      tracked: alive,
+      processSnapshot,
+      helperSurvivors,
+    });
+    expect(alive.map(record => record.pid), diagnostics).toEqual([]);
+    expect(helperSurvivors, diagnostics).toEqual([]);
   });
 });

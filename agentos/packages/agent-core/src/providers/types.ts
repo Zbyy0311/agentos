@@ -20,6 +20,8 @@ export const LEGACY_KIMI_PROVIDER_TYPE = 'kimi' as const;
 export const KIMICODE_ADAPTER_ID = 'builtin.kimicode' as const;
 export const KIMICODE_ADAPTER_VERSION = '1.0.0' as const;
 export const KIMICODE_DEFAULT_EXECUTABLE = 'kimi' as const;
+/** Legacy workspace rows used this provider adapter id before KimiCode was canonicalized. */
+export const LEGACY_KIMI_ADAPTER_ID = 'builtin.kimi' as const;
 export const CODEX_ADAPTER_ID = 'builtin.codex' as const;
 export const CODEX_ADAPTER_VERSION = '1.0.0' as const;
 export const CODEX_DEFAULT_EXECUTABLE = 'codex' as const;
@@ -73,11 +75,14 @@ export interface FrozenProviderIdentity {
 export function resolveFrozenProviderIdentity(
   configuration: Pick<ProviderConfigurationInput, 'providerType' | 'adapterId' | 'adapterVersion'>,
 ): FrozenProviderIdentity | undefined {
-  if (configuration.adapterVersion !== undefined) {
-    return { adapterId: configuration.adapterId, adapterVersion: configuration.adapterVersion };
-  }
   const type = canonicalProviderType(configuration.providerType);
-  if (type === KIMICODE_PROVIDER_TYPE && configuration.adapterId === KIMICODE_ADAPTER_ID) {
+  const adapterId = type === KIMICODE_PROVIDER_TYPE && configuration.adapterId === LEGACY_KIMI_ADAPTER_ID
+    ? KIMICODE_ADAPTER_ID : configuration.adapterId;
+  if (configuration.adapterVersion !== undefined) {
+    return { adapterId, adapterVersion: configuration.adapterVersion };
+  }
+  if (type === KIMICODE_PROVIDER_TYPE
+    && (configuration.adapterId === KIMICODE_ADAPTER_ID || configuration.adapterId === LEGACY_KIMI_ADAPTER_ID)) {
     return { adapterId: KIMICODE_ADAPTER_ID, adapterVersion: KIMICODE_ADAPTER_VERSION };
   }
   if (type === 'codex' && configuration.adapterId === CODEX_ADAPTER_ID) {

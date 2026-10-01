@@ -160,7 +160,10 @@ test('creates a direct conversation and streams a persisted response', async () 
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'route', mentionedAgentIds: ['outside'] }),
     });
-    assert.equal(invalidMention.status, 400);
+    // The legacy Runtime stream is intentionally closed for group discussions;
+    // new group turns must use the canonical bounded discussion endpoint so a
+    // second execution chain cannot be started accidentally.
+    assert.equal(invalidMention.status, 409);
 
     const renamedGroup = await fetch(`${baseUrl}/conversations/${group.conversation.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -173,8 +176,8 @@ test('creates a direct conversation and streams a persisted response', async () 
       body: JSON.stringify({ content: '修复登录模块' }),
     });
     const groupStream = await groupResponse.text();
-    assert.equal(groupResponse.status, 200);
-    assert.equal((groupStream.match(/^event: message$/gm) ?? []).length, 3);
+    assert.equal(groupResponse.status, 409);
+    assert.match(groupStream, /GROUP_DISCUSSION_REQUIRED/);
 
     const created = await fetch(`${baseUrl}/conversations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

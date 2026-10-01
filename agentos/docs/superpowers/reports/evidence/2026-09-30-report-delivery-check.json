@@ -1,0 +1,1505 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Documentation delivery recheck. Preserves historical audit results; not proof of release or full repository review.",
+  "root": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos",
+  "branch": "codex/collaboration-workflow-closure",
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "checkedAt": "2026-09-30T18:51:21.6830630+08:00",
+  "scope": "Current collaboration workflow additions and related safety/client integration paths; no claim of line-by-line coverage of all unchanged repository code.",
+  "sourceSnapshotBeforeDocumentation": {
+    "capturedAt": "2026-09-30T18:38:21.9016954+08:00",
+    "branch": "codex/collaboration-workflow-closure",
+    "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+    "trackedModified": 76,
+    "untracked": 54,
+    "comparedFiles": 126,
+    "exclusions": [
+      "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+      "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+      "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+      "docs/superpowers/reports/evidence/2026-09-30-report-recheck.json",
+      "docs/superpowers/reports/evidence/2026-09-30-report-delivery-check.json"
+    ],
+    "algorithm": "SHA256(UTF8(sorted(path + TAB + SHA256(file bytes)) joined with LF; no final LF))",
+    "aggregateSha256": "CE15A99AB94779997587A81CA01B479616E96EA69DC83B61EF87AC34C7F66401",
+    "entries": [
+      {
+        "path": "agentos/.gitignore",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/index.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/managers/WorkspaceManager.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/integration.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-6-idempotency-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-8-p3-migration-restore-rehearsal.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/migration.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/default-registry.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.group.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversations.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversations.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/BoundedGroupService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/BoundedGroupService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationAttachmentService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationTurnDriver.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationTurnDriver.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/GroupTurnDriver.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/GroupTurnDriver.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/M2CoreAcceptance.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/SnapshotService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/TaskRunService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkflowTemplateService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkflowTemplateService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionAuthority.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionStartupReconciler.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionStartupReconciler.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceCompatibilityMigrationService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorktreeManager.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorktreeManager.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/ConversationRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/GroupInteractionRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/SqliteStore.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/SqliteStore.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/WorkspaceAdmissionRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/globals.css",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/workspace/[id]/page.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/workspace/[id]/runtime/page.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/AgentList.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/ChatPanel.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/GroupCreator.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/RunInspectorPanel.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/composerKeyboard.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/composerKeyboard.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/directConversationClient.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/groupConversationClient.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/groupConversationClient.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/imageAttachments.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/imageAttachments.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/sse.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/sse.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/streamReconnect.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useApi.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useDirectConversation.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useGroupConversation.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/types.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/validation.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/p6-l1a-admission.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/src/types/index.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/src/types/p6-l1a-admission.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-040-collaboration-application-admission.test.ts",
+        "exists": true,
+        "sha256": "7623A5E77100DD75AE11D6AA14DDB8BE18D3E6473523187848A8CDFBCBBA8B1F"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-041-group-execution-ownership.test.ts",
+        "exists": true,
+        "sha256": "CE14A1DAD31B81AAEB0D7847C678DC350755378CD79D16AFDA0DAE64892E7EEE"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/035-collaboration-workflow.ts",
+        "exists": true,
+        "sha256": "0F7778318D4AB38DCB26E938793871555DA887EFEC0791AC97FC7FB1D8A5CD0D"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/036-group-discussion-idempotency.ts",
+        "exists": true,
+        "sha256": "9DB4BD5D306B23A9B8B545B66CF41AA778DA125066ADBFD0E52E7A91EBFA627B"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/037-canonical-message-attachments.ts",
+        "exists": true,
+        "sha256": "4906D761FE806E57CAB6D8B9FEAB1E910B2391D15147F4E3C2A2653A80DAFDA9"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/038-collaboration-candidate-evidence.ts",
+        "exists": true,
+        "sha256": "18435FD945DE333F23B66D0FA3CF70DD7BC24927764086CB991E08B670EBEF1A"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/039-collaboration-control.ts",
+        "exists": true,
+        "sha256": "AAF7410F69C5883F34B9754F31B9224C7F44A36EC92AEE0E4EE2A48A67D3DC59"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/040-collaboration-application-admission.ts",
+        "exists": true,
+        "sha256": "743B272F30A9986D8BD46FCED56F16750BB825AD913EDD5F472BE7840C2BBFFD"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/041-group-execution-ownership.ts",
+        "exists": true,
+        "sha256": "6FA082DE30DBCC8672417D7C7F268F428F0A652C5F386EC2E25A1DCBD31760B0"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.control.test.ts",
+        "exists": true,
+        "sha256": "843BD39ADFD0738B6F80D9783191AB251254D508467EA0EFD30BAB2947135FF2"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.ts",
+        "exists": true,
+        "sha256": "2CCEE7E28D1FC492C1B7BB528A295706B073FEF800D21E721341A3A8F26DA6A2"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.test.ts",
+        "exists": true,
+        "sha256": "428EC04231EA244C941FC683015742463140AC49EE3584911B3FFC9A5E9CACAF"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.ts",
+        "exists": true,
+        "sha256": "6CA86069755226647DB7F22736FEA89B5EEC9ABE074DA5644A504FB9B6AB29C5"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.test.ts",
+        "exists": true,
+        "sha256": "1BB8511B6690A2E5A287D17A81B7BDF8768FAC133C768501CE91BB6616500D3B"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.ts",
+        "exists": true,
+        "sha256": "804CD9CBF8A7C64B567DDA565C939F0A2514D74A1267051AC21DFE0755AF9E6B"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.test.ts",
+        "exists": true,
+        "sha256": "BE3C19DEE419E034B4A2E221D5D5C45A130DCA440F55AA3615E25CAC1015B709"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.ts",
+        "exists": true,
+        "sha256": "317E582A40C46CAFCD2E6CF5D5DA1265D82A191037F60FEB7F3CD5C9AA946ACD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.test.ts",
+        "exists": true,
+        "sha256": "92FA475FE8C90F96B12C9F3D39432CB23E8697656E0F4627E5DA66096FECA499"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.ts",
+        "exists": true,
+        "sha256": "60FFEE25520A245701D840EF982533C4CE69E8336C6643942AF761EF0A35195E"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.test.ts",
+        "exists": true,
+        "sha256": "B3D9428F0A49D53C6BE57FAAC88EE9358BCE5D9C7B435EB759CFA51886A78CCD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.ts",
+        "exists": true,
+        "sha256": "B6DB1BAB87D783E23B3CB6C566F7AA4C7DA604EE6F2F7E7ECF0B6AAD7D3D38E0"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationStageHooks.ts",
+        "exists": true,
+        "sha256": "30F60EC12276B22D5C49052DB8979C657958356F85E74FB906F9C988064BF5C7"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.control.test.ts",
+        "exists": true,
+        "sha256": "E388C7EA7D4179DFB5430A9AA4C9DA9297FCA31197DE451273998F01F4526DF1"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.ts",
+        "exists": true,
+        "sha256": "0C281CB7F21EB286080116F44F70250AC36B0890F1822ED6AEB2E4C6B00F2C80"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationControlRepository.ts",
+        "exists": true,
+        "sha256": "0B02AF84742D2EC25E066EF47A54D7772F03C411CB99BC4AC09BD233FEEF08E6"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.test.ts",
+        "exists": true,
+        "sha256": "5C5737C366E9F5CA2D28F6585E674FF55417EDADC8522446AD3A60C959C90ECE"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.ts",
+        "exists": true,
+        "sha256": "9F8EEAAAC0093DC1498A9B11200B67480ACBBAF0B8C0C26DA98B50DA974E69EA"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.test.ts",
+        "exists": true,
+        "sha256": "D284EEF96358A832FB2A650099A98313BF9B11A73833F65AA0C2E5EE123F2E94"
+      },
+      {
+        "path": "apps/web/src/app/workspace/pageIntegration.test.ts",
+        "exists": true,
+        "sha256": "7777E14E7B25858AE28E3EF61B20FC5262781AA4F5D9A6620ED3C12C191D3080"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskDetailsView.tsx",
+        "exists": true,
+        "sha256": "1CFAA46D8B20AFA4E9CA1BCFC4F008AA86FE576AF0A8AAAD8B3D2F3E9830C364"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskPanel.tsx",
+        "exists": true,
+        "sha256": "6080CDA53F92FB8611B6EC1FC96AB90535DAFBBE032AD29CACF6BCD15D50B1B5"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskProgressCard.tsx",
+        "exists": true,
+        "sha256": "AB839AE74124DC43C478CAE47E958B3F80A80A7805C9E5ACA780931FC996A31A"
+      },
+      {
+        "path": "apps/web/src/components/chat/RuntimeConversationCreator.tsx",
+        "exists": true,
+        "sha256": "EA99BA1232E1CF0CD7BD5945B0EEF464644504EA8E2284FD527ECA57E6A36BEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/UnifiedRuntimeConversationSurface.tsx",
+        "exists": true,
+        "sha256": "812C506D749EFCDE24DEABBD6AA8BF2999EF405F52FD1F41867AA06761786A8A"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.test.ts",
+        "exists": true,
+        "sha256": "43A4988B184A7A400B9D1615FDF2B4208F9FE534C4C9974F1A2D05CC85C3DCD2"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.ts",
+        "exists": true,
+        "sha256": "ECA95488E06EF6DE09B990C01503DB52728648714499F04A86D845659892935F"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.test.ts",
+        "exists": true,
+        "sha256": "464F14FD0550F4012C14E4DABA2756CF6B0AD01349CCB6DF149974CA13A6E169"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.ts",
+        "exists": true,
+        "sha256": "F71DD542187D07386C74438108D5F7DEF92DBC968DB7913B6A6FC5BAE13A6953"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftRepository.ts",
+        "exists": true,
+        "sha256": "ECDDCC8CE11F9A2C8D3B5B5DDFD5F08CCA16D57B897FBA2C8C618A872697634D"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.test.ts",
+        "exists": true,
+        "sha256": "7D22E29757BD24EB6420978EDCE63C1F6C06195E9CBFD28610E05FDFF292045E"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.ts",
+        "exists": true,
+        "sha256": "87BC509BD527F17DE9581DA8D0B67CF4DACA1A88AE67DF33B356E908E34DC775"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.test.ts",
+        "exists": true,
+        "sha256": "C34FF9DDE51C2C92F5903557E2A61971DE2EA158E54414ACABF675FD6212B522"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.ts",
+        "exists": true,
+        "sha256": "D107F33E80B2D10BD7F8D4147A95B39F0877F55603F1B526FE31EF428667C859"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.test.ts",
+        "exists": true,
+        "sha256": "E9DFA77E1EF81018FD1882E4F04C4ECD1A76BAF4514B69436DDB86A6BBAE825C"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.ts",
+        "exists": true,
+        "sha256": "68756A5040AF168177D96B371DD9B850DB64C017CE7BFAB7AE67D47D30DF8CD3"
+      },
+      {
+        "path": "apps/web/src/lib/useCollaborationProgress.ts",
+        "exists": true,
+        "sha256": "76D80405106F1013C66E4E12BC8B757CED730468376BFC952FE6C73CC4526D09"
+      },
+      {
+        "path": "apps/web/src/lib/useConversationDraft.ts",
+        "exists": true,
+        "sha256": "A715D97B035D34262AF2BB79957B0A9AB8D80B33B04844DECB1E0D3BCCB45166"
+      },
+      {
+        "path": "docs/superpowers/reports/2026-09-21-collaboration-workflow-live-test-handoff.md",
+        "exists": true,
+        "sha256": "F70E0CA6EFE9C9B65A7D9C9DDA5DE2F289EB2DB7848D8BCBBCCACD2AC4794431"
+      },
+      {
+        "path": "docs/superpowers/reports/evidence/2026-09-30-crlf-candidate-probe.mjs",
+        "exists": true,
+        "sha256": "8115701F6CF8A0A53D3D5FBBFEE7907587262C0156417C246EC6227058B92D52"
+      },
+      {
+        "path": "packages/shared/src/types/collaboration.ts",
+        "exists": true,
+        "sha256": "4C62771C088A148384FCCBF5930AE4DB8EF746AD13640BF8E09CA45C7BA6B77E"
+      }
+    ]
+  },
+  "sourceSnapshotAfterDocumentation": {
+    "capturedAt": "2026-09-30T18:51:21.6830630+08:00",
+    "branch": "codex/collaboration-workflow-closure",
+    "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+    "trackedModified": 76,
+    "untracked": 54,
+    "comparedFiles": 126,
+    "exclusions": [
+      "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+      "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+      "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+      "docs/superpowers/reports/evidence/2026-09-30-report-recheck.json",
+      "docs/superpowers/reports/evidence/2026-09-30-report-delivery-check.json"
+    ],
+    "algorithm": "SHA256(UTF8(sorted(path + TAB + SHA256(file bytes)) joined with LF; no final LF))",
+    "aggregateSha256": "CE15A99AB94779997587A81CA01B479616E96EA69DC83B61EF87AC34C7F66401",
+    "entries": [
+      {
+        "path": "agentos/.gitignore",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/index.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/managers/WorkspaceManager.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/integration.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-6-idempotency-schema.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m2-8-p3-migration-restore-rehearsal.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/__tests__/migration.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/default-registry.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.group.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversationRuntime.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversations.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/routes/conversations.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/BoundedGroupService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/BoundedGroupService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationAttachmentService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationTurnDriver.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/ConversationTurnDriver.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/GroupTurnDriver.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/GroupTurnDriver.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/M2CoreAcceptance.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/SnapshotService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/TaskRunService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkflowTemplateService.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkflowTemplateService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionAuthority.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionStartupReconciler.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceAdmissionStartupReconciler.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorkspaceCompatibilityMigrationService.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorktreeManager.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/services/WorktreeManager.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/ConversationRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/GroupInteractionRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/SqliteStore.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/SqliteStore.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/server/src/store/WorkspaceAdmissionRepository.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/globals.css",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/workspace/[id]/page.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/app/workspace/[id]/runtime/page.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/AgentList.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/ChatPanel.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/GroupCreator.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/components/chat/RunInspectorPanel.tsx",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/composerKeyboard.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/composerKeyboard.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/directConversationClient.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/groupConversationClient.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/groupConversationClient.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/imageAttachments.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/imageAttachments.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/sse.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/sse.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/streamReconnect.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useApi.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useDirectConversation.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/apps/web/src/lib/useGroupConversation.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/types.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/agent-core/src/providers/validation.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/p6-l1a-admission.test.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/src/types/index.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "agentos/packages/shared/src/types/p6-l1a-admission.ts",
+        "exists": false,
+        "sha256": "MISSING"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-040-collaboration-application-admission.test.ts",
+        "exists": true,
+        "sha256": "7623A5E77100DD75AE11D6AA14DDB8BE18D3E6473523187848A8CDFBCBBA8B1F"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-041-group-execution-ownership.test.ts",
+        "exists": true,
+        "sha256": "CE14A1DAD31B81AAEB0D7847C678DC350755378CD79D16AFDA0DAE64892E7EEE"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/035-collaboration-workflow.ts",
+        "exists": true,
+        "sha256": "0F7778318D4AB38DCB26E938793871555DA887EFEC0791AC97FC7FB1D8A5CD0D"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/036-group-discussion-idempotency.ts",
+        "exists": true,
+        "sha256": "9DB4BD5D306B23A9B8B545B66CF41AA778DA125066ADBFD0E52E7A91EBFA627B"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/037-canonical-message-attachments.ts",
+        "exists": true,
+        "sha256": "4906D761FE806E57CAB6D8B9FEAB1E910B2391D15147F4E3C2A2653A80DAFDA9"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/038-collaboration-candidate-evidence.ts",
+        "exists": true,
+        "sha256": "18435FD945DE333F23B66D0FA3CF70DD7BC24927764086CB991E08B670EBEF1A"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/039-collaboration-control.ts",
+        "exists": true,
+        "sha256": "AAF7410F69C5883F34B9754F31B9224C7F44A36EC92AEE0E4EE2A48A67D3DC59"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/040-collaboration-application-admission.ts",
+        "exists": true,
+        "sha256": "743B272F30A9986D8BD46FCED56F16750BB825AD913EDD5F472BE7840C2BBFFD"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/041-group-execution-ownership.ts",
+        "exists": true,
+        "sha256": "6FA082DE30DBCC8672417D7C7F268F428F0A652C5F386EC2E25A1DCBD31760B0"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.control.test.ts",
+        "exists": true,
+        "sha256": "843BD39ADFD0738B6F80D9783191AB251254D508467EA0EFD30BAB2947135FF2"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.ts",
+        "exists": true,
+        "sha256": "2CCEE7E28D1FC492C1B7BB528A295706B073FEF800D21E721341A3A8F26DA6A2"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.test.ts",
+        "exists": true,
+        "sha256": "428EC04231EA244C941FC683015742463140AC49EE3584911B3FFC9A5E9CACAF"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.ts",
+        "exists": true,
+        "sha256": "6CA86069755226647DB7F22736FEA89B5EEC9ABE074DA5644A504FB9B6AB29C5"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.test.ts",
+        "exists": true,
+        "sha256": "1BB8511B6690A2E5A287D17A81B7BDF8768FAC133C768501CE91BB6616500D3B"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.ts",
+        "exists": true,
+        "sha256": "804CD9CBF8A7C64B567DDA565C939F0A2514D74A1267051AC21DFE0755AF9E6B"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.test.ts",
+        "exists": true,
+        "sha256": "BE3C19DEE419E034B4A2E221D5D5C45A130DCA440F55AA3615E25CAC1015B709"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.ts",
+        "exists": true,
+        "sha256": "317E582A40C46CAFCD2E6CF5D5DA1265D82A191037F60FEB7F3CD5C9AA946ACD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.test.ts",
+        "exists": true,
+        "sha256": "92FA475FE8C90F96B12C9F3D39432CB23E8697656E0F4627E5DA66096FECA499"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.ts",
+        "exists": true,
+        "sha256": "60FFEE25520A245701D840EF982533C4CE69E8336C6643942AF761EF0A35195E"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.test.ts",
+        "exists": true,
+        "sha256": "B3D9428F0A49D53C6BE57FAAC88EE9358BCE5D9C7B435EB759CFA51886A78CCD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.ts",
+        "exists": true,
+        "sha256": "B6DB1BAB87D783E23B3CB6C566F7AA4C7DA604EE6F2F7E7ECF0B6AAD7D3D38E0"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationStageHooks.ts",
+        "exists": true,
+        "sha256": "30F60EC12276B22D5C49052DB8979C657958356F85E74FB906F9C988064BF5C7"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.control.test.ts",
+        "exists": true,
+        "sha256": "E388C7EA7D4179DFB5430A9AA4C9DA9297FCA31197DE451273998F01F4526DF1"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.ts",
+        "exists": true,
+        "sha256": "0C281CB7F21EB286080116F44F70250AC36B0890F1822ED6AEB2E4C6B00F2C80"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationControlRepository.ts",
+        "exists": true,
+        "sha256": "0B02AF84742D2EC25E066EF47A54D7772F03C411CB99BC4AC09BD233FEEF08E6"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.test.ts",
+        "exists": true,
+        "sha256": "5C5737C366E9F5CA2D28F6585E674FF55417EDADC8522446AD3A60C959C90ECE"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.ts",
+        "exists": true,
+        "sha256": "9F8EEAAAC0093DC1498A9B11200B67480ACBBAF0B8C0C26DA98B50DA974E69EA"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.test.ts",
+        "exists": true,
+        "sha256": "D284EEF96358A832FB2A650099A98313BF9B11A73833F65AA0C2E5EE123F2E94"
+      },
+      {
+        "path": "apps/web/src/app/workspace/pageIntegration.test.ts",
+        "exists": true,
+        "sha256": "7777E14E7B25858AE28E3EF61B20FC5262781AA4F5D9A6620ED3C12C191D3080"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskDetailsView.tsx",
+        "exists": true,
+        "sha256": "1CFAA46D8B20AFA4E9CA1BCFC4F008AA86FE576AF0A8AAAD8B3D2F3E9830C364"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskPanel.tsx",
+        "exists": true,
+        "sha256": "6080CDA53F92FB8611B6EC1FC96AB90535DAFBBE032AD29CACF6BCD15D50B1B5"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskProgressCard.tsx",
+        "exists": true,
+        "sha256": "AB839AE74124DC43C478CAE47E958B3F80A80A7805C9E5ACA780931FC996A31A"
+      },
+      {
+        "path": "apps/web/src/components/chat/RuntimeConversationCreator.tsx",
+        "exists": true,
+        "sha256": "EA99BA1232E1CF0CD7BD5945B0EEF464644504EA8E2284FD527ECA57E6A36BEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/UnifiedRuntimeConversationSurface.tsx",
+        "exists": true,
+        "sha256": "812C506D749EFCDE24DEABBD6AA8BF2999EF405F52FD1F41867AA06761786A8A"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.test.ts",
+        "exists": true,
+        "sha256": "43A4988B184A7A400B9D1615FDF2B4208F9FE534C4C9974F1A2D05CC85C3DCD2"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.ts",
+        "exists": true,
+        "sha256": "ECA95488E06EF6DE09B990C01503DB52728648714499F04A86D845659892935F"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.test.ts",
+        "exists": true,
+        "sha256": "464F14FD0550F4012C14E4DABA2756CF6B0AD01349CCB6DF149974CA13A6E169"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.ts",
+        "exists": true,
+        "sha256": "F71DD542187D07386C74438108D5F7DEF92DBC968DB7913B6A6FC5BAE13A6953"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftRepository.ts",
+        "exists": true,
+        "sha256": "ECDDCC8CE11F9A2C8D3B5B5DDFD5F08CCA16D57B897FBA2C8C618A872697634D"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.test.ts",
+        "exists": true,
+        "sha256": "7D22E29757BD24EB6420978EDCE63C1F6C06195E9CBFD28610E05FDFF292045E"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.ts",
+        "exists": true,
+        "sha256": "87BC509BD527F17DE9581DA8D0B67CF4DACA1A88AE67DF33B356E908E34DC775"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.test.ts",
+        "exists": true,
+        "sha256": "C34FF9DDE51C2C92F5903557E2A61971DE2EA158E54414ACABF675FD6212B522"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.ts",
+        "exists": true,
+        "sha256": "D107F33E80B2D10BD7F8D4147A95B39F0877F55603F1B526FE31EF428667C859"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.test.ts",
+        "exists": true,
+        "sha256": "E9DFA77E1EF81018FD1882E4F04C4ECD1A76BAF4514B69436DDB86A6BBAE825C"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.ts",
+        "exists": true,
+        "sha256": "68756A5040AF168177D96B371DD9B850DB64C017CE7BFAB7AE67D47D30DF8CD3"
+      },
+      {
+        "path": "apps/web/src/lib/useCollaborationProgress.ts",
+        "exists": true,
+        "sha256": "76D80405106F1013C66E4E12BC8B757CED730468376BFC952FE6C73CC4526D09"
+      },
+      {
+        "path": "apps/web/src/lib/useConversationDraft.ts",
+        "exists": true,
+        "sha256": "A715D97B035D34262AF2BB79957B0A9AB8D80B33B04844DECB1E0D3BCCB45166"
+      },
+      {
+        "path": "docs/superpowers/reports/2026-09-21-collaboration-workflow-live-test-handoff.md",
+        "exists": true,
+        "sha256": "F70E0CA6EFE9C9B65A7D9C9DDA5DE2F289EB2DB7848D8BCBBCCACD2AC4794431"
+      },
+      {
+        "path": "docs/superpowers/reports/evidence/2026-09-30-crlf-candidate-probe.mjs",
+        "exists": true,
+        "sha256": "8115701F6CF8A0A53D3D5FBBFEE7907587262C0156417C246EC6227058B92D52"
+      },
+      {
+        "path": "packages/shared/src/types/collaboration.ts",
+        "exists": true,
+        "sha256": "4C62771C088A148384FCCBF5930AE4DB8EF746AD13640BF8E09CA45C7BA6B77E"
+      }
+    ]
+  },
+  "nonDocumentationFilesUnchanged": true,
+  "changedNonDocumentationPaths": [],
+  "checks": {
+    "serverTypecheck": {
+      "command": "pnpm --filter @agentos/server exec tsc --noEmit --incremental false --pretty false",
+      "attempts": [
+        {
+          "exitCode": 1,
+          "diagnosticCount": 2,
+          "output": "src/services/CollaborationApplyJournal.test.ts(560,64): error TS2554: Expected 1 arguments, but got 2.\r\nsrc/services/CollaborationApplyJournal.test.ts(572,62): error TS2554: Expected 1 arguments, but got 2.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+        },
+        {
+          "exitCode": 1,
+          "diagnosticCount": 2,
+          "output": "src/services/CollaborationApplyJournal.test.ts(560,64): error TS2554: Expected 1 arguments, but got 2.\r\nsrc/services/CollaborationApplyJournal.test.ts(572,62): error TS2554: Expected 1 arguments, but got 2.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+        }
+      ]
+    },
+    "webTypecheck": {
+      "command": "pnpm --filter @agentos/web exec tsc --noEmit --incremental false --pretty false",
+      "attempts": [
+        {
+          "exitCode": 1,
+          "diagnosticCount": 15,
+          "output": "src/app/workspace/[id]/page.tsx(1009,133): error TS2322: Type 'GroupInteractionBudgetInput' is not assignable to type 'Readonly<Record<string, number>>'.\r\n  Index signature for type 'string' is missing in type 'GroupInteractionBudgetInput'.\r\nsrc/app/workspace/[id]/page.tsx(1012,45): error TS2345: Argument of type 'PendingGroupDiscussion | undefined' is not assignable to parameter of type 'PendingGroupDiscussion'.\r\n  Type 'undefined' is not assignable to type 'PendingGroupDiscussion'.\r\nsrc/app/workspace/[id]/page.tsx(1126,71): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1129,55): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1203,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1213,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createConversation'?\r\nsrc/app/workspace/[id]/page.tsx(1219,75): error TS2345: Argument of type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; text: string; mentionedAgentIds: readonly string[]; attachmentIds: readonly string[]; queueItemId?: string | undefined; } | { ...; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1225,69): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1241,25): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1255,18): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1262,5): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/lib/conversationDraftRepository.ts(170,44): error TS2345: Argument of type '(item: { id: string; name: string; mimeType: string; size: number; previewUrl: string; }) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type '{ id: string; name: string; mimeType: string; size: number; previewUrl: string; }'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(55,27): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(56,30): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(57,23): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+        },
+        {
+          "exitCode": 1,
+          "diagnosticCount": 15,
+          "output": "src/app/workspace/[id]/page.tsx(1009,133): error TS2322: Type 'GroupInteractionBudgetInput' is not assignable to type 'Readonly<Record<string, number>>'.\r\n  Index signature for type 'string' is missing in type 'GroupInteractionBudgetInput'.\r\nsrc/app/workspace/[id]/page.tsx(1012,45): error TS2345: Argument of type 'PendingGroupDiscussion | undefined' is not assignable to parameter of type 'PendingGroupDiscussion'.\r\n  Type 'undefined' is not assignable to type 'PendingGroupDiscussion'.\r\nsrc/app/workspace/[id]/page.tsx(1126,71): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1129,55): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1203,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1213,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createConversation'?\r\nsrc/app/workspace/[id]/page.tsx(1219,75): error TS2345: Argument of type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; text: string; mentionedAgentIds: readonly string[]; attachmentIds: readonly string[]; queueItemId?: string | undefined; } | { ...; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1225,69): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1241,25): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1255,18): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1262,5): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/lib/conversationDraftRepository.ts(170,44): error TS2345: Argument of type '(item: { id: string; name: string; mimeType: string; size: number; previewUrl: string; }) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type '{ id: string; name: string; mimeType: string; size: number; previewUrl: string; }'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(55,27): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(56,30): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nsrc/lib/groupDiscussionOutbox.test.ts(57,23): error TS2339: Property 'loadForSubmission' does not exist on type 'GroupDiscussionOutbox'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+        }
+      ]
+    },
+    "webUnitTests": {
+      "command": "pnpm --filter @agentos/web test",
+      "attempts": [
+        {
+          "exitCode": 1,
+          "outputWasTruncated": true,
+          "aggregateSummaryUnavailable": true,
+          "observations": "Six new page source-wiring assertions and a missing outbox method were visible; no invented aggregate count."
+        },
+        {
+          "exitCode": 1,
+          "total": 260,
+          "passed": 253,
+          "failed": 7,
+          "skipped": 0,
+          "output": "✖ workspace page connects draft readiness, persistence warning, and identity-scoped scroll (2.8624ms)\r\n✖ workspace page drains a queue item through its own durable outbox identity (0.8789ms)\r\n✖ a completed direct send settles its frozen owner before current-view-only updates (0.2886ms)\r\n✖ runtime group deep links preserve and verify their actual storage source (0.596ms)\r\n✖ explicit direct Run hints are classified before they reach the Run Inspector (0.532ms)\r\n✖ visible conversation evidence is keyed to the active verified identity (0.4995ms)\r\n✖ a restored queue item reads only its own frozen outbox submission (0.2857ms)\r\nℹ tests 260\r\nℹ suites 0\r\nℹ pass 253\r\nℹ fail 7\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 2745.4698\r\n✖ failing tests:\r\n✖ workspace page connects draft readiness, persistence warning, and identity-scoped scroll (2.8624ms)\r\n✖ workspace page drains a queue item through its own durable outbox identity (0.8789ms)\r\n✖ a completed direct send settles its frozen owner before current-view-only updates (0.2886ms)\r\n✖ runtime group deep links preserve and verify their actual storage source (0.596ms)\r\n✖ explicit direct Run hints are classified before they reach the Run Inspector (0.532ms)\r\n✖ visible conversation evidence is keyed to the active verified identity (0.4995ms)\r\n✖ a restored queue item reads only its own frozen outbox submission (0.2857ms)\r\nREPORT_COMMAND_EXIT=1\r\n",
+          "outputCapture": "PowerShell captures the complete process output in memory and prints summary/failure title lines; exit code preserved."
+        }
+      ]
+    },
+    "candidateSnapshot": {
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test src/services/CollaborationCandidateSnapshot.test.ts",
+      "attempts": [
+        {
+          "exitCode": 0,
+          "total": 20,
+          "passed": 20,
+          "failed": 0,
+          "skipped": 0,
+          "output": "✔ F23 accepts stable tracked and new text with core.autocrlf=false and LF (4013.7076ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=false and CRLF (3263.2269ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=input and LF (3233.4894ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=input and CRLF (3230.6318ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=true and LF (3195.3074ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=true and CRLF (3219.9768ms)\n✔ F23 accepts CRLF candidate text normalized by .gitattributes eol=lf (3106.1534ms)\n✔ F23 accepts CRLF candidate text normalized by .gitattributes eol=crlf (3086.4362ms)\n✔ F23 accepts CRLF text= normalization and reports original bytes for a new file (3107.0432ms)\n✔ F23 keeps binary bytes unchanged under core.autocrlf=true (3091.4734ms)\n✔ F23 explicitly rejects configured custom clean filters as unsupported (2849.9824ms)\n✔ F23 fails closed when raw source bytes change during capture and confirms the resulting source is stable (2886.7693ms)\n✔ candidate patch includes tracked edits, deletions, new text and binary files without touching the real index (3347.2771ms)\n✔ candidate capture fails closed when there are no changes (2933.4169ms)\n✔ a later source change produces a different content hash (3553.995ms)\n✔ candidate capture rejects every out-of-scope diff path without changing the real index (2930.623ms)\n✔ candidate capture rejects a real Windows ancestor junction before including its target (2770.5959ms)\n✔ in-scope mixed changes include both rename paths and preserve the real index (3479.1503ms)\n✔ rename scope includes the old path as well as the new path (2828.4909ms)\n✔ ignored cache files stay out of the candidate while an in-scope source change is captured (3229.1218ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 63574.1173\n"
+        },
+        {
+          "exitCode": 0,
+          "total": 20,
+          "passed": 20,
+          "failed": 0,
+          "skipped": 0,
+          "output": "✔ F23 accepts stable tracked and new text with core.autocrlf=false and LF (3253.6949ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=false and CRLF (3236.8454ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=input and LF (3188.5624ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=input and CRLF (3232.0012ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=true and LF (3207.6267ms)\n✔ F23 accepts stable tracked and new text with core.autocrlf=true and CRLF (3205.9804ms)\n✔ F23 accepts CRLF candidate text normalized by .gitattributes eol=lf (3169.669ms)\n✔ F23 accepts CRLF candidate text normalized by .gitattributes eol=crlf (3094.8766ms)\n✔ F23 accepts CRLF text= normalization and reports original bytes for a new file (3110.3799ms)\n✔ F23 keeps binary bytes unchanged under core.autocrlf=true (3124.6864ms)\n✔ F23 explicitly rejects configured custom clean filters as unsupported (2853.0951ms)\n✔ F23 fails closed when raw source bytes change during capture and confirms the resulting source is stable (2917.9805ms)\n✔ candidate patch includes tracked edits, deletions, new text and binary files without touching the real index (3242.8039ms)\n✔ candidate capture fails closed when there are no changes (2915.0536ms)\n✔ a later source change produces a different content hash (3585.9051ms)\n✔ candidate capture rejects every out-of-scope diff path without changing the real index (2911.2834ms)\n✔ candidate capture rejects a real Windows ancestor junction before including its target (2756.9946ms)\n✔ in-scope mixed changes include both rename paths and preserve the real index (3496.2821ms)\n✔ rename scope includes the old path as well as the new path (2827.9297ms)\n✔ ignored cache files stay out of the candidate while an in-scope source change is captured (3235.8218ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 62682.8316\n"
+        }
+      ],
+      "boundary": "Isolated Git fixtures including Windows junction; no real Provider or user candidate application; partial repair validation, not full integration."
+    }
+  },
+  "delegatedEvidence": {
+    "f24f25": {
+      "agentId": "01a0f13c-b4ca-7da2-a35e-392d30e8841d",
+      "source": "Agent final summary cross-checked against current test and production source; detailed command output not fully available to main.",
+      "command": "pnpm exec node --import tsx --test --test-name-pattern='^F(24|25)' --test-concurrency=1 src/services/CollaborationWorkflowService.control.test.ts",
+      "cwd": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos/apps/server",
+      "attempts": 2,
+      "reportedExitCodes": [
+        1,
+        1
+      ],
+      "correctedSecondAttempt": {
+        "total": 24,
+        "passed": 3,
+        "failed": 21,
+        "skipped": 0
+      },
+      "caveats": [
+        "First run contained test-fixture assertion errors corrected in tests only.",
+        "F24 success: three fresh fixtures queue B under A application grant; B dispatch remains empty after release.",
+        "before_prepare seam is not present; its intended fault window has NOT yet been triggered and proven.",
+        "F25 first database reopen fails control convergence; second reopen not reached.",
+        "Dispatch is a controlled stub, not native Provider execution.",
+        "ENOTEMPTY cleanup warnings retained isolated Temp fixtures; no broad deletion."
+      ]
+    },
+    "processRuntimeW12": {
+      "agentId": "01a0f10f-7e98-7e40-bef3-2188e23a17f8",
+      "source": "Agent final summary; no changes to process-runtime source/tests.",
+      "historicalResults": [
+        "Full:239 pass/1 fail; isolated:15 pass/1 fail; subsequent isolated:16 pass."
+      ],
+      "currentIsolatedAttempts": [
+        {
+          "attempt": 1,
+          "passed": 16,
+          "total": 16
+        },
+        {
+          "attempt": 2,
+          "summaryUnavailable": true
+        },
+        {
+          "attempt": 3,
+          "passed": 16,
+          "total": 16
+        }
+      ],
+      "currentFullSuite": {
+        "passed": 240,
+        "total": 240,
+        "exitCode": 0
+      },
+      "rootCauseConfirmed": false,
+      "caveats": [
+        "No creation time/parent/command/job identity for historical failing PIDs.",
+        "Current green results do not establish flake, PID reuse, or closure.",
+        "No native test session remains running according to agent."
+      ]
+    }
+  },
+  "boundaries": {
+    "productionSourceEditedByDocumentationMain": false,
+    "newProductImplementationRequestedByDocumentationMain": false,
+    "realProviderRun": false,
+    "productionBuild": false,
+    "fullServerSuite": false,
+    "browserVisualMatrix": false,
+    "serviceStarted": false,
+    "businessDatabaseTouched": false,
+    "realCandidateApplied": false,
+    "commit": false,
+    "push": false,
+    "merge": false
+  },
+  "documentationValidation": {
+  "checkedAt": "2026-09-30T18:53:05.2610651+08:00",
+  "documents": [
+    {
+      "document": "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+      "sha256": "F8D6148A3D63C728A94414452F3CC17F2F04C6E1E9FF5815D57D5D988D0E7674",
+      "discoveryCount": 25,
+      "hasV01": true,
+      "hasV02": true,
+      "fenceCount": 0,
+      "fencesPaired": true,
+      "localLinkCount": 49,
+      "lines": 331
+    },
+    {
+      "document": "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+      "sha256": "85A92D2F3F3D66B33C9226BD8DC481894393B5551D2EAC374509776002A2766C",
+      "discoveryCount": 25,
+      "hasV01": true,
+      "hasV02": true,
+      "fenceCount": 2,
+      "fencesPaired": true,
+      "localLinkCount": 3,
+      "lines": 379
+    },
+    {
+      "document": "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+      "sha256": "4F3E7E329EA3ECB94737F89AA650D4C802187D7FFF4D5CDDABCF9EC03E2B7637",
+      "discoveryCount": 25,
+      "hasV01": true,
+      "hasV02": true,
+      "fenceCount": 8,
+      "fencesPaired": true,
+      "localLinkCount": 4,
+      "lines": 165
+    }
+  ],
+  "brokenLocalLinks": [],
+  "jsonParsed": true,
+  "gitDiffCheckExitCode": 0,
+  "nonDocumentationFilesUnchanged": true
+},
+  "notes": [
+    "Earlier candidate source changes and red tests were preserved from existing work before the documentation fingerprint; main did not edit them.",
+    "Six pageIntegration assertions inspect source text only and do not replace asynchronous rendered/browser tests.",
+    "Original report-recheck.json and CRLF reproduction probe preserved; repaired snapshot acceptance uses separate formal tests."
+  ]
+}

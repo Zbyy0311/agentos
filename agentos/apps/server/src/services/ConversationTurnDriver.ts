@@ -7,7 +7,8 @@ import type { ConversationRepository, MessageRecord } from '../store/Conversatio
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
-import type { ConversationStreamService } from './ConversationStreamService.js';
+import type { ConversationStreamService, FinalizeStreamInput, FinalizeStreamResult } from './ConversationStreamService.js';
+import { getAttachmentAbsolutePath } from './ConversationAttachmentService.js';
 
 /**
  * Direct Conversation UX reply stream: the Turn driver.
@@ -48,6 +49,11 @@ export interface ReplyWithTurnInput {
   /** Fired for each Provider delta as it becomes durable, with its checkpoint cursor. */
   readonly onDelta?: (delta: string, cursor: number) => void;
   readonly signal?: AbortSignal;
+  /** Group-only atomic finalization seam; direct conversations keep the ordinary stream transaction. */
+  readonly groupFinalizer?: (
+    input: FinalizeStreamInput,
+    finalizeWithinTransaction: (input: FinalizeStreamInput) => FinalizeStreamResult,
+  ) => FinalizeStreamResult;
   readonly createdAt: string;
 }
 
@@ -133,8 +139,9 @@ export interface TurnContextSnapshotPort {
 export interface ChatWorkspaceAuthorityPort {
   /** The subject currently holding the Workspace modifying authority, if any. */
   findModifyingHolder(workspaceId: string): {
-    readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
-    readonly subjectId: string;
+    readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN' | 'COLLABORATION_APPLICATION';
+    /** For COLLABORATION_APPLICATION this is the durable collaboration_control_id. */
+    readonly subjectId: string | null;
   } | undefined;
 }
 
@@ -358,6 +365,11 @@ export class ConversationTurnDriver {
     const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
       .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
       .map(toLegacyMessage);
+    const sourceAttachments = this.conversations.listStoredMessageAttachments(
+      input.workspaceId,
+      input.conversationId,
+      input.sourceMessageId,
+    );
     // S6 / LITE-09-105: a published summary replaces the Messages it covers.
     // Over-budget summary + tail must block the Provider call and preserve the
     // input instead of silently truncating it.
@@ -515,6 +527,13 @@ export class ConversationTurnDriver {
       history: frozenHistory,
       ...(input.runtimeOverrides === undefined ? {} : { runtimeOverrides: input.runtimeOverrides }),
       ...(runtimePolicy === undefined ? {} : { runtimePolicy }),
+      ...(sourceAttachments.length === 0 ? {} : {
+        attachments: sourceAttachments.map(attachment => ({
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath),
+        })),
+      }),
       // LITE-09-101: inject exactly the frozen selection whose ids the snapshot above
       // recorded. An empty or whitespace-only selection adds nothing to the prompt.
       ...(memoryContext === undefined ? {} : { memoryContext }),
@@ -530,7 +549,7 @@ export class ConversationTurnDriver {
       return this.fail(input, reservation, 'PROVIDER_CRASH', error instanceof Error ? error.message : String(error), checkpointCount);
     }
     if (result.status === 'completed' || result.status === 'waiting_user') {
-      const settled = this.stream.finalizeStream({
+      const settled = this.finalize(input, {
         workspaceId: input.workspaceId,
         turnId: input.turnId,
         messageId: input.responseMessageId,
@@ -546,7 +565,7 @@ export class ConversationTurnDriver {
       };
     }
     const cancelled = result.status === 'cancelled';
-    const settled = this.stream.finalizeStream({
+    const settled = this.finalize(input, {
       workspaceId: input.workspaceId,
       turnId: input.turnId,
       messageId: input.responseMessageId,
@@ -567,7 +586,7 @@ export class ConversationTurnDriver {
     failureMessage: string,
     checkpointCount: number,
   ): ReplyWithTurnResult {
-    const settled = this.stream.finalizeStream({
+    const settled = this.finalize(input, {
       workspaceId: input.workspaceId,
       turnId: input.turnId,
       messageId: input.responseMessageId,
@@ -579,6 +598,11 @@ export class ConversationTurnDriver {
       updatedAt: new Date().toISOString(),
     });
     return { turn: settled.turn, message: settled.message, status: 'failed', content: settled.message.content, checkpointCount };
+  }
+
+  private finalize(input: ReplyWithTurnInput, finalization: FinalizeStreamInput): FinalizeStreamResult {
+    if (input.groupFinalizer === undefined) return this.stream.finalizeStream(finalization);
+    return input.groupFinalizer(finalization, value => this.stream.finalizeStreamWithinTransaction(value));
   }
 }
 
@@ -592,5 +616,6 @@ function toLegacyMessage(message: MessageRecord): ConversationMessage {
     content: message.content,
     createdAt: message.createdAt,
     ...(message.runId === null ? {} : { runId: message.runId }),
+    ...(message.attachments === undefined ? {} : { attachments: [...message.attachments] }),
   };
 }

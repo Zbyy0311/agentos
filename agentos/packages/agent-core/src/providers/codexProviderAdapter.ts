@@ -154,8 +154,8 @@ export class CodexProviderAdapter implements RuntimeProviderAdapter {
       ? undefined
       : deduped.find(candidate => candidate.executable === preferredExecutable);
     const selected = preferred
-      ? await firstUsableCandidate([preferred])
-      : await firstUsableCandidate(deduped);
+      ? await firstUsableCandidate([preferred], input.environment, platform)
+      : await firstUsableCandidate(deduped, input.environment, platform);
 
     return {
       found: selected !== undefined,
@@ -577,9 +577,18 @@ async function findOnPath(command: string, environment: Readonly<Record<string, 
   return undefined;
 }
 
-async function firstUsableCandidate(candidates: readonly { executable: string }[]): Promise<string | undefined> {
+async function firstUsableCandidate(
+  candidates: readonly { executable: string }[],
+  environment: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): Promise<string | undefined> {
   for (const candidate of candidates) {
     if (await exists(candidate.executable)) return candidate.executable;
+    const command = candidate.executable.trim();
+    if (command && !command.includes('\\') && !command.includes('/')) {
+      const pathCandidate = await findOnPath(command, environment, platform);
+      if (pathCandidate) return pathCandidate;
+    }
   }
   return undefined;
 }

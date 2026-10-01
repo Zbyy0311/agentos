@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 
 import { createEntityId } from '../store/Identity.js';
+import { inTransaction } from '../store/Transaction.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
@@ -25,6 +26,8 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
 import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
+import { BoundedGroupError } from '../services/BoundedGroupService.js';
+import { cleanupConversationAttachments, parseConversationAttachmentInputs, saveConversationAttachments, validateConversationAttachmentInputs, type StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
 import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
 import {
@@ -56,9 +59,12 @@ interface ErrorMapping { readonly status: number; readonly code: string }
 
 function mapError(error: unknown): ErrorMapping {
   const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
+  if (/GROUP_VERSION_CONFLICT|GROUP_REPLY_ASSOCIATION_INVALID|GROUP_REPLY_FINALIZATION_REQUIRED|GROUP_EXECUTION_ALREADY_OWNED|GROUP_EXECUTION_INTERRUPTED|GROUP_SOURCE_MISMATCH|GROUP_CONVERSATION_NOT_ACTIVE/.test(code)) {
+    return { status: 409, code };
+  }
   if (/NOT_FOUND/.test(code)) return { status: 404, code };
   if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
-  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE/.test(code)) {
+  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE|DISCUSSION_ACTIVE/.test(code)) {
     return { status: 409, code };
   }
   return { status: 500, code };
@@ -155,9 +161,14 @@ export function createConversationRuntimeRoutes(
         .listByWorkspace(workspaceId)
         .find(admission => admission.effectiveMutationClass === 'MODIFYING' && admission.state === 'GRANTED');
       if (row === undefined) return undefined;
+      const subjectId = row.subjectKind === 'CANONICAL_RUN'
+        ? row.canonicalRunId
+        : row.subjectKind === 'LEGACY_AGENT_RUN'
+          ? row.legacyRunId
+          : row.collaborationControlId;
       return {
         subjectKind: row.subjectKind,
-        subjectId: row.canonicalRunId ?? row.legacyRunId ?? row.id,
+        subjectId: subjectId ?? null,
       };
     },
   };
@@ -236,9 +247,9 @@ export function createConversationRuntimeRoutes(
         return;
       }
       // group
-      const replyMode = body.replyMode;
-      if (replyMode === undefined || !isConversationReplyMode(replyMode)) {
-        res.status(400).json({ error: 'replyMode is required for a group Conversation' });
+      const replyMode = body.replyMode === undefined ? 'sequential' : body.replyMode;
+      if (!isConversationReplyMode(replyMode)) {
+        res.status(400).json({ error: 'replyMode must be sequential, parallel-read-only, orchestrated, manual, or mention-only' });
         return;
       }
       const memberAgentIds = Array.isArray(body.memberAgentIds)
@@ -314,6 +325,20 @@ export function createConversationRuntimeRoutes(
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
     if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
     res.json({ conversation });
+  });
+
+  router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const title = (req.body as Record<string, unknown>).title;
+    if (typeof title !== 'string' || title.trim().length === 0) { res.status(400).json({ error: 'title is required' }); return; }
+    try {
+      const conversation = conversations().updateConversationTitle({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        title, updatedAt: new Date().toISOString(),
+      });
+      res.json({ conversation });
+    } catch (error) { fail(res, error); }
   });
 
   router.post('/conversations/:conversationId/archive', (req: Request, res: Response) => {
@@ -532,6 +557,82 @@ export function createConversationRuntimeRoutes(
     }
   });
 
+  /**
+   * Unified group send: the user Message and its bounded discussion are one
+   * durable command. A client message key converges on the same pair after a
+   * retry, so the UI never starts a second discussion for one click.
+   */
+  router.post('/conversations/:conversationId/discussions', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const content = body.content;
+    if (typeof content !== 'string') { res.status(400).json({ error: 'content is required' }); return; }
+    let attachments;
+    try {
+      attachments = parseConversationAttachmentInputs(body.attachments);
+      validateConversationAttachmentInputs(attachments);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    if (content.trim().length === 0 && attachments.length === 0) {
+      res.status(400).json({ error: 'content or image attachment is required' });
+      return;
+    }
+    const budget = body.budget;
+    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    const clientMessageId = typeof body.clientMessageId === 'string' && body.clientMessageId.trim().length > 0
+      ? body.clientMessageId.trim() : undefined;
+    let storedAttachments: StoredConversationAttachment[] = [];
+    try {
+      const sourceMessageId = createEntityId('message');
+      if (attachments.length > 0) {
+        storedAttachments = await saveConversationAttachments({
+          workspaceRoot: workspace.rootPath,
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          messageId: sourceMessageId,
+          attachments,
+        });
+      }
+      const result = inTransaction(store.getDatabase(), () => {
+        const sourceMessage = conversations().appendMessageWithinTransaction({
+          id: sourceMessageId, conversationId: conversation.id, workspaceId: workspace.id,
+          senderType: 'user', kind: 'text', status: 'final', content: content.trim(), attachments: storedAttachments,
+          ...(clientMessageId === undefined ? {} : { clientMessageId }),
+          createdAt: new Date().toISOString(),
+        });
+        const existing = store.groupInteractionRepository().findInteractionBySourceMessage(workspace.id, conversation.id, sourceMessage.id);
+        if (existing) return { message: sourceMessage, interaction: existing, idempotent: true };
+        const active = store.groupInteractionRepository().listInteractions(workspace.id, conversation.id)
+          .find(item => item.status === 'active');
+        if (active) {
+          const error = new Error('GROUP_DISCUSSION_ACTIVE');
+          (error as { code?: string }).code = 'GROUP_DISCUSSION_ACTIVE';
+          throw error;
+        }
+        const interaction = store.groupInteractionRepository().createInteractionWithinTransaction({
+          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+          sourceMessageId: sourceMessage.id, budget: budget as never, createdAt: new Date().toISOString(),
+        });
+        return { message: sourceMessage, interaction, idempotent: false };
+      });
+      if (result.idempotent && storedAttachments.length > 0) {
+        await cleanupConversationAttachments(workspace.rootPath, storedAttachments);
+      }
+      res.status(result.idempotent ? 200 : 201).json(result);
+    } catch (error) {
+      if (storedAttachments.length > 0) {
+        try { await cleanupConversationAttachments(workspace.rootPath, storedAttachments); } catch { /* preserve the original API error */ }
+      }
+      fail(res, error);
+    }
+  });
+
   // Durable streaming reconnect (CR-3): replay checkpoints after the client cursor.
   router.get('/conversations/:conversationId/messages/:messageId/checkpoints', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
@@ -603,13 +704,29 @@ export function createConversationRuntimeRoutes(
     const body = req.body as Record<string, unknown>;
     const budget = body.budget;
     if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group' || conversation.status !== 'active') {
+      res.status(409).json({ error: 'GROUP_CONVERSATION_NOT_ACTIVE' });
+      return;
+    }
+    const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
+    if (sourceMessageId.length === 0) { res.status(400).json({ error: 'sourceMessageId is required' }); return; }
     try {
       const interaction = store.boundedGroupService().createInteraction({
         workspaceId: workspace.id, conversationId: req.params.conversationId,
-        budget: budget as never, createdAt: new Date().toISOString(),
+        budget: budget as never, sourceMessageId, createdAt: new Date().toISOString(),
       });
       res.status(201).json({ interaction });
     } catch (error) { fail(res, error); }
+  });
+
+  router.get('/conversations/:conversationId/interactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
+    res.json({ interactions: store.groupInteractionRepository().listInteractions(workspace.id, conversation.id) });
   });
 
   router.get('/interactions/:interactionId', (req: Request, res: Response) => {
@@ -624,23 +741,75 @@ export function createConversationRuntimeRoutes(
     });
   });
 
+  /** Read-only, cursor-based observation. Closing this response detaches only the observer. */
+  router.get('/conversations/:conversationId/interactions/:interactionId/events', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!conversation || conversation.kind !== 'group' || !interaction
+      || interaction.conversationId !== conversation.id) {
+      res.status(404).json({ error: 'Group interaction not found' });
+      return;
+    }
+    const headerCursor = req.header('Last-Event-ID');
+    const queryCursor = typeof req.query.after === 'string' ? req.query.after : undefined;
+    const rawCursor = queryCursor ?? headerCursor ?? '0';
+    const afterCursor = Number(rawCursor);
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
+      res.status(400).json({ error: 'after must be a non-negative integer cursor' });
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    let cursor = afterCursor;
+    let stopped = false;
+    const cleanup = (): void => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+    };
+    const pump = (): void => {
+      if (stopped || res.writableEnded) { cleanup(); return; }
+      const events = store.boundedGroupService().listExecutionEvents(
+        workspace.id, conversation.id, interaction.id, cursor,
+      );
+      for (const event of events) {
+        cursor = event.cursor;
+        try {
+          res.write(`id: ${event.cursor}\nevent: ${event.eventType}\ndata: ${JSON.stringify({
+            ...event.payload, cursor: event.cursor, ownerEpoch: event.ownerEpoch,
+          })}\n\n`);
+        } catch {
+          cleanup();
+          return;
+        }
+      }
+      const owner = store.boundedGroupService().findExecutionOwner(workspace.id, interaction.id);
+      if (owner !== undefined && ['completed', 'failed', 'interrupted', 'abandoned'].includes(owner.status)
+        && cursor >= owner.eventCursor) {
+        cleanup();
+        res.end();
+      }
+    };
+    res.on('close', cleanup);
+    const timer = setInterval(pump, 150);
+    timer.unref?.();
+    pump();
+  });
+
   router.post('/interactions/:interactionId/replies', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    const body = req.body as Record<string, unknown>;
-    try {
-      const result = store.boundedGroupService().recordReply({
-        workspaceId: workspace.id,
-        interactionId: req.params.interactionId,
-        agentId: typeof body.agentId === 'string' ? body.agentId : '',
-        messageId: typeof body.messageId === 'string' ? body.messageId : '',
-        content: typeof body.content === 'string' ? body.content : '',
-        ...(typeof body.hopFromAgentId === 'string' ? { hopFromAgentId: body.hopFromAgentId } : {}),
-        ...(Array.isArray(body.mentionTargets) ? { mentionTargets: (body.mentionTargets as unknown[]).filter((t): t is string => typeof t === 'string') } : {}),
-        createdAt: new Date().toISOString(),
-      });
-      res.status(201).json(result);
-    } catch (error) { fail(res, error); }
+    // A ledger-only compatibility write can no longer satisfy the durable
+    // owner/Turn/final-Message association or atomic finalization contract.
+    // Group replies must be produced through /respond, where finalization,
+    // ledger, budget, and event state commit together.
+    res.status(409).json({ error: 'GROUP_REPLY_FINALIZATION_REQUIRED' });
   });
 
   router.post('/interactions/:interactionId/stop', (req: Request, res: Response) => {
@@ -654,7 +823,14 @@ export function createConversationRuntimeRoutes(
         workspaceId: workspace.id, interactionId: req.params.interactionId,
         expectedVersion, endedAt: new Date().toISOString(),
       });
-      res.json({ interaction });
+      const execution = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+      res.json({
+        interaction,
+        execution: execution === undefined ? null : {
+          ownerEpoch: execution.ownerEpoch, status: execution.status,
+          eventCursor: execution.eventCursor, terminalReason: execution.terminalReason,
+        },
+      });
     } catch (error) { fail(res, error); }
   });
 
@@ -681,6 +857,15 @@ export function createConversationRuntimeRoutes(
       res.status(409).json({ error: 'GROUP_INTERACTION_TERMINATED' });
       return;
     }
+    if (interaction.integrityStatus !== 'valid') {
+      res.status(409).json({ error: 'GROUP_EXECUTION_INTERRUPTED', interactionId: interaction.id, reason: interaction.integrityReason });
+      return;
+    }
+    const priorOwner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+    if (priorOwner) {
+      res.status(409).json({ error: priorOwner.status === 'interrupted' ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED', interactionId: interaction.id });
+      return;
+    }
     const body = (req.body ?? {}) as Record<string, unknown>;
     let intent: RunIntent;
     try {
@@ -696,8 +881,12 @@ export function createConversationRuntimeRoutes(
     const source = sourceMessageId.length === 0
       ? undefined
       : conversations().findMessageById(workspace.id, sourceMessageId);
-    if (!source || source.conversationId !== conversation.id || source.senderType !== 'user') {
+    if (!source || source.conversationId !== conversation.id || source.senderType !== 'user' || source.status !== 'final') {
       res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      return;
+    }
+    if (interaction.sourceMessageId !== source.id) {
+      res.status(409).json({ error: 'GROUP_SOURCE_MISMATCH' });
       return;
     }
     const stringList = (value: unknown): string[] | undefined => {
@@ -715,14 +904,17 @@ export function createConversationRuntimeRoutes(
       return;
     }
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-    const send = createSseWriter(res);
-    const stopHeartbeat = startSseHeartbeat(res);
+    // Claim conflicts must remain HTTP refusals, including races between two
+    // Server instances. Open SSE only after the durable driver emits its plan.
+    const writeEvent = createSseWriter(res);
+    let stopHeartbeat: (() => void) | undefined;
+    const send: typeof writeEvent = (event, data) => {
+      if (!res.headersSent) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+        stopHeartbeat = startSseHeartbeat(res);
+      }
+      writeEvent(event, data);
+    };
     const interactionId = interaction.id;
     const driver = new GroupTurnDriver(
       store.boundedGroupService(),
@@ -754,17 +946,31 @@ export function createConversationRuntimeRoutes(
           createdAt: new Date().toISOString(),
         },
         {
-          onPlan: plan => send('group.plan', {
+          onPlan: (plan, state) => send('group.plan', {
             interactionId,
             speakers: plan.speakers.map(speaker => speaker.agentId),
             skipped: plan.skipped,
+            interactionVersion: state?.interactionVersion ?? interaction.version,
+            ownerEpoch: state?.ownerEpoch ?? 0,
+            eventCursor: state?.eventCursor ?? 0,
             ...(plan.terminalReason === undefined ? {} : { terminalReason: plan.terminalReason }),
           }),
-          onSpeakerTurnStart: speaker => send('group.turn.start', { interactionId, agentId: speaker.agentId, turnId: speaker.turnId, messageId: speaker.messageId }),
-          onSpeakerDelta: (agentId, turnId, messageId, delta, cursor) => send('checkpoint', { agentId, turnId, messageId, cursor, delta }),
+          onSpeakerTurnStart: speaker => send('group.turn.start', {
+            interactionId, agentId: speaker.agentId, turnId: speaker.turnId, messageId: speaker.messageId,
+            interactionVersion: speaker.interactionVersion, ownerEpoch: speaker.ownerEpoch, eventCursor: speaker.eventCursor,
+          }),
+          onSpeakerDelta: (agentId, turnId, messageId, delta, checkpointCursor, eventCursor) => send('checkpoint', {
+            agentId, turnId, messageId, cursor: checkpointCursor, eventCursor,
+            interactionVersion: store.boundedGroupService().findInteraction(workspace.id, interactionId)?.version ?? interaction.version,
+            ownerEpoch: store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId)?.ownerEpoch ?? 0,
+            delta,
+          }),
           onSpeakerTurnEnd: outcome => send(
             outcome.status === 'final' ? 'group.turn.final' : 'group.turn.failed',
-            { interactionId, agentId: outcome.agentId, turnId: outcome.turnId, messageId: outcome.messageId, replyId: outcome.replyId },
+            {
+              interactionId, agentId: outcome.agentId, turnId: outcome.turnId, messageId: outcome.messageId,
+              replyId: outcome.replyId, interactionVersion: outcome.interactionVersion, ownerEpoch: outcome.ownerEpoch,
+            },
           ),
         },
       );
@@ -772,14 +978,23 @@ export function createConversationRuntimeRoutes(
         interactionId,
         endedBy: result.endedBy,
         speakers: result.speakers,
+        interactionVersion: result.interaction?.version ?? interaction.version,
+        ownerEpoch: result.ownerEpoch ?? 0,
+        eventCursor: result.eventCursor ?? store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId)?.eventCursor ?? 0,
         ...(result.interaction === undefined ? {} : { interaction: result.interaction }),
       });
     } catch (error) {
+      if (!res.headersSent) {
+        if (error instanceof BoundedGroupError && ['GROUP_EXECUTION_ALREADY_OWNED', 'GROUP_EXECUTION_INTERRUPTED'].includes(error.code)) {
+          res.status(409).json({ error: error.code, interactionId });
+        } else { fail(res, error); }
+        return;
+      }
       const code = error instanceof GroupTurnDriverError ? error.code : (error instanceof Error ? error.message : 'GROUP_WALK_FAILED');
       send('group.error', { interactionId, error: code });
       send('group.done', { interactionId, endedBy: 'provider-failed' });
     } finally {
-      stopHeartbeat();
+      stopHeartbeat?.();
       res.end();
     }
   });

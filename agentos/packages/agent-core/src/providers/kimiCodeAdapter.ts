@@ -106,6 +106,10 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     const normalized = {
       ...configuration,
       providerType: canonicalProviderType(configuration.providerType),
+      // Keep legacy workspace rows runnable while all new snapshots use the
+      // canonical KimiCode adapter identity.
+      ...(canonicalProviderType(configuration.providerType) === KIMICODE_PROVIDER_TYPE
+        && configuration.adapterId === 'builtin.kimi' ? { adapterId: KIMICODE_ADAPTER_ID } : {}),
       ...(configuration.argsTemplate === undefined ? {} : { argsTemplate: [...configuration.argsTemplate] }),
       capabilities: { ...configuration.capabilities },
       timeoutPolicy: { ...configuration.timeoutPolicy },
@@ -496,7 +500,19 @@ function buildKimiArgs(template: readonly string[], model: string | undefined, p
   } else {
     args.push('--prompt', prompt);
   }
-  if (model && !hasFlagPair(args, '-m') && !hasFlagPair(args, '--model')) args.unshift('--model', model);
+  if (model) {
+    const modelFlagIndex = findFlagIndex(args, ['-m', '--model']);
+    if (modelFlagIndex === -1) {
+      args.unshift('--model', model);
+    } else if (args[modelFlagIndex + 1] === undefined || args[modelFlagIndex + 1]!.startsWith('-')) {
+      args.splice(modelFlagIndex + 1, 0, model);
+    } else {
+      // The persisted provider model is authoritative. Older workspace rows
+      // may still carry a stale model in argsTemplate (for example a native
+      // Kimi model while the configured model is an OpenCodex alias).
+      args[modelFlagIndex + 1] = model;
+    }
+  }
   const outputIndex = args.indexOf('--output-format');
   if (outputIndex >= 0) args.splice(outputIndex, 2);
   const insertionIndex = args.findIndex(arg => arg === '-p' || arg === '--prompt');
@@ -513,8 +529,8 @@ function removeFlagPair(args: string[], flag: string): string[] {
   return result;
 }
 
-function hasFlagPair(args: readonly string[], flag: string): boolean {
-  return args.some(arg => arg === flag);
+function findFlagIndex(args: readonly string[], flags: readonly string[]): number {
+  return args.findIndex(arg => flags.includes(arg));
 }
 
 function resolveWorkingDirectory(configuration: ProviderConfigurationInput, workspaceRoot: string, worktreePath?: string): string {

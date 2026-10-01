@@ -5,7 +5,7 @@ import type { AgentProfile, AgentProvider, CollaborationRole, Conversation, Conv
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
-import { cleanupConversationAttachments, getAttachmentAbsolutePath, validateConversationAttachmentInputs, type ConversationAttachmentInput } from '../services/ConversationAttachmentService.js';
+import { cleanupConversationAttachments, getAttachmentAbsolutePath, parseConversationAttachmentInputs, validateConversationAttachmentInputs, type ConversationAttachmentInput } from '../services/ConversationAttachmentService.js';
 import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
@@ -379,7 +379,7 @@ export function createConversationRoutes(
     if (!mentionedAgentIds) return res.status(400).json({ error: 'mentionedAgentIds must be an array of agent ids' });
     let attachments: ConversationAttachmentInput[];
     try {
-      attachments = parseAttachmentInputs(body.attachments);
+      attachments = parseConversationAttachmentInputs(body.attachments);
       validateConversationAttachmentInputs(attachments);
     } catch (error) {
       return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
@@ -390,6 +390,9 @@ export function createConversationRoutes(
       .find(item => item.id === req.params.conversationId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     if (conversation.type === 'direct' && !conversation.agentId) return res.status(404).json({ error: 'Direct conversation not found' });
+    if (conversation.type === 'group') {
+      return res.status(409).json({ error: 'GROUP_DISCUSSION_REQUIRED' });
+    }
 
     let runtimeOverrides: Pick<AgentProfile, 'model' | 'thinkingEffort'> | undefined;
     if (conversation.type === 'direct') {
@@ -408,20 +411,6 @@ export function createConversationRoutes(
         return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
       }
     }
-    if (conversation.type === 'group') {
-      const memberIds = new Set(store.listConversationMembers(workspace.id, conversation.id).map(member => member.agentId));
-      if (mentionedAgentIds.some(agentId => !memberIds.has(agentId))) {
-        return res.status(400).json({ error: 'mentionedAgentIds must belong to the current group' });
-      }
-      const members = store.listConversationMembers(workspace.id, conversation.id);
-      const profiles = store.listAgentProfiles(workspace.id).filter(profile => members.some(member => member.agentId === profile.id));
-      try {
-        if (intent !== 'execute') profiles.forEach(profile => assertRuntimePolicySupported(resolveRuntimePolicy(intent, profile), process.env.AGENTOS_FORCE_MOCK === 'true'));
-      } catch (error) {
-        return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -674,19 +663,6 @@ async function validateGroupMemberRuntimeSettings(
       ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
     });
   }));
-}
-
-function parseAttachmentInputs(value: unknown): ConversationAttachmentInput[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) throw new Error('attachments must be an array');
-  return value.map((item, index) => {
-    if (!item || typeof item !== 'object') throw new Error(`attachment ${index + 1} is invalid`);
-    const attachment = item as Record<string, unknown>;
-    if (typeof attachment.name !== 'string' || typeof attachment.mimeType !== 'string' || typeof attachment.dataUrl !== 'string') {
-      throw new Error(`attachment ${index + 1} is invalid`);
-    }
-    return { name: attachment.name, mimeType: attachment.mimeType, dataUrl: attachment.dataUrl };
-  });
 }
 
 function parseStreamCursor(value: unknown): number {

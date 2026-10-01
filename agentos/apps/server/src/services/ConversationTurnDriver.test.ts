@@ -357,14 +357,47 @@ function seedModifyingHolder(db: SqliteDb, workspaceId: string, mutationClass: '
   ).run('adm_' + 'f'.repeat(26), workspaceId, 'CANONICAL_RUN', runId, mutationClass, mutationClass, 'GRANTED', NOW, NOW, NOW, NOW);
 }
 
+function seedCollaborationApplicationHolder(db: SqliteDb, workspaceId: string): void {
+  const taskId = 'collab_' + 'a'.repeat(26);
+  const controlId = 'control_' + 'b'.repeat(26);
+  db.prepare(`INSERT INTO collaboration_tasks (
+    id, workspace_id, title, objective, scope_json, acceptance_commands_json,
+    planner_agent_id, implementer_agent_id, reviewer_agent_id, status, plan_hash,
+    base_commit, control_epoch, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`).run(
+    taskId, workspaceId, 'application writer', 'apply verified candidate', '[]', '[]',
+    'planner', 'implementer', 'reviewer', 'awaiting_application', 'plan-hash', 'base-sha', NOW, NOW,
+  );
+  db.prepare(`INSERT INTO collaboration_controls (
+    id, workspace_id, collaboration_task_id, action, idempotency_key, request_hash,
+    expected_version, epoch, state, created_at, updated_at
+  ) VALUES (?, ?, ?, 'apply', ?, ?, 1, 1, 'running', ?, ?)`).run(
+    controlId, workspaceId, taskId, 'idem-application', 'request-hash', NOW, NOW,
+  );
+  db.prepare(`INSERT INTO workspace_admissions (
+    id, workspace_id, subject_kind, canonical_run_id, legacy_run_id, collaboration_control_id,
+    requested_mutation_class, effective_mutation_class, request_order, state,
+    requested_at, granted_at, created_at, updated_at, version
+  ) VALUES (?, ?, 'COLLABORATION_APPLICATION', NULL, NULL, ?, 'MODIFYING', 'MODIFYING', 1, 'GRANTED', ?, ?, ?, ?, 1)`)
+    .run('adm_' + 'c'.repeat(26), workspaceId, controlId, NOW, NOW, NOW, NOW);
+}
+
 function workspaceAuthorityFrom(db: SqliteDb) {
   return {
     findModifyingHolder: (workspaceId: string) => {
       const row = db.prepare(
-        "SELECT subject_kind AS subjectKind, canonical_run_id AS canonicalRunId, legacy_run_id AS legacyRunId, id FROM workspace_admissions WHERE workspace_id = ? AND effective_mutation_class = 'MODIFYING' AND state = 'GRANTED' ORDER BY request_order, id LIMIT 1",
-      ).get(workspaceId) as { subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN'; canonicalRunId: string | null; legacyRunId: string | null; id: string } | undefined;
+        "SELECT subject_kind AS subjectKind, canonical_run_id AS canonicalRunId, legacy_run_id AS legacyRunId, collaboration_control_id AS collaborationControlId FROM workspace_admissions WHERE workspace_id = ? AND effective_mutation_class = 'MODIFYING' AND state = 'GRANTED' ORDER BY request_order, id LIMIT 1",
+      ).get(workspaceId) as {
+        subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN' | 'COLLABORATION_APPLICATION';
+        canonicalRunId: string | null; legacyRunId: string | null; collaborationControlId: string | null;
+      } | undefined;
       if (row === undefined) return undefined;
-      return { subjectKind: row.subjectKind, subjectId: row.canonicalRunId ?? row.legacyRunId ?? row.id };
+      const subjectId = row.subjectKind === 'CANONICAL_RUN'
+        ? row.canonicalRunId
+        : row.subjectKind === 'LEGACY_AGENT_RUN'
+          ? row.legacyRunId
+          : row.collaborationControlId;
+      return { subjectKind: row.subjectKind, subjectId };
     },
   };
 }
@@ -389,6 +422,31 @@ test('LITE-09-102 chat refuses while another subject holds the Workspace modifyi
     assert.match(result.turn.failureMessage ?? '', /explicit Run/);
     assert.equal(result.message.status, 'failed');
     assert.equal(result.checkpointCount, 0);
+  } finally { fx.close(); }
+});
+
+test('LITE-09-102 collaboration application writer is denied by its real control id', async () => {
+  let runnerCalled = false;
+  const fx = fixture(undefined, undefined, () => { runnerCalled = true; });
+  seedCollaborationApplicationHolder(fx.db, WS);
+  const authority = workspaceAuthorityFrom(fx.db);
+  assert.deepEqual(authority.findModifyingHolder(WS), {
+    subjectKind: 'COLLABORATION_APPLICATION', subjectId: 'control_' + 'b'.repeat(26),
+  });
+  const driver = new ConversationTurnDriver(
+    fx.conversations,
+    fx.stream,
+    (_ws, agentId) => (agentId === 'agent_main' ? ({} as never) : undefined),
+    () => ({ run: async () => { runnerCalled = true; return makeResult('completed', 'should-not-run'); } }),
+    { workspaceAuthority: authority },
+  );
+  try {
+    const result = await driver.replyWithTurn(input());
+    assert.equal(runnerCalled, false);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.turn.failureCode, 'CONVERSATION_WORKSPACE_MODIFYING_BUSY');
+    assert.match(result.turn.failureMessage ?? '', /COLLABORATION_APPLICATION control_b{26}/);
+    assert.equal(result.message.status, 'failed');
   } finally { fx.close(); }
 });
 

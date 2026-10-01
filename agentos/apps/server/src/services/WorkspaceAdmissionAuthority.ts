@@ -2,6 +2,7 @@ import {
   classifyMutationClass,
   type EffectiveMutationClass,
   type GrantedAdmissionSubject,
+  type WorkspaceAdmissionSubject,
   type WorkspaceReadOnlyEvidence,
 } from '@agentos/shared';
 
@@ -11,6 +12,8 @@ import {
   type WorkspaceAdmissionRow,
 } from '../store/WorkspaceAdmissionRepository.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { createEntityId } from '../store/Identity.js';
+import { readCollaborationApplicationFacts, collaborationApplicationTerminalReason } from '../store/CollaborationApplicationTerminalState.js';
 
 /** P6-L1D V1 contract: READ_ONLY concurrency is fixed, not configurable. */
 export const L1D_READ_ONLY_CAPACITY_V1 = 2 as const;
@@ -45,9 +48,7 @@ export interface WorkspaceAdmissionEvidenceFactsV1 {
 export interface WorkspaceAdmissionEvidenceCollectionInput {
   readonly workspaceId: string;
   readonly admissionId: string;
-  readonly subject:
-    | { readonly subjectKind: 'CANONICAL_RUN'; readonly canonicalRunId: string }
-    | { readonly subjectKind: 'LEGACY_AGENT_RUN'; readonly legacyRunId: string };
+  readonly subject: WorkspaceAdmissionSubject;
 }
 
 /**
@@ -92,13 +93,28 @@ export interface ReleaseWorkspaceAdmissionInput {
   readonly admissionId: string;
 }
 
+export interface CollaborationApplicationAdmissionInput {
+  readonly workspaceId: string;
+  readonly controlId: string;
+}
+
+export interface GrantedCollaborationApplicationAdmission {
+  readonly admissionId: string;
+  readonly workspaceId: string;
+  readonly subjectKind: 'COLLABORATION_APPLICATION';
+  readonly controlId: string;
+}
+
+export interface CollaborationApplicationAdmissionRequestResult {
+  readonly admission: WorkspaceAdmissionRow;
+  readonly grantedAdmission?: GrantedCollaborationApplicationAdmission;
+}
+
 interface PersistedEvidenceEnvelopeV1 extends WorkspaceAdmissionEvidenceFactsV1 {
   readonly schemaVersion: 1;
   readonly workspaceId: string;
   readonly admissionId: string;
-  readonly subject:
-    | { readonly subjectKind: 'CANONICAL_RUN'; readonly canonicalRunId: string }
-    | { readonly subjectKind: 'LEGACY_AGENT_RUN'; readonly legacyRunId: string };
+  readonly subject: WorkspaceAdmissionSubject;
 }
 
 interface PreparedEvidence {
@@ -120,6 +136,41 @@ interface RevalidatedActiveAdmissions {
 
 const PENDING_STATES = new Set<AdmissionState>(['REQUESTED', 'QUEUED']);
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'cancelled']);
+
+/** Durable Run facts shared by allocation and startup, never process guesses. */
+export function readRunAdmissionState(db: TransactionDatabase, row: WorkspaceAdmissionRow): {
+  readonly status: string | undefined;
+  readonly terminal: boolean;
+  readonly queueEligible: boolean;
+  readonly missingTerminal: boolean;
+} {
+  let run: { status: string; failure_code: string | null; recovery_required: number } | undefined;
+  if (row.subjectKind === 'CANONICAL_RUN' && row.canonicalRunId !== null) {
+    run = db.prepare('SELECT status, failure_code, recovery_required FROM runs WHERE workspace_id = ? AND id = ?')
+      .get(row.workspaceId, row.canonicalRunId) as typeof run;
+  } else if (row.subjectKind === 'LEGACY_AGENT_RUN' && row.legacyRunId !== null) {
+    run = db.prepare('SELECT status, failure_reason AS failure_code, 0 AS recovery_required FROM agent_runs WHERE workspace_id = ? AND id = ?')
+      .get(row.workspaceId, row.legacyRunId) as typeof run;
+  } else {
+    throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+  }
+  const uncertain = run?.recovery_required === 1
+    || run?.failure_code === 'RUN_PROCESS_UNKNOWN'
+    || run?.failure_code?.includes('RECOVERY') === true;
+  const terminal = run !== undefined && TERMINAL_RUN_STATES.has(run.status) && !uncertain;
+  return { status: run?.status, terminal, queueEligible: run?.status === 'queued' && !uncertain,
+    missingTerminal: terminal && run?.status === 'failed' && run.failure_code === 'RUN_PROCESS_MISSING' };
+}
+
+export function terminalRunAdmissionUpdate(row: WorkspaceAdmissionRow, facts: ReturnType<typeof readRunAdmissionState>): {
+  readonly state: 'CANCELLED' | 'RELEASED';
+  readonly releaseReason: string;
+} {
+  const pendingCancellation = PENDING_STATES.has(row.state) && facts.status === 'cancelled';
+  return { state: pendingCancellation ? 'CANCELLED' : 'RELEASED', releaseReason: pendingCancellation
+    ? 'REQUEST_CANCELLED' : facts.missingTerminal ? 'RUN_PROCESS_MISSING_TERMINAL' : 'RUN_TERMINAL' };
+}
+
 const EVIDENCE_STATUSES = new Set([
   'verified',
   'unsupported',
@@ -187,12 +238,15 @@ function parseFacts(
   };
 }
 
-function subjectFor(row: WorkspaceAdmissionRow): PersistedEvidenceEnvelopeV1['subject'] {
+function subjectFor(row: WorkspaceAdmissionRow): WorkspaceAdmissionSubject {
   if (row.subjectKind === 'CANONICAL_RUN' && row.canonicalRunId !== null) {
     return { subjectKind: 'CANONICAL_RUN', canonicalRunId: row.canonicalRunId };
   }
   if (row.subjectKind === 'LEGACY_AGENT_RUN' && row.legacyRunId !== null) {
     return { subjectKind: 'LEGACY_AGENT_RUN', legacyRunId: row.legacyRunId };
+  }
+  if (row.subjectKind === 'COLLABORATION_APPLICATION' && typeof row.collaborationControlId === 'string') {
+    return { subjectKind: 'COLLABORATION_APPLICATION', controlId: row.collaborationControlId };
   }
   throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
 }
@@ -204,9 +258,16 @@ function evidenceSubjectMatches(row: WorkspaceAdmissionRow, value: unknown): boo
       && value.canonicalRunId === row.canonicalRunId
       && !('legacyRunId' in value);
   }
-  return row.legacyRunId !== null
-    && value.legacyRunId === row.legacyRunId
-    && !('canonicalRunId' in value);
+  if (row.subjectKind === 'LEGACY_AGENT_RUN') {
+    return row.legacyRunId !== null
+      && value.legacyRunId === row.legacyRunId
+      && !('canonicalRunId' in value)
+      && !('controlId' in value);
+  }
+  return typeof row.collaborationControlId === 'string'
+    && value.controlId === row.collaborationControlId
+    && !('canonicalRunId' in value)
+    && !('legacyRunId' in value);
 }
 
 function parsePersistedEvidence(
@@ -247,19 +308,28 @@ function classificationFor(
 
 function toGrantedSubject(row: WorkspaceAdmissionRow): GrantedAdmissionSubject {
   const subject = subjectFor(row);
-  return subject.subjectKind === 'CANONICAL_RUN'
-    ? {
-        admissionId: row.id,
-        workspaceId: row.workspaceId,
-        subjectKind: 'CANONICAL_RUN',
-        canonicalRunId: subject.canonicalRunId,
-      }
-    : {
+  if (subject.subjectKind === 'CANONICAL_RUN') {
+    return {
+      admissionId: row.id,
+      workspaceId: row.workspaceId,
+      subjectKind: 'CANONICAL_RUN',
+      canonicalRunId: subject.canonicalRunId,
+    };
+  }
+  if (subject.subjectKind === 'LEGACY_AGENT_RUN') {
+    return {
         admissionId: row.id,
         workspaceId: row.workspaceId,
         subjectKind: 'LEGACY_AGENT_RUN',
         legacyRunId: subject.legacyRunId,
       };
+  }
+  return {
+    admissionId: row.id,
+    workspaceId: row.workspaceId,
+    subjectKind: 'COLLABORATION_APPLICATION',
+    controlId: subject.controlId,
+  };
 }
 
 /**
@@ -279,6 +349,293 @@ export class WorkspaceAdmissionAuthority {
     this.evidenceCollector = options.evidenceCollector ?? FAIL_CLOSED_COLLECTOR;
     this.now = options.now ?? (() => new Date());
     this.testHooks = options.testHooks ?? {};
+  }
+
+  /**
+   * Persist and advance a canonical modifying Admission for a newly confirmed
+   * workflow Run. Confirmation is the user authorization boundary; the
+   * existing L1D allocator still decides whether this Run is GRANTED now or
+   * remains QUEUED behind another writer.
+   */
+  async requestCanonicalRun(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+  }): Promise<boolean> {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.runId)) {
+      throw new WorkspaceAdmissionAuthorityError('INPUT_INVALID');
+    }
+    try {
+      this.assertWorkspaceExists(input.workspaceId);
+      const existing = this.admissions.findBySubject(input.workspaceId, {
+        subjectKind: 'CANONICAL_RUN',
+        canonicalRunId: input.runId,
+      });
+      if (existing === undefined) {
+        const timestamp = this.requireDecisionTimestamp();
+        inTransaction(this.db, () => {
+          this.assertWorkspaceExists(input.workspaceId);
+          if (this.admissions.findBySubject(input.workspaceId, {
+            subjectKind: 'CANONICAL_RUN',
+            canonicalRunId: input.runId,
+          }) !== undefined) return;
+          this.admissions.insertAdmission({
+            id: createEntityId('grant'),
+            workspaceId: input.workspaceId,
+            subjectKind: 'CANONICAL_RUN',
+            canonicalRunId: input.runId,
+            legacyRunId: null,
+            requestedMutationClass: 'MODIFYING',
+            effectiveMutationClass: 'MODIFYING',
+            enforcementEvidenceJson: null,
+            requestOrder: (this.admissions.maxRequestOrder(input.workspaceId) ?? 0) + 1,
+            state: 'REQUESTED',
+            queueReason: null,
+            releaseReason: null,
+            requestedAt: timestamp,
+            grantedAt: null,
+            releasedAt: null,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            version: 1,
+          });
+        });
+      } else if (existing.state === 'RELEASED' || existing.state === 'CANCELLED' || existing.state === 'FAILED') {
+        throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+      }
+      await this.advanceWorkspaceAdmissions(input.workspaceId);
+      return this.admissions.findBySubject(input.workspaceId, {
+        subjectKind: 'CANONICAL_RUN',
+        canonicalRunId: input.runId,
+      })?.state === 'GRANTED';
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * Request write admission for an apply control through the existing
+   * workspace allocator. The control ID is the subject identity; this never
+   * creates or routes through a canonical Run.
+   */
+  async requestCollaborationApplication(
+    input: CollaborationApplicationAdmissionInput,
+  ): Promise<CollaborationApplicationAdmissionRequestResult> {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.controlId)) {
+      throw new WorkspaceAdmissionAuthorityError('INPUT_INVALID');
+    }
+    try {
+      const timestamp = this.requireDecisionTimestamp();
+      inTransaction(this.db, () => {
+        this.assertWorkspaceExists(input.workspaceId);
+        const control = this.db.prepare(
+          'SELECT c.action, c.state, c.epoch, c.expected_version,'
+            + ' t.version AS task_version, t.control_epoch AS task_control_epoch'
+            + ' FROM collaboration_controls c'
+            + ' JOIN collaboration_tasks t ON t.workspace_id = c.workspace_id AND t.id = c.collaboration_task_id'
+            + ' WHERE c.workspace_id = ? AND c.id = ?',
+        ).get(input.workspaceId, input.controlId) as {
+          action: string;
+          state: string;
+          epoch: number;
+          expected_version: number;
+          task_version: number;
+          task_control_epoch: number;
+        } | undefined;
+        if (
+          control === undefined
+          || control.action !== 'apply'
+          || (control.state !== 'reserved' && control.state !== 'running')
+          || control.expected_version !== control.task_version
+          || control.epoch !== control.task_control_epoch
+        ) {
+          throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+        }
+
+        const existing = this.admissions.findBySubject(input.workspaceId, {
+          subjectKind: 'COLLABORATION_APPLICATION',
+          controlId: input.controlId,
+        });
+        if (existing !== undefined) {
+          if (existing.state === 'RELEASED' || existing.state === 'CANCELLED' || existing.state === 'FAILED') {
+            throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+          }
+          return;
+        }
+
+        this.admissions.insertAdmission({
+          id: createEntityId('grant'),
+          workspaceId: input.workspaceId,
+          subjectKind: 'COLLABORATION_APPLICATION',
+          canonicalRunId: null,
+          legacyRunId: null,
+          collaborationControlId: input.controlId,
+          requestedMutationClass: 'MODIFYING',
+          effectiveMutationClass: 'MODIFYING',
+          enforcementEvidenceJson: null,
+          requestOrder: (this.admissions.maxRequestOrder(input.workspaceId) ?? 0) + 1,
+          state: 'REQUESTED',
+          queueReason: null,
+          releaseReason: null,
+          requestedAt: timestamp,
+          grantedAt: null,
+          releasedAt: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          version: 1,
+        });
+      });
+
+      await this.advanceWorkspaceAdmissions(input.workspaceId);
+      const admission = this.admissions.findBySubject(input.workspaceId, {
+        subjectKind: 'COLLABORATION_APPLICATION',
+        controlId: input.controlId,
+      });
+      if (admission === undefined || admission.state === 'RELEASED' || admission.state === 'CANCELLED' || admission.state === 'FAILED') {
+        throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+      }
+      return {
+        admission,
+        ...(admission.state === 'GRANTED'
+          ? {
+              grantedAdmission: {
+                admissionId: admission.id,
+                workspaceId: admission.workspaceId,
+                subjectKind: 'COLLABORATION_APPLICATION' as const,
+                controlId: input.controlId,
+              },
+            }
+          : {}),
+      };
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /** Short integration name retained for the collaboration apply coordinator. */
+  requestApplicationAdmission(
+    input: CollaborationApplicationAdmissionInput,
+  ): Promise<CollaborationApplicationAdmissionRequestResult> {
+    return this.requestCollaborationApplication(input);
+  }
+
+  /**
+   * Release a terminal canonical Run's Admission and advance its queue.
+   * A cancelled Run can still have a REQUESTED/QUEUED Admission when it was
+   * cancelled before dispatch. That row is terminalised as CANCELLED here so
+   * it cannot block the next confirmed Run.
+   */
+  async releaseCanonicalRun(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+  }): Promise<void> {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.runId)) {
+      throw new WorkspaceAdmissionAuthorityError('INPUT_INVALID');
+    }
+    const admission = this.admissions.findBySubject(input.workspaceId, {
+      subjectKind: 'CANONICAL_RUN',
+      canonicalRunId: input.runId,
+    });
+    if (admission === undefined) return;
+    if (admission.state === 'RELEASED' || admission.state === 'CANCELLED' || admission.state === 'FAILED') {
+      if (!readRunAdmissionState(this.db, admission).terminal) {
+        throw new WorkspaceAdmissionAuthorityError('ADMISSION_NOT_RELEASABLE');
+      }
+      await this.advanceWorkspaceAdmissions(input.workspaceId);
+      return;
+    }
+    if (admission.state === 'REQUESTED' || admission.state === 'QUEUED') {
+      try {
+        const timestamp = this.requireDecisionTimestamp();
+        inTransaction(this.db, () => {
+          const current = this.admissions.findById(input.workspaceId, admission.id);
+          if (current === undefined || current.state === 'CANCELLED' || current.state === 'RELEASED') return;
+          if (current.state !== 'REQUESTED' && current.state !== 'QUEUED') {
+            throw new WorkspaceAdmissionAuthorityError('ADMISSION_NOT_RELEASABLE');
+          }
+          const facts = readRunAdmissionState(this.db, current);
+          if (!facts.terminal) throw new WorkspaceAdmissionAuthorityError('ADMISSION_NOT_RELEASABLE');
+          const terminal = terminalRunAdmissionUpdate(current, facts);
+          const cancelled = this.admissions.updateState({
+            workspaceId: current.workspaceId,
+            admissionId: current.id,
+            expectedVersion: current.version,
+            state: terminal.state,
+            queueReason: null,
+            releaseReason: terminal.releaseReason,
+            grantedAt: current.grantedAt,
+            releasedAt: timestamp,
+            effectiveMutationClass: current.effectiveMutationClass,
+            enforcementEvidenceJson: current.enforcementEvidenceJson,
+            updatedAt: timestamp,
+          });
+          if (!cancelled) throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+        });
+        await this.advanceWorkspaceAdmissions(input.workspaceId);
+        return;
+      } catch (error) {
+        throw this.publicError(error);
+      }
+    }
+    await this.releaseWorkspaceAdmission({ workspaceId: input.workspaceId, admissionId: admission.id });
+  }
+
+  /**
+   * Release an application writer only after its durable journal proves a
+   * committed/recovered result, or a failed control proves it never created a
+   * journal (the write protocol persists a journal before touching files).
+   * A prepared/written/unknown journal deliberately keeps the GRANTED hold.
+   */
+  async releaseCollaborationApplication(
+    input: CollaborationApplicationAdmissionInput,
+  ): Promise<GrantedAdmissionSubject[]> {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.controlId)) {
+      throw new WorkspaceAdmissionAuthorityError('INPUT_INVALID');
+    }
+    try {
+      const timestamp = this.requireDecisionTimestamp();
+      const released = inTransaction(this.db, () => {
+        this.assertWorkspaceExists(input.workspaceId);
+        const status = readCollaborationApplicationFacts(this.db, input.workspaceId, input.controlId);
+        if (status === undefined || status.action !== 'apply') {
+          throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+        }
+        const reason = collaborationApplicationTerminalReason(status);
+        if (!reason) {
+          throw new WorkspaceAdmissionAuthorityError('ADMISSION_NOT_RELEASABLE');
+        }
+
+        const current = this.admissions.findBySubject(input.workspaceId, {
+          subjectKind: 'COLLABORATION_APPLICATION',
+          controlId: input.controlId,
+        });
+        if (current === undefined || current.state === 'RELEASED') return false;
+        if (current.state === 'CANCELLED' || current.state === 'FAILED') return false;
+        if (current.state !== 'GRANTED' && current.state !== 'REQUESTED' && current.state !== 'QUEUED') {
+          throw new WorkspaceAdmissionAuthorityError('ADMISSION_NOT_RELEASABLE');
+        }
+        const didRelease = this.admissions.updateState({
+          workspaceId: current.workspaceId,
+          admissionId: current.id,
+          expectedVersion: current.version,
+          state: 'RELEASED',
+          queueReason: null,
+          releaseReason: reason,
+          grantedAt: current.grantedAt,
+          releasedAt: timestamp,
+          effectiveMutationClass: 'MODIFYING',
+          enforcementEvidenceJson: null,
+          updatedAt: timestamp,
+        });
+        if (!didRelease) throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+        return true;
+      });
+      // A previous release can have committed immediately before a crash in
+      // queue advancement. Replaying the safe terminal release also retries
+      // that durable queue; advancement is independently transactional/CAS.
+      return this.advanceWorkspaceAdmissions(input.workspaceId);
+    } catch (error) {
+      throw this.publicError(error);
+    }
   }
 
   async advanceWorkspaceAdmissions(workspaceId: string): Promise<GrantedAdmissionSubject[]> {
@@ -425,6 +782,10 @@ export class WorkspaceAdmissionAuthority {
     let knownActiveModifying = false;
     if (active.length <= L1D_READ_ONLY_CAPACITY_V1) {
       for (const row of active) {
+        if (row.subjectKind === 'COLLABORATION_APPLICATION') {
+          knownActiveModifying = true;
+          continue;
+        }
         if (row.requestedMutationClass === 'MODIFYING') {
           knownActiveModifying = true;
           continue;
@@ -444,6 +805,10 @@ export class WorkspaceAdmissionAuthority {
       if (options.includePendingCandidates && !knownActiveModifying) {
         for (const row of rows) {
           if (!PENDING_STATES.has(row.state) || availableReaderSlots <= 0) continue;
+          if (row.subjectKind === 'COLLABORATION_APPLICATION') break;
+          const subject = readRunAdmissionState(this.db, row);
+          if (subject.terminal) continue;
+          if (!subject.queueEligible) break;
           if (row.requestedMutationClass === 'MODIFYING') break;
           const persisted = parsePersistedEvidence(row, decisionTimeMs);
           if (persisted !== undefined) {
@@ -480,6 +845,23 @@ export class WorkspaceAdmissionAuthority {
     timestamp: string,
   ): GrantedAdmissionSubject[] {
     this.assertWorkspaceExists(workspaceId);
+    // Cancellation/terminalization and admission release are separate durable
+    // boundaries. Recheck AFTER all awaited evidence collection and settle a
+    // stale terminal queue entry before it can win (or block) the next writer.
+    const observedRows = this.admissions.listByWorkspace(workspaceId);
+    for (const row of observedRows) {
+      if (!PENDING_STATES.has(row.state) || row.subjectKind === 'COLLABORATION_APPLICATION') continue;
+      const facts = readRunAdmissionState(this.db, row);
+      if (!facts.terminal) continue;
+      const terminal = terminalRunAdmissionUpdate(row, facts);
+      if (!this.admissions.updateState({ workspaceId, admissionId: row.id, expectedVersion: row.version,
+        state: terminal.state, queueReason: null, releaseReason: terminal.releaseReason,
+        grantedAt: row.grantedAt, releasedAt: timestamp, effectiveMutationClass: row.effectiveMutationClass,
+        enforcementEvidenceJson: row.enforcementEvidenceJson, updatedAt: timestamp })) {
+        throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+      }
+      this.testHooks.afterAdmissionWriteWithinTransaction?.({ admissionId: row.id, state: terminal.state });
+    }
     const rows = this.admissions.listByWorkspace(workspaceId);
     const {
       activeModifying,
@@ -495,6 +877,12 @@ export class WorkspaceAdmissionAuthority {
 
     for (const row of pending) {
       if (blocked || availableReaderSlots <= 0) break;
+      if (row.subjectKind !== 'COLLABORATION_APPLICATION' && !readRunAdmissionState(this.db, row).queueEligible) {
+        // A missing, executing or recovery-required subject is not safe to
+        // grant and cannot be bypassed to let another writer overwrite it.
+        blocked = true;
+        break;
+      }
       const classification = this.resolveClassificationWithinTransaction(
         row,
         prepared.get(row.id),
@@ -618,6 +1006,12 @@ export class WorkspaceAdmissionAuthority {
     prepared: PreparedEvidence | undefined,
     decisionTimeMs: number,
   ): ResolvedClassification {
+    if (row.subjectKind === 'COLLABORATION_APPLICATION') {
+      return {
+        effectiveMutationClass: 'MODIFYING',
+        enforcementEvidenceJson: null,
+      };
+    }
     if (row.requestedMutationClass === 'MODIFYING') {
       return {
         effectiveMutationClass: 'MODIFYING',
@@ -662,31 +1056,7 @@ export class WorkspaceAdmissionAuthority {
     readonly terminal: boolean;
     readonly missingTerminal: boolean;
   } {
-    if (row.subjectKind === 'CANONICAL_RUN' && row.canonicalRunId !== null) {
-      const run = this.db.prepare(
-        'SELECT status, failure_code FROM runs WHERE workspace_id = ? AND id = ?',
-      ).get(row.workspaceId, row.canonicalRunId) as {
-        status: string;
-        failure_code: string | null;
-      } | undefined;
-      return {
-        terminal: run !== undefined && TERMINAL_RUN_STATES.has(run.status),
-        missingTerminal: run?.status === 'failed' && run.failure_code === 'RUN_PROCESS_MISSING',
-      };
-    }
-    if (row.subjectKind === 'LEGACY_AGENT_RUN' && row.legacyRunId !== null) {
-      const run = this.db.prepare(
-        'SELECT status, failure_reason FROM agent_runs WHERE workspace_id = ? AND id = ?',
-      ).get(row.workspaceId, row.legacyRunId) as {
-        status: string;
-        failure_reason: string | null;
-      } | undefined;
-      return {
-        terminal: run !== undefined && TERMINAL_RUN_STATES.has(run.status),
-        missingTerminal: run?.status === 'failed' && run.failure_reason === 'RUN_PROCESS_MISSING',
-      };
-    }
-    throw new WorkspaceAdmissionAuthorityError('AUTHORITY_CONFLICT');
+    return readRunAdmissionState(this.db, row);
   }
 
   private assertWorkspaceExists(workspaceId: string): void {

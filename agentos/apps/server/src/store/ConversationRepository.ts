@@ -11,6 +11,7 @@ import {
   canTransitionConversation,
   canTransitionMessage,
   type ConversationKind,
+  type ConversationAttachment,
   type ConversationLifecycleAction,
   type ConversationReplyMode,
   type ConversationStatus,
@@ -22,6 +23,7 @@ import {
   type MessageStatus,
   type ThinkingEffort,
 } from '@agentos/shared';
+import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 
 /**
@@ -138,6 +140,8 @@ export interface AppendMessageInput {
   readonly runId?: string;
   readonly sourceEventId?: string;
   readonly replyToMessageId?: string;
+  /** Attachments already written to the workspace root by the route. */
+  readonly attachments?: readonly StoredConversationAttachment[];
   readonly createdAt: string;
 }
 
@@ -151,6 +155,7 @@ export interface MessageRecord {
   readonly kind: MessageKind;
   readonly status: MessageStatus;
   readonly content: string;
+  readonly attachments?: readonly ConversationAttachment[];
   readonly clientMessageId: string | null;
   readonly taskId: string | null;
   readonly runId: string | null;
@@ -232,6 +237,17 @@ interface MessageRow {
   version: number;
   created_at: string;
   updated_at: string;
+}
+
+interface MessageAttachmentRow {
+  id: string;
+  message_id: string;
+  conversation_id: string;
+  workspace_id: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  relative_path: string;
 }
 
 function nonBlank(value: unknown): value is string {
@@ -383,6 +399,30 @@ export class ConversationRepository {
     }
   }
 
+  updateConversationTitle(input: {
+    readonly workspaceId: string;
+    readonly conversationId: string;
+    readonly title: string;
+    readonly updatedAt: string;
+  }): ConversationRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.conversationId) || !nonBlank(input.title) || !nonBlank(input.updatedAt)) {
+      throw new ConversationRepositoryError('INPUT_INVALID');
+    }
+    const title = input.title.trim();
+    if (title.length > 160) throw new ConversationRepositoryError('INPUT_INVALID');
+    try {
+      return inTransaction(this.db, () => {
+        const result = this.db.prepare(
+          'UPDATE cr_conversations SET title = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
+        ).run(title, input.updatedAt, input.workspaceId, input.conversationId) as { changes?: number };
+        if (result.changes !== 1) throw new ConversationRepositoryError('CONVERSATION_NOT_FOUND');
+        return this.requireConversation(input.workspaceId, input.conversationId);
+      });
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
   addMember(input: AddMemberInput): MemberRecord {
     validateAddMemberInput(input);
     try {
@@ -502,7 +542,7 @@ export class ConversationRepository {
       const existing = this.db.prepare(
         'SELECT * FROM cr_messages WHERE conversation_id = ? AND client_message_id = ?',
       ).get(input.conversationId, input.clientMessageId) as MessageRow | undefined;
-      if (existing !== undefined) return toMessageRecord(existing);
+      if (existing !== undefined) return this.hydrateMessage(existing);
     }
     const next = (this.db.prepare(
       'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM cr_messages WHERE conversation_id = ?',
@@ -519,6 +559,30 @@ export class ConversationRepository {
     this.db.prepare(
       'UPDATE cr_conversations SET last_message_id = ?, last_message_at = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
     ).run(input.id, input.createdAt, input.createdAt, input.workspaceId, input.conversationId);
+    if (input.attachments !== undefined) {
+      const insertAttachment = this.db.prepare(`
+        INSERT INTO cr_message_attachments (
+          id, message_id, conversation_id, workspace_id, name, mime_type, size, relative_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const attachment of input.attachments) {
+        if (attachment.messageId !== input.id
+          || attachment.conversationId !== input.conversationId
+          || attachment.workspaceId !== input.workspaceId
+          || !nonBlank(attachment.id)
+          || !nonBlank(attachment.name)
+          || !nonBlank(attachment.mimeType)
+          || !nonBlank(attachment.relativePath)
+          || !Number.isSafeInteger(attachment.size)
+          || attachment.size < 1) {
+          throw new ConversationRepositoryError('INPUT_INVALID');
+        }
+        insertAttachment.run(
+          attachment.id, attachment.messageId, attachment.conversationId, attachment.workspaceId,
+          attachment.name, attachment.mimeType, attachment.size, attachment.relativePath,
+        );
+      }
+    }
     return this.requireMessage(input.workspaceId, input.id);
   }
 
@@ -569,7 +633,34 @@ export class ConversationRepository {
     const rows = this.db.prepare(
       'SELECT * FROM cr_messages WHERE workspace_id = ? AND conversation_id = ? AND sequence > ? ORDER BY sequence ASC',
     ).all(workspaceId, conversationId, afterSequence) as MessageRow[];
-    return rows.map(toMessageRecord);
+    return rows.map(row => this.hydrateMessage(row));
+  }
+
+  /** Server-internal file metadata for Provider input; never returned by HTTP. */
+  listStoredMessageAttachments(
+    workspaceId: string,
+    conversationId: string,
+    messageId: string,
+  ): StoredConversationAttachment[] {
+    if (!nonBlank(workspaceId) || !nonBlank(conversationId) || !nonBlank(messageId)) return [];
+    const rows = this.db.prepare(`
+      SELECT id, message_id, conversation_id, workspace_id, name, mime_type, size, relative_path
+      FROM cr_message_attachments
+      WHERE workspace_id = ? AND conversation_id = ? AND message_id = ?
+      ORDER BY id ASC
+    `).all(workspaceId, conversationId, messageId) as MessageAttachmentRow[];
+    return rows.map(toStoredMessageAttachment);
+  }
+
+  /** Resolve one canonical attachment for the workspace-scoped attachment route. */
+  getStoredMessageAttachment(workspaceId: string, attachmentId: string): StoredConversationAttachment | undefined {
+    if (!nonBlank(workspaceId) || !nonBlank(attachmentId)) return undefined;
+    const row = this.db.prepare(`
+      SELECT id, message_id, conversation_id, workspace_id, name, mime_type, size, relative_path
+      FROM cr_message_attachments
+      WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, attachmentId) as MessageAttachmentRow | undefined;
+    return row === undefined ? undefined : toStoredMessageAttachment(row);
   }
 
   findMessageBySourceEvent(workspaceId: string, sourceEventId: string): MessageRecord | undefined {
@@ -577,7 +668,7 @@ export class ConversationRepository {
     const row = this.db.prepare(
       'SELECT * FROM cr_messages WHERE workspace_id = ? AND source_event_id = ? ORDER BY sequence ASC LIMIT 1',
     ).get(workspaceId, sourceEventId) as MessageRow | undefined;
-    return row === undefined ? undefined : toMessageRecord(row);
+    return row === undefined ? undefined : this.hydrateMessage(row);
   }
 
   /**
@@ -622,7 +713,7 @@ export class ConversationRepository {
     const row = this.db.prepare(
       'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
     ).get(workspaceId, messageId) as MessageRow | undefined;
-    return row === undefined ? undefined : toMessageRecord(row);
+    return row === undefined ? undefined : this.hydrateMessage(row);
   }
 
   /**
@@ -732,7 +823,19 @@ export class ConversationRepository {
       'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
     ).get(workspaceId, messageId) as MessageRow | undefined;
     if (row === undefined) throw new ConversationRepositoryError('MESSAGE_NOT_FOUND');
-    return toMessageRecord(row);
+    return this.hydrateMessage(row);
+  }
+
+  private hydrateMessage(row: MessageRow): MessageRecord {
+    const attachments = this.listStoredMessageAttachments(row.workspace_id, row.conversation_id, row.id)
+      .map(attachment => ({
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        url: `/api/workspaces/${encodeURIComponent(row.workspace_id)}/attachments/${encodeURIComponent(attachment.id)}`,
+      }));
+    return toMessageRecord(row, attachments);
   }
 
   private publicError(error: unknown): ConversationRepositoryError {
@@ -816,7 +919,7 @@ function validateMemberText(value: string | null | undefined, _field: string, ma
   }
 }
 
-function toMessageRecord(row: MessageRow): MessageRecord {
+function toMessageRecord(row: MessageRow, attachments: readonly ConversationAttachment[] = []): MessageRecord {
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -827,6 +930,7 @@ function toMessageRecord(row: MessageRow): MessageRecord {
     kind: row.kind as MessageKind,
     status: row.status as MessageStatus,
     content: row.content,
+    ...(attachments.length === 0 ? {} : { attachments }),
     clientMessageId: row.client_message_id,
     taskId: row.task_id,
     runId: row.run_id,
@@ -835,5 +939,18 @@ function toMessageRecord(row: MessageRow): MessageRecord {
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function toStoredMessageAttachment(row: MessageAttachmentRow): StoredConversationAttachment {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    workspaceId: row.workspace_id,
+    name: row.name,
+    mimeType: row.mime_type,
+    size: row.size,
+    relativePath: row.relative_path,
   };
 }

@@ -62,7 +62,7 @@ export class WorkspaceManager {
         `).run(
           providerConfigId, wsId, `${agent.name} Provider`,
           agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : agent.role === 'kimi' ? 'kimicode' : 'custom-cli',
-          `builtin.${agent.role}`,
+          providerAdapterIdForRole(agent.role),
           'cli',
           agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
           JSON.stringify({
@@ -209,4 +209,8 @@ export class WorkspaceManager {
   private ensureFile(path: string, content: string): void {
     if (!existsSync(path)) writeFileSync(path, content, 'utf-8');
   }
+}
+
+function providerAdapterIdForRole(role: string): string {
+  return role === 'kimi' ? 'builtin.kimicode' : `builtin.${role}`;
 }

@@ -5,7 +5,8 @@ import {
   type AdmissionState,
   type WorkspaceAdmissionRow,
 } from '../store/WorkspaceAdmissionRepository.js';
-import { WorkspaceAdmissionAuthority } from './WorkspaceAdmissionAuthority.js';
+import { WorkspaceAdmissionAuthority, readRunAdmissionState, terminalRunAdmissionUpdate } from './WorkspaceAdmissionAuthority.js';
+import { listCollaborationApplicationFacts, collaborationApplicationTerminalReason } from '../store/CollaborationApplicationTerminalState.js';
 
 /**
  * P6-L1E Startup Admission Reconciliation.
@@ -64,6 +65,19 @@ interface ActiveSubject {
   readonly executing: boolean;
 }
 
+interface CollaborationApplicationSubject {
+  readonly workspaceId: string;
+  readonly controlId: string;
+  readonly controlState: string;
+  readonly journalState: string | null;
+  readonly expectedVersion: number;
+  readonly controlEpoch: number;
+  readonly taskVersion: number;
+  readonly taskControlEpoch: number;
+  readonly createdAt: string;
+  readonly disposition: 'QUEUE_OR_HOLD' | 'MUST_HOLD' | 'TERMINAL';
+}
+
 export interface WorkspaceAdmissionStartupReconcilerOptions {
   readonly store: { getDatabase(): TransactionDatabase };
   readonly now?: () => Date;
@@ -91,17 +105,20 @@ export class WorkspaceAdmissionStartupReconciler {
    * a failed start leaves zero partial bootstrap state.
    */
   async reconcileOnStartup(): Promise<void> {
-    const workspaceIds = this.listWorkspaceIdsInOrder();
-    const activeSubjects = this.inventoryActiveSubjects();
-    const existingAdmissions = this.admissions.listAllInRequestOrder();
-
     const timestamp = this.requireTimestamp();
-    const affectedWorkspaceIds = inTransaction(this.db, () => this.reconcileWithinTransaction(
-      workspaceIds,
-      activeSubjects,
-      existingAdmissions,
-      timestamp,
-    ));
+    const affectedWorkspaceIds = inTransaction(this.db, () => {
+      const workspaceIds = this.listWorkspaceIdsInOrder();
+      const activeSubjects = this.inventoryActiveSubjects();
+      const existingAdmissions = this.admissions.listAllInRequestOrder();
+      const applicationSubjects = this.inventoryCollaborationApplications();
+      return this.reconcileWithinTransaction(
+        workspaceIds,
+        activeSubjects,
+        existingAdmissions,
+        applicationSubjects,
+        timestamp,
+      );
+    });
 
     // Queue advancement reuses the single L1D winner algorithm. It runs after
     // the reconciliation transaction commits so a fresh GRANTED holder is
@@ -116,6 +133,7 @@ export class WorkspaceAdmissionStartupReconciler {
     workspaceIds: readonly string[],
     activeSubjects: readonly ActiveSubject[],
     existingAdmissions: readonly WorkspaceAdmissionRow[],
+    applicationSubjects: readonly CollaborationApplicationSubject[],
     timestamp: string,
   ): string[] {
     const subjectsByWorkspace = new Map<string, ActiveSubject[]>();
@@ -130,13 +148,27 @@ export class WorkspaceAdmissionStartupReconciler {
       list.push(admission);
       admissionsByWorkspace.set(admission.workspaceId, list);
     }
+    const applicationsByWorkspace = new Map<string, CollaborationApplicationSubject[]>();
+    for (const application of applicationSubjects) {
+      const list = applicationsByWorkspace.get(application.workspaceId) ?? [];
+      list.push(application);
+      applicationsByWorkspace.set(application.workspaceId, list);
+    }
 
     const affected = new Set<string>();
     for (const workspaceId of workspaceIds) {
       const subjects = subjectsByWorkspace.get(workspaceId) ?? [];
       const admissions = admissionsByWorkspace.get(workspaceId) ?? [];
-      const changed = this.reconcileWorkspace(workspaceId, subjects, admissions, timestamp);
-      if (changed) affected.add(workspaceId);
+      const applications = applicationsByWorkspace.get(workspaceId) ?? [];
+      const changed = this.reconcileWorkspace(workspaceId, subjects, admissions, applications, timestamp);
+      // Release and queue advancement deliberately use separate transactions.
+      // A crash after a durable RELEASED update must not strand an existing
+      // queued follower merely because this boot makes no reconciliation edit.
+      // The authority rechecks all holders and owns the grant decision, so an
+      // unresolved application writer still blocks its queue here.
+      if (changed || admissions.some(admission => admission.state === 'QUEUED' || admission.state === 'REQUESTED')) {
+        affected.add(workspaceId);
+      }
     }
     return [...affected];
   }
@@ -149,13 +181,107 @@ export class WorkspaceAdmissionStartupReconciler {
     workspaceId: string,
     subjects: readonly ActiveSubject[],
     admissions: readonly WorkspaceAdmissionRow[],
+    applications: readonly CollaborationApplicationSubject[],
     timestamp: string,
   ): boolean {
+    const applicationsByControl = new Map(applications.map(application => [application.controlId, application]));
+
+    // Recovery may release a proven terminal holder, but must not erase a
+    // corrupt original authority set before the startup fail-closed boundary.
+    // These read-only checks precede every repair write in this Workspace.
+    for (const admission of admissions) {
+      this.validateAdmissionBinding(workspaceId, admission, applicationsByControl);
+    }
+    this.validateGrantedExclusivity(admissions);
+
+    // Only a matching terminal journal/control pair releases the workspace hold.
+    // A failed control with no journal proves it never reached the write
+    // boundary. A prepared journal remains a hold until recovery checks its
+    // preimages and records recovered; startup must not infer "no write".
+    const reconciledAdmissions: WorkspaceAdmissionRow[] = [];
+    let changed = false;
+    for (const admission of admissions) {
+      if (admission.subjectKind !== 'COLLABORATION_APPLICATION') {
+        if (ACTIVE_ADMISSION_STATES.has(admission.state)) {
+          const facts = readRunAdmissionState(this.db, admission);
+          if (facts.terminal) {
+            const terminal = terminalRunAdmissionUpdate(admission, facts);
+            if (!this.admissions.updateState({ workspaceId, admissionId: admission.id, expectedVersion: admission.version,
+              state: terminal.state, queueReason: null, releaseReason: terminal.releaseReason,
+              grantedAt: admission.grantedAt, releasedAt: timestamp, effectiveMutationClass: admission.effectiveMutationClass,
+              enforcementEvidenceJson: admission.enforcementEvidenceJson, updatedAt: timestamp })) {
+              throw new WorkspaceAdmissionStartupReconciliationError();
+            }
+            const current = this.admissions.findById(workspaceId, admission.id);
+            if (current === undefined) throw new WorkspaceAdmissionStartupReconciliationError();
+            reconciledAdmissions.push(current);
+            changed = true;
+            continue;
+          }
+        }
+        reconciledAdmissions.push(admission);
+        continue;
+      }
+      const controlId = admission.collaborationControlId;
+      if (typeof controlId !== 'string' || admission.canonicalRunId !== null || admission.legacyRunId !== null) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      const application = applicationsByControl.get(controlId);
+      if (application === undefined || application.workspaceId !== workspaceId) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (
+        admission.requestedMutationClass !== 'MODIFYING'
+        || admission.effectiveMutationClass !== 'MODIFYING'
+        || admission.enforcementEvidenceJson !== null
+      ) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (application.disposition === 'TERMINAL') {
+        if (ACTIVE_ADMISSION_STATES.has(admission.state)) {
+          const releaseReason = application.journalState === 'committed'
+            ? 'APPLICATION_JOURNAL_COMMITTED'
+            : application.journalState === 'recovered'
+              ? 'APPLICATION_JOURNAL_RECOVERED'
+              : 'APPLICATION_FAILED_BEFORE_JOURNAL';
+          const released = this.admissions.updateState({
+            workspaceId,
+            admissionId: admission.id,
+            expectedVersion: admission.version,
+            state: 'RELEASED',
+            queueReason: null,
+            releaseReason,
+            grantedAt: admission.grantedAt,
+            releasedAt: timestamp,
+            effectiveMutationClass: 'MODIFYING',
+            enforcementEvidenceJson: null,
+            updatedAt: timestamp,
+          });
+          if (!released) throw new WorkspaceAdmissionStartupReconciliationError();
+          const current = this.admissions.findById(workspaceId, admission.id);
+          if (current === undefined) throw new WorkspaceAdmissionStartupReconciliationError();
+          reconciledAdmissions.push(current);
+          changed = true;
+        } else {
+          reconciledAdmissions.push(admission);
+        }
+        continue;
+      }
+      if (TERMINAL_ADMISSION_STATES.has(admission.state)) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (application.disposition === 'MUST_HOLD' && admission.state !== 'GRANTED') {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (admission.requestOrder < 1) throw new WorkspaceAdmissionStartupReconciliationError();
+      reconciledAdmissions.push(admission);
+    }
+
     // Validate every persisted Admission for this Workspace first. Any
     // durable corruption or un-safe-to-interpret conflict fails closed.
     const admissionBySubjectKey = new Map<string, WorkspaceAdmissionRow>();
-    for (const admission of admissions) {
-      const key = this.validateAdmissionBinding(workspaceId, admission);
+    for (const admission of reconciledAdmissions) {
+      const key = this.validateAdmissionBinding(workspaceId, admission, applicationsByControl);
       admissionBySubjectKey.set(key, admission);
     }
 
@@ -164,18 +290,7 @@ export class WorkspaceAdmissionStartupReconciler {
     // MODIFYING holder; a MODIFYING holder excludes every other GRANTED; and
     // READ_ONLY holders never exceed capacity 2. A durable state that violates
     // this cannot be reconciled without guessing real execution ownership.
-    const granted = admissions.filter(admission => admission.state === 'GRANTED');
-    const grantedModifying = granted.filter(
-      admission => admission.effectiveMutationClass === 'MODIFYING',
-    ).length;
-    const grantedReadOnly = granted.length - grantedModifying;
-    if (
-      grantedModifying > 1
-      || (grantedModifying === 1 && granted.length !== 1)
-      || (grantedModifying === 0 && grantedReadOnly > READ_ONLY_CAPACITY)
-    ) {
-      throw new WorkspaceAdmissionStartupReconciliationError();
-    }
+    const { granted, grantedModifying } = this.validateGrantedExclusivity(reconciledAdmissions);
 
     // Deterministic bootstrap order: existing executing holders first, then
     // queued; within a group created_at ASC, id ASC; cross-kind tie-break is
@@ -184,9 +299,10 @@ export class WorkspaceAdmissionStartupReconciler {
       .filter(subject => !admissionBySubjectKey.has(subjectKey(subject)))
       .sort(compareSubjectsForBootstrap);
 
-    let inserted = false;
+    let inserted = changed;
     let nextRequestOrder = (this.admissions.maxRequestOrder(workspaceId) ?? 0) + 1;
     let grantedModifyingHolders = grantedModifying;
+    let grantedCount = granted.length;
     for (const subject of missing) {
       if (subject.executing) {
         // Every bootstrap holder is MODIFYING; at most one GRANTED MODIFYING
@@ -197,6 +313,7 @@ export class WorkspaceAdmissionStartupReconciler {
           throw new WorkspaceAdmissionStartupReconciliationError();
         }
         grantedModifyingHolders += 1;
+        grantedCount += 1;
         this.admissions.insertAdmission({
           id: createEntityId('grant'),
           workspaceId,
@@ -244,7 +361,61 @@ export class WorkspaceAdmissionStartupReconciler {
       nextRequestOrder += 1;
       inserted = true;
     }
+
+    const missingApplications = applications
+      .filter(application => application.disposition !== 'TERMINAL'
+        && !admissionBySubjectKey.has(applicationSubjectKey(application)))
+      .sort((a, b) => a.createdAt === b.createdAt
+        ? a.controlId.localeCompare(b.controlId)
+        : a.createdAt.localeCompare(b.createdAt));
+    for (const application of missingApplications) {
+      const requiresGrant = application.disposition === 'MUST_HOLD';
+      if (requiresGrant && grantedCount > 0) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      const state: AdmissionState = requiresGrant ? 'GRANTED' : 'REQUESTED';
+      this.admissions.insertAdmission({
+        id: createEntityId('grant'),
+        workspaceId,
+        subjectKind: 'COLLABORATION_APPLICATION',
+        canonicalRunId: null,
+        legacyRunId: null,
+        collaborationControlId: application.controlId,
+        requestedMutationClass: 'MODIFYING',
+        effectiveMutationClass: 'MODIFYING',
+        enforcementEvidenceJson: null,
+        requestOrder: nextRequestOrder,
+        state,
+        queueReason: null,
+        releaseReason: null,
+        requestedAt: timestamp,
+        grantedAt: requiresGrant ? timestamp : null,
+        releasedAt: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        version: 1,
+      });
+      nextRequestOrder += 1;
+      if (requiresGrant) grantedCount += 1;
+      inserted = true;
+    }
     return inserted;
+  }
+
+  private validateGrantedExclusivity(admissions: readonly WorkspaceAdmissionRow[]): {
+    readonly granted: WorkspaceAdmissionRow[];
+    readonly grantedModifying: number;
+  } {
+    const granted = admissions.filter(admission => admission.state === 'GRANTED');
+    const grantedModifying = granted.filter(admission => admission.effectiveMutationClass === 'MODIFYING').length;
+    if (
+      grantedModifying > 1
+      || (grantedModifying === 1 && granted.length !== 1)
+      || (grantedModifying === 0 && granted.length > READ_ONLY_CAPACITY)
+    ) {
+      throw new WorkspaceAdmissionStartupReconciliationError();
+    }
+    return { granted, grantedModifying };
   }
 
   /**
@@ -255,8 +426,33 @@ export class WorkspaceAdmissionStartupReconciler {
   private validateAdmissionBinding(
     workspaceId: string,
     admission: WorkspaceAdmissionRow,
+    applicationsByControl: ReadonlyMap<string, CollaborationApplicationSubject>,
   ): string {
     if (admission.workspaceId !== workspaceId) {
+      throw new WorkspaceAdmissionStartupReconciliationError();
+    }
+    if (admission.subjectKind === 'COLLABORATION_APPLICATION') {
+      if (
+        typeof admission.collaborationControlId !== 'string'
+        || admission.canonicalRunId !== null
+        || admission.legacyRunId !== null
+      ) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      const application = applicationsByControl.get(admission.collaborationControlId);
+      if (application === undefined || application.workspaceId !== workspaceId) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (
+        ACTIVE_ADMISSION_STATES.has(admission.state)
+        && application.disposition === 'MUST_HOLD'
+        && admission.state !== 'GRANTED'
+      ) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      return applicationSubjectKey(application);
+    }
+    if (admission.collaborationControlId != null) {
       throw new WorkspaceAdmissionStartupReconciliationError();
     }
     if (admission.subjectKind === 'CANONICAL_RUN') {
@@ -361,6 +557,47 @@ export class WorkspaceAdmissionStartupReconciler {
     return subjects;
   }
 
+  private inventoryCollaborationApplications(): CollaborationApplicationSubject[] {
+    const rows = listCollaborationApplicationFacts(this.db);
+    return rows.map(row => {
+      let disposition: CollaborationApplicationSubject['disposition'];
+      if (collaborationApplicationTerminalReason(row)) {
+        disposition = 'TERMINAL';
+      } else if (row.journal_state !== null) {
+        // Even prepared can straddle a crash. The journal recovery coordinator
+        // must verify preimages and persist recovered before this hold releases.
+        disposition = 'MUST_HOLD';
+      } else if (row.control_state === 'recovery_required') {
+        disposition = 'MUST_HOLD';
+      } else if (row.control_state === 'reserved' || row.control_state === 'running') {
+        disposition = 'QUEUE_OR_HOLD';
+      } else {
+        // completed without a terminal journal is inconsistent; never release
+        // an application writer based on the control state alone.
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (
+        disposition === 'QUEUE_OR_HOLD'
+        && (row.expected_version !== row.task_version || row.control_epoch !== row.task_control_epoch)
+      ) {
+        throw new WorkspaceAdmissionStartupReconciliationError();
+      }
+      if (row.task_version === null || row.task_control_epoch === null) throw new WorkspaceAdmissionStartupReconciliationError();
+      return {
+        workspaceId: row.workspace_id,
+        controlId: row.control_id,
+        controlState: row.control_state,
+        journalState: row.journal_state,
+        expectedVersion: row.expected_version,
+        controlEpoch: row.control_epoch,
+        taskVersion: row.task_version,
+        taskControlEpoch: row.task_control_epoch,
+        createdAt: row.created_at,
+        disposition,
+      };
+    });
+  }
+
   private requireTimestamp(): string {
     const ms = this.now().getTime();
     if (!Number.isFinite(ms)) throw new WorkspaceAdmissionStartupReconciliationError();
@@ -372,9 +609,12 @@ function subjectKey(subject: ActiveSubject): string {
   return subject.subjectKind + ' ' + subject.subjectId;
 }
 function admissionSubjectKey(admission: WorkspaceAdmissionRow): string {
-  return admission.subjectKind === 'CANONICAL_RUN'
-    ? 'CANONICAL_RUN ' + admission.canonicalRunId
-    : 'LEGACY_AGENT_RUN ' + admission.legacyRunId;
+  if (admission.subjectKind === 'CANONICAL_RUN') return 'CANONICAL_RUN ' + admission.canonicalRunId;
+  if (admission.subjectKind === 'LEGACY_AGENT_RUN') return 'LEGACY_AGENT_RUN ' + admission.legacyRunId;
+  return 'COLLABORATION_APPLICATION ' + admission.collaborationControlId;
+}
+function applicationSubjectKey(application: CollaborationApplicationSubject): string {
+  return 'COLLABORATION_APPLICATION ' + application.controlId;
 }
 
 const KIND_ORDER: Record<ActiveSubject['subjectKind'], number> = {

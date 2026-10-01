@@ -1152,6 +1152,19 @@ body.resizing-panels {
   padding-left: 0.5rem;
 }
 
+.workspace-sidebar-compact .workspace-runtime-conversation-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.workspace-sidebar-compact .workspace-runtime-conversation-copy,
+.workspace-sidebar-compact .workspace-runtime-conversation-kind {
+  display: none;
+}
+
 .workspace-panel-overlay {
   position: fixed;
   z-index: var(--layer-workspace-overlay);

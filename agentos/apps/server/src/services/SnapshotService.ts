@@ -377,10 +377,14 @@ export class SnapshotService {
    * Workspace's Agents and Providers. Additive: resolveLegacy keeps its exact
    * behavior and shares this binding.
    */
-  resolveDefinition(workspace: Workspace, definition: WorkflowDefinition): ResolvedRunConfiguration {
+  resolveDefinition(
+    workspace: Workspace,
+    definition: WorkflowDefinition,
+    agentBindings?: Readonly<Record<string, string>>,
+  ): ResolvedRunConfiguration {
     if (definition.payload.schemaVersion !== 2) throw new RunSnapshotFailedError();
     try {
-      return this.bindDefinition(workspace, definition as V2WorkflowDefinition);
+      return this.bindDefinition(workspace, definition as V2WorkflowDefinition, agentBindings);
     } catch (error) {
       if (error instanceof AgentNotAvailableError || error instanceof ProviderConfigNotAvailableError) throw error;
       if (error instanceof WorkflowNotAvailableError) throw error;
@@ -405,6 +409,7 @@ export class SnapshotService {
   private bindDefinition(
     workspace: Workspace,
     workflow: V2WorkflowDefinition,
+    agentBindings?: Readonly<Record<string, string>>,
   ): ResolvedRunConfiguration {
     {
       const workspaceAgentIds = new Set<string>();
@@ -423,10 +428,12 @@ export class SnapshotService {
 
       for (const workflowStage of workflow.payload.stages) {
         if (!workflowStage.agentRole) throw new RunSnapshotFailedError();
-        const selected = workspace.agents.find(
-          agent => agent.role === workflowStage.agentRole && agent.enabled,
-        );
+        const explicitlyBoundAgentId = agentBindings?.[workflowStage.key];
+        const selected = explicitlyBoundAgentId === undefined
+          ? workspace.agents.find(agent => agent.role === workflowStage.agentRole && agent.enabled)
+          : workspace.agents.find(agent => agent.id === explicitlyBoundAgentId && agent.enabled);
         if (!selected) throw new AgentNotAvailableError();
+        if (selected.role !== workflowStage.agentRole) throw new AgentNotAvailableError();
 
         let binding = agents.get(selected.id);
         if (!binding) {
@@ -447,7 +454,12 @@ export class SnapshotService {
           ) {
             throw new ProviderConfigNotAvailableError();
           }
-          const providerSnapshotValue = providerSnapshot(workspace, provider);
+          // A required worktree is an execution constraint, not a UI hint.
+          // Freeze it before approval so the approved launch cannot target the
+          // original workspace or a Provider's custom directory.
+          const providerSnapshotValue = providerSnapshot(workspace, workflow.payload.worktreeMode === 'required'
+            ? { ...provider, workingDirectoryMode: 'worktree', customWorkingDirectory: undefined }
+            : provider);
           const agentSnapshotValue = agentSnapshot(source);
           binding = {
             snapshot: agentSnapshotValue,

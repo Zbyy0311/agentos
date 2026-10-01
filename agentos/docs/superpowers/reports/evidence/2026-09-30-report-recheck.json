@@ -1,0 +1,752 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Current documentation-only recheck; historical audit and repair test counts are not rerun evidence.",
+  "checkedAt": "2026-09-30T18:05:37.7282274+08:00",
+  "root": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos",
+  "branch": "codex/collaboration-workflow-closure",
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "sourceSnapshotBeforeDocumentation": {
+    "capturedAt": "2026-09-30T18:05:37.7282274+08:00",
+    "branch": "codex/collaboration-workflow-closure",
+    "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+    "trackedModified": 76,
+    "untracked": 52,
+    "comparedFiles": 125,
+    "manifestAlgorithm": "SHA256 of sorted path<TAB>uppercase SHA256 lines joined with LF and no final LF; four documentation artifacts excluded",
+    "manifestSha256": "F9694A77ABF5375CC83A7B246EEE4BCE8AC990FC16A633E88E1366010AF1CEEF",
+    "entries": [
+      {
+        "path": ".gitignore",
+        "sha256": "3F47DDF6977AC3DFA73D0153C39081E1B4C1BA6C1E2AA75F3FD91775FC4DC67B"
+      },
+      {
+        "path": "apps/server/src/index.ts",
+        "sha256": "AD0D617E92A4555EC40EA3785BC6592C04EEAD9289AB4D4B029CFF80BE9BD163"
+      },
+      {
+        "path": "apps/server/src/managers/WorkspaceManager.ts",
+        "sha256": "83ED45F9FB81790EF9F0C73CEF0DE21F508519D6C93EC568C6C61D42A9EB291E"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/integration.test.ts",
+        "sha256": "EB872156A1DAF890DA942978DAF36C32966239F781D7ABF9EEF52C2EAA99ED68"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+        "sha256": "274A7A9B97984A9ECFBD217819B44CAD5E1EA1ECF631302B1A2A18DE6BEC5D4B"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+        "sha256": "81DD828E4087604683DCC04FE50F2A556C2729FFA9615D077670DAC4E3F18C02"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-6-idempotency-schema.test.ts",
+        "sha256": "309C3FC0148A42ACF868B280CBFAD12605F67AAC8629FCEBBFE11AAC8EE189BF"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-8-p3-migration-restore-rehearsal.test.ts",
+        "sha256": "F5D10D0AF6FDD7EA574690D749F127F4D5BA98133773DA8DB19264D4B6AEC3B0"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+        "sha256": "3C01BFA8BC1ADF2CF87D99E0717B20AD391674116E5F93BC256DB03A54808393"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+        "sha256": "52B4533B373B5D6D214E0B84FC61A68DD98E7326E1E62DA01366F60D03983492"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "sha256": "512834EBD3C41BF4278255226E623CA023AD5B42C232433DA96449C2960105AB"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-040-collaboration-application-admission.test.ts",
+        "sha256": "7623A5E77100DD75AE11D6AA14DDB8BE18D3E6473523187848A8CDFBCBBA8B1F"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-041-group-execution-ownership.test.ts",
+        "sha256": "CE14A1DAD31B81AAEB0D7847C678DC350755378CD79D16AFDA0DAE64892E7EEE"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration.test.ts",
+        "sha256": "3F567A86E967DFB6A54B3B04BA0FCF87ED7517A93AB9D42098B5ECCE23E7B1BD"
+      },
+      {
+        "path": "apps/server/src/migrations/default-registry.ts",
+        "sha256": "374B819EFFA5E2EE4220123866313C684BB941ED88B7622C2E7661AE8F753DC3"
+      },
+      {
+        "path": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+        "sha256": "9F70204F912D20515A5F1827C7F402445589AB59971E925C7F96AC8E22B156E5"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/035-collaboration-workflow.ts",
+        "sha256": "0F7778318D4AB38DCB26E938793871555DA887EFEC0791AC97FC7FB1D8A5CD0D"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/036-group-discussion-idempotency.ts",
+        "sha256": "9DB4BD5D306B23A9B8B545B66CF41AA778DA125066ADBFD0E52E7A91EBFA627B"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/037-canonical-message-attachments.ts",
+        "sha256": "4906D761FE806E57CAB6D8B9FEAB1E910B2391D15147F4E3C2A2653A80DAFDA9"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/038-collaboration-candidate-evidence.ts",
+        "sha256": "18435FD945DE333F23B66D0FA3CF70DD7BC24927764086CB991E08B670EBEF1A"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/039-collaboration-control.ts",
+        "sha256": "AAF7410F69C5883F34B9754F31B9224C7F44A36EC92AEE0E4EE2A48A67D3DC59"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/040-collaboration-application-admission.ts",
+        "sha256": "743B272F30A9986D8BD46FCED56F16750BB825AD913EDD5F472BE7840C2BBFFD"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/041-group-execution-ownership.ts",
+        "sha256": "6FA082DE30DBCC8672417D7C7F268F428F0A652C5F386EC2E25A1DCBD31760B0"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.control.test.ts",
+        "sha256": "843BD39ADFD0738B6F80D9783191AB251254D508467EA0EFD30BAB2947135FF2"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.ts",
+        "sha256": "2CCEE7E28D1FC492C1B7BB528A295706B073FEF800D21E721341A3A8F26DA6A2"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.group.test.ts",
+        "sha256": "9BB63B40497573F8613FD694CCE0F9793F6411C4EA18FBF62727B15B3BBACF67"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.test.ts",
+        "sha256": "0A087AA49A94FB474F650D4250C9D16BE79B58B120A37B154E7209AD848DCEBF"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.ts",
+        "sha256": "86FA2797D79B00F1C5AF5BDDFFA2A5A40BACF749B0B15D2C3157EF61C853ED63"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.test.ts",
+        "sha256": "A825CEAF383758E9766B80F631172A2E219ED56BD048D2E46B0FAB419F4E7E97"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.ts",
+        "sha256": "F21D8CBAB9DCAF8CF31CB14527B7CCCA461789B182390D9A416AAC9B693C44AC"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.test.ts",
+        "sha256": "09815D5397ED630AD4DE4A9AF279096C1078C8AE421B8B2FFB31DD0F33766B26"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.ts",
+        "sha256": "A9D6C0527CA9E0A2C49128ED21E10C2A8152928661C28B5ECAD186ECCA699B89"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.test.ts",
+        "sha256": "E71CB36B88FCDE0881FF7F1B5B4AE9C29FB20EDB665ACF89CAF48309E89E6433"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.ts",
+        "sha256": "6CA86069755226647DB7F22736FEA89B5EEC9ABE074DA5644A504FB9B6AB29C5"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.test.ts",
+        "sha256": "9E0C985A24F671A0CDC113C79EA33F0520D133FF074B445A64C531CF0048AFBB"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.ts",
+        "sha256": "2DF0519BAFED3281FABB663B1245156567F9D86ABB3B3F4F935356153AC0B313"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.test.ts",
+        "sha256": "BE3C19DEE419E034B4A2E221D5D5C45A130DCA440F55AA3615E25CAC1015B709"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.ts",
+        "sha256": "317E582A40C46CAFCD2E6CF5D5DA1265D82A191037F60FEB7F3CD5C9AA946ACD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.test.ts",
+        "sha256": "92FA475FE8C90F96B12C9F3D39432CB23E8697656E0F4627E5DA66096FECA499"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.ts",
+        "sha256": "60FFEE25520A245701D840EF982533C4CE69E8336C6643942AF761EF0A35195E"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.test.ts",
+        "sha256": "B3D9428F0A49D53C6BE57FAAC88EE9358BCE5D9C7B435EB759CFA51886A78CCD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.ts",
+        "sha256": "B6DB1BAB87D783E23B3CB6C566F7AA4C7DA604EE6F2F7E7ECF0B6AAD7D3D38E0"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationStageHooks.ts",
+        "sha256": "30F60EC12276B22D5C49052DB8979C657958356F85E74FB906F9C988064BF5C7"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.control.test.ts",
+        "sha256": "CD3491E976AD219ABCAC494DE3F4367C93400D9CDB191BD026797337AEBD665A"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.ts",
+        "sha256": "0C281CB7F21EB286080116F44F70250AC36B0890F1822ED6AEB2E4C6B00F2C80"
+      },
+      {
+        "path": "apps/server/src/services/ConversationAttachmentService.ts",
+        "sha256": "EAA61C9C0C33AD2F60CDD5F692B31BC49A84A818A23402ABCA1EEEEC67DD9C32"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "sha256": "50517D501ED5518D74D07A1054730A96E79DB17310D59D5DEB814E20C10CC7D1"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.ts",
+        "sha256": "738F13AD6490D5C581FB19F2EDEB3FA88D7F694B7592C66FAE17A6F762F5169F"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.test.ts",
+        "sha256": "5CCF5D52813BA2EEE61D2CA263C70A431340D5E2BB326193C726E5A8F2504779"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.ts",
+        "sha256": "9A9D97BEC93E69A97B7097DB9B1F000918108C1CDA0258721A47F8CFD3958F24"
+      },
+      {
+        "path": "apps/server/src/services/M2CoreAcceptance.test.ts",
+        "sha256": "DD95F3D6E6D6AAB77B7E42D8196F9AFB5DB81980E7A35D08CF9B76D6051356A8"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "sha256": "AB2E95FC1AECEB5126A236A9F5BE4BB5133478939605B6E931C47E25E5379FFE"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "sha256": "6EC8B58346449CC60BB939C3CE1F7C626FE1145EF4F38AE864D33AF2CCF2095F"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+        "sha256": "018B9E741E306E45CF57EAD7EAA1AACF71BBB7CC18D494B3F91E085A5BB0223C"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "sha256": "5BE11CBAB8BD24E7705E32A90798A0EE4E665EACFDD0F07FF5FB89CE188CD1CC"
+      },
+      {
+        "path": "apps/server/src/services/SnapshotService.ts",
+        "sha256": "784B5AF9F7BD6AA8EA4A6F7AD41C29792457994CF520E6B4D682C2E25A52648A"
+      },
+      {
+        "path": "apps/server/src/services/TaskRunService.test.ts",
+        "sha256": "1CB661D0D62F5CFDD51D8B22003E57A0C989A74511FBA6809088F25EBEC28CFE"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.test.ts",
+        "sha256": "1088B8A8E0708DBD8B6EAA8CBB35811ECA33D6888EBF150D1F45219A173D527E"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.ts",
+        "sha256": "E8DBFBCEE59BDD27285097BA399EFC274A8542B9B23D3CE2A08F236A03606030"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "sha256": "62D3B677EDE701FD57CB0668423DA2BD580862664BABD3E398BF85096E872DE0"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.ts",
+        "sha256": "4051D067B887EA97C762F333C89281791025498A3A6CC90FFEF20C54A8B158E5"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.test.ts",
+        "sha256": "FD8E19334F81FD850D5F399177597863DC3D3439BEA457B7537429607EB5EEA4"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.ts",
+        "sha256": "34C8C213A89871FE3C439A84F2259F2ED263DA32A9EBFEEC3029E5DB11A5C349"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceCompatibilityMigrationService.ts",
+        "sha256": "488917A734CE8594272D62FD93E1CB0CA7FF454A48EDB57D6CC8CF5E4E9CBBD2"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.test.ts",
+        "sha256": "3AB3604C1EF3C50EA5AAAEB1752BCE83A2AD848B86ECD979B02E63BCCA5707F8"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.ts",
+        "sha256": "3D05A1CEA2E74998294E747C1ECC4919D490C3BCED134D92DCB5F3153A6D6FEC"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationControlRepository.ts",
+        "sha256": "0B02AF84742D2EC25E066EF47A54D7772F03C411CB99BC4AC09BD233FEEF08E6"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.test.ts",
+        "sha256": "5C5737C366E9F5CA2D28F6585E674FF55417EDADC8522446AD3A60C959C90ECE"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.ts",
+        "sha256": "9F8EEAAAC0093DC1498A9B11200B67480ACBBAF0B8C0C26DA98B50DA974E69EA"
+      },
+      {
+        "path": "apps/server/src/store/ConversationRepository.ts",
+        "sha256": "06D2BF0B9E2C3AB47654EFF6D72E36401F6E2839A8D978300DF640A97C741788"
+      },
+      {
+        "path": "apps/server/src/store/GroupInteractionRepository.ts",
+        "sha256": "1252C2BCE257C35814AB1CF9C3E735F6B770435942D2220CF293389C17CCCBA1"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.test.ts",
+        "sha256": "98C727CFA5F95FE68A0E0D21A956605AA10E5E284F8F89002D51C256CADE6491"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.ts",
+        "sha256": "695653CC093AF010E955F7B57DE2ECC71E6FF02F805C8B490DD2D185357CD6F0"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.test.ts",
+        "sha256": "D284EEF96358A832FB2A650099A98313BF9B11A73833F65AA0C2E5EE123F2E94"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.ts",
+        "sha256": "FF2DEF92B1EC190E2FB9D23DCDD9798793FB5FA56F5B5A38FC506B5C42B1ED4C"
+      },
+      {
+        "path": "apps/web/src/app/globals.css",
+        "sha256": "CA61580764B40F3770F6C6AA5A5FD40932B11C80BBCA64EBEA090F508CEE73EC"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/page.tsx",
+        "sha256": "7CCA7AC8C0887999C67D1D850D7DFC885B746833CE575E0DD786924A4ADB4349"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/runtime/page.tsx",
+        "sha256": "14D01943BDF089BB893CE1E11DA3099384CF25A23501FE234E7B47484D0169EB"
+      },
+      {
+        "path": "apps/web/src/components/chat/AgentList.tsx",
+        "sha256": "54FEABA5EA4B2E594F8C7173DD4BE3F686FE0A9DCAF1495C90ABC881DE7B5E0D"
+      },
+      {
+        "path": "apps/web/src/components/chat/ChatPanel.tsx",
+        "sha256": "AFBCCB5CB31A5CCABB97B82A459E2CDE091645013C2BB514B710ADA55D54AAEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskDetailsView.tsx",
+        "sha256": "1CFAA46D8B20AFA4E9CA1BCFC4F008AA86FE576AF0A8AAAD8B3D2F3E9830C364"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskPanel.tsx",
+        "sha256": "6080CDA53F92FB8611B6EC1FC96AB90535DAFBBE032AD29CACF6BCD15D50B1B5"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskProgressCard.tsx",
+        "sha256": "AB839AE74124DC43C478CAE47E958B3F80A80A7805C9E5ACA780931FC996A31A"
+      },
+      {
+        "path": "apps/web/src/components/chat/GroupCreator.tsx",
+        "sha256": "C0D8F495856DD1028F01DDD12A38471AF2B938075CF155D9336719DB3AB4CFB0"
+      },
+      {
+        "path": "apps/web/src/components/chat/RunInspectorPanel.tsx",
+        "sha256": "83AF3A6F0475BB83D504AF7AA7B00A905D6B2FD41ACB9451E4A8175343358DB3"
+      },
+      {
+        "path": "apps/web/src/components/chat/RuntimeConversationCreator.tsx",
+        "sha256": "EA99BA1232E1CF0CD7BD5945B0EEF464644504EA8E2284FD527ECA57E6A36BEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/UnifiedRuntimeConversationSurface.tsx",
+        "sha256": "812C506D749EFCDE24DEABBD6AA8BF2999EF405F52FD1F41867AA06761786A8A"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.test.ts",
+        "sha256": "43A4988B184A7A400B9D1615FDF2B4208F9FE534C4C9974F1A2D05CC85C3DCD2"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.ts",
+        "sha256": "ECA95488E06EF6DE09B990C01503DB52728648714499F04A86D845659892935F"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.test.ts",
+        "sha256": "464F14FD0550F4012C14E4DABA2756CF6B0AD01349CCB6DF149974CA13A6E169"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.ts",
+        "sha256": "F71DD542187D07386C74438108D5F7DEF92DBC968DB7913B6A6FC5BAE13A6953"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.test.ts",
+        "sha256": "4060F733ECEF2AD2B4A5240215B338D178CBCD5202A46D747C875184CCA959AA"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.ts",
+        "sha256": "D5774BE56BD29B1054DA59A9A65ABD2642996BD30B66F30886068BBB258F34C9"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftRepository.ts",
+        "sha256": "ECDDCC8CE11F9A2C8D3B5B5DDFD5F08CCA16D57B897FBA2C8C618A872697634D"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.test.ts",
+        "sha256": "7D22E29757BD24EB6420978EDCE63C1F6C06195E9CBFD28610E05FDFF292045E"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.ts",
+        "sha256": "87BC509BD527F17DE9581DA8D0B67CF4DACA1A88AE67DF33B356E908E34DC775"
+      },
+      {
+        "path": "apps/web/src/lib/directConversationClient.ts",
+        "sha256": "494F55C53602616CEC7C22175F740E5208E58AA0A20FF9C156ABD2355D3C7043"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.test.ts",
+        "sha256": "BE406BE51D489D93FDD5EB26D6E280C7BF97090F876D013F6E2EA4A51951B1CA"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.ts",
+        "sha256": "A28F9406B30CA29EE7545298A5A12994D81E673944D160EE7BF15F0CC5B1C53E"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.test.ts",
+        "sha256": "ABB36E58DBA249A76E1E733D93E12DD155A4F701F2F6D97ABB67814E7D385FB1"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.ts",
+        "sha256": "D107F33E80B2D10BD7F8D4147A95B39F0877F55603F1B526FE31EF428667C859"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.test.ts",
+        "sha256": "F21203074185512263C4AE82EDD6B32527594EE14B4F28CB09FBE202A174FAAC"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.ts",
+        "sha256": "3B86A07826E3254686E32AABFAC095411D5DA206BC47FFD4895B7A94D9C0B427"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.test.ts",
+        "sha256": "E9DFA77E1EF81018FD1882E4F04C4ECD1A76BAF4514B69436DDB86A6BBAE825C"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.ts",
+        "sha256": "68756A5040AF168177D96B371DD9B850DB64C017CE7BFAB7AE67D47D30DF8CD3"
+      },
+      {
+        "path": "apps/web/src/lib/sse.test.ts",
+        "sha256": "EABCB19E926EF287B6371E5B2ADDB12CB7B7414E90638C67A8F1C2BE3AFC1608"
+      },
+      {
+        "path": "apps/web/src/lib/sse.ts",
+        "sha256": "D2738A50D0EAA16390DCD8F0765B9BC97EC0D8EFC00C628FCD27EBEF2F65868E"
+      },
+      {
+        "path": "apps/web/src/lib/streamReconnect.ts",
+        "sha256": "AC4BBD29E112F698E9106788C1590E9DD09956C5AA9B9ADE9469186E5E86A51D"
+      },
+      {
+        "path": "apps/web/src/lib/useApi.ts",
+        "sha256": "CFD72D139BCBC8E0E03FD7992845E73B488016A5F7929B29E200C3F6FEB9DE08"
+      },
+      {
+        "path": "apps/web/src/lib/useCollaborationProgress.ts",
+        "sha256": "76D80405106F1013C66E4E12BC8B757CED730468376BFC952FE6C73CC4526D09"
+      },
+      {
+        "path": "apps/web/src/lib/useConversationDraft.ts",
+        "sha256": "A715D97B035D34262AF2BB79957B0A9AB8D80B33B04844DECB1E0D3BCCB45166"
+      },
+      {
+        "path": "apps/web/src/lib/useDirectConversation.ts",
+        "sha256": "CDF3242EDF1F47EF54B6B50B5961A4E714D2FC23FF96DCC980F594A53782BD7F"
+      },
+      {
+        "path": "apps/web/src/lib/useGroupConversation.ts",
+        "sha256": "EC36ED166B5C65681D6C90D05A0E9D1B8DFAD80919537CC172A329B37BF84A21"
+      },
+      {
+        "path": "docs/superpowers/reports/2026-09-21-collaboration-workflow-live-test-handoff.md",
+        "sha256": "F70E0CA6EFE9C9B65A7D9C9DDA5DE2F289EB2DB7848D8BCBBCCACD2AC4794431"
+      },
+      {
+        "path": "docs/superpowers/reports/evidence/2026-09-30-crlf-candidate-probe.mjs",
+        "sha256": "8115701F6CF8A0A53D3D5FBBFEE7907587262C0156417C246EC6227058B92D52"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "sha256": "0C0625CF0A88DDAEEA59A1A08BA912ACF4FA0C0CDBB1D77EE387C867F6D6CDBE"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "sha256": "2252AFC0A60A1BA921917752983BB2DB61BACC8F24D448E4F1A4C51B98E624C9"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "sha256": "EBE4652B8905017754DA43024FB0CF1D16E40BAE7895950B6B2B3B603A980ACE"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "sha256": "C9B9262AC4BBFEAF5D7821909DC6F5EA469CBA866FEA2AC33DC6B4B03BC741DF"
+      },
+      {
+        "path": "packages/agent-core/src/providers/types.ts",
+        "sha256": "6A5D0BF54205C5E6C38189CFFCA905BCF111CA9DC47C6601621FD694EA32009E"
+      },
+      {
+        "path": "packages/agent-core/src/providers/validation.test.ts",
+        "sha256": "2ADA8852B9CD8EAB77C8041BF250FC6034D151556CEDCF8A209AE1D1E3909718"
+      },
+      {
+        "path": "packages/shared/p6-l1a-admission.test.ts",
+        "sha256": "AC5A3EB2BE028EE5DE3F321BAA50FD593EE931006B66A38905D0927362F06A0E"
+      },
+      {
+        "path": "packages/shared/src/types/collaboration.ts",
+        "sha256": "4C62771C088A148384FCCBF5930AE4DB8EF746AD13640BF8E09CA45C7BA6B77E"
+      },
+      {
+        "path": "packages/shared/src/types/index.ts",
+        "sha256": "471A10C8C0F36D1EAA6B455EE90508B7346BBEAD22D87314E287562FA9D899A9"
+      },
+      {
+        "path": "packages/shared/src/types/p6-l1a-admission.ts",
+        "sha256": "134F668AC04BE60DB4B9E9A2339D7F829B5984DEA4A3FC0304A1041EBC7698EB"
+      }
+    ]
+  },
+  "webTypecheck": {
+    "command": "pnpm --filter @agentos/web exec tsc --noEmit --incremental false --pretty false",
+    "attempts": [
+      {
+        "exitCode": 1,
+        "diagnosticCount": 12,
+        "output": "src/app/workspace/[id]/page.tsx(1009,133): error TS2322: Type 'GroupInteractionBudgetInput' is not assignable to type 'Readonly<Record<string, number>>'.\r\n  Index signature for type 'string' is missing in type 'GroupInteractionBudgetInput'.\r\nsrc/app/workspace/[id]/page.tsx(1012,45): error TS2345: Argument of type 'PendingGroupDiscussion | undefined' is not assignable to parameter of type 'PendingGroupDiscussion'.\r\n  Type 'undefined' is not assignable to type 'PendingGroupDiscussion'.\r\nsrc/app/workspace/[id]/page.tsx(1126,71): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1129,55): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1203,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1213,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createConversation'?\r\nsrc/app/workspace/[id]/page.tsx(1219,75): error TS2345: Argument of type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; text: string; mentionedAgentIds: readonly string[]; attachmentIds: readonly string[]; queueItemId?: string | undefined; } | { ...; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1225,69): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1241,25): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1255,18): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1262,5): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/lib/conversationDraftRepository.ts(170,44): error TS2345: Argument of type '(item: { id: string; name: string; mimeType: string; size: number; previewUrl: string; }) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type '{ id: string; name: string; mimeType: string; size: number; previewUrl: string; }'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+      },
+      {
+        "exitCode": 1,
+        "diagnosticCount": 12,
+        "output": "src/app/workspace/[id]/page.tsx(1009,133): error TS2322: Type 'GroupInteractionBudgetInput' is not assignable to type 'Readonly<Record<string, number>>'.\r\n  Index signature for type 'string' is missing in type 'GroupInteractionBudgetInput'.\r\nsrc/app/workspace/[id]/page.tsx(1012,45): error TS2345: Argument of type 'PendingGroupDiscussion | undefined' is not assignable to parameter of type 'PendingGroupDiscussion'.\r\n  Type 'undefined' is not assignable to type 'PendingGroupDiscussion'.\r\nsrc/app/workspace/[id]/page.tsx(1126,71): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1129,55): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1203,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1213,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createConversation'?\r\nsrc/app/workspace/[id]/page.tsx(1219,75): error TS2345: Argument of type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; text: string; mentionedAgentIds: readonly string[]; attachmentIds: readonly string[]; queueItemId?: string | undefined; } | { ...; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1225,69): error TS2345: Argument of type 'SubmittedConversationDraft | { identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is not assignable to parameter of type 'SubmittedConversationDraft'.\r\n  Type '{ identityKey: string; revision: number; textRevision: number; mentionsRevision: number; attachmentIds: readonly string[]; queueItemId?: string | undefined; }' is missing the following properties from type 'SubmittedConversationDraft': text, mentionedAgentIds\r\nsrc/app/workspace/[id]/page.tsx(1241,25): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1255,18): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/app/workspace/[id]/page.tsx(1262,5): error TS2304: Cannot find name 'blockedQueueItemByIdentityRef'.\r\nsrc/lib/conversationDraftRepository.ts(170,44): error TS2345: Argument of type '(item: { id: string; name: string; mimeType: string; size: number; previewUrl: string; }) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type '{ id: string; name: string; mimeType: string; size: number; previewUrl: string; }'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n"
+      }
+    ]
+  },
+  "serverTypecheck": {
+    "command": "pnpm --filter @agentos/server exec tsc --noEmit --incremental false --pretty false",
+    "attempts": [
+      {
+        "exitCode": 0,
+        "output": ""
+      },
+      {
+        "exitCode": 0,
+        "output": ""
+      }
+    ]
+  },
+  "webUnitTests": {
+    "command": "pnpm --filter @agentos/web test",
+    "attempts": [
+      {
+        "exitCode": 0,
+        "pnpmOutputTail": " sidebar (0.5628ms)\n✔ LITE-12-016 the UI ships only the Lite route surface (2.2037ms)\n✔ LITE-12-016 no web module implements a deferred product surface (6.5491ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.4912ms)\nℹ tests 253\nℹ suites 0\nℹ pass 253\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3220.8313\n",
+        "summary": {
+          "tests": 253,
+          "suites": 0,
+          "pass": 253,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 3220.8313
+        }
+      },
+      {
+        "exitCode": 0,
+        "pnpmOutputTail": " sidebar (0.5489ms)\n✔ LITE-12-016 the UI ships only the Lite route surface (1.8915ms)\n✔ LITE-12-016 no web module implements a deferred product surface (7.0414ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.7473ms)\nℹ tests 253\nℹ suites 0\nℹ pass 253\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3993.7134\n",
+        "summary": {
+          "tests": 253,
+          "suites": 0,
+          "pass": 253,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "duration_ms": 3993.7134
+        }
+      }
+    ],
+    "latestFullOutput": "$ node scripts/run-tests.mjs\n✔ shows provider and CLI command as separate agent identity fields (35.1885ms)\n✔ GRP-01 the interaction is visibly bounded with progress meters (27.3745ms)\n✔ GRP-02 the hop chain and per-Agent attribution are explicit (12.4074ms)\n✔ GRP-03 an active interaction shows a Stop control that does not cancel a Run (13.8137ms)\n✔ GRP-04 a stopped interaction hides Stop and names the stop reason (13.2673ms)\n✔ GRP-05 a loop-guard termination shows the signal as an alert (26.3555ms)\n✔ ConversationContextMenu renders above workspace panel overlays (3.7915ms)\n✔ LITE-12-007 the empty state is named, never rendered as a blank surface (46.6215ms)\n✔ LITE-12-007 the error state is an announced alert, not silence (55.617ms)\n✔ LITE-12-007 the in-flight state is distinguishable from an idle one (57.7197ms)\n✔ LITE-12-007 the content state coexists with the other states without losing them (26.1006ms)\n✔ LITE-12-007 every state renders without throwing, so no state is unreachable (134.5378ms)\n✔ DCUX-V01 renders the message timeline with sender and status (65.1089ms)\n✔ DCUX-V02 the Composer exposes Chat/Task/Run as distinct modes (23.3415ms)\n✔ DCUX-V03 a streaming reply renders as ONE block with the cursor, not per-token nodes (20.1844ms)\n✔ DCUX-V04 send is disabled for empty content and the button labels the mode (99.8305ms)\n✔ DCUX-V05 an empty Conversation names the absent object and an action (24.4454ms)\n✔ DCUX-V06 the view consumes tokens through CSS variables and shows the error (19.7054ms)\n✔ WB-01 the workbench renders all four columns with their content (96.5971ms)\n✔ WB-02 the active Conversation is marked and selection is a callback (28.1709ms)\n✔ WB-03 the Inspector shows the reply stream state (19.3921ms)\n✔ WB-04 the Canvas column contains the Conversation runtime view (21.7294ms)\n✔ WB-05 a group Conversation gets the bounded group canvas, not the direct composer (21.5863ms)\n✔ LITE-12-101 the workbench exposes Agent selection and Conversation creation controls (26.5443ms)\n✔ LITE-12-102 runtime groups have a separate creation control (8.9626ms)\n✔ shows token consumption from execution statistics (27.635ms)\n✔ GRP-canvas: the group canvas mounts with a composer and the budget controls (58.3762ms)\n✔ GRP-canvas: the send control stays disabled while the composer is empty (20.7682ms)\n✔ renders GFM markdown and fenced code without exposing raw HTML (24.1454ms)\n✔ keeps inline code inline while rendering fenced code as a block (4.9965ms)\n✔ blocks javascript links and external images but allows same-origin artifacts (4.2854ms)\n✔ LITE-13-101 Run Inspector uses the forward runtime route (0.7617ms)\n✔ LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state (0.4424ms)\n✔ the run mode control renders as a compact custom picker instead of a native select (7.7822ms)\n✔ S3 approval card exposes the persisted action evidence and both decisions (24.8096ms)\n✔ S3 approval card disables both decisions while a persisted decision is in flight (0.4955ms)\n✔ LITE-12-103 runtime group creator exposes bounded sequential setup (6.7129ms)\n✔ LITE-GROUP-032 runtime group settings renders member-scoped model and effort controls (8.7079ms)\n✔ INS-01 the Run overview is distinct from Task/Process and shows duration (79.6269ms)\n✔ INS-02 Stages list each Stage with its own status, never collapsed into Run state (10.3223ms)\n✔ INS-03 the Process view labels the native PID as evidence-only, never as identity (19.3712ms)\n✔ INS-04 Events render in strict sequence with their own ids (9.9797ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (29.7093ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (31.6926ms)\n✔ INS-06 a section error is an alert, never a page failure (18.0179ms)\n✔ INS-08 Compaction explains WHY it ran and WHO adopted the summary (18.2532ms)\n✔ INS-09 an absent compaction is named, never rendered as a silent empty section (38.3802ms)\n✔ LITE-12-010 unknown or unavailable read-only enforcement renders modifying (40.4954ms)\n✔ LITE-13-102 Inspector action controls are exposed only through callbacks (22.2183ms)\n✔ renders a destructive confirmation dialog with accessible relationships (4.4815ms)\n✔ GLASS-10 SSR render keeps children and adds no glass attributes (3.3647ms)\n✔ GLASS-11 context budget stays within the WebGL2 browser ceiling (0.1793ms)\n✔ SHELL-01 wide mode renders all four columns with landmarks (25.9207ms)\n✔ SHELL-02 the shell consumes the token system through CSS variables (22.7879ms)\n✔ SHELL-03 standard mode collapses the Inspector into an affordance (33.0816ms)\n✔ SHELL-04 compact mode keeps Agents and Canvas only (17.1265ms)\n✔ SHELL-05 reduced motion collapses panel transitions to zero (16.1163ms)\n✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (9.4838ms)\n✔ SHELL-07 dark and light themes emit their own token values (11.9639ms)\n✔ SHELL-08 the Canvas keeps its minimum width (7.7615ms)\n✔ SHELL-09 an optional toolbar renders above the columns (4.9938ms)\n✔ MEV-01 snapshot identity, strategy, query hash, budget, and truncation are visible (32.8713ms)\n✔ MEV-02 each selected Entry shows rank, score, scope, authority, confidence, reasons, and source (24.0831ms)\n✔ MEV-03 exclusions are named with reasons, and an all-selected snapshot omits the block (28.3711ms)\n✔ MRQ-01 review body is version-guarded and outcome-explicit (1.2621ms)\n✔ MRQ-02 merge carries a trimmed target and rejects are target-free (0.1647ms)\n✔ MRQ-03 artifact source URL encodes the workspace and artifact IDs (0.1672ms)\n✔ MRQ-04 initial render is the empty review queue, not an error (25.5658ms)\n✔ ExecutionArchive separates compact filters into aligned rows (5.5122ms)\n✔ RunDetails keeps its action header sticky while details scroll (6.5551ms)\n✔ keeps the server-rendered theme toggle stable before browser hydration (4.0738ms)\n✔ reads the saved theme before the first render (1.2744ms)\n✔ falls back to dark when no valid preference is saved (0.3987ms)\n✔ indexes presence for all agents and exposes stable labels (0.7322ms)\n✔ sorts artifacts by creation time without mutating the API response (2.0181ms)\n✔ builds an encoded content URL and omits metadata-only content (0.1938ms)\n✔ hides execution log artifacts from the chat shelf (0.1538ms)\n✔ does not expose a chat shelf when a run only produced a log (0.1068ms)\n✔ resolves a history attachment path against the API origin (0.7682ms)\n✔ preserves absolute and browser-local attachment URLs (0.3154ms)\n✔ detects whether the chat viewport is close to the bottom (0.9809ms)\n✔ only auto-anchors an already-following stream (0.1765ms)\n✔ pending collaboration control disables writes and exposes only recovery guidance (1.0336ms)\n✔ confirm, cancel and apply mutations all carry expectedVersion and an idempotency key (1.2562ms)\n✔ task history pagination retains the selected task while appending page 2 past item 100 (2.7558ms)\n✔ an explicit task absent from the first page is resolved directly and checked against its conversation (0.2409ms)\n✔ queues non-empty input while an execution is active (1.9417ms)\n✔ sends input immediately when no execution is active (0.1525ms)\n✔ keeps an input typed during execution when the active run is interrupted (0.1425ms)\n✔ LITE-12-014 Enter submits while Shift+Enter and IME composition stay local (0.796ms)\n✔ LITE-12-014 keyboard submit prevents the browser newline and restores composer focus (0.2256ms)\n✔ LITE-12-014 disabled submit does not invoke the send callback (0.1281ms)\n✔ prefers dynamically discovered model options over legacy model ids (1.5441ms)\n✔ falls back to auto when a selected model does not support the current effort (0.2495ms)\n✔ initializes from the Agent default without inventing a model override (0.1925ms)\n✔ restores conversation settings over the Agent default (0.1821ms)\n✔ normalizes a saved effort when the saved model no longer supports it (0.2019ms)\n✔ uses capability defaults when the profile has no model (0.1581ms)\n✔ does not send the Agent default as a fake per-message override (0.1928ms)\n✔ preserves a model-specific max effort through composer settings and overrides (0.493ms)\n✔ selects the next conversation when a middle item is deleted (0.7798ms)\n✔ selects the previous conversation when the last item is deleted (0.1829ms)\n✔ returns null when the only conversation is deleted (0.1415ms)\n✔ keeps the context menu inside the viewport (0.6503ms)\n✔ draft identity includes workspace, verified storage source, and conversation (0.7957ms)\n✔ late completion is fenced by identity and selection generation (0.2261ms)\n✔ send settlement clears only the submitted text revision and attachment ids (0.8283ms)\n✔ queue item freezes mentions, mode and attachment ids under its conversation identity (0.3459ms)\n✔ persisted draft JSON never contains image data URLs, Blob objects, or preview URLs (0.2384ms)\n✔ IndexedDB write failure keeps text but omits unrecoverable image metadata and warns about refresh loss (0.7247ms)\n✔ successful send can settle its original persisted identity without clearing newer edits (0.8064ms)\n✔ keeps the selected group active when a direct-history selection changes later (0.7199ms)\n✔ uses the group as the chat target instead of the previously selected agent (0.6363ms)\n✔ does not clear a group view when the already selected group is clicked again (0.1382ms)\n✔ DCUX-S01 a stream connects, assembles one block, and finalizes (0.977ms)\n✔ DCUX-S02 a checkpoint out of order fails as a gap (0.4235ms)\n✔ DCUX-S03 reconnect resumes from the durable cursor and resyncs (0.1863ms)\n✔ DCUX-S04 a terminal stream accepts nothing further (0.1401ms)\n✔ DCUX-S05 checkpoints for another message are ignored (0.1374ms)\n✔ DCUX-C01 the client targets the forward runtime surface with correct paths (0.8436ms)\n✔ DCUX-C02 a non-OK response throws with the status (0.2872ms)\n✔ DCUX-C05 the client sends an explicit ask intent for a general conversation (27.2408ms)\n✔ DCUX-C03 canonical runtime group creation keeps the group contract explicit (0.343ms)\n✔ DCUX-C04 canonical runtime group member settings use the versioned group endpoint (0.8353ms)\n✔ DCUX-P01 chat send produces no Task and no Run (0.2191ms)\n✔ DCUX-P02 task and run modes map to distinct explicit actions (0.1359ms)\n✔ DCUX-P03 empty content and unknown modes fail closed (0.1301ms)\n✔ DCUX-C10 a chat send persists the Message and streams the reply as one block (37.6023ms)\n✔ DCUX-C11 task and run sends hit the bridge and never open a stream (1.0502ms)\n✔ DCUX-C12 empty content fails closed and sends nothing (0.8997ms)\n✔ DCUX-C13 a stream that ends without a terminal event resyncs from the cursor (1.0058ms)\n✔ DCUX-C14 a stream that is still streaming after resync does not guess completion (0.7691ms)\n✔ DCUX-C15 a checkpoint gap fails the stream instead of guessing (0.8394ms)\n✔ orders archive strictly by persisted event sequence (1.8441ms)\n✔ supports static failure, tool, file, agent, and text filters (0.3329ms)\n✔ freezes elapsed seconds at completedAt for terminal executions (0.6528ms)\n✔ uses now for a running execution (0.1044ms)\n✔ returns zero for missing, invalid, or negative timestamps (0.1161ms)\n✔ refreshes only executions that are not terminal (0.1413ms)\n✔ projects the latest running tool into the current action and keeps its file target (1.6573ms)\n✔ merges tool completion, usage, and file changes into compact run evidence (0.4282ms)\n✔ preserves usage provenance and marks unavailable token data (0.164ms)\n✔ falls back to execution status when no structured runtime event exists (0.1673ms)\n✔ keeps cancelled distinct from failed and marks missing file observation (0.1655ms)\n✔ LITE-09-008 projects repeated streaming chunks for one execution into one timeline card (1.113ms)\n✔ keeps streaming steps from different agents or separated by another event (0.1522ms)\n✔ GLASS-01 every surface kind has both theme specs (0.6438ms)\n✔ GLASS-02 tintTone follows the theme and material carries refraction (0.2409ms)\n✔ GLASS-03 dpr is capped and extras merge through (0.1121ms)\n✔ respond calls the bounded forward route with mentions and the cancellation signal (22.3772ms)\n✔ execution observer is read-only and resumes from the persisted event cursor (1.5958ms)\n✔ createDiscussion sends the durable idempotency key alongside its frozen payload (2.117ms)\n✔ stopInteraction sends expectedVersion and a stable idempotency key (0.442ms)\n✔ interaction event versions advance monotonically and never merge a foreign interaction (0.5683ms)\n✔ GROUP_VERSION_CONFLICT is preserved as a stable client error code (1.3591ms)\n✔ lost response keeps the same durable idempotency key and frozen payload for replay (1.8654ms)\n✔ outbox write failures reject before a group send can lose its recovery key (0.4292ms)\n✔ group.plan records the plan, the skips, and the terminal reason without running a turn (1.4055ms)\n✔ a speaker accumulates its checkpoint text and finalizes with its reply id (0.3052ms)\n✔ a failed turn is recorded failed and the walk ends with its reason (0.1746ms)\n✔ a group.error marks the walk failed and group.done keeps it failed (0.1415ms)\n✔ unknown events and a checkpoint for an unknown turn are ignored safely (0.1112ms)\n✔ HS-01 the query string encodes every filter and defaults the limit (1.0365ms)\n✔ HS-02 validation fails closed on a missing Agent, bad kind, bad limit, and reversed range (1.0469ms)\n✔ HS-03 results group by kind preserving newest-first order within a kind (0.2239ms)\n✔ HS-04 every entry links to its canonical source record (0.2255ms)\n✔ HS-05 only labelled entries are searchable (no content search, secrets excluded) (0.13ms)\n✔ HS-V01 the view renders the filter set, grouped results, and canonical links (34.5855ms)\n✔ HS-V02 an empty result names the absence and a loading state is explicit (15.3243ms)\n✔ HS-V03 an error is an alert and the view consumes tokens (6.5198ms)\n✔ accepts the supported image MIME types (1.3918ms)\n✔ rejects unsupported MIME types (0.198ms)\n✔ rejects an image larger than 10 MB (0.1303ms)\n✔ rejects more than five images and more than 25 MB total (0.1737ms)\n✔ allows an image-only message and requires either text or an image (0.1738ms)\n✔ recognizes image clipboard items without intercepting text items (0.1374ms)\n✔ moves through image drafts and wraps at both ends (0.1815ms)\n✔ returns no adjacent image when the carousel is empty (0.113ms)\n✔ converts a browser image file into a draft with a data URL preview (1.0231ms)\n✔ rejects a non-image browser file before reading it (0.536ms)\n✔ rehydrates a restored IndexedDB Blob to the send payload without localStorage data URLs (0.307ms)\n✔ validates trimmed memory forms and builds server-side filters (0.7893ms)\n✔ clamps a panel width to its configured range (0.7092ms)\n✔ keeps the chat area above its minimum while resizing (0.1468ms)\n✔ keeps an in-range width unchanged (0.093ms)\n✔ inspector drag inverts the pointer delta for the right-edge panel (0.0992ms)\n✔ collapses the inspector only below the threshold (0.1123ms)\n✔ counts response lines across text and code blocks (0.7474ms)\n✔ splits long responses into ordered chunks without changing block types (0.8911ms)\n✔ keeps an empty code block in the response order (0.1674ms)\n✔ run deep links are classified before evidence or actions are shown (0.7974ms)\n✔ normalizes event order and removes duplicate file changes (1.7197ms)\n✔ exposes failed reason and preserves an empty Git state (0.1997ms)\n✔ upserts steps by id, ignores stale sequence, and sorts by logical sequence (1.31ms)\n✔ deduplicates replayed event ids and supports waiting resume attempt updates (0.2706ms)\n✔ maps terminal duration and preserves an empty state (0.9902ms)\n✔ lists approvals on the workspace runtime authorization route (22.3341ms)\n✔ resolves one approval with its persisted version and explicit decision (0.4974ms)\n✔ LITE-13-102 Inspector client encodes the workspace and Run route (1.1233ms)\n✔ LITE-13-102 Inspector client uses versioned action APIs and idempotency keys (19.9457ms)\n✔ projects one Run and rejects foreign execution evidence (1.7335ms)\n✔ rejects a projection when the requested workspace, conversation, or Run is mismatched (0.2102ms)\n✔ merges only the current Run and ignores duplicate or stale SSE delivery (0.4321ms)\n✔ selects only executions belonging to the latest run (1.9609ms)\n✔ uses the newest execution when no run list is available (0.287ms)\n✔ parseSseChunk parses complete SSE events across chunk boundaries (1.4028ms)\n✔ parseSseChunk handles CRLF and heartbeat lines (0.1898ms)\n✔ parseSseChunk joins multi-line data fields into one event payload (0.1887ms)\n✔ parseSseChunk retains the SSE id used for durable event replay (0.2066ms)\n✔ parseSseEventData returns null for malformed JSON payloads (0.1518ms)\n✔ reads the singular direct execution from a done event (0.9218ms)\n✔ reads the final group execution from a plural done event (0.1511ms)\n✔ returns undefined when a done event has no execution evidence (0.1366ms)\n✔ uses capped exponential reconnect delays (1.2719ms)\n✔ retries an unexpected EOF and succeeds on the third connection (0.3903ms)\n✔ does not retry user cancellation, AbortError, or terminal HTTP errors (0.1706ms)\n✔ stops after five reconnect attempts (0.5185ms)\n✔ supports protocol-specific terminal events without changing the default done/error contract (18.4381ms)\n✔ queues chunks and drains exactly one character at a time (1.1142ms)\n✔ flush returns only the remaining characters and resets the queue (0.2326ms)\n✔ classifies connection failures separately from execution failures (0.7042ms)\n✔ returns a field validation message only when the composer is empty (0.1381ms)\n✔ keeps a queueable send button interactive while sending (0.6064ms)\n✔ UIF-01 both themes share semantic token names (1.4388ms)\n✔ UIF-02 color tokens are valid hex (0.2709ms)\n✔ UIF-03 body contrast meets 4.5:1 in both themes (0.4554ms)\n✔ UIF-04 contrast math (0.4538ms)\n✔ UIF-05 typography scale and stacks (0.2123ms)\n✔ UIF-06 spacing scale (0.2783ms)\n✔ UIF-07 radius tokens (0.1752ms)\n✔ UIF-08 four-column width guidance (0.1964ms)\n✔ UIF-09 adaptive layout modes (0.2186ms)\n✔ UIF-10 visible columns include canvas (0.2359ms)\n✔ UIF-11 canvas keeps its minimum width (0.1816ms)\n✔ UIF-12 reduced motion (0.1405ms)\n✔ UIF-13 accessibility rules (0.1254ms)\n✔ UIF-14 uiCssVariables flattens all semantic tokens (0.272ms)\n✔ UIF-15 columnWidthPx follows guidance and visibility (0.1801ms)\n✔ UI layers keep overlays, context menus, dialogs, previews, and toasts in a stable order (0.6563ms)\n✔ LITE-12-101 workbench actions remain explicit callback intents (1.121ms)\n✔ keeps all four docked panels when the canvas has the desktop minimum (0.7389ms)\n✔ drops the Inspector before the conversation list when space is tight (0.1141ms)\n✔ drops the conversation list before compacting the Agent rail (0.1017ms)\n✔ keeps only the icon rail on compact viewports (0.0829ms)\n✔ preserves independent user choices while resolving temporary width pressure (0.0928ms)\n✔ group layouts do not consume a conversation column but keep its preference (0.0778ms)\n✔ normalizes malformed local layout state and keeps the storage key versioned (0.0888ms)\n✔ rejects stale versions and malformed focus snapshots without trapping the layout (0.2346ms)\n✔ uses independent collapse thresholds for the three user-controlled panels (0.1175ms)\n✔ keeps group chats and project knowledge accessible in the collapsed sidebar (0.5489ms)\n✔ LITE-12-016 the UI ships only the Lite route surface (1.8915ms)\n✔ LITE-12-016 no web module implements a deferred product surface (7.0414ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.7473ms)\nℹ tests 253\nℹ suites 0\nℹ pass 253\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3993.7134\n"
+  },
+  "f23": {
+    "command": "node --import tsx ../../docs/superpowers/reports/evidence/2026-09-30-crlf-candidate-probe.mjs",
+    "cwd": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos/apps/server",
+    "exitCode": 0,
+    "rows": [
+      {
+        "case": "F23_BUG_REPRODUCED",
+        "repetition": 1,
+        "autocrlf": true,
+        "ending": "CRLF",
+        "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-ZpgiNL",
+        "baseCommit": "99dc8190847ea006aca97c6a99a040eaee8f1ffc",
+        "rawGitObject": "1c92ba9f7eb008915bfe78270a91531afd6229ff",
+        "cleanGitObject": "92fac4b68182f0e8b16ae892bc6be8c3cb7e8a7a",
+        "sourceStable": true,
+        "indexStable": true,
+        "statusStable": true,
+        "outcome": "rejected",
+        "code": "COLLABORATION_SNAPSHOT_SOURCE_CHANGED"
+      },
+      {
+        "case": "F23_BUG_REPRODUCED",
+        "repetition": 2,
+        "autocrlf": true,
+        "ending": "CRLF",
+        "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-t8FNff",
+        "baseCommit": "857792251bdee34f2ee39e24064cb8f779a3c79f",
+        "rawGitObject": "1c92ba9f7eb008915bfe78270a91531afd6229ff",
+        "cleanGitObject": "92fac4b68182f0e8b16ae892bc6be8c3cb7e8a7a",
+        "sourceStable": true,
+        "indexStable": true,
+        "statusStable": true,
+        "outcome": "rejected",
+        "code": "COLLABORATION_SNAPSHOT_SOURCE_CHANGED"
+      },
+      {
+        "case": "F23_BUG_REPRODUCED",
+        "repetition": 3,
+        "autocrlf": true,
+        "ending": "CRLF",
+        "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-9SjIbT",
+        "baseCommit": "ed5ab9c7fb73565e6259e4e3e2013dab1e5c4846",
+        "rawGitObject": "1c92ba9f7eb008915bfe78270a91531afd6229ff",
+        "cleanGitObject": "92fac4b68182f0e8b16ae892bc6be8c3cb7e8a7a",
+        "sourceStable": true,
+        "indexStable": true,
+        "statusStable": true,
+        "outcome": "rejected",
+        "code": "COLLABORATION_SNAPSHOT_SOURCE_CHANGED"
+      },
+      {
+        "case": "POSITIVE_CONTROL",
+        "repetition": 1,
+        "autocrlf": false,
+        "ending": "CRLF",
+        "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-XFIAXv",
+        "baseCommit": "2e441ae2658c3ccf6f4775087df0851fa593f9ca",
+        "rawGitObject": "1c92ba9f7eb008915bfe78270a91531afd6229ff",
+        "cleanGitObject": "1c92ba9f7eb008915bfe78270a91531afd6229ff",
+        "sourceStable": true,
+        "indexStable": true,
+        "statusStable": true,
+        "outcome": "accepted",
+        "patchHash": "98e903ba33a9e9b90d370aef7508cc52ec2ea92b1ea394b288a348f3987f43ae",
+        "changedPaths": [
+          "src/candidate.txt"
+        ]
+      },
+      {
+        "case": "POSITIVE_CONTROL",
+        "repetition": 1,
+        "autocrlf": false,
+        "ending": "LF",
+        "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-y8oix4",
+        "baseCommit": "fae12d338f7f07523b392276f0a21e6806ff67a0",
+        "rawGitObject": "92fac4b68182f0e8b16ae892bc6be8c3cb7e8a7a",
+        "cleanGitObject": "92fac4b68182f0e8b16ae892bc6be8c3cb7e8a7a",
+        "sourceStable": true,
+        "indexStable": true,
+        "statusStable": true,
+        "outcome": "accepted",
+        "patchHash": "4511cdcf5813fcca22103b665e9b0cd2cb4fae635c1699cd9b8d8dd9d097de1d",
+        "changedPaths": [
+          "src/candidate.txt"
+        ]
+      },
+      {
+        "diagnosticComplete": true,
+        "reproduced": 3,
+        "positiveControls": 2,
+        "bugFixed": false,
+        "fixtureRoots": [
+          "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-ZpgiNL",
+          "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-t8FNff",
+          "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-9SjIbT",
+          "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-XFIAXv",
+          "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-20260930-crlf-probe-y8oix4"
+        ]
+      }
+    ]
+  },
+  "f24f25": {
+    "evidenceGrade": "S",
+    "dynamicTestCompleted": false,
+    "productionCodeChanged": false
+  },
+  "processRuntimeW12": {
+    "rootCauseConfirmed": false,
+    "rerunThisDocumentationPass": false
+  },
+  "boundaries": {
+    "realProviderTaskRun": false,
+    "productionBuildRun": false,
+    "browserVisualMatrixRun": false,
+    "businessDatabaseTouched": false,
+    "realCandidateApplied": false,
+    "commit": false,
+    "push": false,
+    "merge": false
+  },
+  "sourceSnapshotAfterDocumentation": {
+    "capturedAt": "2026-09-30T18:15:52.6300684+08:00",
+    "branch": "codex/collaboration-workflow-closure",
+    "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+    "trackedModified": 76,
+    "untracked": 53,
+    "comparedFiles": 125,
+    "manifestAlgorithm": "SHA256 of sorted path<TAB>uppercase SHA256 lines joined with LF and no final LF; four documentation artifacts excluded",
+    "manifestSha256": "F9694A77ABF5375CC83A7B246EEE4BCE8AC990FC16A633E88E1366010AF1CEEF",
+    "matchesBefore": true
+  },
+  "documentationValidation": {
+    "markdownFiles": [
+      {
+        "file": "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+        "bytes": 32154,
+        "localLinks": 48,
+        "missing": [],
+        "fenceCount": 0,
+        "pairedFences": true,
+        "hasAllFindings": true
+      },
+      {
+        "file": "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+        "bytes": 37775,
+        "localLinks": 3,
+        "missing": [],
+        "fenceCount": 2,
+        "pairedFences": true,
+        "hasAllFindings": true
+      },
+      {
+        "file": "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+        "bytes": 13863,
+        "localLinks": 3,
+        "missing": [],
+        "fenceCount": 8,
+        "pairedFences": true,
+        "hasAllFindings": true
+      }
+    ],
+    "gitDiffCheckExitCode": 0,
+    "productFilesUnchanged": true,
+    "listeningServicePortsObserved": []
+  },
+  "notes": [
+    "Source snapshot is limited to dirty/untracked files, not a full-repository or release fingerprint.",
+    "The four document/evidence paths in manifestAlgorithm are excluded from source comparison.",
+    "F23 probe exit 0 means the defect was reproduced with positive controls, not fixed."
+  ]
+}

@@ -81,6 +81,8 @@ export interface StageExecutionInput {
   readonly operationId: string;
 }
 
+export type StageLaunchIdentity = Pick<StageExecutionInput, 'workspaceId' | 'runId' | 'stageId' | 'stageAttempt'>;
+
 export interface StageExecutionApprovalGate {
   beforeLaunch(input: StageExecutionInput, plan: ProviderLaunchPlan):
     | { readonly kind: 'allow'; readonly requestId?: string }
@@ -118,6 +120,9 @@ export interface StageAttemptCancelInput {
   readonly causationId: string;
 }
 
+export type StageAttemptCancelOutcome = StageExecutionOutcome
+  | { readonly kind: 'not-started'; readonly proven: true };
+
 export interface CanonicalRunEventObservationSubscription {
   readonly workspaceId: string;
   readonly runId: string;
@@ -146,6 +151,8 @@ export interface StageExecutionCoordinatorOptions {
   readonly now?: () => string;
   readonly stderrRetainedBytes?: number;
   readonly approvalGate?: StageExecutionApprovalGate;
+  /** Synchronous durable Run/Stage/control fence, re-read at native launch. */
+  readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
 }
 
 const DEFAULT_CLAIM_OWNER = 'run-engine';
@@ -225,6 +232,7 @@ export class StageExecutionCoordinator {
   private readonly now: () => string;
   private readonly stderrRetainedBytes: number;
   private readonly approvalGate: StageExecutionApprovalGate | undefined;
+  private readonly canLaunch: ((input: StageLaunchIdentity) => boolean) | undefined;
   private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
   private readonly liveAttempts = new Map<string, LiveAttemptRendezvous>();
 
@@ -242,9 +250,11 @@ export class StageExecutionCoordinator {
     this.now = options.now ?? (() => new Date().toISOString());
     this.stderrRetainedBytes = options.stderrRetainedBytes ?? MAX_STDERR_RETAINED_BYTES;
     this.approvalGate = options.approvalGate;
+    this.canLaunch = options.canLaunch;
   }
 
   async execute(input: StageExecutionInput): Promise<StageExecutionOutcome> {
+    if (!this.launchAuthorized(input)) return this.launchFenced(input);
     const configuration = configurationFromSnapshot(input.providerSnapshot);
     const frozen = resolveFrozenProviderIdentity(configuration);
     if (frozen === undefined) {
@@ -257,6 +267,7 @@ export class StageExecutionCoordinator {
       return this.failedFromError(error, 'validation', input);
     }
     const validation = await this.validateInFlight(input, adapter, configuration);
+    if (!this.launchAuthorized(input)) return this.launchFenced(input);
     if (!validation.valid) {
       const first = validation.errors[0];
       return this.failed(first.code, first.message, first.phase, input, first.retryable);
@@ -273,6 +284,7 @@ export class StageExecutionCoordinator {
     } catch (error) {
       return this.failedFromError(error, 'startup', input);
     }
+    if (!this.launchAuthorized(input)) return this.launchFenced(input);
 
     let approvalRequestId: string | undefined;
     if (this.approvalGate !== undefined) {
@@ -365,6 +377,10 @@ export class StageExecutionCoordinator {
       this.approvalGate?.afterLaunchAuthority(input, approvalRequestId);
       return { kind: 'active' };
     }
+    if (!this.launchAuthorized(input)) {
+      await this.failBeforeSpawn(input, established.session.sessionId, established.process);
+      return this.launchFenced(input);
+    }
 
     const startRequested = await this.sessionRepository.casSetAdapterStartRequested({
       workspaceId: input.workspaceId,
@@ -419,6 +435,7 @@ export class StageExecutionCoordinator {
       || !sameProcessClaim(currentProcess, established.process)
       || currentSession.status !== 'starting'
       || currentProcess.status !== 'created'
+      || !this.launchAuthorized(input)
     ) {
       await this.abortWriters(stdoutWriter, stderrWriter);
       await this.failBeforeSpawn(input, established.session.sessionId, currentProcess ?? established.process);
@@ -473,6 +490,10 @@ export class StageExecutionCoordinator {
         entry.stopOrigin ?? 'EXPLICIT_CANCEL',
       ),
       spawn: async () => {
+        // No await may separate the final durable fence and native spawn.
+        // Validation, output setup and the spawn-right CAS can each yield to
+        // an accepted collaboration cancellation.
+        if (!this.launchAuthorized(input)) throw new Error('EXECUTION_LAUNCH_FENCED');
         if (approvalRequestId !== undefined) {
           this.approvalGate?.assertLaunchStillValid(input, plan, approvalRequestId);
         }
@@ -543,7 +564,15 @@ export class StageExecutionCoordinator {
     return entry.final.promise;
   }
 
-  async cancelAttempt(input: StageAttemptCancelInput): Promise<StageExecutionOutcome> {
+  private launchAuthorized(input: StageLaunchIdentity): boolean {
+    try { return this.canLaunch?.(input) !== false; } catch { return false; }
+  }
+
+  private launchFenced(input: StageExecutionInput): StageExecutionOutcome {
+    return this.failed('LIVE_EXECUTION_UNAVAILABLE', 'Durable execution authority changed before Provider launch', 'startup', input, false);
+  }
+
+  async cancelAttempt(input: StageAttemptCancelInput): Promise<StageAttemptCancelOutcome> {
     const session = await this.sessionRepository.getSessionByClaimKey(
       input.workspaceId,
       input.runId,
@@ -558,6 +587,12 @@ export class StageExecutionCoordinator {
       input.stageAttempt,
       'primary-provider',
     );
+    if (session === null && process === null && this.canLaunch !== undefined) {
+      // Absence alone is not stop evidence: an in-flight validation may still
+      // create a claim. The durable launch fence must ALSO forbid this exact
+      // attempt, including the native spawn callback after every awaited seam.
+      if (!this.launchAuthorized(input)) return { kind: 'not-started', proven: true };
+    }
     if (
       session === null
       || process === null

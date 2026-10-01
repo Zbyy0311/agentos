@@ -138,6 +138,32 @@ describe('CodexProviderAdapter', () => {
     }
   });
 
+  it('resolves a bare configured codex command through PATH', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentos-codex-bare-command-'));
+    const pathExecutable = join(root, process.platform === 'win32' ? 'codex.exe' : 'codex');
+    writeFileSync(pathExecutable, 'fixture', 'utf8');
+    try {
+      const result = await new CodexProviderAdapter().discover({
+        providerType: 'codex',
+        configuredExecutable: 'codex',
+        environment: {
+          PATH: root,
+          PATHEXT: process.platform === 'win32' ? '.EXE;.CMD;.BAT' : undefined,
+        },
+        platform: process.platform,
+        homeDirectory: root,
+      });
+
+      expect(result).toMatchObject({ found: true, selected: pathExecutable });
+      expect(result.candidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ executable: 'codex', source: 'configuration' }),
+        expect.objectContaining({ executable: pathExecutable, source: 'path' }),
+      ]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('builds the legacy exec --json launch shape with separated prompt and secret-free environment', async () => {
     const adapter = new CodexProviderAdapter();
     const plan = await adapter.buildLaunchPlan({

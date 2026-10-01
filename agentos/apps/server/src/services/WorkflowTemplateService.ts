@@ -1,5 +1,5 @@
 import { instantiateWorkflowTemplate } from '@agentos/shared';
-import type { AgentRole, Run, RunSnapshot, RunStage, RunSnapshotPayloadV2, Task, WorkflowDefinition, Workspace } from '@agentos/shared';
+import type { AgentRole, Run, RunSnapshot, RunStage, RunSnapshotPayloadV2, Task, V2RunReason, WorkflowDefinition, Workspace, WorktreeMode } from '@agentos/shared';
 import type { WorkflowTemplateV1 } from '@agentos/shared';
 import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRepository.js';
 import { WorkflowDefinitionWriter } from '../store/WorkflowDefinitionWriter.js';
@@ -11,7 +11,8 @@ import type { ProviderConfigurationRepository } from '../store/ProviderConfigura
 import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
 import { SnapshotService } from './SnapshotService.js';
 import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
-import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
+import { hashCanonicalJson } from '../snapshots/canonicalJson.js';
 
 /**
  * Workflow Template durable wiring (09-Conversation-Runtime.md section 12).
@@ -44,11 +45,19 @@ export interface InstantiateTemplateRunInput {
   readonly template: WorkflowTemplateV1;
   /** Explicit roleLabel -> AgentRole binding; an unbound role fails closed. */
   readonly roleBindings: Readonly<Record<string, AgentRole>>;
+  /** Optional stage-key -> exact Agent binding; role bindings remain in the immutable definition. */
+  readonly agentBindings?: Readonly<Record<string, string>>;
   readonly createdBy: string;
   readonly taskTitle?: string;
   readonly objective?: string;
   readonly includeOptionalSecurityReview?: boolean;
+  /** Freeze the execution isolation policy in the immutable workflow snapshot. */
+  readonly worktreeMode?: WorktreeMode;
   readonly createdAt: string;
+  readonly reason?: V2RunReason;
+  readonly parentRunId?: string;
+  /** Reuse an existing canonical Task for bounded retry/rework Runs. */
+  readonly taskId?: string;
 }
 
 export interface InstantiateTemplateRunResult {
@@ -101,6 +110,16 @@ export class WorkflowTemplateService {
    * transaction. Nothing is persisted when compilation or Stage binding fails.
    */
   instantiateTemplateRun(input: InstantiateTemplateRunInput): InstantiateTemplateRunResult {
+    return this.instantiate(input, false);
+  }
+
+  /** Compose the immutable Run graph with the caller's confirmation/control CAS. */
+  instantiateTemplateRunWithinTransaction(input: InstantiateTemplateRunInput): InstantiateTemplateRunResult {
+    if (!isTransactionActive(this.db)) throw new WorkflowTemplateServiceError('TEMPLATE_PERSIST_FAILED', 'Caller transaction required');
+    return this.instantiate(input, true);
+  }
+
+  private instantiate(input: InstantiateTemplateRunInput, callerOwned: boolean): InstantiateTemplateRunResult {
     if (typeof input !== 'object' || input === null
       || typeof input.workspace !== 'object' || input.workspace === null
       || typeof input.template !== 'object' || input.template === null
@@ -115,6 +134,7 @@ export class WorkflowTemplateService {
         roleBindings: input.roleBindings,
         ...(input.includeOptionalSecurityReview === undefined
           ? {} : { includeOptionalSecurityReview: input.includeOptionalSecurityReview }),
+        ...(input.worktreeMode === undefined ? {} : { worktreeMode: input.worktreeMode }),
       });
     } catch (error) {
       // Unbound role and invalid template both fail closed here, before any write.
@@ -124,28 +144,53 @@ export class WorkflowTemplateService {
       );
     }
     try {
-      return inTransaction(this.db, () => {
-        const definition = this.definitionWriter.persistCompiledDefinitionWithinTransaction({
-          payload,
-          createdAt: input.createdAt,
-          ...(this.deps.createDefinitionId === undefined ? {} : { id: this.deps.createDefinitionId() }),
-        });
-        const resolved = this.snapshotService.resolveDefinition(input.workspace, definition);
-        const task = this.deps.taskRepository().insert({
-          workspaceId: input.workspace.id,
-          title: input.taskTitle ?? `${definition.name} run`,
-          createdBy: input.createdBy,
-        });
+      const persist = () => {
+        // Workflow definitions are immutable and keyed by (definitionKey,
+        // version). Reusing the exact compiled definition makes repeated
+        // collaboration confirmations idempotent without creating a second
+        // row or weakening the immutable-definition invariant. A same-key,
+        // same-version hash mismatch remains a hard failure.
+        const existing = this.deps.workflowDefinitionRepository().findByKeyVersion(
+          String(payload.definitionKey), Number(payload.version),
+        );
+        let definition;
+        if (existing !== undefined) {
+          if (existing.definitionHash !== hashCanonicalJson(payload)) {
+            throw new WorkflowTemplateServiceError(
+              'TEMPLATE_PERSIST_FAILED',
+              'WORKFLOW_DEFINITION_VERSION_HASH_CONFLICT',
+            );
+          }
+          definition = existing;
+        } else {
+          definition = this.definitionWriter.persistCompiledDefinitionWithinTransaction({
+            payload,
+            createdAt: input.createdAt,
+            ...(this.deps.createDefinitionId === undefined ? {} : { id: this.deps.createDefinitionId() }),
+          });
+        }
+        const resolved = this.snapshotService.resolveDefinition(input.workspace, definition, input.agentBindings);
+        const task = input.taskId === undefined
+          ? this.deps.taskRepository().insert({
+            workspaceId: input.workspace.id,
+            title: input.taskTitle ?? `${definition.name} run`,
+            createdBy: input.createdBy,
+          })
+          : this.deps.taskRepository().findById(input.workspace.id, input.taskId);
+        if (!task) throw new WorkflowTemplateServiceError('TEMPLATE_PERSIST_FAILED', 'TASK_NOT_FOUND');
         const run = this.deps.runRepository().insert({
           workspaceId: input.workspace.id,
           taskId: task.id,
           origin: 'v2_api',
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
           createdBy: input.createdBy,
           ...(input.objective === undefined ? {} : { objective: input.objective }),
         });
         const persisted = this.snapshotService.persistResolvedRun(run, resolved);
         return { definition, task, run, snapshot: persisted.snapshot, stages: persisted.stages };
-      });
+      };
+      return callerOwned ? persist() : inTransaction(this.db, persist);
     } catch (error) {
       if (error instanceof WorkflowTemplateServiceError) throw error;
       const detail = error instanceof Error ? error.message : String(error);

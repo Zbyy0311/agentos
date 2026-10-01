@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { KimiCodeProviderAdapter, safeEnvironmentForKimiCode } from './kimiCodeAdapter.js';
 import type { ProcessProbeResult } from '@agentos/process-runtime';
 import type { ProcessProbePort, ProviderConfigurationInput, ProviderProcessPort } from './types.js';
+import { resolveFrozenProviderIdentity } from './types.js';
 
 const sessionFixture = readFileSync(new URL('./fixtures/kimi-session-complete.jsonl', import.meta.url), 'utf8');
 
@@ -82,6 +83,27 @@ function probeFor(version: string, help = 'Usage: kimi --output-format stream-js
 }
 
 describe('KimiCodeProviderAdapter', () => {
+  it('resolves legacy adapter ids before registry lookup and retains exact versions', () => {
+    const adapter = new KimiCodeProviderAdapter();
+    for (const providerType of ['kimi', 'kimicode'] as const) {
+      for (const adapterVersion of [undefined, '1.0.0', '9.9.9']) {
+        const input = config({ providerType, adapterId: 'builtin.kimi', adapterVersion });
+        const expected = { adapterId: 'builtin.kimicode', adapterVersion: adapterVersion ?? '1.0.0' };
+        expect(resolveFrozenProviderIdentity(input)).toEqual(expected);
+        expect(adapter.normalizeConfiguration(input)).toMatchObject(expected);
+        expect(input.adapterId).toBe('builtin.kimi');
+      }
+    }
+    expect(resolveFrozenProviderIdentity(config({ providerType: 'codex', adapterId: 'builtin.kimi', adapterVersion: undefined }))).toBeUndefined();
+  });
+
+  it('rejects an unavailable explicit version even for a legacy adapter id', async () => {
+    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
+    const result = await adapter.validate({ configuration: config({ adapterId: 'builtin.kimi', adapterVersion: '9.9.9' }) });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(error => error.code === 'PROVIDER_VERSION_UNSUPPORTED')).toBe(true);
+  });
+
   it('normalizes the legacy kimi input token without changing canonical adapter identity', () => {
     const adapter = new KimiCodeProviderAdapter();
     const input = config({ providerType: 'kimi' });
@@ -271,6 +293,24 @@ describe('KimiCodeProviderAdapter', () => {
     expect(plan.environment).toMatchObject({ KIMI_MODEL_THINKING_EFFORT: 'max' });
     expect(JSON.stringify(plan)).not.toContain('token-value');
     expect(JSON.stringify(plan)).not.toContain('api-key');
+  });
+
+  it('lets the persisted provider model replace a stale model flag in argsTemplate', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    const plan = await adapter.buildLaunchPlan({
+      configuration: config({
+        argsTemplate: ['-m', 'kimi-code/kimi-for-coding', '-p'],
+        model: 'opencodex/gpt-5.6-luna',
+      }),
+      workspaceRoot: 'C:/workspace/project',
+      prompt: 'hello',
+    });
+
+    expect(plan.args).toEqual([
+      '-m', 'opencodex/gpt-5.6-luna',
+      '--output-format', 'stream-json',
+      '-p', 'hello',
+    ]);
   });
 
   it('freezes an absent persisted Kimi version to the manifest compatibility version', async () => {

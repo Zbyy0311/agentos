@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,7 @@ import type { WorkspaceReadOnlyEvidence } from '@agentos/shared';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { migration040 } from '../migrations/migrations/040-collaboration-application-admission.js';
 import { WorkspaceAdmissionRepository, type AdmissionState } from '../store/WorkspaceAdmissionRepository.js';
 import { isTransactionActive } from '../store/Transaction.js';
 import {
@@ -40,6 +42,8 @@ const NOW = '2026-09-04T01:00:00.000Z';
 const PAST = '2026-09-03T01:00:00.000Z';
 const FUTURE = '2026-09-05T01:00:00.000Z';
 const QUEUE_REASON = 'WAITING_FOR_WORKSPACE_ADMISSION';
+const APPLICATION_PATCH = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+candidate\n';
+const APPLICATION_HASH = createHash('sha256').update(APPLICATION_PATCH).digest('hex');
 
 const VERIFIED_EVIDENCE: WorkspaceReadOnlyEvidence = {
   status: 'verified',
@@ -70,6 +74,19 @@ function createDatabase(path = ':memory:'): Db {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 5000');
   new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+  const hasApplicationControlColumn = db.prepare(
+    "SELECT 1 AS present FROM pragma_table_info('workspace_admissions') WHERE name = 'collaboration_control_id'",
+  ).get();
+  if (hasApplicationControlColumn === undefined) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      migration040.apply({ db });
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* preserve original migration error */ }
+      throw error;
+    }
+  }
   db.prepare(
     'INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)'
       + ' VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -87,6 +104,69 @@ function fixedCollector(
       return structuredClone(facts);
     },
   };
+}
+
+function seedApplyControl(
+  db: Db,
+  controlId: string,
+  state: 'reserved' | 'running' | 'completed' | 'failed' | 'recovery_required' = 'reserved',
+): void {
+  const collaborationTaskId = `collab_${controlId}`;
+  const runId = `application_run_${controlId}`;
+  const candidateId = `candidate_${controlId}`;
+  seedCanonicalRun(db, runId, 'completed');
+  db.prepare(
+    'INSERT INTO collaboration_tasks ('
+      + 'id, workspace_id, title, objective, scope_json, acceptance_commands_json,'
+      + ' planner_agent_id, implementer_agent_id, reviewer_agent_id, status,'
+      + ' plan_hash, base_commit, created_at, updated_at, control_epoch, canonical_task_id, canonical_run_id, current_candidate_id'
+      + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
+  ).run(collaborationTaskId, WORKSPACE_ID, 'Apply test', 'Apply test', JSON.stringify(['README.md']), JSON.stringify(['node -e "process.exit(0)"']),
+    'planner', 'implementer', 'reviewer', 'awaiting_application', 'plan-hash', 'base-sha', NOW, NOW,
+    `task_${runId}`, runId, candidateId);
+  db.prepare(
+    'INSERT INTO collaboration_candidates (id, collaboration_task_id, workspace_id, canonical_run_id, round,'
+      + ' base_commit, head_commit, diff_hash, diff_text, manifest_json, test_status, test_command, test_exit_code,'
+      + ' test_output, status, review_conclusion, review_agent_id, snapshot_version, created_at, updated_at)'
+      + " VALUES (?, ?, ?, ?, 0, 'base-sha', 'base-sha', ?, ?, '[]', 'passed', 'node -e test', 0, 'exit 0', 'reviewed', 'approved', 'reviewer', 2, ?, ?)",
+  ).run(candidateId, collaborationTaskId, WORKSPACE_ID, runId, APPLICATION_HASH, APPLICATION_PATCH, NOW, NOW);
+  db.prepare(
+    'INSERT INTO collaboration_controls ('
+      + 'id, workspace_id, collaboration_task_id, action, idempotency_key, request_hash,'
+      + ' expected_version, epoch, state, canonical_run_id, candidate_id, created_at, updated_at'
+      + ') VALUES (?, ?, ?, \'apply\', ?, ?, 1, 1, ?, ?, ?, ?, ?)',
+  ).run(controlId, WORKSPACE_ID, collaborationTaskId, `key_${controlId}`, `hash_${controlId}`, state, runId, candidateId, NOW, NOW);
+}
+
+function seedApplyJournal(
+  db: Db,
+  controlId: string,
+  state: 'prepared' | 'written' | 'committed' | 'recovered' | 'recovery_required',
+): void {
+  const control = db.prepare(
+    'SELECT collaboration_task_id FROM collaboration_controls WHERE workspace_id = ? AND id = ?',
+  ).get(WORKSPACE_ID, controlId) as { collaboration_task_id: string };
+  db.prepare(
+    'INSERT INTO collaboration_apply_journals ('
+      + 'control_id, workspace_id, collaboration_task_id, candidate_id, candidate_hash,'
+      + ' base_commit, state, recovery_path, images_json, created_at, updated_at'
+      + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(controlId, WORKSPACE_ID, control.collaboration_task_id, `candidate_${controlId}`,
+    APPLICATION_HASH, 'base-sha', state, `recovery/${controlId}`, '[]', NOW, NOW);
+}
+
+function pairApplicationTerminal(db: Db, controlId: string, journalState: 'committed' | 'recovered'): void {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('UPDATE collaboration_controls SET state = ? WHERE id = ?')
+      .run(journalState === 'committed' ? 'completed' : 'failed', controlId);
+    if (journalState === 'committed') {
+      db.prepare("UPDATE collaboration_tasks SET status = 'applied', version = 2, apply_idempotency_key = ? WHERE id = ?")
+        .run(`key_${controlId}`, `collab_${controlId}`);
+      db.prepare("UPDATE collaboration_candidates SET status = 'applied' WHERE id = ?").run(`candidate_${controlId}`);
+    }
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
 function createFixture(options: {
@@ -279,6 +359,63 @@ function isAuthorityError(code: WorkspaceAdmissionAuthorityError['code']): (erro
   };
 }
 
+for (let repetition = 1; repetition <= 3; repetition++) {
+  for (const outcome of ['cancelled', 'completed', 'failed', 'unknown'] as const) {
+    test(`F24 cancel-gap Authority never grants ${outcome} B and advances only a safe C (${repetition}/3)`, async () => {
+      const root = mkdtempSync(join(tmpdir(), 'agentos-l1d-cancel-gap-'));
+      const databasePath = join(root, 'authority.sqlite');
+      let db = createDatabase(databasePath);
+      let forbiddenGrants = 0;
+      const controlId = 'cancel-gap-application';
+      const makeAuthority = () => new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db }, now: () => new Date(NOW),
+        testHooks: { afterAdmissionWriteWithinTransaction: input => {
+          const b = db.prepare('SELECT canonical_run_id AS runId FROM workspace_admissions WHERE id = ?').get(input.admissionId) as { runId: string | null };
+          if (input.state === 'GRANTED' && b.runId === 'cancel-gap-B') forbiddenGrants++;
+        } } });
+      try {
+        seedApplyControl(db, controlId);
+        const authority = makeAuthority();
+        assert.ok((await authority.requestCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId })).grantedAdmission);
+        for (const runId of ['cancel-gap-B', 'cancel-gap-C']) {
+          seedCanonicalRun(db, runId);
+          assert.equal(await authority.requestCanonicalRun({ workspaceId: WORKSPACE_ID, runId }), false);
+        }
+        const admissionFor = (runId: string) => new WorkspaceAdmissionRepository(db).findBySubject(WORKSPACE_ID, { subjectKind: 'CANONICAL_RUN', canonicalRunId: runId })!;
+        const beforeB = admissionFor('cancel-gap-B');
+        const beforeC = admissionFor('cancel-gap-C');
+        assert.equal(beforeB.state, 'QUEUED'); assert.equal(beforeC.state, 'QUEUED');
+        // Durable terminal subject, but the process died before its admission
+        // release. Unknown recovery is deliberately not a terminal proof.
+        if (outcome === 'unknown') db.prepare('UPDATE runs SET recovery_required = 1, version = version + 1 WHERE id = ?').run('cancel-gap-B');
+        else db.prepare('UPDATE runs SET status = ?, completed_at = ?, failure_code = ?, version = version + 1 WHERE id = ?')
+          .run(outcome, NOW, outcome === 'failed' ? 'FIXTURE_PROVEN_FAILURE' : null, 'cancel-gap-B');
+        seedApplyJournal(db, controlId, 'committed');
+        pairApplicationTerminal(db, controlId, 'committed');
+        const subjects = db.prepare('SELECT * FROM runs ORDER BY id').all();
+        const grants = await authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+        assert.equal(forbiddenGrants, 0, 'a terminal/unknown B must never transiently become GRANTED');
+        assert.deepEqual(grants.map(grant => grant.subjectKind === 'CANONICAL_RUN' ? grant.canonicalRunId : null), outcome === 'unknown' ? [] : ['cancel-gap-C']);
+        const settled = new WorkspaceAdmissionRepository(db).listByWorkspace(WORKSPACE_ID);
+        for (let reboot = 1; reboot <= 2; reboot++) {
+          db.close(); db = new DatabaseSync(databasePath); db.exec('PRAGMA foreign_keys = ON');
+          const replayed = makeAuthority();
+          assert.deepEqual(await replayed.advanceWorkspaceAdmissions(WORKSPACE_ID), []);
+          assert.deepEqual(await replayed.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }), []);
+          const b = admissionFor('cancel-gap-B'); const c = admissionFor('cancel-gap-C');
+          assert.equal(b.id, beforeB.id); assert.equal(b.requestOrder, beforeB.requestOrder); assert.equal(b.grantedAt, null);
+          assert.equal(b.state, outcome === 'unknown' ? 'QUEUED' : outcome === 'cancelled' ? 'CANCELLED' : 'RELEASED');
+          assert.equal(c.id, beforeC.id); assert.equal(c.requestOrder, beforeC.requestOrder);
+          assert.equal(c.state, outcome === 'unknown' ? 'QUEUED' : 'GRANTED');
+          assert.equal(forbiddenGrants, 0);
+          assert.deepEqual(new WorkspaceAdmissionRepository(db).listByWorkspace(WORKSPACE_ID), settled);
+          assert.deepEqual(db.prepare('SELECT * FROM runs ORDER BY id').all(), subjects, 'admission recovery may not rewrite Run facts or create an attempt');
+          assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+        }
+      } finally { db.close(); rmSync(root, { recursive: true, force: true }); }
+    });
+  }
+}
+
 describe('WorkspaceAdmissionAuthority unit contract', () => {
   test('L1D-U01 invalid input fails with stable INPUT_INVALID', async () => {
     const fixture = createFixture();
@@ -303,6 +440,273 @@ describe('WorkspaceAdmissionAuthority unit contract', () => {
       );
     } finally { fixture.close(); }
   });
+
+  test('COLLAB-ADMISSION-U01 application waits behind the existing Run writer and a proven pre-journal failure releases its queue row', async () => {
+    const fixture = createFixture();
+    try {
+      seedAdmission(fixture, {
+        id: 'adm_application_holder',
+        order: 1,
+        state: 'GRANTED',
+        runStatus: 'running',
+      });
+      seedApplyControl(fixture.db, 'control_application_queued');
+
+      const requested = await fixture.authority.requestApplicationAdmission({
+        workspaceId: WORKSPACE_ID,
+        controlId: 'control_application_queued',
+      });
+      assert.equal(requested.admission.subjectKind, 'COLLABORATION_APPLICATION');
+      assert.equal(requested.admission.collaborationControlId, 'control_application_queued');
+      assert.equal(requested.admission.effectiveMutationClass, 'MODIFYING');
+      assert.equal(requested.admission.state, 'QUEUED');
+      assert.equal(requested.grantedAdmission, undefined);
+
+      fixture.db.prepare("UPDATE collaboration_controls SET state = 'failed' WHERE id = ?")
+        .run('control_application_queued');
+      assert.deepEqual(await fixture.authority.releaseCollaborationApplication({
+        workspaceId: WORKSPACE_ID,
+        controlId: 'control_application_queued',
+      }), []);
+      assert.equal(
+        fixture.admissions.findBySubject(WORKSPACE_ID, {
+          subjectKind: 'COLLABORATION_APPLICATION',
+          controlId: 'control_application_queued',
+        })?.state,
+        'RELEASED',
+      );
+      assert.equal(fixture.admissions.findBySubject(WORKSPACE_ID, {
+        subjectKind: 'CANONICAL_RUN',
+        canonicalRunId: 'run_adm_application_holder',
+      })?.state, 'GRANTED');
+    } finally { fixture.close(); }
+  });
+
+  test('COLLAB-ADMISSION-U02 unknown/recovery-required journal retains its GRANTED writer after authority restart', async () => {
+    const fixture = createFixture();
+    try {
+      seedApplyControl(fixture.db, 'control_application_unknown', 'running');
+      seedApplyJournal(fixture.db, 'control_application_unknown', 'recovery_required');
+      const first = await fixture.authority.requestCollaborationApplication({
+        workspaceId: WORKSPACE_ID,
+        controlId: 'control_application_unknown',
+      });
+      assert.equal(first.grantedAdmission?.subjectKind, 'COLLABORATION_APPLICATION');
+
+      const restartedAuthority = new WorkspaceAdmissionAuthority({
+        store: { getDatabase: () => fixture.db },
+        now: () => new Date(NOW),
+      });
+      await restartedAuthority.advanceWorkspaceAdmissions(WORKSPACE_ID);
+      assert.equal(first.admission.id, fixture.admissions.findBySubject(WORKSPACE_ID, {
+        subjectKind: 'COLLABORATION_APPLICATION',
+        controlId: 'control_application_unknown',
+      })?.id);
+      assert.equal(fixture.admissions.findBySubject(WORKSPACE_ID, {
+        subjectKind: 'COLLABORATION_APPLICATION',
+        controlId: 'control_application_unknown',
+      })?.state, 'GRANTED');
+      await assert.rejects(
+        restartedAuthority.releaseCollaborationApplication({
+          workspaceId: WORKSPACE_ID,
+          controlId: 'control_application_unknown',
+        }),
+        isAuthorityError('ADMISSION_NOT_RELEASABLE'),
+      );
+    } finally { fixture.close(); }
+  });
+
+  test('COLLAB-ADMISSION-U03 prepared journal cannot release before recovery verifies preimages', async () => {
+    const fixture = createFixture();
+    try {
+      seedApplyControl(fixture.db, 'control_application_prepared');
+      const requested = await fixture.authority.requestCollaborationApplication({
+        workspaceId: WORKSPACE_ID,
+        controlId: 'control_application_prepared',
+      });
+      assert.ok(requested.grantedAdmission);
+      seedApplyJournal(fixture.db, 'control_application_prepared', 'prepared');
+      fixture.db.prepare("UPDATE collaboration_controls SET state = 'failed' WHERE id = ?")
+        .run('control_application_prepared');
+
+      await assert.rejects(
+        fixture.authority.releaseCollaborationApplication({
+          workspaceId: WORKSPACE_ID,
+          controlId: 'control_application_prepared',
+        }),
+        isAuthorityError('ADMISSION_NOT_RELEASABLE'),
+      );
+      assert.equal(fixture.admissions.findBySubject(WORKSPACE_ID, {
+        subjectKind: 'COLLABORATION_APPLICATION',
+        controlId: 'control_application_prepared',
+      })?.state, 'GRANTED');
+    } finally { fixture.close(); }
+  });
+
+  test('COLLAB-ADMISSION-U04 exactly associated committed/completed and recovered/failed pairs release the shared writer', async () => {
+    const fixture = createFixture();
+    try {
+      for (const state of ['committed', 'recovered'] as const) {
+        const controlId = `control_application_${state}`;
+        seedApplyControl(fixture.db, controlId);
+        const requested = await fixture.authority.requestCollaborationApplication({
+          workspaceId: WORKSPACE_ID,
+          controlId,
+        });
+        assert.ok(requested.grantedAdmission);
+        seedApplyJournal(fixture.db, controlId, state);
+        await assert.rejects(fixture.authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }),
+          isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+        assert.equal(fixture.admissions.findById(WORKSPACE_ID, requested.admission.id)?.state, 'GRANTED');
+        pairApplicationTerminal(fixture.db, controlId, state);
+        await fixture.authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+        assert.equal(fixture.admissions.findBySubject(WORKSPACE_ID, {
+          subjectKind: 'COLLABORATION_APPLICATION',
+          controlId,
+        })?.state, 'RELEASED');
+      }
+    } finally { fixture.close(); }
+  });
+
+  for (let repetition = 1; repetition <= 3; repetition++) {
+    for (const journalState of ['committed', 'recovered'] as const) {
+      for (const controlState of ['reserved', 'running', 'recovery_required'] as const) {
+        test(`F25 Authority terminal ${journalState} with ${controlState} control retains the writer (${repetition}/3)`, async () => {
+          const fixture = createFixture();
+          try {
+            const controlId = 'pending-terminal-control';
+            seedApplyControl(fixture.db, controlId);
+            const first = await fixture.authority.requestCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+            seedApplyJournal(fixture.db, controlId, journalState);
+            fixture.db.prepare('UPDATE collaboration_controls SET state = ? WHERE id = ?').run(controlState, controlId);
+            seedCanonicalRun(fixture.db, 'queued-follower');
+            assert.equal(await fixture.authority.requestCanonicalRun({ workspaceId: WORKSPACE_ID, runId: 'queued-follower' }), false);
+            const before = fixture.admissions.listByWorkspace(WORKSPACE_ID);
+            await assert.rejects(fixture.authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }),
+              isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+            assert.deepEqual(await fixture.authority.advanceWorkspaceAdmissions(WORKSPACE_ID), []);
+            assert.deepEqual(fixture.admissions.listByWorkspace(WORKSPACE_ID), before);
+            assert.equal(fixture.admissions.findById(WORKSPACE_ID, first.admission.id)?.state, 'GRANTED');
+          } finally { fixture.close(); }
+        });
+      }
+      for (const mismatch of ['wrong-task', 'wrong-candidate', 'wrong-run', 'wrong-base', 'corrupt-hash'] as const) {
+        test(`F25 Authority paired ${journalState} rejects ${mismatch} without advancing its queued follower (${repetition}/3)`, async () => {
+          const fixture = createFixture();
+          try {
+            const controlId = 'associated-terminal-control';
+            seedApplyControl(fixture.db, controlId);
+            await fixture.authority.requestCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+            seedApplyJournal(fixture.db, controlId, journalState);
+            pairApplicationTerminal(fixture.db, controlId, journalState);
+            seedApplyControl(fixture.db, 'other-associated-control');
+            if (mismatch === 'wrong-task') fixture.db.prepare('UPDATE collaboration_apply_journals SET collaboration_task_id = ? WHERE control_id = ?')
+              .run('collab_other-associated-control', controlId);
+            if (mismatch === 'wrong-candidate') fixture.db.prepare('UPDATE collaboration_controls SET candidate_id = ? WHERE id = ?')
+              .run('candidate_other-associated-control', controlId);
+            if (mismatch === 'wrong-run') fixture.db.prepare('UPDATE collaboration_controls SET canonical_run_id = ? WHERE id = ?')
+              .run('application_run_other-associated-control', controlId);
+            if (mismatch === 'wrong-base') fixture.db.prepare('UPDATE collaboration_apply_journals SET base_commit = ? WHERE control_id = ?')
+              .run('different-base', controlId);
+            if (mismatch === 'corrupt-hash') fixture.db.prepare('UPDATE collaboration_apply_journals SET candidate_hash = ? WHERE control_id = ?')
+              .run('0'.repeat(64), controlId);
+            seedCanonicalRun(fixture.db, 'queued-follower');
+            assert.equal(await fixture.authority.requestCanonicalRun({ workspaceId: WORKSPACE_ID, runId: 'queued-follower' }), false);
+            const before = fixture.admissions.listByWorkspace(WORKSPACE_ID);
+            await assert.rejects(fixture.authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }),
+              isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+            assert.deepEqual(fixture.admissions.listByWorkspace(WORKSPACE_ID), before);
+            assert.deepEqual(fixture.db.prepare('PRAGMA foreign_key_check').all(), []);
+          } finally { fixture.close(); }
+        });
+      }
+    }
+    for (const mismatch of ['wrong-epoch', 'wrong-version', 'wrong-apply-key', 'task-not-applied', 'candidate-not-applied'] as const) {
+      test(`F25 Authority committed pair rejects ${mismatch} (${repetition}/3)`, async () => {
+        const fixture = createFixture();
+        try {
+          const controlId = 'committed-proof-control';
+          seedApplyControl(fixture.db, controlId);
+          const first = await fixture.authority.requestCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+          seedApplyJournal(fixture.db, controlId, 'committed');
+          pairApplicationTerminal(fixture.db, controlId, 'committed');
+          if (mismatch === 'wrong-epoch') fixture.db.prepare('UPDATE collaboration_tasks SET control_epoch = 2 WHERE id = ?').run(`collab_${controlId}`);
+          if (mismatch === 'wrong-version') fixture.db.prepare('UPDATE collaboration_tasks SET version = 3 WHERE id = ?').run(`collab_${controlId}`);
+          if (mismatch === 'wrong-apply-key') fixture.db.prepare('UPDATE collaboration_tasks SET apply_idempotency_key = ? WHERE id = ?').run('unrelated-key', `collab_${controlId}`);
+          if (mismatch === 'task-not-applied') fixture.db.prepare("UPDATE collaboration_tasks SET status = 'awaiting_application' WHERE id = ?").run(`collab_${controlId}`);
+          if (mismatch === 'candidate-not-applied') fixture.db.prepare("UPDATE collaboration_candidates SET status = 'reviewed' WHERE id = ?").run(`candidate_${controlId}`);
+          await assert.rejects(fixture.authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }),
+            isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+          assert.equal(fixture.admissions.findById(WORKSPACE_ID, first.admission.id)?.state, 'GRANTED');
+        } finally { fixture.close(); }
+      });
+    }
+  }
+
+  for (let repetition = 1; repetition <= 3; repetition++) {
+    for (const journalState of ['committed', 'recovered', 'recovery_required'] as const) {
+      test(`F24 release-gap Authority retries ${journalState} after two real DB reopens without duplicating its follower (${repetition}/3)`, async () => {
+        const root = mkdtempSync(join(tmpdir(), 'agentos-l1d-release-gap-'));
+        const databasePath = join(root, 'authority.sqlite');
+        let db = createDatabase(databasePath);
+        let armed = false;
+        let crashPoints = 0;
+        const controlId = 'release-gap-application';
+        const runId = 'release-gap-follower';
+        const safe = journalState !== 'recovery_required';
+        try {
+          const authority = new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db }, now: () => new Date(NOW),
+            testHooks: { afterEvidenceCollectionOutsideTransaction: () => {
+              if (!armed) return;
+              assert.equal(isTransactionActive(db), false);
+              const admissions = new WorkspaceAdmissionRepository(db);
+              assert.equal(admissions.findBySubject(WORKSPACE_ID, { subjectKind: 'COLLABORATION_APPLICATION', controlId })?.state, 'RELEASED');
+              assert.equal(admissions.findBySubject(WORKSPACE_ID, { subjectKind: 'CANONICAL_RUN', canonicalRunId: runId })?.state, 'QUEUED');
+              crashPoints++;
+              throw new Error('F24 release committed before queue advancement');
+            } } });
+          seedApplyControl(db, controlId, 'running');
+          assert.ok((await authority.requestCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId })).grantedAdmission);
+          seedCanonicalRun(db, runId);
+          assert.equal(await authority.requestCanonicalRun({ workspaceId: WORKSPACE_ID, runId }), false);
+          seedApplyJournal(db, controlId, journalState);
+          if (safe) pairApplicationTerminal(db, controlId, journalState);
+          armed = true;
+          await assert.rejects(authority.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }),
+            safe ? (error: unknown) => error instanceof WorkspaceAdmissionAuthorityError : isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+          assert.equal(crashPoints, safe ? 1 : 0, 'the safe release must really commit before the injected interruption');
+          const before = new WorkspaceAdmissionRepository(db).listByWorkspace(WORKSPACE_ID);
+          const application = before.find(row => row.collaborationControlId === controlId)!;
+          const follower = before.find(row => row.canonicalRunId === runId)!;
+          assert.equal(application.state, safe ? 'RELEASED' : 'GRANTED');
+          assert.equal(follower.state, 'QUEUED');
+          const runs = db.prepare('SELECT * FROM runs ORDER BY id').all();
+          const stages = db.prepare('SELECT * FROM run_stages ORDER BY id').all();
+          let firstRows: ReturnType<WorkspaceAdmissionRepository['listByWorkspace']> | undefined;
+          for (let reboot = 1; reboot <= 2; reboot++) {
+            db.close(); db = new DatabaseSync(databasePath); db.exec('PRAGMA foreign_keys = ON');
+            const fresh = new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db }, now: () => new Date(NOW) });
+            if (safe) {
+              const grants = await fresh.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId });
+              assert.deepEqual(grants.map(grant => grant.admissionId), reboot === 1 ? [follower.id] : []);
+              assert.deepEqual(await fresh.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }), []);
+            } else await assert.rejects(fresh.releaseCollaborationApplication({ workspaceId: WORKSPACE_ID, controlId }), isAuthorityError('ADMISSION_NOT_RELEASABLE'));
+            const rows = new WorkspaceAdmissionRepository(db).listByWorkspace(WORKSPACE_ID);
+            assert.deepEqual(rows.find(row => row.id === application.id), application, 'idempotent release must not rewrite A');
+            const current = rows.find(row => row.id === follower.id)!;
+            assert.equal(current.state, safe ? 'GRANTED' : 'QUEUED');
+            assert.equal(current.requestOrder, follower.requestOrder);
+            assert.equal(current.version, follower.version + (safe ? 1 : 0));
+            assert.equal(rows.length, 2);
+            assert.deepEqual(db.prepare('SELECT * FROM runs ORDER BY id').all(), runs);
+            assert.deepEqual(db.prepare('SELECT * FROM run_stages ORDER BY id').all(), stages);
+            assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+            if (firstRows) assert.deepEqual(rows, firstRows); else firstRows = rows;
+          }
+        } finally { db.close(); rmSync(root, { recursive: true, force: true }); }
+      });
+    }
+  }
 
   test('L1D-U03 frozen classifier, not requested class, is effective authority', async () => {
     const fixture = createFixture({

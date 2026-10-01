@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canSendMessage, fileToImageDraft, getAdjacentImageId, isImageClipboardItem, validateImageDrafts, type ImageDraft } from './imageAttachments.ts';
+import { canSendMessage, fileToImageDraft, getAdjacentImageId, imageDraftDataUrl, isImageClipboardItem, validateImageDrafts, type ImageDraft } from './imageAttachments.ts';
 
 function draft(overrides: Partial<ImageDraft> = {}): ImageDraft {
   return {
@@ -74,4 +74,10 @@ test('converts a browser image file into a draft with a data URL preview', async
 test('rejects a non-image browser file before reading it', async () => {
   const pdf = new File(['pdf'], 'file.pdf', { type: 'application/pdf' });
   await assert.rejects(fileToImageDraft(pdf), /仅支持 PNG、JPEG、GIF 和 WebP 图片/);
+});
+
+test('rehydrates a restored IndexedDB Blob to the send payload without localStorage data URLs', async () => {
+  const restored = draft({ dataUrl: undefined, blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) });
+  assert.equal(await imageDraftDataUrl(restored), 'data:image/png;base64,AQID');
+  assert.equal(restored.dataUrl, undefined);
 });

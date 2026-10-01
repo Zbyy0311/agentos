@@ -22,7 +22,7 @@
  * shared Workspace Admission authority for both kinds; a separate admission
  * table or an in-memory legacy lock is forbidden.
  */
-export type AdmissionSubjectKind = 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+export type AdmissionSubjectKind = 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN' | 'COLLABORATION_APPLICATION';
 
 interface WorkspaceAdmissionSubjectBase {
   readonly subjectKind: AdmissionSubjectKind;
@@ -40,6 +40,10 @@ export type WorkspaceAdmissionSubject =
   | (WorkspaceAdmissionSubjectBase & {
       readonly subjectKind: 'LEGACY_AGENT_RUN';
       readonly legacyRunId: string;
+    })
+  | (WorkspaceAdmissionSubjectBase & {
+      readonly subjectKind: 'COLLABORATION_APPLICATION';
+      readonly controlId: string;
     });
 
 interface GrantedAdmissionSubjectBase {
@@ -61,6 +65,10 @@ export type GrantedAdmissionSubject =
   | (GrantedAdmissionSubjectBase & {
       readonly subjectKind: 'LEGACY_AGENT_RUN';
       readonly legacyRunId: string;
+    })
+  | (GrantedAdmissionSubjectBase & {
+      readonly subjectKind: 'COLLABORATION_APPLICATION';
+      readonly controlId: string;
     });
 
 // ---------------------------------------------------------------------------

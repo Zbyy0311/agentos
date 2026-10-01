@@ -1,0 +1,184 @@
+{
+  "generatedAt": "2026-09-30T20:18:09.893Z",
+  "repository": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos",
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "sourceDigest": "4e32b9fd8d7272ff90b45d5732514c5361aa2088a3080b452f80e987a9baec33",
+  "primaryPath": "C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\docs\\superpowers\\reports\\evidence\\2026-10-01-remediation-final-verification.json",
+  "primarySHA256": "19d5cc2de6683561356c57a68a4743c7999b7c4f909faf9115804b9793cbb4b2",
+  "boundaryRepeated": [
+    {
+      "label": "boundary-2026-09-30T20-15-02-837Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/CollaborationScopePolicy.test.ts src/services/CollaborationPathBoundary.test.ts src/services/CollaborationReviewProtocol.test.ts",
+      "startedAt": "2026-09-30T20:15:02.987Z",
+      "completedAt": "2026-09-30T20:15:03.907Z",
+      "exitCode": 0,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "sourceStable": true,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-02-837Z.result.json",
+      "resultSHA256": "0ff8febda5be43c58507f0745195fd92fb7bea2903aa21da19690a7daab294f2",
+      "log": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-02-837Z.log",
+      "logSHA256": "58b67d627c7dab309ce5ea7501f9bfe1521c2c44a1d9974d5e80ffd964ecd081"
+    },
+    {
+      "label": "boundary-2026-09-30T20-15-26-859Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/CollaborationScopePolicy.test.ts src/services/CollaborationPathBoundary.test.ts src/services/CollaborationReviewProtocol.test.ts",
+      "startedAt": "2026-09-30T20:15:27.011Z",
+      "completedAt": "2026-09-30T20:15:27.971Z",
+      "exitCode": 0,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "sourceStable": true,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-26-859Z.result.json",
+      "resultSHA256": "a694a8ff85bebc400124d17bb9ae09cd36b367845435fb16bba5a7acace50f4a",
+      "log": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-26-859Z.log",
+      "logSHA256": "1aaa2ff821452e8701c44b76b99637cac2f13c931e0de9bdd2ccd39d8b57b7b2"
+    },
+    {
+      "label": "boundary-2026-09-30T20-15-26-885Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/CollaborationScopePolicy.test.ts src/services/CollaborationPathBoundary.test.ts src/services/CollaborationReviewProtocol.test.ts",
+      "startedAt": "2026-09-30T20:15:27.043Z",
+      "completedAt": "2026-09-30T20:15:28.028Z",
+      "exitCode": 0,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "sourceStable": true,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-26-885Z.result.json",
+      "resultSHA256": "95390a21329e37eb01eef9baaacf979212b7e4192c1cff6b644dc5457014a0fb",
+      "log": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\boundary-2026-09-30T20-15-26-885Z.log",
+      "logSHA256": "87c4ce5a6bdec68b2935296023ebb24452b154a1f7ea6e79477d35773a465c06"
+    }
+  ],
+  "officialServerSkipDescriptions": [
+    "﹣ P3 real-copy migration, verified Backup, isolated Restore, and source hash preservation (0.0995ms) # AGENTOS_P3_SOURCE_ROOT is not set; the real-copy rehearsal is explicitly skipped for the portable run",
+    "﹣ R34 Node removes its own unix socket file on clean close (why the old R30 stale-socket construction was invalid) (0.0746ms) # documents unix OS behavior only",
+    "﹣ LITE-07-104 a real Provider drives the canonical chain from review work to an accepted Memory Entry (0.4038ms) # SKIP",
+    "﹣ current-machine Kimi gate: real kimi drives the full chain to completion (env-gated) (0.0499ms) # SKIP",
+    "﹣ LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated) (0.0292ms) # SKIP",
+    "﹣ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (0.0206ms) # SKIP",
+    "﹣ LITE-04-101: real OpenCode completes the canonical production chain (env-gated) (0.0175ms) # SKIP",
+    "﹣ LITE-08-005/006/007 + LITE-07-103 a real Provider runs only after a persisted approval decision (0.4562ms) # SKIP"
+  ],
+  "sqliteRehearsal": {
+    "path": "C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\docs\\superpowers\\reports\\evidence\\2026-10-01-migration-rehearsal-final.json",
+    "sha256": "8b6b76c076f48ff730b9b99a9b42d0bdb1f23a361cb7924885e3b36858ec86ac",
+    "actualCommand": "node --disable-warning=ExperimentalWarning --import tsx 'C:/Users/Administrator/AppData/Local/Temp/agentos-audit-live-20260930-9a853e6a/migration-rehearsal-final.mjs'",
+    "cwd": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos/apps/server",
+    "exitCode": 0,
+    "evidenceRoot": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-final-migration-20261001-7LVbIz",
+    "cases": [
+      {
+        "label": "fresh",
+        "beforeMigration": "041",
+        "afterMigration": "041",
+        "reopens": 3,
+        "rowsPreserved": true,
+        "sourceReadOnly": null,
+        "sourceRowsUnchanged": null
+      },
+      {
+        "label": "schema039-to041",
+        "beforeMigration": "039",
+        "afterMigration": "041",
+        "reopens": 3,
+        "rowsPreserved": true,
+        "sourceReadOnly": null,
+        "sourceRowsUnchanged": null
+      },
+      {
+        "label": "old-audit-copy",
+        "beforeMigration": "038",
+        "afterMigration": "041",
+        "reopens": 3,
+        "rowsPreserved": true,
+        "sourceReadOnly": true,
+        "sourceRowsUnchanged": true
+      },
+      {
+        "label": "original-readonly-seed-copy",
+        "beforeMigration": "038",
+        "afterMigration": "041",
+        "reopens": 3,
+        "rowsPreserved": true,
+        "sourceReadOnly": true,
+        "sourceRowsUnchanged": true
+      }
+    ]
+  },
+  "readonlyLiveProgress": {
+    "url": "http://localhost:3000/api/workspaces/ws_01M3S55T33A74RE94YYTS7KGJZ/collaboration/tasks/collab_01M3SQNAQHNHQYCD3B12R3KVV3/progress",
+    "httpStatus": 200,
+    "readAt": "2026-09-30T20:18:09.895Z",
+    "taskId": "collab_01M3SQNAQHNHQYCD3B12R3KVV3",
+    "version": 6,
+    "status": "awaiting_application",
+    "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+    "runStatus": "completed",
+    "stages": [
+      {
+        "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+        "stageId": "stage_01M3SQNDA779HFJBHTXTN66YXH",
+        "stageKey": "plan",
+        "status": "completed",
+        "attempt": 1,
+        "agent": {
+          "agentId": "codex",
+          "name": "Codex",
+          "role": "planner",
+          "roleTitle": "首席协作顾问"
+        },
+        "publicOutputStatus": "available",
+        "publicOutputLength": 567
+      },
+      {
+        "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+        "stageId": "stage_01M3SQNDA779HFJBHTXTN66YXJ",
+        "stageKey": "implement",
+        "status": "completed",
+        "attempt": 1,
+        "agent": {
+          "agentId": "kimi",
+          "name": "KimiCode",
+          "role": "implementer",
+          "roleTitle": "分析与执行顾问"
+        },
+        "publicOutputStatus": "available",
+        "publicOutputLength": 563
+      },
+      {
+        "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+        "stageId": "stage_01M3SQNDA779HFJBHTXTN66YXK",
+        "stageKey": "review",
+        "status": "completed",
+        "attempt": 1,
+        "agent": {
+          "agentId": "opencode",
+          "name": "OpenCode",
+          "role": "reviewer",
+          "roleTitle": "独立评审顾问"
+        },
+        "publicOutputStatus": "available",
+        "publicOutputLength": 186
+      }
+    ],
+    "limits": "Only metadata and already permitted public-output lengths are archived here; no raw hidden logs or prompts. This read did not create, confirm, cancel or apply anything."
+  },
+  "manualIME": {
+    "source": "Direct human confirmation and screenshot in this chat",
+    "result": "Chinese candidate chosen with Enter is committed to Composer and remains unsent",
+    "automaticNativeIME": false,
+    "draftTouchedByThisValidation": false
+  },
+  "operatorBoundaries": {
+    "userDatabaseWritten": false,
+    "userBrowserContextConnected": false,
+    "providerCalledByThisAddendum": false,
+    "candidateApplied": false,
+    "committed": false,
+    "pushed": false,
+    "merged": false
+  }
+}

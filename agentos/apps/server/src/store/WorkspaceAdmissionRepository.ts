@@ -28,6 +28,7 @@ export interface WorkspaceAdmissionRow {
   subjectKind: AdmissionSubjectKind;
   canonicalRunId: string | null;
   legacyRunId: string | null;
+  collaborationControlId?: string | null;
   requestedMutationClass: AdmissionMutationClass;
   effectiveMutationClass: AdmissionMutationClass;
   /** Frozen enforcedWorkspaceReadOnly evidence representation (JSON) or null. */
@@ -50,6 +51,7 @@ interface Row {
   subject_kind: AdmissionSubjectKind;
   canonical_run_id: string | null;
   legacy_run_id: string | null;
+  collaboration_control_id: string | null;
   requested_mutation_class: AdmissionMutationClass;
   effective_mutation_class: AdmissionMutationClass;
   enforcement_evidence_json: string | null;
@@ -72,6 +74,7 @@ function toRow(r: Row): WorkspaceAdmissionRow {
     subjectKind: r.subject_kind,
     canonicalRunId: r.canonical_run_id,
     legacyRunId: r.legacy_run_id,
+    collaborationControlId: r.collaboration_control_id,
     requestedMutationClass: r.requested_mutation_class,
     effectiveMutationClass: r.effective_mutation_class,
     enforcementEvidenceJson: r.enforcement_evidence_json,
@@ -89,7 +92,7 @@ function toRow(r: Row): WorkspaceAdmissionRow {
 }
 
 const SELECT_COLUMNS = [
-  'id', 'workspace_id', 'subject_kind', 'canonical_run_id', 'legacy_run_id',
+  'id', 'workspace_id', 'subject_kind', 'canonical_run_id', 'legacy_run_id', 'collaboration_control_id',
   'requested_mutation_class', 'effective_mutation_class', 'enforcement_evidence_json',
   'request_order', 'state', 'queue_reason', 'release_reason',
   'requested_at', 'granted_at', 'released_at', 'created_at', 'updated_at', 'version',
@@ -102,13 +105,13 @@ export class WorkspaceAdmissionRepository {
   insertAdmission(row: WorkspaceAdmissionRow): void {
     this.db.prepare(
       'INSERT INTO workspace_admissions ('
-        + 'id, workspace_id, subject_kind, canonical_run_id, legacy_run_id,'
+        + 'id, workspace_id, subject_kind, canonical_run_id, legacy_run_id, collaboration_control_id,'
         + ' requested_mutation_class, effective_mutation_class, enforcement_evidence_json,'
         + ' request_order, state, queue_reason, release_reason,'
         + ' requested_at, granted_at, released_at, created_at, updated_at, version'
-        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
-      row.id, row.workspaceId, row.subjectKind, row.canonicalRunId, row.legacyRunId,
+      row.id, row.workspaceId, row.subjectKind, row.canonicalRunId, row.legacyRunId, row.collaborationControlId ?? null,
       row.requestedMutationClass, row.effectiveMutationClass, row.enforcementEvidenceJson,
       row.requestOrder, row.state, row.queueReason, row.releaseReason,
       row.requestedAt, row.grantedAt, row.releasedAt, row.createdAt, row.updatedAt, row.version,
@@ -125,15 +128,23 @@ export class WorkspaceAdmissionRepository {
   findBySubject(
     workspaceId: string,
     subject: { subjectKind: 'CANONICAL_RUN'; canonicalRunId: string }
-      | { subjectKind: 'LEGACY_AGENT_RUN'; legacyRunId: string },
+      | { subjectKind: 'LEGACY_AGENT_RUN'; legacyRunId: string }
+      | { subjectKind: 'COLLABORATION_APPLICATION'; controlId: string },
   ): WorkspaceAdmissionRow | undefined {
-    const row = subject.subjectKind === 'CANONICAL_RUN'
-      ? this.db.prepare(
+    let row: Row | undefined;
+    if (subject.subjectKind === 'CANONICAL_RUN') {
+      row = this.db.prepare(
           'SELECT ' + SELECT_COLUMNS + ' FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?',
         ).get(workspaceId, subject.canonicalRunId) as Row | undefined
-      : this.db.prepare(
+    } else if (subject.subjectKind === 'LEGACY_AGENT_RUN') {
+      row = this.db.prepare(
           'SELECT ' + SELECT_COLUMNS + ' FROM workspace_admissions WHERE workspace_id = ? AND legacy_run_id = ?',
         ).get(workspaceId, subject.legacyRunId) as Row | undefined;
+    } else {
+      row = this.db.prepare(
+          'SELECT ' + SELECT_COLUMNS + ' FROM workspace_admissions WHERE workspace_id = ? AND collaboration_control_id = ?',
+        ).get(workspaceId, subject.controlId) as Row | undefined;
+    }
     return row ? toRow(row) : undefined;
   }
 

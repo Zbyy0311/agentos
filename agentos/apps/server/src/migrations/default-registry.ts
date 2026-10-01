@@ -32,6 +32,13 @@ import { migration031 } from './migrations/031-mf5-retrieval-degraded.js';
 import { migration032 } from './migrations/032-group-member-runtime-settings.js';
 import { migration033 } from './migrations/033-group-runtime-settings-run-snapshot.js';
 import { migration034 } from './migrations/034-thinking-effort-max.js';
+import { migration035 } from './migrations/035-collaboration-workflow.js';
+import { migration036 } from './migrations/036-group-discussion-idempotency.js';
+import { migration037 } from './migrations/037-canonical-message-attachments.js';
+import { migration038 } from './migrations/038-collaboration-candidate-evidence.js';
+import { migration039 } from './migrations/039-collaboration-control.js';
+import { migration040 } from './migrations/040-collaboration-application-admission.js';
+import { migration041 } from './migrations/041-group-execution-ownership.js';
 import type { Migration } from './types.js';
 
 /**
@@ -73,6 +80,11 @@ import type { Migration } from './types.js';
  * 032: CR-6 per-group-member runtime settings
  * 033: CR-6 legacy group Run runtime-settings snapshot
  * 034: provider-native max thinking effort for group members
+ * 035: durable collaboration task, candidate, and review state
+ * 036: idempotent canonical group discussion source-message binding
+ * 037: canonical Conversation Message attachment persistence
+ * 038: immutable collaboration candidate/review evidence and safe stage outputs
+ * 039: durable collaboration control claims and application recovery journals
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -109,4 +121,11 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration032,
   migration033,
   migration034,
+  migration035,
+  migration036,
+  migration037,
+  migration038,
+  migration039,
+  migration040,
+  migration041,
 ];

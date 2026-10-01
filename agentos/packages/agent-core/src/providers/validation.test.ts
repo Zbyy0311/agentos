@@ -106,6 +106,15 @@ describe('ProviderValidationService', () => {
     expect(result.cliVersion).toBe('0.23.5');
   });
 
+  it('validates historical Kimi adapter ids through the exact registry', async () => {
+    for (const adapterVersion of [undefined, '1.0.0']) {
+      const result = await service().validate(config({ adapterId: 'builtin.kimi', adapterVersion }));
+      expect(result.valid).toBe(true);
+    }
+    const unsupported = await service().validate(config({ adapterId: 'builtin.kimi', adapterVersion: '9.9.9' }));
+    expect(unsupported.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_ADAPTER_NOT_FOUND' })]);
+  });
+
   it('keeps persisted Kimi compatibility on 1.0.0 when Registry also contains 1.1.0', async () => {
     const stable = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
     const newer = new KimiCodeProviderAdapter({ probe: probeFor('0.10.0') });
