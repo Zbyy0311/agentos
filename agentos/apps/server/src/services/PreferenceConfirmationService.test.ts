@@ -110,6 +110,21 @@ test('confirmation uses CAS, verifies workspace, and requires explicit global op
   } finally { other.close(); }
 });
 
+test('cross-workspace global evidence comes from the verified frozen binding snapshot', () => {
+  const fx = setup();
+  try {
+    assert.equal(fx.service.evidenceForProjection('projection-a', 'workspace-b'), null);
+    fx.service.confirm({ projectionId: 'projection-a', workspaceId: 'workspace-a', expectedVersion: 1, confirmGlobal: true });
+
+    // Later projection updates can replace its evidence links; they must not rewrite the confirmed record.
+    seedProjection(fx.store, { preferredValue: 'detailed', updatedAt: '2026-10-01T00:01:00.000Z' }, []);
+    const evidence = fx.service.evidenceForProjection('projection-a', 'workspace-b');
+    assert.deepEqual(evidence?.map(item => ({ id: item.id, candidateValue: item.candidateValue, summary: item.summary })), [
+      { id: 'evidence-a', candidateValue: 'concise', summary: 'observed' },
+    ]);
+  } finally { fx.close(); }
+});
+
 test('reject and revoke are audited, versioned, and revocation archives only the bound Entry', () => {
   const fx = setup();
   try {

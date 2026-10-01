@@ -188,7 +188,7 @@ export class PreferenceConfirmationService {
         `value:${confirmedGlobal.preferred_value}`,
       ];
       if (!entry || entry.workspaceId !== confirmedGlobal.entry_workspace_id
-        || entry.version < confirmedGlobal.entry_version || entry.scope !== 'global'
+        || entry.version < confirmedGlobal.entry_version! || entry.scope !== 'global'
         || entry.category !== 'preference' || entry.authority !== 'user-explicit' || entry.status !== 'active'
         || expectedTags.some(tag => !entry.tags.includes(tag))) return null;
       return decodeEvidenceSnapshot(confirmedGlobal.evidence_json);
