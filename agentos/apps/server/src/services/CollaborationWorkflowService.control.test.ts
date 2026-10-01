@@ -1062,9 +1062,12 @@ test('M3 runner receipt is omitted when acceptance changes the frozen candidate'
   } finally { await fx.close(); }
 });
 
-test('M3 keeps candidate capture compatible before migration 046 and atomically rolls back a failed receipt insert', async () => {
+test('M3 keeps candidate capture compatible without runner receipt schema and atomically rolls back a failed receipt insert', async () => {
   const legacy = fixture({}, { memoryEnabled: true });
   try {
+    // SqliteStore always applies the current registry. Explicitly remove this
+    // capability from the isolated fixture to exercise the legacy fallback.
+    legacy.store.getDatabase().exec('DROP TABLE memory_test_runner_receipts');
     const active = legacy.runningWithCompletedStart();
     const working = join(legacy.root, 'implementation');
     execFileSync('git', ['worktree', 'add', '--detach', working, legacy.plan.baseCommit], { cwd: legacy.repositoryRoot, windowsHide: true, stdio: 'pipe' });
