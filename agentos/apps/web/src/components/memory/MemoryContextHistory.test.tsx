@@ -12,10 +12,10 @@ const BASE_CONTEXT: MemoryContextRecord = {
   exclusions: [{ memoryId: 'entry-2', reason: 'token-budget' }],
 };
 
-async function render(context: MemoryContextRecord): Promise<string> {
+async function render(context: MemoryContextRecord, workspaceId?: string): Promise<string> {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const { MemoryContextDetails } = await import('./MemoryContextHistory.js');
-  return renderToStaticMarkup(<MemoryContextDetails context={context} />);
+  return renderToStaticMarkup(<MemoryContextDetails context={context} workspaceId={workspaceId} />);
 }
 
 test('history details label a missing historical payload and unpersisted explanations without inventing text', async () => {
@@ -41,6 +41,15 @@ test('history details show the actual frozen payload, selected version/reasons, 
   assert.ok(markup.includes('v7'));
   assert.ok(markup.includes('scope-match、fts-match'));
   assert.ok(markup.includes('entry-2 — token-budget'));
+});
+
+test('history details expose version feedback against each frozen selected memory', async () => {
+  const markup = await render(BASE_CONTEXT, 'workspace-1');
+  assert.ok(markup.includes('data-agentos="memory-version-feedback"'));
+  assert.ok(markup.includes('对冻结版本 v7'));
+  assert.ok(markup.includes('有帮助'));
+  assert.ok(markup.includes('有错误'));
+  assert.ok(markup.includes('已过时'));
 });
 
 test('history details keep unknown legacy selection versions visibly unknown', async () => {

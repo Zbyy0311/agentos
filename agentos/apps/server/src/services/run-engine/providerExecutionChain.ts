@@ -31,6 +31,7 @@ import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
 import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
+import { VerifiedMemoryFactService } from '../VerifiedMemoryFactService.js';
 import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
@@ -65,6 +66,8 @@ export interface ProviderExecutionChain {
   readonly approvalGate: RuntimeApprovalGate;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
   readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
+  /** M3 verified low-risk facts; parent startup wiring may invoke its sweep. */
+  readonly verifiedMemoryFacts: VerifiedMemoryFactService;
 }
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
@@ -167,6 +170,21 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     tasks: store.taskRepository(),
     emitter: memoryEventEmitter,
   });
+  const verifiedMemoryFacts = new VerifiedMemoryFactService(store.getDatabase(), memoryEventEmitter);
+  const terminalCandidateGeneratorWithFacts = {
+    generateForRunTerminal: (input: Parameters<MemoryCandidateGenerationService['generateForRunTerminal']>[0]) => {
+      const result = terminalCandidateGenerator.generateForRunTerminal(input);
+      try {
+        // The fact service rechecks workspace memory eligibility and consumes
+        // only committed terminal evidence; fact failures cannot replace the
+        // ordinary candidate result or affect the already-terminal Run.
+        verifiedMemoryFacts.accumulateTerminal(input);
+      } catch (error) {
+        console.error(`VERIFIED_MEMORY_FACT_ACCUMULATION_FAILED run=${input.runId}:`, error);
+      }
+      return result;
+    },
+  };
   dispatcher = new RunEngineProviderDispatcher({
     artifactResults: new CanonicalArtifactResultService(new RuntimeArtifactService(store, dirname(dirname(options.artifactRoot)))),
     engine,
@@ -175,7 +193,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     memoryContextResolver,
     // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
     // the terminal commit; failures surface on stderr and never affect the Run.
-    memoryCandidateGenerator: terminalCandidateGenerator,
+    memoryCandidateGenerator: terminalCandidateGeneratorWithFacts,
     onCandidateGenerationError: (error, runId) => {
       console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${runId}:`, error);
     },
@@ -190,6 +208,6 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
-    memoryContextResolver, approvalGate, terminalCandidateGenerator,
+    memoryContextResolver, approvalGate, terminalCandidateGenerator, verifiedMemoryFacts,
   };
 }

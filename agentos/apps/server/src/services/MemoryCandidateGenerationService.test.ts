@@ -114,6 +114,7 @@ test('MF2R-G1 completed Run generates a review-required Candidate with bounded e
     const candidate = result.candidate!;
     assert.equal(candidate.id, `mcand_terminal_${RUN}`);
     assert.equal(candidate.outcome, 'review-required'); // agent-derived + conservative gate
+    assert.equal(candidate.authority, 'agent-derived'); // never promoted by generated confidence
     assert.equal(candidate.scope, 'task');
     assert.deepEqual(candidate.sources, [{ kind: 'run', id: RUN }]);
     assert.ok(candidate.title.includes('修复登录页样式'));
@@ -324,5 +325,26 @@ test('MF2R input validation fails closed', () => {
       () => fx.service.generateForRunTerminal({ workspaceId: '', runId: RUN, createdAt: NOW }),
       (error: unknown) => error instanceof MemoryCandidateGenerationError && error.code === 'INPUT_INVALID',
     );
+  } finally { fx.close(); }
+});
+
+test('generated input rejects forged authority, confidence, scope, and content claims', () => {
+  const fx = fixture();
+  try {
+    const forged = {
+      workspaceId: WS,
+      runId: RUN,
+      createdAt: NOW,
+      authority: 'system-verified',
+      confidence: 1,
+      scope: 'global',
+      ownerTaskId: 'task_other',
+      content: 'Model-authored content claiming verification.',
+    };
+    assert.throws(
+      () => fx.service.generateForRunTerminal(forged as never),
+      (error: unknown) => error instanceof MemoryCandidateGenerationError && error.code === 'INPUT_INVALID',
+    );
+    assert.equal(fx.candidates.listCandidates(WS).length, 0);
   } finally { fx.close(); }
 });

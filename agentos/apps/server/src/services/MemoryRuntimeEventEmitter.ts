@@ -181,6 +181,7 @@ export class MemoryRuntimeEventEmitter {
       readonly stageId?: string;
       readonly timestamp?: string;
     },
+    afterPersist?: (record: MemoryCandidateRecord) => void,
   ): MemoryFactEmissionResult<MemoryCandidateRecord> {
     const scope = this.resolveScope(input);
     return this.emit(() => {
@@ -200,7 +201,7 @@ export class MemoryRuntimeEventEmitter {
           decision: record.decision ?? 'review-required',
         },
       };
-    }, scope);
+    }, scope, afterPersist);
   }
 
   /** S2: emit only the Candidate bound to this actual canonical completion. */
@@ -403,6 +404,7 @@ export class MemoryRuntimeEventEmitter {
     write: () => { readonly record: TRecord; readonly type: string; readonly payload: Record<string, unknown>;
       readonly additional?: readonly { readonly type: string; readonly payload: Record<string, unknown> }[] },
     scope: RunScope,
+    afterPersist?: (record: TRecord) => void,
   ): MemoryFactEmissionResult<TRecord> {
     try {
       return inTransaction(this.db, () => {
@@ -429,6 +431,9 @@ export class MemoryRuntimeEventEmitter {
           const emitted = append(fact.type, fact.payload);
           return { eventId: emitted.event.id, outboxId: emitted.outbox.id };
         });
+        // Additive transaction hook for services that must persist a receipt
+        // with the Candidate, optional promoted Entry, Event, and Outbox.
+        afterPersist?.(record);
         return { record, eventId: event.id, outboxId: outbox.id, additionalEvents };
       });
     } catch (error) {
