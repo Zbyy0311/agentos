@@ -5,10 +5,12 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -564,5 +566,62 @@ test('R33 ownership failure has no persistent side effects beyond diagnostics', 
     killServer(serverB);
     await ownership?.release();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('P3 active maintenance lease blocks SQLite and Run recovery until a later expired-lease startup', { timeout: 240_000 }, async () => {
+  const root = makeTempRoot('maintenance-lease');
+  const seeded = seedQueuedLegacyRun(root, 'ws-maintenance-startup');
+  const statePath = join(root, '.agentos', 'maintenance-state.json');
+  const now = new Date().toISOString();
+  const state = {
+    formatVersion: 1, operationId: 'backup-interrupted', kind: 'backup', status: 'active',
+    ownerInstanceId: 'prior-instance', startedAt: now, updatedAt: now,
+    leaseExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+  };
+  writeFileSync(statePath, JSON.stringify(state));
+  const before = snapshotProjectTree(root);
+  let blocked: SpawnedServer | undefined;
+  let restarted: SpawnedServer | undefined;
+  try {
+    const port = await freePort();
+    blocked = spawnServer(root, port);
+    const exit = await waitForExit(blocked.child);
+    assert.notEqual(exit.code, 0);
+    assert.match(blocked.output(), /startup blocked: MAINTENANCE_IN_PROGRESS/);
+    assert.deepEqual(snapshotProjectTree(root), before, 'opening SQLite, migrations and startup recovery must all stay behind the lease');
+    assert.deepEqual(readRunState(root, seeded.workspaceId, seeded.runId, seeded.taskId), seeded.initial);
+    await assert.rejects(() => fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2000) }));
+
+    writeFileSync(statePath, JSON.stringify({ ...state, leaseExpiresAt: new Date(Date.now() - 1000).toISOString() }));
+    restarted = spawnServer(root, await freePort());
+    await waitForHealthy(restarted.port);
+    const recovered = readRunState(root, seeded.workspaceId, seeded.runId, seeded.taskId);
+    assert.equal(recovered.runStatus, 'failed');
+    assert.equal(recovered.runFailureCode, 'BRIDGE_PRESTART_INTERRUPTED');
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).status, 'expired');
+  } finally {
+    if (blocked) await stopServer(blocked);
+    if (restarted) await stopServer(restarted);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test('P3 damaged maintenance state is preserved and cannot create a database', { timeout: 240_000 }, async () => {
+  const root = makeTempRoot('maintenance-damaged');
+  mkdirSync(join(root, '.agentos'), { recursive: true });
+  const statePath = join(root, '.agentos', 'maintenance-state.json');
+  const damaged = '{"status":"active","leaseExpiresAt":"not-a-date"}';
+  writeFileSync(statePath, damaged);
+  const blocked = spawnServer(root, await freePort());
+  try {
+    const exit = await waitForExit(blocked.child);
+    assert.notEqual(exit.code, 0);
+    assert.match(blocked.output(), /startup blocked: MAINTENANCE_STATE_INVALID/);
+    assert.equal(readFileSync(statePath, 'utf8'), damaged);
+    assert.equal(existsSync(join(root, '.agentos', 'agentos.sqlite')), false);
+  } finally {
+    await stopServer(blocked);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
