@@ -3,20 +3,31 @@ import type { MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
 
 export const MEMORY_RELEVANCE_POLICY = 'memory-relevance.v2' as const;
-export const MEMORY_LEXICAL_VERSION = 'nfkc-han-bigrams.v1';
+export const MEMORY_LEXICAL_VERSION = 'nfkc-han-bigrams.v2';
 const STOP_WORDS = new Set('a an and are as at be by for from has have how i in is it of on or that the this to was we what when which with you your'.split(' '));
-const ALIASES: Record<string, string> = { fulltext: 'fts', 'full-text': 'fts', 'job-object': 'jobobject', 'job_object': 'jobobject', embeddings: 'embedding', migrations: 'migration', providers: 'provider', memories: 'memory', retries: 'retry' };
+const ALIASES = new Map([
+  ['fulltext', 'fts'], ['full-text', 'fts'], ['job-object', 'jobobject'], ['job_object', 'jobobject'],
+  ['embeddings', 'embedding'], ['migrations', 'migration'], ['providers', 'provider'],
+  ['memories', 'memory'], ['retries', 'retry'],
+]);
+const LANGUAGE_TERMS = new Map([['c++', 'cpp'], ['c#', 'csharp'], ['.net', 'dotnet']]);
 
 /** Neutral terms, never FTS operators. Han bigrams make unspaced Chinese searchable. */
 export function memoryLexicalTerms(value: string): string[] {
   const terms = new Set<string>();
-  for (const match of value.normalize('NFKC').toLowerCase().matchAll(/[\p{Script=Han}]+|[a-z0-9]+(?:[._-][a-z0-9]+)*/gu)) {
+  const normalized = value.normalize('NFKC').toLowerCase().replace(
+    /(?<![a-z0-9_])(?:c\+\+|c#)(?![a-z0-9_])|(?<![a-z0-9_.])\.net(?![a-z0-9_])/gu,
+    term => ` ${LANGUAGE_TERMS.get(term)!} `,
+  );
+  for (const match of normalized.matchAll(/[\p{Script=Han}]+|[a-z0-9]+(?:[._-][a-z0-9]+)*/gu)) {
     const token = match[0];
     if (/^\p{Script=Han}+$/u.test(token)) {
       const chars = Array.from(token);
-      for (let i = 0; i + 1 < chars.length; i += 1) terms.add(chars[i]! + chars[i + 1]!);
+      for (let i = 0; i + 1 < chars.length && terms.size < 1024; i += 1) {
+        terms.add(chars[i]! + chars[i + 1]!);
+      }
     } else if (token.length > 1 && !STOP_WORDS.has(token)) {
-      terms.add(ALIASES[token] ?? token);
+      terms.add(ALIASES.get(token) ?? token);
     }
     if (terms.size >= 1024) break;
   }

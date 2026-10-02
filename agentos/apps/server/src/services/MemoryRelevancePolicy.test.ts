@@ -7,7 +7,7 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { inTransaction } from '../store/Transaction.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
-import { memoryLexicalTerms, memoryQueryTerms, MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
+import { memoryLexicalTerms, memoryQueryTerms, MEMORY_RELEVANCE_POLICY, MEMORY_LEXICAL_VERSION } from './MemoryLexicalIndex.js';
 import { createChatMemorySelectionPort } from './ChatMemorySelectionPort.js';
 import { buildChatMemoryRetrievalQuery } from './ConversationTurnDriver.js';
 import type { MemorySemanticRetrieval } from './MemorySemanticRetrieval.js';
@@ -117,5 +117,33 @@ test('multiline group role instructions cannot match lexical or semantic memory'
     assert.ok(sync.exclusions?.some(item => item.memoryId === unrelated.id && item.reason === 'no-relevance'));
     assert.equal(observedQueries.length, 3);
     assert.ok(observedQueries.every(text => text.trim() === '星云鲸鱼望远镜'));
+  } finally { fx.db.close(); }
+});
+
+test('tokenizer upgrade rebuilds prior terms and distinguishes languages through FTS and fallback', () => {
+  const fx = fixture();
+  try {
+    const cpp = fx.add({ title: 'C++', summary: '', content: 'C++', tags: [] });
+    const csharp = fx.add({ title: 'C#', summary: '', content: 'C#', tags: [] });
+    const dotnet = fx.add({ title: '.NET', summary: '', content: '.NET', tags: [] });
+    fx.retrieval.retrieve(fx.request('C++'));
+    fx.db.prepare('UPDATE memory_lexical_entries SET tokenizer_version = ? WHERE entry_id = ?')
+      .run('nfkc-han-bigrams.v1', cpp.id);
+    fx.db.prepare('UPDATE memory_lexical_fts SET terms = ? WHERE entry_id = ?').run('obsolete', cpp.id);
+    assert.deepEqual(fx.retrieval.retrieve(fx.request('Ｃ＋＋')).map(item => item.entry.id), [cpp.id]);
+    assert.equal((fx.db.prepare('SELECT tokenizer_version FROM memory_lexical_entries WHERE entry_id = ?')
+      .get(cpp.id) as { tokenizer_version: string }).tokenizer_version, MEMORY_LEXICAL_VERSION);
+    for (const [query, id] of [['C#', csharp.id], ['.NET', dotnet.id]] as const) {
+      assert.deepEqual(fx.retrieval.retrieve(fx.request(query)).map(item => item.entry.id), [id]);
+    }
+    fx.db.exec('DROP TABLE memory_lexical_fts');
+    fx.db.exec('DROP TABLE memory_entries_fts');
+    for (const [query, id] of [['C++', cpp.id], ['C#', csharp.id], ['.NET', dotnet.id]] as const) {
+      const selected = fx.retrieval.retrieveWithStatus(fx.request(query));
+      assert.equal(selected.degraded, true);
+      assert.deepEqual(selected.results.map(item => item.entry.id), [id]);
+    }
+    assert.deepEqual(fx.retrieval.retrieve(fx.request('net')), []);
+    assert.deepEqual(fx.retrieval.retrieve(fx.request('constructor')), []);
   } finally { fx.db.close(); }
 });
