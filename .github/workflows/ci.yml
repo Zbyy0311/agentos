@@ -172,6 +172,31 @@ jobs:
           path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/coverage.json
           if-no-files-found: error
 
+  p3-local-operations:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Diagnostic redaction contract
+        run: node --test scripts/agentos-diagnostic-redaction.test.mjs
+      - name: Windows instance ownership and safe lifecycle
+        run: node scripts/run-p4-ci-gate.mjs windows-local-launcher --mode real-windows-process -- pwsh -NoProfile -File scripts/agentos-local.test.ps1 -TimeoutSeconds 60
+      - name: Preserve local lifecycle receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-local-operations-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/windows-local-launcher/
+          if-no-files-found: error
+
   p4-core:
     runs-on: windows-latest
     env:
