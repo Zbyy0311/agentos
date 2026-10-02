@@ -62,6 +62,8 @@ $savedManifest = $null
 $ownedPids = @()
 $originalFixtureEnv = [Environment]::GetEnvironmentVariable('AGENTOS_API_TOKEN', 'Process')
 $originalReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', 'Process')
+$originalMaintenanceReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'Process')
+$originalReadiness503Env = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', 'Process')
 $originalFailWebEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'Process')
 $temporaryWasCreated = $false
 $testFailure = $null
@@ -76,7 +78,20 @@ const http = require('node:http');
 const host = process.env.AGENTOS_SERVER_HOST || '127.0.0.1';
 const port = Number(process.env.PORT);
 const server = http.createServer((req, res) => {
-  if (req.url === '/api/readiness' && process.env.AGENTOS_FIXTURE_READINESS === 'true') {
+  if (req.url === '/api/health/ready') {
+    if (process.env.AGENTOS_FIXTURE_READINESS_503 === 'true') {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ready: false }));
+    } else if (process.env.AGENTOS_FIXTURE_READINESS === 'true') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ready: true }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+    return;
+  }
+  if (req.url === '/api/maintenance/readiness' && process.env.AGENTOS_FIXTURE_MAINTENANCE_READINESS === 'true') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ready: true }));
     return;
@@ -179,6 +194,7 @@ http.createServer((_req, res) => {
   Assert-True ($ownedPids.Count -ge 3) 'The manifest did not record supervisor, server and web process IDs.'
   $status = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($status.value.state -eq 'running' -and $status.value.endpoints.server -and $status.value.endpoints.web) 'Status did not report the owned processes and both ready endpoints.'
+  Assert-True ($status.value.endpoints.serverReadinessPath -eq '/api/health') 'Legacy liveness fallback was not selected when every readiness route returned 404.'
   Assert-True ($status.value.endpoints.serverPortOwned -and $status.value.endpoints.webPortOwned) 'Status did not verify that the owned process trees hold both ports.'
   Assert-True (-not $status.text.Contains($fixtureSecret)) 'Machine-readable status exposed a .env value.'
   $manifestText = Get-Content -LiteralPath $manifestPath -Raw
@@ -248,8 +264,11 @@ http.createServer((_req, res) => {
   while ($readinessWebPort -eq $readinessServerPort) { $readinessWebPort = Get-FreePort }
   $readinessStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$readinessServerPort, '-WebPort', [string]$readinessWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
   Assert-True ($readinessStart.value.ok -and $readinessStart.value.state -eq 'running') ("Startup using /api/readiness failed: " + $readinessStart.text)
+  $legacyManifestObject = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $legacyManifestObject.readinessPath = '/api/health'
+  Write-Utf8NoBom $manifestPath (ConvertTo-Json -InputObject $legacyManifestObject -Depth 10)
   $readinessStatus = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
-  Assert-True ($readinessStatus.value.endpoints.serverReadinessPath -eq '/api/readiness') 'Status did not retain the successful /api/readiness path.'
+  Assert-True ($readinessStatus.value.endpoints.serverReadinessPath -eq '/api/health/ready') 'Status did not prefer the actual readiness route over a legacy liveness manifest value.'
   $pidsDirectory = Join-Path $dataRoot '.agentos/local-runtime'
   $archivedPidRecords = @(Get-ChildItem -Path (Join-Path $pidsDirectory 'worker-pids.json.*.previous') -File -ErrorAction SilentlyContinue)
   Assert-True ($archivedPidRecords.Count -ge 1) 'Restart discarded the previous runtime process record instead of archiving it.'
@@ -263,7 +282,47 @@ http.createServer((_req, res) => {
   } while ((Get-Date) -lt $readinessDeadline)
   Assert-True ($readinessRemaining.Count -eq 0) 'Readiness-contract fixture did not stop cleanly.'
 
+  # A route alias is supported when the preferred health readiness route returns 404.
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'true', 'Process')
+  $maintenanceServerPort = Get-FreePort
+  $maintenanceWebPort = Get-FreePort
+  while ($maintenanceWebPort -eq $maintenanceServerPort) { $maintenanceWebPort = Get-FreePort }
+  $maintenanceStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$maintenanceServerPort, '-WebPort', [string]$maintenanceWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
+  Assert-True ($maintenanceStart.value.ok -and $maintenanceStart.value.state -eq 'running') ("Startup using /api/maintenance/readiness failed: " + $maintenanceStart.text)
+  $maintenanceStatus = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($maintenanceStatus.value.endpoints.serverReadinessPath -eq '/api/maintenance/readiness') 'Launcher did not follow the readiness alias after a 404 from the preferred route.'
+  $maintenancePids = @($maintenanceStart.value.processPids | ForEach-Object { [int]$_ })
+  $null = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  $maintenanceDeadline = (Get-Date).AddSeconds(10)
+  do {
+    $maintenanceRemaining = @($maintenancePids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($maintenanceRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $maintenanceDeadline)
+  Assert-True ($maintenanceRemaining.Count -eq 0) 'Maintenance readiness alias fixture did not stop cleanly.'
+
+  # A readiness 503 must remain unready even though the legacy liveness route returns 200.
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', 'true', 'Process')
+  $notReadyServerPort = Get-FreePort
+  $notReadyWebPort = Get-FreePort
+  while ($notReadyWebPort -eq $notReadyServerPort) { $notReadyWebPort = Get-FreePort }
+  $notReadyStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$notReadyServerPort, '-WebPort', [string]$notReadyWebPort, '-ReadyTimeoutSeconds', '1')
+  Assert-True (-not $notReadyStart.value.ok -and $notReadyStart.value.error -match '(?i)Readiness timed out.*server=False, web=True') ("A readiness 503 was incorrectly treated as ready or did not time out: " + $notReadyStart.text)
+  $notReadyManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  Assert-True ($notReadyManifest.state -eq 'stopped') 'Readiness 503 did not leave an auditable stopped manifest.'
+  $notReadyPids = @($notReadyManifest.processes | ForEach-Object { [int]$_.pid })
+  $notReadyDeadline = (Get-Date).AddSeconds(10)
+  do {
+    $notReadyRemaining = @($notReadyPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($notReadyRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $notReadyDeadline)
+  Assert-True ($notReadyRemaining.Count -eq 0) 'Readiness 503 cleanup left an owned process alive.'
+
   # A service that never opens its port must time out and leave no owned process tree.
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', $null, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'true', 'Process')
   $failureServerPort = Get-FreePort
   $failureWebPort = Get-FreePort
@@ -272,6 +331,7 @@ http.createServer((_req, res) => {
   $failedStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$failureServerPort, '-WebPort', [string]$failureWebPort, '-ReadyTimeoutSeconds', '1')
   $failureTimer.Stop()
   Assert-True (-not $failedStart.value.ok -and $failedStart.value.error -match 'Readiness timed out') ("A failed readiness probe did not report bounded startup failure: " + $failedStart.text)
+  Assert-True ($failedStart.value.error -match '(?i)server=True, web=False') 'The web timeout scenario did not isolate the expected failing service.'
   Assert-True ($failureTimer.Elapsed.TotalSeconds -lt 12) 'A failed readiness probe exceeded the bounded startup and cleanup time.'
   $failedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   Assert-True ($failedManifest.state -eq 'stopped') 'Failed startup did not preserve a stopped diagnostic manifest.'
@@ -284,12 +344,14 @@ http.createServer((_req, res) => {
   } while ((Get-Date) -lt $failureDeadline)
   Assert-True ($failedRemaining.Count -eq 0) 'Readiness timeout leaked one or more owned child processes.'
 
-  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, health/readiness probes, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
+  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
 } catch {
   $testFailure = $_.Exception
 } finally {
   [Environment]::SetEnvironmentVariable('AGENTOS_API_TOKEN', $originalFixtureEnv, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', $originalReadinessEnv, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', $originalMaintenanceReadinessEnv, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', $originalReadiness503Env, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $originalFailWebEnv, 'Process')
   if ($null -ne $unrelated -and -not $unrelated.HasExited) {
     try { $unrelated.Kill(); [void]$unrelated.WaitForExit(5000) } catch {}

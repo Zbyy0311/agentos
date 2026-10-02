@@ -261,10 +261,12 @@ function Get-EndpointStatus([string] $Uri) {
 }
 
 function Get-ServerReadinessPath([string] $HostValue, [int] $PortValue) {
-  $readinessPath = '/api/readiness'
-  $readinessStatus = Get-EndpointStatus (Get-ServiceUrl $HostValue $PortValue $readinessPath)
-  if ($readinessStatus -eq 404) { return '/api/health' }
-  return $readinessPath
+  foreach ($readinessPath in @('/api/health/ready', '/api/maintenance/readiness', '/api/readiness')) {
+    $readinessStatus = Get-EndpointStatus (Get-ServiceUrl $HostValue $PortValue $readinessPath)
+    if ($readinessStatus -eq 404) { continue }
+    return $readinessPath
+  }
+  return '/api/health'
 }
 
 function Test-PortOwnedByProcessTree($Snapshot, [int] $RootPid, [int] $PortValue) {
@@ -463,9 +465,12 @@ function Get-StatusResult($Manifest, $Assessment) {
       processPids = @($Manifest.processes | ForEach-Object { [int]$_.pid })
     }
   }
-  $readinessPath = '/api/health'
-  if (($Manifest.PSObject.Properties.Name -contains 'readinessPath') -and -not [string]::IsNullOrWhiteSpace([string]$Manifest.readinessPath)) {
-    $readinessPath = [string]$Manifest.readinessPath
+  $readinessPath = Get-ServerReadinessPath ([string]$Manifest.serverHost) ([int]$Manifest.ports.server)
+  $knownReadinessPaths = @('/api/health/ready', '/api/maintenance/readiness', '/api/readiness')
+  if (($Manifest.PSObject.Properties.Name -contains 'readinessPath') -and [string]$Manifest.readinessPath -in $knownReadinessPaths) {
+    $persistedReadinessPath = [string]$Manifest.readinessPath
+    $persistedStatus = Get-EndpointStatus (Get-ServiceUrl ([string]$Manifest.serverHost) ([int]$Manifest.ports.server) $persistedReadinessPath)
+    if ($persistedStatus -ne 404) { $readinessPath = $persistedReadinessPath }
   }
   $serverUrl = Get-ServiceUrl ([string]$Manifest.serverHost) ([int]$Manifest.ports.server) $readinessPath
   $webUrl = Get-ServiceUrl ([string]$Manifest.webHost) ([int]$Manifest.ports.web) '/'
@@ -693,7 +698,7 @@ try {
       schemaVersion = 1
       instanceId = $instanceId
       state = 'starting'
-      readinessPath = '/api/readiness'
+      readinessPath = '/api/health/ready'
       createdAt = [DateTime]::UtcNow.ToString('o')
       mode = $modeValue
       mock = [bool]$Mock
