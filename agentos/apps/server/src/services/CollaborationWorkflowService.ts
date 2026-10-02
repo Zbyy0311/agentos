@@ -766,8 +766,17 @@ export class CollaborationWorkflowService {
       const run = task.canonicalRunId && this.options.store.runRepository().findById(input.workspaceId, task.canonicalRunId);
       if (task.version !== input.expectedTaskVersion || task.canonicalRunId !== input.expectedRunId
         || !run || run.version !== input.expectedRunVersion || !['failed', 'blocked'].includes(task.status)
-        || run.status !== 'failed' || this.controls.pending(input.workspaceId, task.id)) {
+        || this.controls.pending(input.workspaceId, task.id)) {
         throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Current task, Run or action changed; refresh before recovering');
+      }
+      if (run.status !== 'failed') {
+        const unresolvedSideEffect = run.recoveryRequired === true || ['starting', 'running'].includes(run.status)
+          || run.failureCode === 'RUN_PROCESS_MISSING' || run.failureCode === 'RUN_PROCESS_UNKNOWN'
+          || run.failureCode?.includes('RECOVERY') === true;
+        if (unresolvedSideEffect) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_UNRESOLVED', 'Run has not reached a proven safe failure; retry is forbidden');
+        }
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Current Run is not a retryable failed Run; refresh before recovering');
       }
       this.assertKnownFailureRetryEligible(task, run);
       const recoveryId = createEntityId('operation');

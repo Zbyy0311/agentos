@@ -656,8 +656,6 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
 
     const store = new SqliteStore(root);
     let recoveryRunId = '';
-    let recoveryRunVersion = 0;
-    let recoveryTaskVersion = 0;
     try {
       const taskRow = new CollaborationRepository(store.getDatabase()).findById('workspace-a', task.id);
       assert.ok(taskRow);
@@ -666,8 +664,6 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
       const run = store.runRepository().findById('workspace-a', taskRow.canonicalRunId!);
       assert.ok(run);
       recoveryRunId = run.id;
-      recoveryRunVersion = run.version;
-      recoveryTaskVersion = taskRow.version;
       assert.ok(run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING',
         `restart must preserve uncertainty or prove the provider missing; saw ${run.failureCode}/${run.recoveryRequired}`);
       assert.equal(readFileSync(join(worktreePath, 'p2-unknown-side-effect.txt'), 'utf8'), 'provider wrote before restart\n');
@@ -695,16 +691,27 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
     assert.equal(spawnSyncGit(['status', '--porcelain'], workspaceRoot).stdout, '');
     const cleanOptionsResponse = await fetch(recoveryUrl);
     const cleanOptions = await cleanOptionsResponse.json() as {
-      recovery: { actions: { newLinkedTask: boolean }; checkedBaseCommit?: string };
+      recovery: {
+        taskVersion: number; runId?: string; runVersion?: number;
+        actions: { newLinkedTask: boolean }; checkedBaseCommit?: string;
+      };
     };
     assert.equal(cleanOptionsResponse.status, 200);
     assert.equal(cleanOptions.recovery.actions.newLinkedTask, true);
     assert.equal(cleanOptions.recovery.checkedBaseCommit, cleanCheckedBaseline,
       'availability reports the current clean baseline after the source HEAD advances');
+    assert.equal(cleanOptions.recovery.runId, recoveryRunId,
+      'the current recovery options remain bound to the prior canonical Run');
+    const checkedTaskVersion = cleanOptions.recovery.taskVersion;
+    const checkedRunId = cleanOptions.recovery.runId;
+    const checkedRunVersion = cleanOptions.recovery.runVersion;
+    if (!checkedRunId || checkedRunVersion === undefined) {
+      throw new Error('Clean recovery options omitted their task/Run compare-and-swap versions');
+    }
 
     const recoveryBody = {
-      action: 'new-linked-task', expectedTaskVersion: recoveryTaskVersion,
-      expectedRunId: recoveryRunId, expectedRunVersion: recoveryRunVersion,
+      action: 'new-linked-task', expectedTaskVersion: checkedTaskVersion,
+      expectedRunId: checkedRunId, expectedRunVersion: checkedRunVersion,
     };
     const unsafeRetry = await postJson(`${taskUrl}/recover`, {
       ...recoveryBody, action: 'retry-known-failure',
@@ -733,7 +740,7 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
     assert.equal(replayedRecovery.status, 200);
     assert.equal(replayedRecovery.json.recovery.task.id, linkedTask.id, 'same key returns the same linked task');
     const changedRecoveryBody = await postJson(`${taskUrl}/recover`, {
-      ...recoveryBody, expectedRunVersion: recoveryRunVersion + 1,
+      ...recoveryBody, expectedRunVersion: checkedRunVersion + 1,
     }, { 'Idempotency-Key': recoveryKey });
     assert.equal(changedRecoveryBody.status, 409);
     assert.equal(changedRecoveryBody.json.error ?? changedRecoveryBody.json.code, 'COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT');
