@@ -128,12 +128,18 @@ function isKnownGeneratedOutputDirectory(relativePath) {
   for (const repoPrefix of repoPrefixes) {
     const exactOutputs = [
       `${repoPrefix}apps/server/dist`,
+      `${repoPrefix}packages/agent-core/dist`,
+      `${repoPrefix}packages/process-runtime/dist`,
+      `${repoPrefix}packages/shared/dist`,
+      `${repoPrefix}packages/agent-core/.agentos/logs/diagnostics`,
       `${repoPrefix}apps/web/.next`,
       `${repoPrefix}apps/web/.next-live`,
       `${repoPrefix}apps/web/test-results`,
       `${repoPrefix}apps/web/playwright-report`,
     ];
     if (exactOutputs.some(output => normalized === output || normalized.startsWith(`${output}/`))) return true;
+    if (normalized === `${repoPrefix}apps/web/next-env.d.ts`
+      || normalized === `${repoPrefix}apps/web/tsconfig.tsbuildinfo`) return true;
     const webPrefix = `${repoPrefix}apps/web/`;
     if (normalized.startsWith(webPrefix)) {
       const firstDirectory = normalized.slice(webPrefix.length).split('/')[0];

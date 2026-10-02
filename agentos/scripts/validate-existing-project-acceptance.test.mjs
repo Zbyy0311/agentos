@@ -284,6 +284,12 @@ test('source snapshot handles both package-root layouts, ignores exact generated
     const prefix = sourceLayout === 'agentos' ? 'agentos/' : '';
     const generatedFiles = [
       `${prefix}apps/server/dist/index.js`,
+      `${prefix}packages/agent-core/dist/index.js`,
+      `${prefix}packages/process-runtime/dist/index.js`,
+      `${prefix}packages/shared/dist/index.js`,
+      `${prefix}packages/agent-core/.agentos/logs/diagnostics/executor.log`,
+      `${prefix}apps/web/next-env.d.ts`,
+      `${prefix}apps/web/tsconfig.tsbuildinfo`,
       `${prefix}apps/web/.next-p4-preview-test/cache.bin`,
       `${prefix}apps/web/test-results/results.json`,
     ];
