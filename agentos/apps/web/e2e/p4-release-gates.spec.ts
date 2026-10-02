@@ -38,7 +38,7 @@ const candidates = [
   outcome: 'review-required', decision: null, version, createdAt: now, sources: [],
 }));
 
-type RequestRecord = { path: string; method: string; body: string | null };
+type RequestRecord = { path: string; method: string; body: string | null; key?: string };
 type Fixture = {
   workspace: Workspace;
   agents: AgentProfile[];
@@ -75,7 +75,7 @@ async function installDeterministicApi(page: Page, fixture: Fixture) {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
-    fixture.requests.push({ path: path + url.search, method: request.method(), body: request.postData() });
+    fixture.requests.push({ path: path + url.search, method: request.method(), body: request.postData(), key: request.headers()['idempotency-key'] });
 
     if (request.method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
@@ -205,3 +205,78 @@ test('P4 stable-key regression keeps group history, feedback, and candidate acti
   expect(JSON.parse(writes[2]!.body ?? '{}')).toMatchObject({ expectedVersion: 7, outcome: 'accept' });
   expect(fixture.failures).toEqual([]);
 });
+
+for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
+  test(`P4 collaboration recovery binds ${mode} to the selected task and a stable request key`, async ({ page }, testInfo) => {
+    const fixture = createFixture();
+    const target = { ...task(102), id: 'task-recovery', title: 'Recovery Target', status: 'failed' as const,
+      version: 7, canonicalRunId: 'failed-run', failureReason: 'Fixture failure' };
+    const sibling = { ...task(103), id: 'task-sibling', title: 'Unrelated Task' };
+    fixture.tasks = [target, sibling];
+    let recoveryWrites = 0;
+    await installDeterministicApi(page, fixture);
+    await page.route('**/api/**', async route => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const recoveryPath = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+      if (request.method() === 'GET' && path === `${recoveryPath}/recovery`) {
+        await json(route, { recovery: { taskId: target.id, taskVersion: 7, runId: 'failed-run', runVersion: 3,
+          failureCode: mode === 'known-failure' ? 'PROVIDER_NOT_AVAILABLE' : 'OWNER_STATE_UNKNOWN',
+          recoveryRequired: mode === 'unknown-side-effects', checkedBaseCommit: 'a'.repeat(40),
+          actions: { retryKnownFailure: mode === 'known-failure', newLinkedTask: mode === 'unknown-side-effects' } } });
+        return;
+      }
+      if (request.method() === 'POST' && path === `${recoveryPath}/recover`) {
+        fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+        recoveryWrites += 1;
+        if (recoveryWrites === 1) {
+          // A lost response must keep the exact intent and key on user retry.
+          await route.abort('failed');
+          return;
+        }
+        if (mode === 'unknown-side-effects') {
+          const linked = { ...target, id: 'linked-task', title: 'Linked Recovery Task', status: 'awaiting_confirmation' as const,
+            version: 1, canonicalRunId: undefined };
+          fixture.tasks.push(linked);
+          await json(route, { recovery: { action: 'new-linked-task', task: linked, priorRunId: 'failed-run',
+            checkedBaseCommit: 'a'.repeat(40), replayed: true } });
+        } else {
+          target.canonicalRunId = 'retry-run';
+          await json(route, { recovery: { action: 'retry-known-failure', task: target, priorRunId: 'failed-run',
+            newRunId: 'retry-run', checkedBaseCommit: 'a'.repeat(40), replayed: true } });
+        }
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto(`/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=task-recovery&view=execution`);
+    await expect(page.getByRole('heading', { name: 'Recovery Target', exact: true })).toBeVisible();
+    const panel = page.locator('section[aria-label="协作任务恢复"]');
+    await expect(panel).toBeVisible();
+    const action = mode === 'known-failure' ? '重试已知启动前失败' : '在干净基线上创建关联任务';
+    const forbiddenAction = mode === 'known-failure' ? '在干净基线上创建关联任务' : '重试已知启动前失败';
+    await expect(panel.getByRole('button', { name: forbiddenAction })).toHaveCount(0);
+    await panel.getByRole('button', { name: action, exact: true }).click();
+    await expect(panel.getByRole('alert')).toBeVisible();
+    await expect(panel.getByRole('button', { name: action, exact: true })).toBeEnabled();
+    await panel.getByRole('button', { name: action, exact: true }).click();
+    if (mode === 'unknown-side-effects') {
+      await expect(page.getByRole('heading', { name: 'Linked Recovery Task', exact: true })).toBeVisible();
+      await expect(page).toHaveURL(/collaborationId=linked-task/u);
+      await expect(page.getByRole('button', { name: '确认并启动', exact: true })).toBeEnabled();
+    } else {
+      await expect(panel.getByRole('status')).toContainText('failed-run');
+      await expect(page.getByRole('heading', { name: 'Recovery Target', exact: true })).toBeVisible();
+    }
+    const writes = fixture.requests.filter(record => record.method === 'POST');
+    expect(writes).toHaveLength(2);
+    expect(writes[0]!.path).toBe(`/api/workspaces/${workspaceId}/collaboration/tasks/task-recovery/recover`);
+    expect(writes[1]).toEqual(writes[0]);
+    expect(writes[0]!.key).toMatch(/^p2-recovery-/u);
+    expect(JSON.parse(writes[0]!.body!)).toEqual({ action: mode === 'known-failure' ? 'retry-known-failure' : 'new-linked-task',
+      expectedTaskVersion: 7, expectedRunId: 'failed-run', expectedRunVersion: 3 });
+    expect(writes.some(record => /\/respond$|\/confirm$/u.test(record.path))).toBe(false);
+    expect(fixture.failures).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath(`collaboration-recovery-${mode}.png`) });
+  });
+}
