@@ -2,9 +2,10 @@
 // is structurally verified here; runtime acceptance is checked separately by
 // verify-existing-project-acceptance.mjs against the local AgentOS database.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
-import { isAbsolute, relative, sep, resolve } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { delimiter as pathDelimiter, isAbsolute, join, relative, sep, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   OFFICIAL_CODEX_PROVIDER_KIND,
@@ -59,6 +60,21 @@ function git(root, args, encoding = 'utf8') {
     encoding,
     maxBuffer: 32 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function frozenAcceptanceGitlinkPaths(root, sourceCommitSha) {
+  const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_NAMESPACE']) delete env[key];
+  const entries = execFileSync('git', ['-C', root, 'ls-tree', '-r', '--full-tree', '-z', sourceCommitSha], {
+    env, encoding: 'buffer', windowsHide: true, timeout: 30_000, maxBuffer: 32 * 1024 * 1024,
+  })
+    .toString('utf8').split('\0').filter(Boolean);
+  return entries.flatMap(entry => {
+    const separator = entry.indexOf('\t');
+    if (separator < 0 || !/^160000 commit [0-9a-f]{40,64}$/iu.test(entry.slice(0, separator))) return [];
+    const sourcePath = entry.slice(separator + 1);
+    return /(?:^|\/)\.claude\/worktrees\//iu.test(sourcePath) ? [sourcePath] : [];
   });
 }
 
@@ -473,11 +489,15 @@ function validateCommands(root, scenario, frozenCandidateSha, usedPaths) {
   }
 }
 
-function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths) {
+function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths, repositoryRootPath) {
   const baseline = scenario.baselineReproduction;
   if (scenario.baselineProbe) {
     requireCondition(baseline?.expectedFailurePattern === scenario.expectedBaselineFailure,
       `real ${scenario.kind} baseline failure marker differs from the captured plan`);
+    const actualGitlinks = frozenAcceptanceGitlinkPaths(repositoryRootPath, frozenSourceSha);
+    requireCondition(Array.isArray(baseline.excludedGitlinkPaths)
+      && JSON.stringify(baseline.excludedGitlinkPaths) === JSON.stringify(actualGitlinks),
+    `real ${scenario.kind} baseline excluded Gitlinks differ from the frozen source tree`);
   }
   requireCondition(baseline?.status === 'reproduced' && nonEmpty(baseline.expectedFailurePattern)
     && shaPattern.test(baseline.baseCommit ?? '') && shaPattern.test(baseline.baseTreeSha ?? '')
@@ -504,6 +524,7 @@ function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths
       && record.expectedFailurePattern === baseline.expectedFailurePattern
       && record.workspaceBaseCommit === baseline.baseCommit && record.workspaceBaseTreeSha === baseline.baseTreeSha
       && record.sourceCommitSha === baseline.sourceCommitSha && record.baseParentCommitSha === baseline.baseParentCommitSha
+      && (!scenario.baselineProbe || JSON.stringify(record.excludedGitlinkPaths) === JSON.stringify(baseline.excludedGitlinkPaths))
       && isIsoDate(record.observedAt),
     `scenario ${scenario.kind} baseline command artifact does not match the receipt`);
     const stdout = verifyEvidenceArtifact(root, record.stdout, `scenario ${scenario.kind} baseline stdout`, usedPaths).toString('utf8');
@@ -537,7 +558,202 @@ function validateRealPlanEvidence(root, receipt, snapshot, usedPaths, suppliedPl
   }
 }
 
-function validateCandidateProbeEvidence(root, receipt, scenario, usedPaths) {
+/** Recompute the final candidate path inventory during offline receipt validation. */
+export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes) {
+  const root = realpathSync(repositoryRootPath);
+  const candidatePatchBytes = Buffer.isBuffer(patchBytes) ? patchBytes : Buffer.from(patchBytes ?? '');
+  requireCondition(Array.isArray(scope) && scope.length > 0,
+    'frozen real plan must declare a nonempty candidate scope');
+  requireCondition(candidatePatchBytes.length > 0,
+    'final candidate patch does not identify a nonempty unique changed-path set');
+  const normalizedScopes = [];
+  let existingAnchor = false;
+  for (const rawPath of scope) {
+    requireCondition(typeof rawPath === 'string' && rawPath.length > 0,
+      'frozen candidate scope entries must be nonempty paths');
+    const scopedPath = rawPath.replaceAll('\\', '/');
+    requireCondition(!scopedPath.startsWith('/') && !/^[a-z]:/iu.test(scopedPath)
+      && !/[\u0000-\u001f\u007f]/u.test(scopedPath)
+      && !scopedPath.split('/').some(part => !part || part === '.' || part === '..')
+      && /^agentos\/(?:apps|packages)\//iu.test(scopedPath)
+      && !/(?:^|\/)fixtures\/p4-existing-project-acceptance(?:\/|$)/iu.test(scopedPath),
+    'frozen candidate scope must use safe repository-relative AgentOS source paths');
+    const absolute = resolve(root, scopedPath);
+    const lexicalRelative = relative(root, absolute);
+    requireCondition(lexicalRelative !== '..' && !lexicalRelative.startsWith(`..${sep}`)
+      && !isAbsolute(lexicalRelative), 'frozen candidate scope escapes the repository');
+    if (existsSync(absolute)) {
+      requireCondition(!lstatSync(absolute).isSymbolicLink(),
+        'frozen candidate scope cannot traverse a symbolic link');
+      const actual = realpathSync(absolute);
+      const actualRelative = relative(root, actual);
+      requireCondition(actualRelative !== '..' && !actualRelative.startsWith(`..${sep}`)
+        && !isAbsolute(actualRelative), 'frozen candidate scope resolves outside the repository');
+      existingAnchor = true;
+    }
+    normalizedScopes.push(scopedPath.replace(/\/$/u, ''));
+  }
+  requireCondition(existingAnchor,
+    'frozen candidate scope must anchor to an existing AgentOS source path');
+
+  let numstat;
+  try {
+    numstat = execFileSync('git', ['-C', root, 'apply', '--numstat', '-'], {
+      input: candidatePatchBytes,
+      encoding: 'utf8', windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    throw new Error(`final candidate patch path inventory could not be parsed: ${String(error?.stderr || error?.message || error).slice(0, 2000)}`);
+  }
+  const changedPaths = numstat.split(/\r?\n/u).filter(Boolean).map(line => {
+    const fields = line.split('\t');
+    requireCondition(fields.length === 3 && fields[2].length > 0,
+      'final candidate patch contains an unsupported path entry');
+    return fields[2].replaceAll('\\', '/');
+  });
+  requireCondition(changedPaths.length > 0 && new Set(changedPaths).size === changedPaths.length,
+    'final candidate patch does not identify a nonempty unique changed-path set');
+  requireCondition(changedPaths.every(changedPath => normalizedScopes.some(scopedPath =>
+    changedPath === scopedPath || changedPath.startsWith(`${scopedPath}/`))),
+  'final candidate patch contains a path outside the frozen plan scope');
+  return changedPaths;
+}
+
+/** Independently derive the candidate tree from the frozen source and patch using a disposable index. */
+export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes) {
+  const root = realpathSync(repositoryRootPath);
+  const baseline = scenario?.baselineReproduction;
+  const patch = Buffer.isBuffer(patchBytes) ? patchBytes : Buffer.from(patchBytes ?? '');
+  requireCondition(patch.length > 0, 'cannot derive a candidate overlay tree from an empty patch');
+  requireCondition(shaPattern.test(baseline?.sourceCommitSha ?? '')
+    && shaPattern.test(baseline?.baseParentCommitSha ?? '')
+    && shaPattern.test(baseline?.baseCommit ?? '') && shaPattern.test(baseline?.baseTreeSha ?? '')
+    && shaPattern.test(scenario?.workspaceBaseCommit ?? '') && shaPattern.test(scenario?.workspaceBaseTreeSha ?? '')
+    && baseline.baseParentCommitSha.toLowerCase() === baseline.sourceCommitSha.toLowerCase()
+    && baseline.baseCommit.toLowerCase() === scenario.workspaceBaseCommit.toLowerCase()
+    && baseline.baseTreeSha.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
+  `real ${scenario?.kind ?? 'scenario'} candidate base is not bound to its frozen source snapshot`);
+  const excludedGitlinks = baseline.excludedGitlinkPaths;
+  const actualGitlinks = frozenAcceptanceGitlinkPaths(root, baseline.sourceCommitSha);
+  requireCondition(Array.isArray(excludedGitlinks)
+    && JSON.stringify(excludedGitlinks) === JSON.stringify(actualGitlinks),
+  `real ${scenario.kind} candidate base omitted Gitlinks not excluded by the frozen runner rules`);
+  if (excludedGitlinks.length === 0) {
+    requireCondition(scenario.workspaceBaseCommit.toLowerCase() === baseline.sourceCommitSha.toLowerCase(),
+      `real ${scenario.kind} candidate base commit differs from its frozen source without an excluded Gitlink`);
+  }
+
+  const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
+  const indexRoot = mkdtempSync(join(temporaryRoot, 'agentos-p4-overlay-index-'));
+  try {
+    const indexPath = join(indexRoot, 'index');
+    const objectPath = join(indexRoot, 'objects');
+    mkdirSync(objectPath);
+    const discoveryEnv = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
+    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
+      'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_NAMESPACE']) delete discoveryEnv[key];
+    const repositoryObjects = execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'objects'], {
+      env: discoveryEnv, encoding: 'utf8', windowsHide: true, timeout: 15_000,
+    }).trim();
+    const absoluteRepositoryObjects = isAbsolute(repositoryObjects) ? repositoryObjects : resolve(root, repositoryObjects);
+    const inheritedAlternates = process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
+    const alternates = [realpathSync(absoluteRepositoryObjects), inheritedAlternates]
+      .filter(Boolean).join(pathDelimiter);
+    const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
+    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
+      'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_NAMESPACE']) delete env[key];
+    Object.assign(env, {
+      GIT_INDEX_FILE: indexPath,
+      GIT_OBJECT_DIRECTORY: objectPath,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: alternates,
+    });
+    const runGit = (args, input) => {
+      try {
+        return execFileSync('git', ['-C', root, ...args], {
+          ...(input === undefined ? {} : { input }),
+          env, encoding: 'utf8', windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024,
+        }).trim();
+      } catch (error) {
+        const wrapped = new Error(`bounded temporary-index git ${args[0]} failed: ${String(error?.stderr || error?.message || error).slice(0, 2000)}`);
+        wrapped.status = error?.status;
+        wrapped.stderr = error?.stderr;
+        throw wrapped;
+      }
+    };
+    const frozenSourceHead = runGit(['rev-parse', 'HEAD']);
+    requireCondition(frozenSourceHead.toLowerCase() === baseline.sourceCommitSha.toLowerCase(),
+      `real ${scenario.kind} frozen source HEAD changed before overlay derivation`);
+    runGit(['read-tree', baseline.sourceCommitSha]);
+    if (excludedGitlinks.length) runGit(['update-index', '--force-remove', '--', ...excludedGitlinks]);
+    const derivedBaseTreeSha = runGit(['write-tree']);
+    requireCondition(derivedBaseTreeSha.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
+      `real ${scenario.kind} baseline tree cannot be derived from its frozen source and excluded Gitlinks`);
+    // The runner's gitlink-filtered baseline is a disposable synthetic commit
+    // that need not exist in the receipt repository. Use it directly when
+    // present; otherwise read the independently verified frozen tree.
+    const workspaceCommitProbe = spawnSync('git', ['-C', root, 'cat-file', '-e', `${scenario.workspaceBaseCommit}^{commit}`], {
+      env, encoding: 'utf8', windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024,
+    });
+    if (workspaceCommitProbe.error) {
+      throw new Error(`bounded temporary-index git cat-file failed: ${workspaceCommitProbe.error.message}`);
+    }
+    const workspaceCommitExists = workspaceCommitProbe.status === 0;
+    if (!workspaceCommitExists) {
+      const missingSyntheticCommit = workspaceCommitProbe.status === 128
+        && /not a valid object name|could not get object info|bad object/iu.test(workspaceCommitProbe.stderr);
+      requireCondition(excludedGitlinks.length > 0 && missingSyntheticCommit,
+        `real ${scenario.kind} workspace base commit is unavailable from the frozen source object store`);
+    }
+    if (workspaceCommitExists) {
+      const ancestry = runGit(['rev-list', '--parents', '-n', '1', scenario.workspaceBaseCommit]).split(/\s+/u);
+      requireCondition(ancestry[0]?.toLowerCase() === scenario.workspaceBaseCommit.toLowerCase()
+        && (excludedGitlinks.length === 0
+          ? scenario.workspaceBaseCommit.toLowerCase() === baseline.sourceCommitSha.toLowerCase()
+          : ancestry[1]?.toLowerCase() === baseline.sourceCommitSha.toLowerCase() && ancestry.length === 2),
+      `real ${scenario.kind} workspace base commit does not descend directly from the frozen source`);
+      runGit(['read-tree', scenario.workspaceBaseCommit]);
+    } else {
+      runGit(['read-tree', derivedBaseTreeSha]);
+    }
+    requireCondition(runGit(['write-tree']).toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
+      `real ${scenario.kind} workspace base commit/tree cannot be independently verified`);
+    try {
+      runGit(['apply', '--cached', '--whitespace=nowarn', '-'], patch);
+    } catch (error) {
+      throw new Error(`real ${scenario.kind} frozen candidate patch does not apply to its independently derived base: ${String(error?.stderr || error?.message || error).slice(0, 2000)}`);
+    }
+    return runGit(['write-tree']);
+  } finally {
+    rmSync(indexRoot, { recursive: true, force: true, maxRetries: 16, retryDelay: 100 });
+  }
+}
+
+/** Cross-bind the candidate probe cwd and independently derived overlay tree to its receipt entry. */
+export function verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes) {
+  const binding = scenario?.candidateProbe;
+  requireCondition(binding && typeof binding === 'object' && !Array.isArray(binding),
+    `real ${scenario?.kind ?? 'scenario'} candidate probe execution identity is required`);
+  requireCondition(typeof binding.executionRoot === 'string' && isAbsolute(binding.executionRoot)
+    && resolve(binding.executionRoot) === binding.executionRoot
+    && record.executionRoot === binding.executionRoot && record.cwd === binding.executionRoot,
+  `real ${scenario.kind} candidate probe execution root differs from its captured cwd`);
+  requireCondition(shaPattern.test(scenario.workspaceBaseCommit ?? '')
+    && binding.workspaceBaseCommit?.toLowerCase() === scenario.workspaceBaseCommit.toLowerCase()
+    && record.workspaceBaseCommit?.toLowerCase() === scenario.workspaceBaseCommit.toLowerCase()
+    && shaPattern.test(scenario.workspaceBaseTreeSha ?? '')
+    && binding.workspaceBaseTreeSha?.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase()
+    && record.workspaceBaseTreeSha?.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
+  `real ${scenario.kind} candidate probe base commit/tree differs from the frozen workspace`);
+  requireCondition(shaPattern.test(binding.candidateOverlayTreeSha ?? '')
+    && record.candidateOverlayTreeSha?.toLowerCase() === binding.candidateOverlayTreeSha.toLowerCase(),
+  `real ${scenario.kind} candidate probe overlay tree differs from its captured execution`);
+  const independentlyDerivedTreeSha = deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes);
+  requireCondition(binding.candidateOverlayTreeSha.toLowerCase() === independentlyDerivedTreeSha.toLowerCase()
+    && record.candidateOverlayTreeSha.toLowerCase() === independentlyDerivedTreeSha.toLowerCase(),
+  `real ${scenario.kind} candidate probe overlay tree differs from the independently derived frozen candidate`);
+}
+
+function validateCandidateProbeEvidence(root, repositoryRootPath, receipt, scenario, usedPaths, patchBytes) {
   requireCondition(scenario.baselineProbe && scenario.candidateProbe,
     `real ${scenario.kind} scenario requires source-bound baseline and candidate probe evidence`);
   requireCondition(scenario.baselineProbe.sourceCommitSha?.toLowerCase() === receipt.repository.commitSha.toLowerCase(),
@@ -564,6 +780,7 @@ function validateCandidateProbeEvidence(root, receipt, scenario, usedPaths) {
     && record.workspaceKind === 'frozen-candidate-overlay'
     && isIsoDate(record.observedAt),
   `real ${scenario.kind} candidate probe artifact differs from its receipt binding`);
+  verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes);
   const stdout = verifyEvidenceArtifact(root, record.stdout,
     `real ${scenario.kind} candidate probe stdout`, usedPaths, true).toString('utf8');
   verifyEvidenceArtifact(root, record.stderr,
@@ -664,12 +881,13 @@ export function validateReceipt(manifest, receipt, options = {}) {
     const finalCandidateSha = sha256(candidateBytes);
 
     if (receipt.mode === 'real-windows-acceptance') {
-      validateCandidateProbeEvidence(evidenceRoot, receipt, scenario, usedPaths);
+      verifyFinalCandidateScope(root, scenario.scope, candidateBytes);
+      validateCandidateProbeEvidence(evidenceRoot, root, receipt, scenario, usedPaths, candidateBytes);
     } else {
       requireCondition(scenario.baselineProbe === undefined && scenario.candidateProbe === undefined,
         'simulated-provider scenarios cannot claim real source-probe evidence');
     }
-    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths);
+    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths, root);
 
     const directApproval = Array.isArray(scenario.reviewHistory) && scenario.reviewHistory.length === 1;
     const directApprovalAllowed = scenarios.directApprovalAllowed === true;

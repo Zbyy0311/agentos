@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
+import {
+  deriveCandidateProbeOverlayTreeSha, validateManifest, validateReceipt, verifyCandidateProbeExecutionBinding,
+  verifyFinalCandidateScope, verifySourceSnapshot,
+} from './validate-existing-project-acceptance.mjs';
 import {
   OFFICIAL_CODEX_PROVIDER_KIND,
   OFFICIAL_CODEX_TRUST_BOUNDARY,
@@ -244,6 +247,136 @@ function validate(item) {
     expectedSha: item.commitSha,
   });
 }
+
+test('offline candidate probe independently derives overlay tree and rejects matching forged tree claims', () => withFixture(item => {
+  const sourcePath = 'agentos/apps/server/src/tracked-build-input.ts';
+  const sourceFile = resolve(item.root, sourcePath);
+  const frozenBytes = readFileSync(sourceFile);
+  const indexPath = resolve(item.root, git(item.root, ['rev-parse', '--git-path', 'index']));
+  const frozenIndex = readFileSync(indexPath);
+  writeFileSync(sourceFile, 'export const trackedBuildInput = false;\n');
+  const candidateBytes = readFileSync(sourceFile);
+  const patch = Buffer.from(execFileSync('git', ['-C', item.root, 'diff', '--binary', '--', sourcePath]));
+  const scenario = {
+    kind: 'defect',
+    workspaceBaseCommit: item.commitSha,
+    workspaceBaseTreeSha: item.treeSha,
+    baselineReproduction: {
+      sourceCommitSha: item.commitSha,
+      baseParentCommitSha: item.commitSha,
+      baseCommit: item.commitSha,
+      baseTreeSha: item.treeSha,
+      excludedGitlinkPaths: [],
+    },
+    candidateProbe: {
+      executionRoot: realpathSync(item.root),
+      workspaceBaseCommit: item.commitSha,
+      workspaceBaseTreeSha: item.treeSha,
+    },
+  };
+  const derivedTreeSha = deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch);
+  scenario.candidateProbe.candidateOverlayTreeSha = derivedTreeSha;
+  const record = {
+    executionRoot: realpathSync(item.root), cwd: realpathSync(item.root),
+    workspaceBaseCommit: item.commitSha,
+    workspaceBaseTreeSha: item.treeSha,
+    candidateOverlayTreeSha: derivedTreeSha,
+  };
+  assert.match(derivedTreeSha, /^[0-9a-f]{40}$/u);
+  assert.doesNotThrow(() => verifyCandidateProbeExecutionBinding(scenario, record, item.root, patch));
+  assert.throws(() => verifyCandidateProbeExecutionBinding(scenario, {
+    ...record, cwd: resolve(item.root, '..', 'wrong-root'),
+  }, item.root, patch), /execution root differs from its captured cwd/u);
+  assert.throws(() => verifyCandidateProbeExecutionBinding(scenario, {
+    ...record, candidateOverlayTreeSha: 'e'.repeat(40),
+  }, item.root, patch), /overlay tree differs from its captured execution/u);
+  assert.throws(() => deriveCandidateProbeOverlayTreeSha(item.root, scenario, Buffer.alloc(0)), /empty patch/u);
+
+  const forgedTreeSha = 'f'.repeat(40);
+  scenario.candidateProbe.candidateOverlayTreeSha = forgedTreeSha;
+  record.candidateOverlayTreeSha = forgedTreeSha;
+  assert.throws(() => verifyCandidateProbeExecutionBinding(scenario, record, item.root, patch),
+    /independently derived frozen candidate/u);
+  assert.deepEqual(readFileSync(sourceFile), candidateBytes,
+    'overlay verification must not alter the candidate checkout worktree');
+  assert.deepEqual(readFileSync(indexPath), frozenIndex,
+    'overlay verification must never rewrite the source checkout index');
+  writeFileSync(sourceFile, frozenBytes);
+  assert.deepEqual(readFileSync(sourceFile), frozenBytes,
+    'test fixture restores its source file after deriving the candidate overlay');
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
+
+test('offline final candidate scope rejects empty and out-of-scope patches and accepts an in-scope patch', () => withFixture(item => {
+  const changedPath = 'agentos/apps/server/src/tracked-build-input.ts';
+  const allowedPath = 'agentos/apps/server/src/allowed.ts';
+  const allowedAbsolute = resolve(item.root, allowedPath);
+  mkdirSync(dirname(allowedAbsolute), { recursive: true });
+  writeFileSync(allowedAbsolute, 'export const allowed = true;\n');
+  git(item.root, ['add', '--', allowedPath]);
+  git(item.root, ['-c', 'user.name=Acceptance Fixture', '-c', 'user.email=acceptance-fixture@example.invalid',
+    'commit', '-q', '-m', 'add independent allowed scope anchor']);
+
+  writeFileSync(resolve(item.root, changedPath), 'export const trackedBuildInput = false;\n');
+  const patch = execFileSync('git', ['-C', item.root, 'diff', '--binary', '--', changedPath], { encoding: 'utf8' });
+  assert.deepEqual(verifyFinalCandidateScope(item.root, [changedPath], Buffer.from(patch)), [changedPath]);
+  assert.throws(() => verifyFinalCandidateScope(item.root, [changedPath], Buffer.alloc(0)),
+    /nonempty unique changed-path set/u);
+  assert.throws(() => verifyFinalCandidateScope(item.root, [changedPath], Buffer.from(`${patch}\n${patch}`)),
+    /final candidate patch/u);
+  assert.throws(() => verifyFinalCandidateScope(item.root, [allowedPath], Buffer.from(patch)),
+    /outside the frozen plan scope/u);
+  assert.throws(() => verifyFinalCandidateScope(item.root,
+    ['agentos/apps/server/src/../allowed.ts'], Buffer.from(patch)), /safe repository-relative/u);
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
+
+test('offline overlay derivation handles a Gitlink-filtered base absent from the frozen source object store', () => withFixture(item => {
+  const gitlinkPath = '.claude/worktrees/p4-offline-fixture';
+  const gitlinkObject = '1'.repeat(40);
+  git(item.root, ['update-index', '--add', '--cacheinfo', `160000,${gitlinkObject},${gitlinkPath}`]);
+  git(item.root, ['-c', 'user.name=Acceptance Fixture', '-c', 'user.email=acceptance-fixture@example.invalid',
+    'commit', '-q', '-m', 'fixture frozen source with worktree Gitlink']);
+  const sourceCommitSha = git(item.root, ['rev-parse', 'HEAD']);
+
+  const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
+  const indexRoot = mkdtempSync(resolve(temporaryRoot, 'p4-gitlink-base-index-'));
+  const indexPath = resolve(indexRoot, 'index');
+  const runIsolatedGit = args => {
+    const result = spawnSync('git', ['-C', item.root, ...args], {
+      env: { ...process.env, GIT_INDEX_FILE: indexPath, GIT_NO_REPLACE_OBJECTS: '1' },
+      encoding: 'utf8', windowsHide: true, timeout: 15_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  let workspaceBaseTreeSha;
+  try {
+    runIsolatedGit(['read-tree', sourceCommitSha]);
+    runIsolatedGit(['update-index', '--force-remove', '--', gitlinkPath]);
+    workspaceBaseTreeSha = runIsolatedGit(['write-tree']);
+  } finally {
+    rmSync(indexRoot, { recursive: true, force: true, maxRetries: 32, retryDelay: 200 });
+  }
+
+  const sourcePath = 'agentos/apps/server/src/tracked-build-input.ts';
+  writeFileSync(resolve(item.root, sourcePath), 'export const trackedBuildInput = false;\n');
+  const patch = Buffer.from(execFileSync('git', ['-C', item.root, 'diff', '--binary', '--', sourcePath]));
+  const syntheticWorkspaceBaseCommit = 'f'.repeat(40);
+  const scenario = {
+    kind: 'defect',
+    workspaceBaseCommit: syntheticWorkspaceBaseCommit,
+    workspaceBaseTreeSha,
+    baselineReproduction: {
+      sourceCommitSha,
+      baseParentCommitSha: sourceCommitSha,
+      baseCommit: syntheticWorkspaceBaseCommit,
+      baseTreeSha: workspaceBaseTreeSha,
+      excludedGitlinkPaths: [gitlinkPath],
+    },
+  };
+  const treeSha = deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch);
+  assert.match(treeSha, /^[0-9a-f]{40}$/u);
+  assert.notEqual(treeSha, workspaceBaseTreeSha);
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
 
 test('fully structured defect and feature evidence is reported as structural verification only', () => withFixture(item => {
   const result = validate(item);

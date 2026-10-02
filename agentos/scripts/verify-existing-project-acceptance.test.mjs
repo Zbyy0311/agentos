@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
+  captureCandidateProbeOverlayIdentity,
   verifyCandidateReviewSequence, frozenCandidateContentHash,
   observeOwnedProviderProcesses, verifyCapturedRunnerOutcome,
 } from './verify-existing-project-acceptance.mjs';
@@ -346,3 +347,58 @@ test('revision changed paths come from the frozen Git patch bytes rather than th
   assert.deepEqual(changedPathsFromPatch(patch), ['agentos/apps/server/src/health.ts']);
   assert.throws(() => changedPathsFromPatch(''), /does not identify a unique changed-path set/u);
 });
+
+test('candidate probe overlay identity captures its exact root, frozen base tree, and staged overlay tree', () => {
+  const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
+  const root = mkdtempSync(join(temporaryRoot, 'p4-candidate-overlay-'));
+  const git = args => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true });
+  try {
+    assert.equal(git(['init', '-q']).status, 0);
+    assert.equal(git(['config', 'user.name', 'P4 overlay test']).status, 0);
+    assert.equal(git(['config', 'user.email', 'p4-overlay@example.invalid']).status, 0);
+    assert.equal(git(['config', 'gc.auto', '0']).status, 0);
+    assert.equal(git(['config', 'maintenance.auto', 'false']).status, 0);
+    mkdirSync(join(root, 'agentos', 'apps', 'server', 'src'), { recursive: true });
+    const sourcePath = join(root, 'agentos', 'apps', 'server', 'src', 'probe-target.ts');
+    writeFileSync(sourcePath, 'export const value = 1;\n');
+    assert.equal(git(['add', '--all']).status, 0);
+    assert.equal(git(['commit', '-m', 'candidate probe base', '-q']).status, 0);
+    const baseCommit = git(['rev-parse', 'HEAD']).stdout.trim();
+    const baseTreeSha = git(['rev-parse', 'HEAD^{tree}']).stdout.trim();
+    writeFileSync(sourcePath, 'export const value = 2;\n');
+    assert.equal(git(['add', '--all']).status, 0);
+    const patchResult = git(['diff', '--binary', 'HEAD', '--', sourcePath]);
+    assert.equal(patchResult.status, 0, patchResult.stderr);
+    const diffText = Buffer.from(patchResult.stdout, 'utf8');
+    const diffHash = createHash('sha256').update(diffText).digest('hex');
+    const indexPath = join(root, git(['rev-parse', '--git-path', 'index']).stdout.trim());
+    const originalWorktree = readFileSync(sourcePath);
+    const stagedOverlayTreeSha = git(['write-tree']).stdout.trim();
+    const originalIndex = readFileSync(indexPath);
+
+    const identity = captureCandidateProbeOverlayIdentity(root, { baseTreeSha }, {
+      baseCommit, diffText, diffHash,
+    });
+    assert.equal(identity.executionRoot, root);
+    assert.equal(identity.workspaceBaseCommit, baseCommit);
+    assert.equal(identity.workspaceBaseTreeSha, baseTreeSha);
+    assert.match(identity.candidateOverlayTreeSha, /^[0-9a-f]{40}$/u);
+    assert.notEqual(identity.candidateOverlayTreeSha, baseTreeSha);
+    assert.equal(identity.candidateOverlayTreeSha, stagedOverlayTreeSha,
+      'isolated-index replay must produce the tree represented by the frozen patch');
+    assert.deepEqual(readFileSync(indexPath), originalIndex,
+      'candidate identity capture must leave the checkout index unchanged');
+    assert.deepEqual(readFileSync(sourcePath), originalWorktree,
+      'candidate identity capture must leave the checkout worktree unchanged');
+  } finally { removeCandidateOverlayFixture(root); }
+});
+
+function removeCandidateOverlayFixture(root) {
+  try {
+    rmSync(root, { recursive: true, force: true, maxRetries: 32, retryDelay: 200 });
+  } catch (error) {
+    // Git for Windows can leave a transient reparse-point temp entry in .git;
+    // follow the suite's existing Windows cleanup rule after bounded retries.
+    if (process.platform !== 'win32' || error.code !== 'ENOTEMPTY') throw error;
+  }
+}

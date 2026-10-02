@@ -718,6 +718,43 @@ function gitApplyPatch(root, patch, args) {
     `frozen candidate patch could not be applied to its probe checkout: ${safeText(result.stderr || result.stdout || result.error?.message)}`);
 }
 
+export function captureCandidateProbeOverlayIdentity(rootPath, workspace, candidate) {
+  const executionRoot = realpathSync(rootPath);
+  const patch = Buffer.isBuffer(candidate.diffText) ? candidate.diffText : Buffer.from(candidate.diffText ?? '', 'utf8');
+  invariant(patch.length > 0 && sha256(patch) === candidate.diffHash,
+    'candidate probe overlay requires the exact nonempty frozen candidate patch');
+  const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
+  const indexRoot = mkdtempSync(join(temporaryRoot, 'agentos-p4-candidate-index-'));
+  const indexPath = join(indexRoot, 'index');
+  const env = { ...process.env, GIT_INDEX_FILE: indexPath, GIT_NO_REPLACE_OBJECTS: '1' };
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_NAMESPACE']) delete env[key];
+  const runGit = (args, input) => {
+    const result = spawnSync('git', ['-C', executionRoot, '-c', 'gc.auto=0', '-c', 'maintenance.auto=false', ...args], {
+      ...(input === undefined ? {} : { input }), env, encoding: 'utf8', windowsHide: true,
+      shell: false, timeout: 15_000, maxBuffer: 8 * 1024 * 1024,
+    });
+    invariant(!result.error && result.status === 0,
+      `temporary candidate index git ${args[0]} failed: ${safeText(result.stderr || result.error?.message || '')}`);
+    return result.stdout.trim();
+  };
+  try {
+    const workspaceBaseCommit = runGit(['rev-parse', 'HEAD']);
+    const workspaceBaseTreeSha = runGit(['rev-parse', 'HEAD^{tree}']);
+    invariant(workspaceBaseCommit === candidate.baseCommit
+      && workspaceBaseTreeSha === workspace.baseTreeSha,
+    'candidate probe checkout does not match the frozen workspace base commit/tree');
+    runGit(['read-tree', workspaceBaseCommit]);
+    runGit(['apply', '--cached', '--whitespace=nowarn', '-'], patch);
+    const candidateOverlayTreeSha = runGit(['write-tree']);
+    invariant(shaPattern.test(candidateOverlayTreeSha),
+      'candidate probe checkout did not produce a valid overlay tree identity');
+    return { executionRoot, workspaceBaseCommit, workspaceBaseTreeSha, candidateOverlayTreeSha };
+  } finally {
+    rmSync(indexRoot, { recursive: true, force: true, maxRetries: 16, retryDelay: 100 });
+  }
+}
+
 function captureCandidateProbe(evidenceRoot, plan, workspace, candidate, runRoot) {
   if (!plan.baselineProbe) return undefined;
   const probe = plan.baselineProbe;
@@ -737,8 +774,11 @@ function captureCandidateProbe(evidenceRoot, plan, workspace, candidate, runRoot
   gitApplyPatch(target, patch, ['apply', '--check', '--whitespace=nowarn']);
   gitApplyPatch(target, patch, ['apply', '--whitespace=nowarn']);
   verifyProbeWorkspaceSource(plan, target);
+  const overlayIdentity = captureCandidateProbeOverlayIdentity(target, workspace, {
+    ...candidate, diffText: patch,
+  });
   const result = spawnSync(probe.argv[0], probe.argv.slice(1), {
-    cwd: target, encoding: 'utf8', shell: false, windowsHide: true,
+    cwd: overlayIdentity.executionRoot, encoding: 'utf8', shell: false, windowsHide: true,
     timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
   });
   invariant(!result.error && Number.isInteger(result.status),
@@ -755,12 +795,12 @@ function captureCandidateProbe(evidenceRoot, plan, workspace, candidate, runRoot
     command: probe.command, argv: probe.argv, argvSha256: probe.argvSha256,
     sourcePath: probe.sourcePath, sourceSha256: probe.sourceSha256,
     sourceBlobSha: probe.sourceBlobSha, sourceCommitSha: probe.sourceCommitSha,
-    candidateSha256: candidate.diffHash, workspaceBaseCommit: candidate.baseCommit,
+    candidateSha256: candidate.diffHash, ...overlayIdentity, cwd: overlayIdentity.executionRoot,
     workspaceKind: 'frozen-candidate-overlay', rawExitCode: result.status,
     observedAt: new Date().toISOString(), stdout, stderr,
   });
   return { commandId, command: probe.command, argv: probe.argv, argvSha256: probe.argvSha256,
-    candidateSha256: candidate.diffHash, rawExitCode: result.status, artifact };
+    candidateSha256: candidate.diffHash, ...overlayIdentity, rawExitCode: result.status, artifact };
 }
 
 function selectAgents(agents) {
