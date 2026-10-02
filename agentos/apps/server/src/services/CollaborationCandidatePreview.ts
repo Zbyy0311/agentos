@@ -399,6 +399,9 @@ function displayPath(path: string | null): string | null {
 }
 
 function renderDiffFile(file: ParsedCollaborationDiffFile, metadata: CollaborationCandidate['manifest'][number] | undefined): { text: string; withheldReason?: 'binary' | 'sensitive_path' | 'secret_value' } {
+  if (file.binary) {
+    return { text: '[二进制内容已隐藏；文件大小与 SHA-256 请查看冻结 manifest]', withheldReason: 'binary' };
+  }
   const isSensitivePath = [file.oldPath, file.newPath].some(path => path !== null && isSensitiveFilePath(path));
   const hasPrivateOrAuthMaterial = file.hunkBodyLineIndexes.size > 0 && [...file.hunkBodyLineIndexes]
     .some(index => PRIVATE_KEY_HEADER.test(file.lines[index]!.slice(1)) || AUTH_OR_COOKIE_HEADER.test(file.lines[index]!.slice(1)));
@@ -443,10 +446,6 @@ function renderDiffFile(file: ParsedCollaborationDiffFile, metadata: Collaborati
     lines.push(sanitized.text);
   }
 
-  if (file.binary) {
-    if (file.binaryMarkerIndex === undefined) lines.push('[二进制内容已隐藏；请查看冻结 manifest 中的文件大小与 SHA-256]');
-    return { text: lines.join('\n'), withheldReason: 'binary' };
-  }
   if (isSensitivePath || hasPrivateOrAuthMaterial) {
     return { text: lines.join('\n'), withheldReason: isSensitivePath ? 'sensitive_path' : 'secret_value' };
   }

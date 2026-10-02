@@ -134,6 +134,52 @@ test('binary preview uses frozen blob IDs and sizes, including deleted and renam
   ] }).contentHash, 'candidate content hash changes when frozen binary metadata changes');
 });
 
+test('binary preview withholds every forced-text hunk before rendering it', () => {
+  const zero = '0'.repeat(40);
+  const added = '1'.repeat(40);
+  const modifiedBase = '2'.repeat(40);
+  const modifiedHead = '3'.repeat(40);
+  const deleted = '4'.repeat(40);
+  const renameBase = '5'.repeat(40);
+  const renameHead = '6'.repeat(40);
+  const bodyMarkers = [
+    'FORCED_TEXT_BINARY_BODY_ADDED',
+    'FORCED_TEXT_BINARY_BODY_MODIFIED',
+    'FORCED_TEXT_BINARY_BODY_DELETED',
+    'FORCED_TEXT_BINARY_BODY_RENAMED',
+  ];
+  const patch = [
+    'diff --git a/assets/added.bin b/assets/added.bin', 'new file mode 100644', `index ${zero}..${added} 100644`,
+    '--- /dev/null', '+++ b/assets/added.bin', '@@ -0,0 +1 @@', `+${bodyMarkers[0]}`,
+    'diff --git a/assets/modified.bin b/assets/modified.bin', `index ${modifiedBase}..${modifiedHead} 100644`,
+    '--- a/assets/modified.bin', '+++ b/assets/modified.bin', '@@ -1 +1 @@', '-old binary line', `+${bodyMarkers[1]}`,
+    'diff --git a/assets/deleted.bin b/assets/deleted.bin', 'deleted file mode 100644', `index ${deleted}..${zero} 100644`,
+    '--- a/assets/deleted.bin', '+++ /dev/null', '@@ -1 +0,0 @@', `-${bodyMarkers[2]}`,
+    'diff --git a/assets/old.bin b/assets/renamed.bin', 'similarity index 50%',
+    'rename from assets/old.bin', 'rename to assets/renamed.bin', `index ${renameBase}..${renameHead} 100644`,
+    '--- a/assets/old.bin', '+++ b/assets/renamed.bin', '@@ -1 +1 @@', '-old renamed binary line', `+${bodyMarkers[3]}`,
+    '',
+  ].join('\n');
+  const source = candidate(patch, { manifest: [
+    { path: 'assets/added.bin', sizeBytes: 3, sha256: 'a'.repeat(64), gitObjectId: added, binary: true },
+    { path: 'assets/modified.bin', sizeBytes: 4, sha256: 'b'.repeat(64), gitObjectId: modifiedHead, binary: true,
+      baseSizeBytes: 3, baseSha256: 'c'.repeat(64), baseObjectId: modifiedBase },
+    { path: 'assets/deleted.bin', sizeBytes: 5, sha256: 'd'.repeat(64), gitObjectId: deleted, binary: true, deleted: true },
+    { path: 'assets/renamed.bin', sizeBytes: 6, sha256: 'e'.repeat(64), gitObjectId: renameHead, binary: true,
+      baseSizeBytes: 6, baseSha256: 'f'.repeat(64), baseObjectId: renameBase },
+  ] });
+
+  const preview = buildCollaborationCandidatePreview(task(), source);
+  assert.deepEqual(preview.files.map(file => file.binary), [true, true, true, true]);
+  assert.equal(preview.withheldReasons.includes('binary'), true);
+  for (let fileIndex = 0; fileIndex < bodyMarkers.length; fileIndex += 1) {
+    const fileDiff = buildCollaborationCandidatePreviewFileDiff(task(), source, fileIndex);
+    assert.equal(fileDiff.withheldReason, 'binary');
+    assert.match(fileDiff.diffText, /二进制内容已隐藏/u);
+    assert.doesNotMatch(fileDiff.diffText, new RegExp(bodyMarkers[fileIndex]!, 'u'));
+  }
+});
+
 test('binary preview refuses metadata without a SHA-256 for either frozen side', () => {
   const patch = [
     'diff --git a/assets/renamed.bin b/assets/renamed.bin', 'similarity index 90%',
