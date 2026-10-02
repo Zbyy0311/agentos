@@ -236,6 +236,10 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
 
     const frozenPatch = options.abbreviatedPatch ? snapshot.patch.replace(/^index ([a-f0-9]{40})\.\.([a-f0-9]{40}) 100644$/mu,
       (_, pre: string, post: string) => `index ${pre.slice(0, 7)}..${post.slice(0, 7)} 100644`) : snapshot.patch;
+    const candidateManifest = new Map<CollaborationCandidate['manifest'][number]['path'], CollaborationCandidate['manifest'][number]>(
+      snapshot.untrackedManifest.map(item => [item.path, item]),
+    );
+    for (const item of snapshot.binaryManifest) candidateManifest.set(item.path, item);
     const candidate = repository.createCandidate({
       id: 'candidate-apply-journal-fixture',
       collaborationTaskId: plan.id,
@@ -247,7 +251,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       snapshotVersion: 2,
       diffText: frozenPatch,
       diffHash: hash(frozenPatch),
-      manifest: [...snapshot.untrackedManifest],
+      manifest: [...candidateManifest.values()].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0),
       testStatus: 'passed',
       testCommand: ACCEPTANCE_COMMANDS.join(' && '),
       testExitCode: 0,
@@ -367,6 +371,9 @@ async function reserveApply(fx: Fixture, idempotencyKey = 'fixture-apply-reserva
     action: 'apply',
     expectedVersion: fx.task.version,
     idempotencyKey,
+    candidateId: fx.candidate.id,
+    candidateBaseCommit: fx.candidate.baseCommit,
+    candidateContentHash: fx.candidate.contentHash,
   }));
 }
 
@@ -660,9 +667,11 @@ test('F26 an abbreviated v2 stored patch is apply-compatible but rejected withou
     } finally { await context.dispose(); }
     const before = await rawTargetSnapshot(fx);
     await assert.rejects(fx.service.apply({ workspaceId: WORKSPACE_ID, collaborationId: fx.task.id,
-      expectedVersion: fx.task.version, idempotencyKey: 'legacy-abbreviated-apply',
+      expectedVersion: fx.task.version, idempotencyKey: 'legacy-abbreviated-apply', candidateId: fx.candidate.id,
+      candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), error => {
-      assert.equal((error as { code: string }).code, 'COLLABORATION_CANDIDATE_INVALID');
+      assert.equal((error as { code: string }).code, 'COLLABORATION_CANDIDATE_CHANGED',
+        'an apply-compatible abbreviated patch is rejected by frozen-preview admission before reservation');
       return true;
     });
     assert.deepEqual(await rawTargetSnapshot(fx), before);
@@ -802,6 +811,7 @@ test('SQLite commit failure after Git write rolls back only journal-owned paths 
       collaborationId: fx.task.id,
       expectedVersion: fx.task.version,
       idempotencyKey: 'service-apply-db-failure',
+      candidateId: fx.candidate.id, candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), /injected SQLite commit failure/);
     assert.equal(injected, true);
     assert.equal(await readFile(join(fx.targetRoot, 'README.md'), 'utf8'), 'base README\n');
@@ -838,6 +848,7 @@ test('concurrent edit during apply enters recovery_required and never overwrites
       collaborationId: fx.task.id,
       expectedVersion: fx.task.version,
       idempotencyKey: 'service-apply-concurrent-edit',
+      candidateId: fx.candidate.id, candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), error => {
       assert.equal((error as { code?: string }).code, 'COLLABORATION_RECOVERY_REQUIRED');
       return true;

@@ -116,11 +116,21 @@ const EXISTING_COVERAGE: readonly CoverageEntry[] = [
     ],
   },
   {
-    area: 'Migration Registry',
+    area: 'Migration Registry and Integrity',
     checks: [
       {
+        file: 'apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts',
+        markers: [
+          'P2 Migration Registry contains exactly the registered migrations in contract order',
+          'LITE-10-001 fresh install and supported upgrade both apply the complete registry',
+        ],
+      },
+      {
         file: 'apps/server/src/migrations/__tests__/integration.test.ts',
-        markers: ['Fresh database applies the complete registered migration set exactly once', 'The complete registered schema passes integrity and foreign-key checks'],
+        markers: [
+          '[M27-P5-T001] Fresh database applies the complete registered migration set exactly once',
+          '[M27-P5-T005] The complete registered schema passes integrity and foreign-key checks',
+        ],
       },
       {
         file: 'apps/server/src/migrations/__tests__/migration.test.ts',
