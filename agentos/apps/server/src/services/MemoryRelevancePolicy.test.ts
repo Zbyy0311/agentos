@@ -7,8 +7,10 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { inTransaction } from '../store/Transaction.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
-import { memoryLexicalTerms, MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
+import { memoryLexicalTerms, memoryQueryTerms, MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import { createChatMemorySelectionPort } from './ChatMemorySelectionPort.js';
+import { buildChatMemoryRetrievalQuery } from './ConversationTurnDriver.js';
+import type { MemorySemanticRetrieval } from './MemorySemanticRetrieval.js';
 
 const {DatabaseSync} = createRequire(import.meta.url)('node:sqlite');
 const NOW = '2026-10-02T00:00:00.000Z';
@@ -90,4 +92,30 @@ test('chat records relevance exclusions, default reasons and new policy in froze
     assert.equal(selected.exclusions?.[0]?.reason,'no-relevance');
     assert.match(selected.retrievalStrategyVersion,/memory-relevance\.v2/);
   } finally {fx.db.close();}
+});
+
+test('multiline group role instructions cannot match lexical or semantic memory', async () => {
+  const fx = fixture();
+  try {
+    const unrelated = fx.add();
+    const query = buildChatMemoryRetrievalQuery({
+      content: '星云鲸鱼望远镜', intent: 'ask', groupRoleTitle: '数据库专家',
+      additionalInstructions: '先独立评审\n查询 SQLite 数据库迁移\n检查增量调整表结构。',
+    });
+    assert.deepEqual(memoryQueryTerms(query), memoryQueryTerms('星云鲸鱼望远镜'));
+    const observedQueries: string[] = [];
+    const semantic = {
+      prepare: async (text: string) => { observedQueries.push(text); return { degraded: false }; },
+      rerank: (results: unknown[], text: string) => { observedQueries.push(text); return { results, degraded: false }; },
+    } as unknown as MemorySemanticRetrieval;
+    const retrieval = new MemoryRetrievalService(fx.entries, () => Date.parse(NOW), semantic);
+    const request = { ...fx.request(), query };
+    const sync = retrieval.retrieveWithStatus(request);
+    const asyncResult = await retrieval.retrievePrepared(request);
+    assert.deepEqual(sync.results, []);
+    assert.deepEqual(asyncResult.results, []);
+    assert.ok(sync.exclusions?.some(item => item.memoryId === unrelated.id && item.reason === 'no-relevance'));
+    assert.equal(observedQueries.length, 3);
+    assert.ok(observedQueries.every(text => text.trim() === '星云鲸鱼望远镜'));
+  } finally { fx.db.close(); }
 });

@@ -19,7 +19,7 @@ import {
 } from '../store/MemoryEntryRepository.js';
 import { filterPreferenceMemory } from './PreferenceMemoryEligibility.js';
 import { isMemoryTextSafe } from '../store/MemoryContentSafety.js';
-import { MEMORY_RELEVANCE_POLICY, readMemoryLexicalRanks } from './MemoryLexicalIndex.js';
+import { MEMORY_RELEVANCE_POLICY, memoryQueryText, readMemoryLexicalRanks } from './MemoryLexicalIndex.js';
 
 /**
  * MF-3 scope-filtered Memory retrieval.
@@ -150,10 +150,11 @@ export class MemoryRetrievalService {
    */
   retrieveWithStatus(input: RetrieveMemoryInput): RetrieveMemoryResult {
     const baseline = this.retrieveBaseline(input);
-    if (!this.semantic || !nonBlank(input.query)) {
+    const query = this.selectionQuery(input);
+    if (!this.semantic || !nonBlank(query)) {
       return this.finishSelection(input, baseline);
     }
-    const reranked = this.rerankSemantic(baseline.results, input.query, input.context.workspaceId);
+    const reranked = this.rerankSemantic(baseline.results, query, input.context.workspaceId);
     return this.finishSelection(input, {
       ...baseline,
       degraded: baseline.degraded || reranked.degraded,
@@ -174,11 +175,12 @@ export class MemoryRetrievalService {
    */
   async retrievePrepared(input: RetrieveMemoryInput): Promise<RetrieveMemoryResult> {
     const baseline = this.retrieveBaseline(input);
-    if (!this.semantic || !nonBlank(input.query)) {
+    const query = this.selectionQuery(input);
+    if (!this.semantic || !nonBlank(query)) {
       return this.finishSelection(input, baseline);
     }
 
-    const prepared: MemorySemanticOperationStatus = await this.semantic.prepare(input.query, baseline.results, input.context.workspaceId)
+    const prepared: MemorySemanticOperationStatus = await this.semantic.prepare(query, baseline.results, input.context.workspaceId)
       .catch(() => ({ degraded: true, reason: 'EMBEDDING_FAILED' as const }));
     // Embeddings can take seconds. Re-prove scope, status, current content and
     // validity after the await before any fallback or budget choice is used.
@@ -196,7 +198,7 @@ export class MemoryRetrievalService {
         results: current.results,
       });
     }
-    const reranked = this.rerankSemantic(current.results, input.query, input.context.workspaceId);
+    const reranked = this.rerankSemantic(current.results, query, input.context.workspaceId);
     if (reranked.degraded) {
       return this.finishSelection(input, {
         ...current,
@@ -233,6 +235,11 @@ export class MemoryRetrievalService {
     }).map(item => ({...item, reasons: this.isFixedDefault(item.entry)
       ? [...new Set([...item.reasons, 'fixed-default' as const])] : item.reasons}));
     return { ...result, selectionPolicy: MEMORY_RELEVANCE_POLICY, results: this.applyLimit(relevant, input.limit), exclusions };
+  }
+
+  private selectionQuery(input: RetrieveMemoryInput): string | undefined {
+    return input.selectionPolicy === MEMORY_RELEVANCE_POLICY && input.query !== undefined
+      ? memoryQueryText(input.query) : input.query;
   }
 
   private isFixedDefault(entry: MemoryEntryRecord): boolean {
@@ -297,7 +304,7 @@ export class MemoryRetrievalService {
       return true;
     });
 
-    const preferenceEligible = filterPreferenceMemory(this.entries.getDatabase(), filtered, context.workspaceId, input.query);
+    const preferenceEligible = filterPreferenceMemory(this.entries.getDatabase(), filtered, context.workspaceId, this.selectionQuery(input));
     const db = this.entries.getDatabase();
     const exclusions: NonNullable<RetrieveMemoryResult['exclusions']>[number][] = [];
     let quarantined = new Set<string>();

@@ -28,14 +28,18 @@ export function memoryEntryTerms(entry: MemoryEntryRecord): string[] {
 }
 
 /** Labels are audit framing, not words from the user's objective. */
-export function memoryQueryTerms(query: string): string[] {
+export function memoryQueryText(query: string): string {
   // Stage/role labels describe the execution, not the user's knowledge need.
   // Keep them in the frozen query hash without letting "review" or "reply"
   // make an otherwise unmatched request select unrelated entries.
-  const content = query
-    .replace(/^(?:Turn stage|Group role|Group role instructions|Stage key):[^\r\n]*(?:\r?\n|$)/gmu, '')
+  return query
+    .replace(/^Group role instructions:[\s\S]*$/mu, '')
+    .replace(/^(?:Turn stage|Group role|Stage key):[^\r\n]*(?:\r?\n|$)/gmu, '')
     .replace(/^(?:Current request|Task objective|Prior failure code for this stage):\s*/gmu, '');
-  return memoryLexicalTerms(content);
+}
+
+export function memoryQueryTerms(query: string): string[] {
+  return memoryLexicalTerms(memoryQueryText(query));
 }
 
 /** Derived cache only. Missing/damaged index falls back to the same bounded terms. */
