@@ -97,6 +97,27 @@ async function waitForLineCount(path: string, count: number, timeoutMs = 15_000)
   throw new Error(`provider receipt did not reach ${count} calls: ${path}`);
 }
 
+async function waitForGroupProviderEvidence(
+  root: string, conversationId: string, interactionId: string, providerPids: readonly number[],
+): Promise<void> {
+  const store = new SqliteStore(root);
+  try {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const events = store.groupInteractionRepository()
+        .listExecutionEvents('workspace-a', conversationId, interactionId, 0)
+        .filter(event => event.eventType === 'group.provider.started');
+      if (events.length >= providerPids.length) {
+        assert.deepEqual(events.map(event => event.payload.pid), providerPids,
+          'durable owner evidence must identify the exact Provider calls observed by the fixture');
+        return;
+      }
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+    }
+    throw new Error('the active group Provider did not finish its durable owner binding');
+  } finally { store.close(); }
+}
+
 function findNamedFile(root: string, name: string): string | undefined {
   if (!existsSync(root)) return undefined;
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -314,6 +335,11 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     cliPids = receiptRows.map(row => row.pid);
     assert.notEqual(cliPids[0], process.pid, 'the provider receipt must name a child process');
     assert.notEqual(process.env.AGENTOS_FORCE_MOCK, 'true');
+
+    // The native helper resumes a Job-owned child before its spawn promise
+    // reaches the durable-binding callback. A child-written receipt proves
+    // execution, but this scenario restarts after both owner bindings commit.
+    await waitForGroupProviderEvidence(root, conversationId, interactionId, cliPids);
 
     server.child.kill('SIGKILL');
     await waitForExit(server.child);
