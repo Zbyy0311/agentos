@@ -51,6 +51,11 @@ const ERROR_STATUS: Record<string, number> = {
   COLLABORATION_SNAPSHOT_SOURCE_CHANGED: 409,
   COLLABORATION_GIT_CLEAN_MISMATCH: 409,
   COLLABORATION_CONTROL_FAILED: 409,
+  COLLABORATION_RECOVERY_INVALID: 400,
+  COLLABORATION_RECOVERY_STALE: 409,
+  COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT: 409,
+  COLLABORATION_RECOVERY_UNRESOLVED: 409,
+  COLLABORATION_RECOVERY_NOT_REQUIRED: 409,
   VERSION_CONFLICT: 409,
   VALIDATION_FAILED: 400,
   workspace_dirty: 409,
@@ -197,10 +202,41 @@ export function createCollaborationRoutes(
     return { status: 200, body: { progress } };
   }));
 
+  router.get('/collaboration/tasks/:collaborationId/recovery', (req, res) => respondCollaboration(req, res, async () => {
+    const workspaceId = workspaceIdOf(req, workspaceManager);
+    return { status: 200, body: { recovery: await service.getRecoveryOptions(workspaceId, req.params.collaborationId) } };
+  }));
+
   router.post('/collaboration/tasks/:collaborationId/confirm', (req, res) => respondCollaboration(req, res, async () => {
     const task = await service.confirm(mutationInput(req, workspaceManager, req.params.collaborationId));
     res.setHeader('ETag', formatVersionETag(task.version));
     return { status: 202, body: { task } };
+  }));
+
+  router.post('/collaboration/tasks/:collaborationId/recover', (req, res) => respondCollaboration(req, res, async () => {
+    const workspaceId = workspaceIdOf(req, workspaceManager);
+    const idempotencyKey = parseIdempotencyKey(req);
+    if (idempotencyKey === undefined) {
+      throw new CollaborationWorkflowError('COLLABORATION_IDEMPOTENCY_REQUIRED', 'Idempotency-Key is required');
+    }
+    const body = req.body ?? {};
+    const expectedTaskVersion = optionalNonNegativeInteger(body.expectedTaskVersion);
+    const expectedRunVersion = optionalNonNegativeInteger(body.expectedRunVersion);
+    const expectedRunId = optionalString(body.expectedRunId);
+    const action = body.action;
+    if (expectedTaskVersion === undefined || expectedTaskVersion < 1
+      || expectedRunVersion === undefined || expectedRunVersion < 1 || !expectedRunId
+      || (action !== 'retry-known-failure' && action !== 'new-linked-task')) {
+      throw new V2ValidationError('action, expectedTaskVersion, expectedRunId and expectedRunVersion are required');
+    }
+    const recovery = await service.recover({
+      workspaceId, collaborationId: req.params.collaborationId,
+      expectedTaskVersion, expectedRunId, expectedRunVersion,
+      idempotencyKey, action,
+    });
+    res.setHeader('ETag', formatVersionETag(recovery.task.version));
+    const status = recovery.pending ? 202 : recovery.replayed ? 200 : action === 'new-linked-task' ? 201 : 202;
+    return { status, body: { recovery, task: recovery.task } };
   }));
 
   router.post('/collaboration/tasks/:collaborationId/cancel', (req, res) => respondCollaboration(req, res, async () => {

@@ -32,6 +32,7 @@ import { createEntityId } from '../store/Identity.js';
 import { readCollaborationApplicationFacts, collaborationApplicationTerminalReason } from '../store/CollaborationApplicationTerminalState.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from './TaskRunService.js';
+import { IdempotencyService } from './IdempotencyService.js';
 import type { WorktreeManager } from './WorktreeManager.js';
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
@@ -85,6 +86,7 @@ export interface CollaborationWorkflowServiceOptions {
 }
 
 export interface CreateCollaborationPlanInput {
+  readonly id?: string;
   readonly workspaceId: string;
   readonly conversationId?: string;
   readonly sourceMessageId?: string;
@@ -103,6 +105,28 @@ export interface CollaborationMutationInput {
   readonly collaborationId: string;
   readonly expectedVersion: number;
   readonly idempotencyKey?: string;
+}
+
+export interface CollaborationRecoveryInput {
+  readonly workspaceId: string;
+  readonly collaborationId: string;
+  readonly expectedTaskVersion: number;
+  readonly expectedRunId: string;
+  readonly expectedRunVersion: number;
+  readonly idempotencyKey: string;
+  readonly action: 'retry-known-failure' | 'new-linked-task';
+}
+
+export interface CollaborationRecoveryOptions {
+  readonly taskId: string;
+  readonly taskVersion: number;
+  readonly runId?: string;
+  readonly runVersion?: number;
+  readonly failureCode?: string;
+  readonly recoveryRequired?: boolean;
+  readonly checkedBaseCommit?: string;
+  readonly actions: { readonly retryKnownFailure: boolean; readonly newLinkedTask: boolean };
+  readonly reason?: string;
 }
 
 interface CandidateCapture {
@@ -158,7 +182,9 @@ export class CollaborationWorkflowService {
     this.repository = new CollaborationRepository(options.store.getDatabase());
     this.controls = new CollaborationControlRepository(options.store.getDatabase());
     this.journals = new CollaborationApplyJournalService(options.store.getDatabase());
-    this.taskRuns = new TaskRunService(options.store);
+    this.taskRuns = new TaskRunService(options.store, {
+      idempotencyService: new IdempotencyService(options.store.idempotencyRepository()),
+    });
   }
 
   async createPlan(input: CreateCollaborationPlanInput): Promise<CollaborationTask> {
@@ -556,6 +582,262 @@ export class CollaborationWorkflowService {
     return this.executeControl('confirm', input, control => this.confirmInternal(input, control));
   }
 
+  async getRecoveryOptions(workspaceId: string, collaborationId: string): Promise<CollaborationRecoveryOptions> {
+    const task = this.requireTask(workspaceId, collaborationId);
+    const run = task.canonicalRunId ? this.options.store.runRepository().findById(workspaceId, task.canonicalRunId) : undefined;
+    const unavailable = (reason: string): CollaborationRecoveryOptions => ({
+      taskId: task.id, taskVersion: task.version,
+      ...(run === undefined || run === null ? {} : {
+        runId: run.id, runVersion: run.version,
+        ...(run.failureCode === undefined ? {} : { failureCode: run.failureCode }),
+        recoveryRequired: run.recoveryRequired,
+      }),
+      actions: { retryKnownFailure: false, newLinkedTask: false }, reason,
+    });
+    if (!run || !['failed', 'blocked'].includes(task.status) || run.status !== 'failed') {
+      return unavailable('当前任务与 Run 尚不处于可恢复的终态');
+    }
+    if (this.controls.pending(workspaceId, task.id)) return unavailable('协作控制操作仍在处理中');
+    const db = this.options.store.getDatabase();
+    const schema = db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_collaboration_recoveries'").get();
+    if (!schema) return unavailable('恢复记录迁移尚未安装');
+    const priorRecovery = db.prepare(`SELECT state FROM p2_collaboration_recoveries
+      WHERE workspace_id = ? AND collaboration_task_id = ? AND prior_run_id = ? ORDER BY created_at DESC LIMIT 1`)
+      .get(workspaceId, task.id, run.id) as { state: string } | undefined;
+    if (priorRecovery) {
+      return unavailable(priorRecovery.state === 'completed'
+        ? '该 Run 已有完成的恢复动作'
+        : priorRecovery.state === 'recovery_required' || priorRecovery.state === 'dispatching'
+          ? '先前恢复动作的结果未能证明；不会重放旧 Provider 调用'
+          : '该 Run 已有恢复动作正在处理');
+    }
+
+    let checkedBaseCommit: string;
+    try {
+      const workspace = this.requireWorkspace(workspaceId);
+      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      checkedBaseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+    } catch {
+      return unavailable('当前源工作区不是干净且可检查的基线');
+    }
+
+    const unresolvedSideEffect = run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
+      || run.failureCode === 'RUN_PROCESS_UNKNOWN' || Boolean(run.failureCode?.includes('RECOVERY'));
+    let retryKnownFailure = false;
+    if (!unresolvedSideEffect && checkedBaseCommit === task.baseCommit) {
+      try { this.assertKnownFailureRetryEligible(task, run); retryKnownFailure = true; } catch { /* The mutation route remains authoritative. */ }
+    }
+    return {
+      taskId: task.id, taskVersion: task.version, runId: run.id, runVersion: run.version,
+      ...(run.failureCode === undefined ? {} : { failureCode: run.failureCode }),
+      recoveryRequired: run.recoveryRequired, checkedBaseCommit,
+      actions: { retryKnownFailure, newLinkedTask: unresolvedSideEffect },
+      ...(!retryKnownFailure && !unresolvedSideEffect && checkedBaseCommit !== task.baseCommit
+        ? { reason: '任务原基线已变化；已知失败不能在新基线上重试' } : {}),
+    };
+  }
+
+  async recover(input: CollaborationRecoveryInput): Promise<{
+    readonly action: CollaborationRecoveryInput['action'];
+    readonly task: CollaborationTask;
+    readonly priorRunId: string;
+    readonly newRunId?: string;
+    readonly checkedBaseCommit: string;
+    readonly replayed: boolean;
+    readonly pending?: boolean;
+  }> {
+    if (!Number.isSafeInteger(input.expectedTaskVersion) || input.expectedTaskVersion < 1
+      || !Number.isSafeInteger(input.expectedRunVersion) || input.expectedRunVersion < 1
+      || !nonBlank(input.expectedRunId) || !nonBlank(input.idempotencyKey) || input.idempotencyKey.length > 200) {
+      throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_INVALID', 'Recovery versions, Run and idempotency key are required');
+    }
+    const db = this.options.store.getDatabase();
+    const requestHash = hash(JSON.stringify({
+      workspaceId: input.workspaceId, collaborationId: input.collaborationId,
+      action: input.action, expectedTaskVersion: input.expectedTaskVersion,
+      expectedRunId: input.expectedRunId, expectedRunVersion: input.expectedRunVersion,
+    }));
+    const claim = this.options.store.runInTransaction(() => {
+      const existing = db.prepare('SELECT * FROM p2_collaboration_recoveries WHERE workspace_id = ? AND idempotency_key = ?')
+        .get(input.workspaceId, input.idempotencyKey) as {
+          request_hash: string; action: string; state: string; result_json: string | null;
+        } | undefined;
+      if (existing) {
+        if (existing.request_hash !== requestHash || existing.action !== input.action) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT', 'Idempotency key was used for different recovery intent');
+        }
+        if (existing.state === 'completed' && existing.result_json) {
+          return { kind: 'replay' as const, result: JSON.parse(existing.result_json) as {
+            action: CollaborationRecoveryInput['action']; task: CollaborationTask; priorRunId: string;
+            newRunId?: string; checkedBaseCommit: string;
+          } };
+        }
+        if (existing.state === 'reserved' || existing.state === 'dispatching') return { kind: 'pending' as const };
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Prior recovery did not reach a proven terminal state; create a clean linked task after checking the baseline');
+      }
+      const task = this.requireTask(input.workspaceId, input.collaborationId);
+      const run = task.canonicalRunId && this.options.store.runRepository().findById(input.workspaceId, task.canonicalRunId);
+      if (task.version !== input.expectedTaskVersion || task.canonicalRunId !== input.expectedRunId
+        || !run || run.version !== input.expectedRunVersion || !['failed', 'blocked'].includes(task.status)
+        || run.status !== 'failed' || this.controls.pending(input.workspaceId, task.id)) {
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Current task, Run or action changed; refresh before recovering');
+      }
+      if (input.action === 'retry-known-failure') this.assertKnownFailureRetryEligible(task, run);
+      else if (!run.recoveryRequired && run.failureCode !== 'RUN_PROCESS_MISSING' && run.failureCode !== 'RUN_PROCESS_UNKNOWN'
+        && !run.failureCode?.includes('RECOVERY')) {
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_NOT_REQUIRED', 'A new linked task is reserved for unresolved Provider side effects');
+      }
+      const recoveryId = createEntityId('operation');
+      const plannedTaskId = input.action === 'new-linked-task'
+        ? createEntityId('task').replace(/^task_/, 'collab_') : null;
+      const now = new Date().toISOString();
+      try {
+        db.prepare(`INSERT INTO p2_collaboration_recoveries (
+          id,workspace_id,collaboration_task_id,prior_run_id,action,expected_task_version,expected_run_version,
+          idempotency_key,request_hash,state,planned_collaboration_task_id,created_at,updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,'reserved',?,?,?)`).run(
+          recoveryId, input.workspaceId, task.id, run.id, input.action, input.expectedTaskVersion,
+          input.expectedRunVersion, input.idempotencyKey, requestHash, plannedTaskId, now, now,
+        );
+      } catch (error) {
+        if (String(error).includes('UNIQUE constraint failed')) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'A recovery action already owns this prior Run');
+        }
+        throw error;
+      }
+      return { kind: 'reserved' as const, recoveryId, plannedTaskId, task, run };
+    });
+    if (claim.kind === 'replay') return { ...claim.result, replayed: true };
+    if (claim.kind === 'pending') {
+      const task = this.requireTask(input.workspaceId, input.collaborationId);
+      return { action: input.action, task, priorRunId: input.expectedRunId, checkedBaseCommit: task.baseCommit, replayed: true, pending: true };
+    }
+
+    try {
+      const task = claim.task;
+      const workspace = this.requireWorkspace(input.workspaceId);
+      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      const checkedBaseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+      if (input.action === 'new-linked-task') {
+        let linkedTask!: CollaborationTask;
+        this.options.store.runInTransaction(() => {
+          const current = this.requireTask(input.workspaceId, task.id);
+          const currentRun = this.options.store.runRepository().findById(input.workspaceId, claim.run.id);
+          if (current.version !== input.expectedTaskVersion || current.canonicalRunId !== claim.run.id
+            || currentRun?.version !== input.expectedRunVersion || current.controlEpoch !== task.controlEpoch
+            || this.controls.pending(input.workspaceId, task.id)) {
+            throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task or prior Run changed during baseline verification');
+          }
+          linkedTask = this.repository.findById(input.workspaceId, claim.plannedTaskId!) ?? this.createLinkedRecoveryTask(
+            task, claim.plannedTaskId!, checkedBaseCommit, claim.run,
+          );
+          const result = { action: input.action, task: linkedTask, priorRunId: claim.run.id, checkedBaseCommit };
+          db.prepare(`UPDATE p2_collaboration_recoveries SET new_collaboration_task_id = ?,
+            checked_base_commit = ?,state = 'completed',result_json = ?,updated_at = ? WHERE id = ? AND state = 'reserved'`)
+            .run(linkedTask.id, checkedBaseCommit, JSON.stringify(result), new Date().toISOString(), claim.recoveryId);
+        });
+        const result = { action: input.action, task: linkedTask, priorRunId: claim.run.id, checkedBaseCommit };
+        return { ...result, replayed: false };
+      }
+
+      if (checkedBaseCommit !== task.baseCommit) {
+        throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The checked source baseline changed; no retry Run was started');
+      }
+      const retryKey = `p2-retry-${hash(input.idempotencyKey).slice(0, 48)}`;
+      const retry = this.taskRuns.retryRunOperationForV2(input.workspaceId, claim.run.id, retryKey, claim.run.version, () => {
+        const currentTask = this.requireTask(input.workspaceId, task.id);
+        const currentRun = this.options.store.runRepository().findById(input.workspaceId, claim.run.id);
+        const recovery = db.prepare('SELECT state FROM p2_collaboration_recoveries WHERE id = ?')
+          .get(claim.recoveryId) as { state: string } | undefined;
+        if (currentTask.version !== input.expectedTaskVersion || currentTask.canonicalRunId !== claim.run.id
+          || currentRun?.version !== input.expectedRunVersion || currentTask.controlEpoch !== task.controlEpoch
+          || this.controls.pending(input.workspaceId, task.id) || recovery?.state !== 'reserved') {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task, Run or recovery claim changed before canonical retry acceptance');
+        }
+        this.assertKnownFailureRetryEligible(currentTask, currentRun);
+        const changed = db.prepare(`UPDATE p2_collaboration_recoveries SET state = 'dispatching',updated_at = ?
+          WHERE id = ? AND state = 'reserved'`).run(new Date().toISOString(), claim.recoveryId) as { changes?: number | bigint };
+        if (Number(changed.changes ?? 0) !== 1) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Recovery claim was no longer reserved');
+        }
+      });
+      const newRunId = retry.body.run.id;
+      const implementer = workspace.agents.find(agent => agent.id === task.implementerAgentId);
+      if (!implementer) throw new CollaborationWorkflowError('COLLABORATION_AGENT_UNAVAILABLE', 'Implementer is unavailable');
+      let lease = this.options.worktrees.listLeases().find(item => item.workspaceId === workspace.id
+        && item.runId === newRunId && item.executionId === `collaboration-${task.id}` && item.status === 'active');
+      if (!lease) {
+        lease = await this.options.worktrees.createLease({
+          workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: newRunId,
+          executionId: `collaboration-${task.id}`, agentId: implementer.id, controlledGitContent: true,
+        });
+      }
+      const leaseRecord = this.options.worktrees.getRecord(lease.id);
+      if (!leaseRecord || leaseRecord.status !== 'active') throw new CollaborationWorkflowError('COLLABORATION_WORKTREE_MISSING', 'Fresh checked worktree is unavailable');
+      this.options.registerWorktreePath(newRunId, leaseRecord.absolutePath);
+
+      let currentTask = this.requireTask(input.workspaceId, task.id);
+      if (currentTask.canonicalRunId !== newRunId) {
+        this.options.store.runInTransaction(() => {
+          currentTask = this.requireTask(input.workspaceId, task.id);
+          if (currentTask.version !== input.expectedTaskVersion || currentTask.canonicalRunId !== claim.run.id
+            || currentTask.controlEpoch !== task.controlEpoch || this.controls.pending(input.workspaceId, task.id)) {
+            throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task action fence changed before linking the retry Run');
+          }
+          currentTask = this.repository.progress({ workspaceId: task.workspaceId, id: task.id,
+            expectedVersion: currentTask.version, status: 'queued', canonicalRunId: newRunId,
+            reworkRound: task.reworkRound + 1, expectedRunId: claim.run.id,
+            expectedControlEpoch: task.controlEpoch ?? 0 });
+        });
+      }
+      const currentRun = this.options.store.runRepository().findById(workspace.id, newRunId);
+      if (!currentRun || currentRun.status !== 'queued' || currentRun.recoveryRequired) {
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'New Run is not safely startable');
+      }
+      const startKey = `p2-start-${hash(input.idempotencyKey).slice(0, 48)}`;
+      const start = this.taskRuns.startRunOperationForV2(workspace.id, newRunId, startKey, currentRun.version, 'MODIFYING', () => {
+        const latestTask = this.requireTask(input.workspaceId, task.id);
+        const latestRun = this.options.store.runRepository().findById(workspace.id, newRunId);
+        if (latestTask.version !== currentTask.version || latestTask.canonicalRunId !== newRunId
+          || latestTask.controlEpoch !== task.controlEpoch || this.controls.pending(input.workspaceId, task.id)
+          || latestRun?.version !== currentRun.version || latestRun.status !== 'queued' || latestRun.recoveryRequired) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task action or canonical Run changed before Start acceptance');
+        }
+      });
+      if (start.replayed) throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Start authorization already exists; the Provider call will not be replayed');
+      const admitted = await this.options.requestRunAdmission({ workspaceId: workspace.id, runId: newRunId });
+      currentTask = this.requireTask(input.workspaceId, task.id);
+      if (admitted && this.options.runtimeDispatchEnabled !== false && currentTask.status === 'queued') {
+        this.options.store.runInTransaction(() => {
+          const latestTask = this.requireTask(input.workspaceId, task.id);
+          if (latestTask.version !== currentTask.version || latestTask.canonicalRunId !== newRunId
+            || latestTask.controlEpoch !== task.controlEpoch || this.controls.pending(input.workspaceId, task.id)) {
+            throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task action changed before Provider dispatch');
+          }
+          this.repository.progress({ workspaceId: task.workspaceId, id: task.id,
+            expectedVersion: latestTask.version, status: 'running', canonicalRunId: newRunId,
+            expectedRunId: newRunId, expectedControlEpoch: task.controlEpoch ?? 0 });
+        });
+      }
+      currentTask = this.requireTask(input.workspaceId, task.id);
+      const result = { action: input.action, task: currentTask, priorRunId: claim.run.id, newRunId, checkedBaseCommit };
+      this.options.store.runInTransaction(() => {
+        db.prepare(`UPDATE p2_collaboration_recoveries SET new_run_id = ?,checked_base_commit = ?,
+          state = 'completed',result_json = ?,updated_at = ? WHERE id = ? AND state = 'dispatching'`)
+          .run(newRunId, checkedBaseCommit, JSON.stringify(result), new Date().toISOString(), claim.recoveryId);
+      });
+      if (admitted && this.options.runtimeDispatchEnabled !== false) void this.driveAndFinalize(task.id, workspace.id, newRunId);
+      return { ...result, replayed: false };
+    } catch (error) {
+      this.options.store.runInTransaction(() => db.prepare(`UPDATE p2_collaboration_recoveries SET state = 'recovery_required',
+        error_code = ?,updated_at = ? WHERE id = ? AND state IN ('reserved','dispatching')`).run(
+          error instanceof CollaborationWorkflowError ? error.code : 'COLLABORATION_RECOVERY_REQUIRED',
+          new Date().toISOString(), claim.recoveryId,
+        ));
+      throw error;
+    }
+  }
+
   async cancel(input: CollaborationMutationInput): Promise<CollaborationTask> {
     return this.executeControl('cancel', input, async control => {
       const task = this.controls.assertOwned(control);
@@ -810,6 +1092,14 @@ export class CollaborationWorkflowService {
 
   private async reconcilePersistedState(): Promise<{ tasks: number; controls: number; unresolved: number }> {
     let tasks = 0; let controls = 0; let unresolved = 0;
+    const db = this.options.store.getDatabase();
+    const recoveryTable = db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_collaboration_recoveries'").get();
+    if (recoveryTable) {
+      const interruptedRecoveries = db.prepare(`UPDATE p2_collaboration_recoveries
+        SET state = 'recovery_required',error_code = 'COLLABORATION_RECOVERY_INTERRUPTED',updated_at = ?
+        WHERE state IN ('reserved','dispatching')`).run(new Date().toISOString()) as { changes?: number | bigint };
+      unresolved += Number(interruptedRecoveries.changes ?? 0);
+    }
     let journals: ApplyJournal[] = [];
     try { journals = await this.journals.loadPending(); } catch {
       // Keep corrupt/missing recovery material visible and fenced, not silently
@@ -1410,12 +1700,63 @@ export class CollaborationWorkflowService {
     const maxReworkRounds = input.maxReworkRounds ?? 2;
     if (!Number.isSafeInteger(maxReworkRounds) || maxReworkRounds < 0 || maxReworkRounds > 2) throw new CollaborationWorkflowError('COLLABORATION_INVALID', 'maxReworkRounds must be between 0 and 2');
     return {
+      ...(input.id === undefined ? {} : { id: input.id }),
       ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
       ...(input.sourceMessageId === undefined ? {} : { sourceMessageId: input.sourceMessageId }),
       title: input.title.trim(), objective: input.objective.trim(), scope: [...normalizeCollaborationScope(input.scope).paths],
       acceptanceCommands: input.acceptanceCommands.map(command => command.trim()), plannerAgentId: input.plannerAgentId,
       implementerAgentId: input.implementerAgentId, reviewerAgentId: input.reviewerAgentId, maxReworkRounds,
     };
+  }
+
+  private assertKnownFailureRetryEligible(task: CollaborationTask, run: Run): void {
+    const allowed = new Set([
+      'PROVIDER_CONFIG_INVALID', 'PROVIDER_CAPABILITY_UNAVAILABLE', 'PROVIDER_VERSION_UNSUPPORTED',
+      'RUN_CONFIGURATION_INVALID', 'WORKSPACE_ADMISSION_DENIED',
+    ]);
+    if (!['failed', 'blocked'].includes(task.status) || run.status !== 'failed' || run.recoveryRequired
+      || !run.failureCode || !allowed.has(run.failureCode)) {
+      throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_UNRESOLVED', 'Run failure does not prove that a new attempt is safe');
+    }
+    const processes = this.options.store.getDatabase().prepare(
+      'SELECT COUNT(*) AS count FROM runtime_processes WHERE workspace_id = ? AND run_id = ?',
+    ).get(task.workspaceId, run.id) as { count: number | bigint };
+    const outputs = this.options.store.getDatabase().prepare(`SELECT COUNT(*) AS count FROM collaboration_stage_outputs
+      WHERE workspace_id = ? AND collaboration_task_id = ? AND canonical_run_id = ? AND output_status = 'available'`)
+      .get(task.workspaceId, task.id, run.id) as { count: number | bigint };
+    if (Number(processes.count) !== 0 || Number(outputs.count) !== 0) {
+      throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_UNRESOLVED', 'Provider process or late stage output prevents a safe retry');
+    }
+  }
+
+  private createLinkedRecoveryTask(
+    prior: CollaborationTask, id: string, baseCommit: string, priorRun: Run,
+  ): CollaborationTask {
+    const workspace = this.requireWorkspace(prior.workspaceId);
+    this.scopeFor(prior);
+    const title = `${prior.title.slice(0, 184)} (linked recovery)`;
+    const lineage = `\n\nRecovery history: linked from collaboration ${prior.id}, Run ${priorRun.id}; prior failure ${priorRun.failureCode ?? 'unknown'}. The interrupted Provider call was not resumed.`;
+    const objective = Buffer.byteLength(prior.objective + lineage, 'utf8') <= MAX_OBJECTIVE_BYTES
+      ? prior.objective + lineage : prior.objective;
+    const input: CreateCollaborationPlanInput = {
+      id, workspaceId: prior.workspaceId, conversationId: prior.conversationId,
+      sourceMessageId: prior.sourceMessageId, title, objective, scope: [...prior.scope],
+      acceptanceCommands: [...prior.acceptanceCommands], plannerAgentId: prior.plannerAgentId,
+      implementerAgentId: prior.implementerAgentId, reviewerAgentId: prior.reviewerAgentId,
+      maxReworkRounds: prior.maxReworkRounds,
+    };
+    const normalized = this.validatePlan(input, workspace);
+    const planHash = hash(JSON.stringify({
+      title: normalized.title, objective: normalized.objective, scope: normalized.scope,
+      acceptanceCommands: normalized.acceptanceCommands, plannerAgentId: normalized.plannerAgentId,
+      implementerAgentId: normalized.implementerAgentId, reviewerAgentId: normalized.reviewerAgentId,
+      baseCommit, scopePolicyVersion: COLLABORATION_SCOPE_POLICY_VERSION,
+    }));
+    return this.repository.create({
+      ...normalized, id, workspaceId: prior.workspaceId, planHash, baseCommit,
+      maxReworkRounds: prior.maxReworkRounds, scopePolicyVersion: COLLABORATION_SCOPE_POLICY_VERSION,
+      createdAt: new Date().toISOString(),
+    });
   }
 
   private assertConversationAssociation(workspaceId: string, conversationId?: string, sourceMessageId?: string): void {

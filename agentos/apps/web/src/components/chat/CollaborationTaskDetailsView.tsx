@@ -6,6 +6,7 @@ import { useApi } from '@/lib/useApi';
 import { listRuntimeApprovals, resolveRuntimeApproval, type RuntimeApprovalDecision, type RuntimeApprovalRequest } from '@/lib/runtimeApprovals';
 import type { CollaborationProgressState } from '@/lib/useCollaborationProgress';
 import { collaborationControlBlockReason, collaborationMutationRequest, readPendingCollaborationControl } from '@/lib/collaborationControl';
+import { CollaborationRecoveryPanel } from './CollaborationRecoveryPanel';
 
 const STATUS_LABELS: Record<CollaborationStatus, string> = {
   awaiting_confirmation: '待用户确认', queued: '已排队', running: '执行中', reviewing: '评审中',
@@ -193,6 +194,15 @@ export function CollaborationTaskDetailsView(props: {
     {progress.candidates.length > 0 && <section className="mt-5 rounded-xl border ui-border p-4"><h2 className="text-sm font-medium ui-text">交付证据</h2><div className="mt-3 grid gap-2">{progress.candidates.map(candidate => <div key={candidate.id} className="rounded-lg border ui-border px-3 py-3 text-xs"><div className="flex flex-wrap items-center gap-2 ui-text-soft"><span>候选版本 · 第 {candidate.round + 1} 轮</span><span className="ui-muted">{testStatusLabel(candidate.testStatus)}</span>{candidate.testExitCode !== undefined && <span className="ui-muted">退出码 {candidate.testExitCode}</span>}</div><div className="mt-2 break-all text-[11px] ui-dim">冻结候选 SHA-256：<code title={candidate.diffHash}>{candidate.diffHash}</code></div>{candidate.testCommand && <code className="mt-2 block overflow-x-auto whitespace-pre-wrap text-[11px] ui-muted">{candidate.testCommand}</code>}{candidate.reviewConclusion && <div className="mt-2 ui-muted">评审：{candidate.reviewConclusion === 'approved' ? '通过' : '要求修改'}{candidate.reviewSummary ? ` · ${candidate.reviewSummary}` : ''}</div>}</div>)}</div></section>}
 
     {error && <div role="alert" className="ui-error mt-4 rounded-xl border px-3 py-2 text-sm">{error}</div>}
+    {(task.status === 'failed' || task.status === 'blocked') && <CollaborationRecoveryPanel
+      workspaceId={props.workspaceId}
+      taskId={task.id}
+      refreshRevision={props.state.refreshRevision}
+      onRecovered={result => {
+        if (result.action === 'new-linked-task') props.state.selectTask(result.task.id);
+        props.state.refresh();
+      }}
+    />}
     <footer className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t ui-border pt-4">{task.status === 'awaiting_confirmation' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('confirm'); }}>{busy ? '启动中…' : '确认并启动'}</button>}{task.status === 'awaiting_application' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('apply'); }}>{busy ? '应用中…' : '确认应用候选版本'}</button>}{canCancel && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-secondary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('cancel'); }}>取消任务</button>}</footer>
   </section>;
 }

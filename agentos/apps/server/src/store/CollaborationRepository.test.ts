@@ -65,5 +65,21 @@ test('collaboration repository persists the plan, candidate, review and version 
       reviewCandidateId: candidate.id, reviewCandidateHash: 'wrong-hash', reviewConclusion: 'approved',
       createdAt: '2026-09-20T00:06:00.000Z',
     }), (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'CONFLICT');
+
+    fx.store.getDatabase().prepare("UPDATE runs SET status = 'failed', version = version + 1 WHERE workspace_id = ? AND id = ?")
+      .run('workspace-a', canonicalRun.id);
+    const retryRun = fx.store.runRepository().insert({
+      workspaceId: 'workspace-a', taskId: canonicalTask.id, parentRunId: canonicalRun.id, reason: 'retry', origin: 'v2_api', createdBy: 'test',
+    });
+    fx.store.getDatabase().prepare('UPDATE collaboration_tasks SET canonical_run_id = ?, version = version + 1 WHERE workspace_id = ? AND id = ?')
+      .run(retryRun.id, 'workspace-a', plan.id);
+    assert.throws(() => repository.recordStageOutput({
+      workspaceId: 'workspace-a', collaborationTaskId: plan.id, runId: canonicalRun.id,
+      stageId: 'stage_implement', stageAttempt: 2, agentId: 'kimi', role: 'implementer',
+      status: 'available', publicOutput: 'Late output from the prior Run.', outputHash: 'late-output-hash',
+      createdAt: '2026-09-20T00:07:00.000Z',
+    }), (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'CONFLICT');
+    assert.equal(repository.findStageOutput('workspace-a', canonicalRun.id, 'stage_implement', 2), undefined,
+      'a late prior-Run output is fenced after the recovery Run becomes canonical');
   } finally { fx.close(); }
 });

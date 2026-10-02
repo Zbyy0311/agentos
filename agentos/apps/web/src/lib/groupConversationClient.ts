@@ -63,6 +63,10 @@ export interface GroupInteractionDetail {
   readonly interaction: GroupInteraction;
   readonly replies: readonly GroupReply[];
   readonly budget: GroupBudgetStatus;
+  readonly executionOwner?: {
+    readonly status: 'claimed' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'interrupted' | 'abandoned';
+    readonly ownerEpoch: number;
+  } | null;
 }
 
 export interface GroupConversationRequestError extends ConversationRuntimeError {

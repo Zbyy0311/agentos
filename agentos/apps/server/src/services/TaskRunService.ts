@@ -661,6 +661,7 @@ export class TaskRunService {
     normalizedKey?: string,
     expectedVersion?: number,
     requestedMutationClass?: RequestedMutationClass,
+    beforeStart?: () => void,
   ): StartOperationExecutionResult {
     assertValidExpectedVersion(expectedVersion);
     // P6-L1A: normalize the optional requested mutation class BEFORE building
@@ -699,12 +700,14 @@ export class TaskRunService {
             replayed: true,
           };
         }
+        beforeStart?.();
         const envelope = this.acceptRunStartInTransaction(workspaceId, runId, expectedVersion, operationService);
         idempotencyService.storeSuccess({ prepared, httpStatus: 202, envelope });
         return { httpStatus: 202, body: envelope.body, replayed: false };
       });
     }
     return this.deps.runInTransaction(() => {
+      beforeStart?.();
       const envelope = this.acceptRunStartInTransaction(workspaceId, runId, expectedVersion, operationService);
       return { httpStatus: 202, body: envelope.body, replayed: false };
     });
@@ -722,6 +725,7 @@ export class TaskRunService {
     parentRunId: string,
     normalizedKey: string,
     expectedVersion: number,
+    beforeRetry?: () => void,
   ): RetryOperationExecutionResult {
     if (
       typeof expectedVersion !== 'number'
@@ -761,6 +765,7 @@ export class TaskRunService {
         }
         return { httpStatus: 201, body: resolution.envelope.body, replayed: true };
       }
+      beforeRetry?.();
       const envelope = this.acceptRetryInTransaction(
         workspaceId,
         parentRunId,
