@@ -139,6 +139,14 @@ async function installDeterministicApi(page: Page, fixture: Fixture) {
   });
 }
 
+test.beforeAll(async ({ request }) => {
+  // Next's first Windows compilation took 21.7s in CI. Compile the route in
+  // bounded setup so each regression keeps the ordinary interaction timeout.
+  test.setTimeout(120_000);
+  const response = await request.get(`/workspace/${workspaceId}`, { timeout: 120_000 });
+  expect(response.ok()).toBe(true);
+});
+
 test('P4 stable-key regression keeps group history, feedback, and candidate actions attached to their IDs', async ({ page }) => {
   const fixture = createFixture();
   await installDeterministicApi(page, fixture);
