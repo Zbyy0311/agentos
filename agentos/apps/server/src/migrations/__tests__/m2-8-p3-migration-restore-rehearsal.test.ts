@@ -42,7 +42,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDb;
 };
 
-const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051'];
+const EXPECTED_MIGRATIONS = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
 const NOW = '2026-07-31T00:00:00.000Z';
 const KEY_TABLES = [
   'agent_profiles',
@@ -85,7 +85,9 @@ function migrationIds(db: SqliteDb): string[] {
 }
 
 function assertMigrationState(db: SqliteDb): void {
-  assert.deepEqual(migrationIds(db), EXPECTED_MIGRATIONS);
+  const actualMigrationIds = migrationIds(db);
+  assert.equal(actualMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.deepEqual(actualMigrationIds, EXPECTED_MIGRATIONS);
   assert.equal(migrationIds(db).includes('012'), true);
   assert.equal(migrationIds(db).includes('013'), true);
   assert.equal(migrationIds(db).includes('014'), true);

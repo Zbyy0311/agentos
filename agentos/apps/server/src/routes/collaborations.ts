@@ -11,6 +11,7 @@ import { formatVersionETag, resolveVersionPrecondition } from './versionPrecondi
 import { parseOptionalExpectedVersion, V2ValidationError } from './v2Tasks.js';
 import { sendProblem } from '../problemDetails.js';
 import { CollaborationRepositoryError } from '../store/CollaborationRepository.js';
+import { MAX_COLLABORATION_PREVIEW_PAGE_SIZE } from '../services/CollaborationCandidatePreview.js';
 
 const ERROR_STATUS: Record<string, number> = {
   WORKSPACE_NOT_FOUND: 404,
@@ -82,6 +83,24 @@ function optionalNonNegativeInteger(value: unknown): number | undefined {
   return parsed as number;
 }
 
+function candidatePreviewIdentity(req: Request): { readonly candidateBaseCommit: string; readonly candidateContentHash: string } {
+  const candidateBaseCommit = req.query.candidateBaseCommit;
+  const candidateContentHash = req.query.candidateContentHash;
+  if (typeof candidateBaseCommit !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/iu.test(candidateBaseCommit)
+    || typeof candidateContentHash !== 'string' || !/^[a-f0-9]{64}$/u.test(candidateContentHash)) {
+    throw new V2ValidationError('Preview requests require the exact candidateBaseCommit and candidateContentHash');
+  }
+  return { candidateBaseCommit, candidateContentHash };
+}
+
+function previewPageNumber(value: unknown, name: string, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)$/u.test(value)) throw new V2ValidationError(`${name} must be a non-negative integer`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) throw new V2ValidationError(`${name} is outside the preview bounds`);
+  return parsed;
+}
+
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) throw new V2ValidationError('Expected an array of strings');
   return value.map(item => {
@@ -130,15 +149,35 @@ async function respondCollaboration(
   }
 }
 
-function mutationInput(req: Request, workspaces: WorkspaceManager, collaborationId: string): CollaborationMutationInput {
+function mutationInput(
+  req: Request,
+  workspaces: WorkspaceManager,
+  collaborationId: string,
+  action: 'confirm' | 'cancel' | 'apply',
+): CollaborationMutationInput {
   const idempotencyKey = parseIdempotencyKey(req);
   if (idempotencyKey === undefined) throw new CollaborationWorkflowError('COLLABORATION_IDEMPOTENCY_REQUIRED', 'Idempotency-Key is required');
-  return {
+  const input: CollaborationMutationInput = {
     workspaceId: workspaceIdOf(req, workspaces),
     collaborationId,
     expectedVersion: requiredVersion(req),
     idempotencyKey,
   };
+  if (action !== 'apply') return input;
+  const body = req.body ?? {};
+  const hasCandidateId = body.candidateId !== undefined;
+  const hasCandidateBaseCommit = body.candidateBaseCommit !== undefined;
+  const hasCandidateContentHash = body.candidateContentHash !== undefined;
+  if (!hasCandidateId || !hasCandidateBaseCommit || !hasCandidateContentHash) {
+    throw new V2ValidationError('Applying a candidate requires candidateId, candidateBaseCommit, and candidateContentHash from its frozen preview');
+  }
+  if (typeof body.candidateId !== 'string' || body.candidateId.length === 0 || body.candidateId !== body.candidateId.trim()
+    || body.candidateId.length > 200 || typeof body.candidateBaseCommit !== 'string'
+    || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/iu.test(body.candidateBaseCommit)
+    || typeof body.candidateContentHash !== 'string' || !/^[a-f0-9]{64}$/u.test(body.candidateContentHash)) {
+    throw new V2ValidationError('candidateId, candidateBaseCommit, and candidateContentHash must identify the frozen candidate preview');
+  }
+  return { ...input, candidateId: body.candidateId, candidateBaseCommit: body.candidateBaseCommit, candidateContentHash: body.candidateContentHash };
 }
 
 export function createCollaborationRoutes(
@@ -197,20 +236,41 @@ export function createCollaborationRoutes(
     return { status: 200, body: { progress } };
   }));
 
+  router.get('/collaboration/tasks/:collaborationId/candidates/:candidateId/preview', (req, res) => respondCollaboration(req, res, () => {
+    res.setHeader('Cache-Control', 'no-store');
+    const workspaceId = workspaceIdOf(req, workspaceManager);
+    const { candidateBaseCommit, candidateContentHash } = candidatePreviewIdentity(req);
+    const offset = previewPageNumber(req.query.offset, 'offset', 0, 499);
+    const limit = previewPageNumber(req.query.limit, 'limit', MAX_COLLABORATION_PREVIEW_PAGE_SIZE, MAX_COLLABORATION_PREVIEW_PAGE_SIZE);
+    if (limit === 0) throw new V2ValidationError('limit must be a positive integer');
+    return { status: 200, body: service.getCandidatePreview(workspaceId, req.params.collaborationId, req.params.candidateId,
+      candidateBaseCommit, candidateContentHash, { offset, limit }) };
+  }));
+
+  router.get('/collaboration/tasks/:collaborationId/candidates/:candidateId/preview/files/:fileIndex', (req, res) => respondCollaboration(req, res, () => {
+    res.setHeader('Cache-Control', 'no-store');
+    const workspaceId = workspaceIdOf(req, workspaceManager);
+    const { candidateBaseCommit, candidateContentHash } = candidatePreviewIdentity(req);
+    const fileIndex = previewPageNumber(req.params.fileIndex, 'fileIndex', -1, 499);
+    if (fileIndex < 0) throw new V2ValidationError('fileIndex must be a non-negative integer');
+    return { status: 200, body: service.getCandidatePreviewFileDiff(workspaceId, req.params.collaborationId, req.params.candidateId,
+      candidateBaseCommit, candidateContentHash, fileIndex) };
+  }));
+
   router.post('/collaboration/tasks/:collaborationId/confirm', (req, res) => respondCollaboration(req, res, async () => {
-    const task = await service.confirm(mutationInput(req, workspaceManager, req.params.collaborationId));
+    const task = await service.confirm(mutationInput(req, workspaceManager, req.params.collaborationId, 'confirm'));
     res.setHeader('ETag', formatVersionETag(task.version));
     return { status: 202, body: { task } };
   }));
 
   router.post('/collaboration/tasks/:collaborationId/cancel', (req, res) => respondCollaboration(req, res, async () => {
-    const task = await service.cancel(mutationInput(req, workspaceManager, req.params.collaborationId));
+    const task = await service.cancel(mutationInput(req, workspaceManager, req.params.collaborationId, 'cancel'));
     res.setHeader('ETag', formatVersionETag(task.version));
     return { status: task.pendingControl ? 202 : 200, body: { task } };
   }));
 
   router.post('/collaboration/tasks/:collaborationId/apply', (req, res) => respondCollaboration(req, res, async () => {
-    const task = await service.apply(mutationInput(req, workspaceManager, req.params.collaborationId));
+    const task = await service.apply(mutationInput(req, workspaceManager, req.params.collaborationId, 'apply'));
     res.setHeader('ETag', formatVersionETag(task.version));
     return { status: task.pendingControl ? 202 : 200, body: { task } };
   }));

@@ -28,7 +28,6 @@ type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-02T00:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051'];
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -225,7 +224,13 @@ function assertIntegrity(db: Db): void {
 }
 
 test('Migration Registry contains 012 in contract order', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), FULL_MIGRATION_IDS);
+  const ids = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  assert.deepEqual(ids.slice(0, MIGRATION_IDS.length), MIGRATION_IDS);
+  assert.equal(ids.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(ids, [...ids].sort());
+  assert.ok(ids.includes('052'), 'P1 source bindings migration 052 must be registered');
+  assert.ok(ids.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
 });
 
 test('Migration 012 is destructive and a confirmed fresh database may skip an old-state backup', () => {

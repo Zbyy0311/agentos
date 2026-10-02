@@ -7,6 +7,8 @@ import {
   memoryDateTimeToIso,
   memoryEntryLifecyclePath,
   memoryEntryLifecyclePayload,
+  memoryEntryWorkspacePromotionPath,
+  memoryEntryWorkspacePromotionPayload,
   memoryCandidateReviewPath,
   memoryCandidatesPath,
   memoryConflictsPath,
@@ -31,6 +33,12 @@ test('lifecycle requests carry the current entry version and only date edits car
   }), { expectedVersion: 7, action: 'set-validity', validFrom: null, expiresAt: '2027-01-01T00:00:00.000Z' });
   assert.throws(() => memoryEntryLifecyclePayload({ version: 7 }, 'set-validity'), /至少指定/);
   assert.throws(() => memoryEntryLifecyclePayload({ version: 7 }, 'restore', { expiresAt: null }), /只有设置有效期/);
+});
+
+test('workspace promotion uses a workspace-scoped path and current Entry version', () => {
+  assert.equal(memoryEntryWorkspacePromotionPath('workspace/a', 'entry 1'),
+    '/api/workspaces/workspace%2Fa/memory/entries/entry%201/promote-to-workspace-knowledge');
+  assert.deepEqual(memoryEntryWorkspacePromotionPayload({ version: 7 }), { expectedVersion: 7 });
 });
 
 test('preference suggestion paths and actions use projection identity, workspace and expected version', () => {

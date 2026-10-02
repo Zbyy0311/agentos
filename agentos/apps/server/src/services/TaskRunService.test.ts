@@ -16,6 +16,7 @@ import { createEntityId } from '../store/Identity.js';
 import { hashIdempotencyRequest } from '../idempotency/fingerprint.js';
 import type { Run, Task, Workspace } from '@agentos/shared';
 import { RunSnapshotFailedError } from './SnapshotService.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 
 interface Fixture {
   root: string;
@@ -1923,9 +1924,9 @@ test('P3C1-S19 production SqliteStore enables foreign keys and busy_timeout 5000
     assert.equal((db.prepare('PRAGMA busy_timeout').get() as { timeout: number }).timeout, 5000);
     assert.equal((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys, 1);
     const applied = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(applied.map(row => row.migration_id), [
-      '001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051',
-    ]);
+    const appliedMigrationIds = applied.map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true });

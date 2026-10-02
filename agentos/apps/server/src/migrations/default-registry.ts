@@ -49,6 +49,8 @@ import { migration048 } from './migrations/048-memory-vectors.js';
 import { migration049 } from './migrations/049-memory-lexical-index.js';
 import { migration050 } from './migrations/050-memory-feedback-resolutions.js';
 import { migration051 } from './migrations/051-memory-feedback-resolver-actor.js';
+import { migration052 } from './migrations/052-memory-entry-source-bindings.js';
+import { migration053 } from './migrations/053-collaboration-candidate-content-hash.js';
 import type { Migration } from './types.js';
 
 /**
@@ -95,6 +97,7 @@ import type { Migration } from './types.js';
  * 037: canonical Conversation Message attachment persistence
  * 038: immutable collaboration candidate/review evidence and safe stage outputs
  * 039: durable collaboration control claims and application recovery journals
+ * 053: canonical frozen collaboration candidate content hash
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -148,4 +151,6 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration049,
   migration050,
   migration051,
+  migration052,
+  migration053,
 ];

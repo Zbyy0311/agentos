@@ -65,6 +65,8 @@ export interface ProviderExecutionChain {
   readonly approvalGate: RuntimeApprovalGate;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
   readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
+  /** Adds verified low-risk facts to the same terminal Run candidate trigger. */
+  readonly terminalCandidateGeneratorWithFacts: Pick<MemoryCandidateGenerationService, 'generateForRunTerminal'>;
   /** M3 verified low-risk facts; parent startup wiring may invoke its sweep. */
   readonly verifiedMemoryFacts: VerifiedMemoryFactService;
 }
@@ -212,6 +214,6 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
-    memoryContextResolver, approvalGate, terminalCandidateGenerator, verifiedMemoryFacts,
+    memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
   };
 }

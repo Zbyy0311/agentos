@@ -70,7 +70,8 @@ function hasValuablePublicEvidence(text: string, hasFileChanges: boolean): boole
   if (text.length < 12) return false;
   return containsAny(text, [
     '决定', '决策', '方案', '规范', '约定', '修复', '验证', '测试', '迁移', '配置',
-    '完成', '通过', '采用', '必须', 'fix', 'test', 'migrat', 'config', 'verified',
+    '完成', '通过', '采用', '必须', '失败', '已取消', 'failure', 'failed', 'cancelled',
+    'fix', 'test', 'migrat', 'config', 'verified',
   ]) && !/^(已完成|完成|好的|好|已处理|处理好了)[。.!！\s]*$/i.test(text);
 }
 
