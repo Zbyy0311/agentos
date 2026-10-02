@@ -4,7 +4,7 @@ import { access, mkdir, realpath } from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WorktreeLease, WorktreeRecoveryBundle } from '@agentos/shared';
-import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
+import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
 
 type LeaseRecord = WorktreeLease & { absolutePath: string; workspaceRoot: string; recoveryBundle?: WorktreeRecoveryBundle };
@@ -130,12 +130,7 @@ export class WorktreeManager {
         }
         await context.assertSourceContextUnchanged();
       } finally { await context.dispose(); }
-      try {
-        await captureCollaborationCandidateSnapshot(root, head, ['./']);
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('COLLABORATION_CANDIDATE_EMPTY:')) return;
-        throw error;
-      }
+      if (await isCollaborationWorkspaceClean(root, head)) return head;
       throw new WorktreeError('workspace_dirty', 'workspace_dirty: workspace has uncommitted changes');
     }
     const status = await git(root, ['status', '--porcelain=v1', '-z']);
