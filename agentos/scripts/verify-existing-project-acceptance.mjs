@@ -86,6 +86,35 @@ export function verifyFrozenCandidatePreview(response, expected) {
   };
 }
 
+/** Read only the exact terminal candidates from this runner's isolated data root.
+ * The public task response intentionally contains summaries, never raw patches. */
+export function loadOwnedFrozenCandidates(databasePath, workspaceId, taskId, summaries) {
+  const db = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const rows = db.prepare(`SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,content_hash,
+      diff_text,test_status,test_command,test_exit_code,test_output,created_at
+      FROM collaboration_candidates WHERE workspace_id=? AND collaboration_task_id=? ORDER BY round ASC`)
+      .all(workspaceId, taskId);
+    invariant(rows.length === summaries.length && rows.length > 0,
+      'isolated candidate inventory differs from the HTTP task summaries');
+    return rows.map(row => {
+      const summary = summaries.find(item => item.id === row.id);
+      invariant(summary && row.round === summary.round && row.diff_hash === summary.diffHash
+        && row.content_hash === summary.contentHash && row.test_status === summary.testStatus
+        && row.test_exit_code === summary.testExitCode
+        && typeof row.diff_text === 'string' && sha256(Buffer.from(row.diff_text, 'utf8')) === row.diff_hash,
+      'isolated frozen candidate bytes or identity differ from the HTTP task summary');
+      return {
+        id: row.id, canonicalRunId: row.canonical_run_id, round: row.round,
+        baseCommit: row.base_commit, headCommit: row.head_commit,
+        diffHash: row.diff_hash, contentHash: row.content_hash, diffText: row.diff_text,
+        testStatus: row.test_status, testCommand: row.test_command,
+        testExitCode: row.test_exit_code, testOutput: row.test_output, createdAt: row.created_at,
+      };
+    });
+  } finally { db.close(); }
+}
+
 function assertCandidateChangesStayInScope(plan, paths) {
   const scopes = plan.scope.map(value => value.replaceAll('\\', '/').replace(/\/$/u, ''));
   invariant(paths.every(path => scopes.some(scope => path === scope || path.startsWith(`${scope}/`))),
@@ -416,7 +445,8 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
     await delay(250);
   }
   invariant(readinessPath && ready, `isolated AgentOS server did not become ready: ${output.text}`);
-  return { child, output, baseUrl, port, readinessPath, worktreeRoot };
+  return { child, output, baseUrl, port, readinessPath, worktreeRoot,
+    databasePath: join(projectRoot, '.agentos', 'agentos.sqlite') };
   } catch (error) {
     await stopServer({ child }).catch(() => undefined);
     throw new Error(`${error instanceof Error ? error.message : String(error)}; server output: ${output.text}`);
@@ -702,7 +732,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   }
   invariant(details, `${plan.kind} collaboration exceeded its ${mode === 'real-windows-acceptance' ? 900 : 240}s bound; last observed ${JSON.stringify(lastObserved ?? { taskStatus: task.status })}`);
   invariant(task.status === 'awaiting_application', `${plan.kind} task did not reach approved application state: ${task.status}; ${safeText(task.failureReason || '')}`);
-  const candidates = details.body.candidates.slice().sort((a, b) => a.round - b.round);
+  const candidates = loadOwnedFrozenCandidates(server.databasePath, workspaceId, taskId, details.body.candidates);
   const reviews = details.body.reviews.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   invariant(candidates.length === 2 && candidates[0].round === 0 && candidates[1].round === 1, `${plan.kind} did not produce exactly one review revision`);
   invariant(reviews.length === 2 && reviews[0].conclusion === 'changes_requested' && reviews[1].conclusion === 'approved', `${plan.kind} lacks changes-requested -> revision -> approved review history`);

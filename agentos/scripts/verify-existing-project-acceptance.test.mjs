@@ -4,10 +4,41 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import {
-  changedPathsFromPatch, createSimulationExecutable, selectOwnedPendingApprovals,
+  changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
 } from './verify-existing-project-acceptance.mjs';
+
+test('terminal candidate capture reads exact owned bytes while the HTTP response remains a summary', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-candidate-capture-'));
+  const path = join(root, 'runtime.sqlite');
+  const db = new DatabaseSync(path);
+  try {
+    db.exec(`CREATE TABLE collaboration_candidates (
+      id TEXT, workspace_id TEXT, collaboration_task_id TEXT, canonical_run_id TEXT, round INTEGER,
+      base_commit TEXT, head_commit TEXT, diff_hash TEXT, content_hash TEXT, diff_text TEXT,
+      test_status TEXT, test_command TEXT, test_exit_code INTEGER, test_output TEXT, created_at TEXT)`);
+    const patch = 'frozen patch bytes\n';
+    const diffHash = createHash('sha256').update(patch).digest('hex');
+    const summary = { id: 'candidate-owned', round: 1, diffHash, contentHash: 'b'.repeat(64), testStatus: 'passed', testExitCode: 0 };
+    const insert = db.prepare('INSERT INTO collaboration_candidates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    insert.run(summary.id, 'ws-owned', 'task-owned', 'run-owned', 1,
+      'a'.repeat(40), 'c'.repeat(40), diffHash, summary.contentHash, patch, 'passed', 'node --test', 0, 'tests passed', '2026-10-03T00:00:00.000Z');
+    insert.run('candidate-other', 'ws-other', 'task-owned', 'run-other', 0,
+      'd'.repeat(40), 'e'.repeat(40), diffHash, summary.contentHash, 'other evidence', 'passed', 'node --test', 0, 'other output', '2026-10-03T00:00:00.000Z');
+    const captured = loadOwnedFrozenCandidates(path, 'ws-owned', 'task-owned', [summary]);
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].diffText, patch);
+    assert.equal(captured[0].testOutput, 'tests passed');
+    assert.equal(captured[0].canonicalRunId, 'run-owned');
+    assert.throws(() => loadOwnedFrozenCandidates(path, 'ws-owned', 'task-other', [summary]), /inventory/u);
+    assert.throws(() => loadOwnedFrozenCandidates(path, 'ws-owned', 'task-owned', [{ ...summary, contentHash: 'f'.repeat(64) }]), /identity/u);
+    db.prepare('UPDATE collaboration_candidates SET diff_text=? WHERE id=?').run('tampered', summary.id);
+    assert.throws(() => loadOwnedFrozenCandidates(path, 'ws-owned', 'task-owned', [summary]), /candidate bytes/u);
+  } finally { db.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 test('each acceptance scenario requires explicit baseline probes and candidate acceptance commands', () => {
   const plan = { scenarios: ['defect', 'feature'].map(simulationPlan) };
