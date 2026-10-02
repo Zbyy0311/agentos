@@ -77,6 +77,35 @@ test('does not generate candidates for a non-completed run', async () => {
   }
 });
 
+test('compatibility extraction uses only replies carrying the exact legacy Run ID', async () => {
+  const root = createRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    seedCompletedRun(store);
+    store.createMessage({
+      id: 'run-a-reply', workspaceId: 'workspace-a', conversationId: 'conversation-a',
+      senderType: 'agent', runId: 'run-a', content: '当前 Run 的认证方案。', createdAt: '2026-07-12T01:00:02.000Z',
+    });
+    store.createMessage({
+      id: 'later-unowned-reply', workspaceId: 'workspace-a', conversationId: 'conversation-a',
+      senderType: 'agent', content: '后续任务的内容不属于当前 Run。', createdAt: '2026-07-12T01:00:02.000Z',
+    });
+    let visibleReplies: readonly string[] = [];
+    const service = new MemoryCandidateService(store, new MemoryService(store), {
+      extract: input => {
+        visibleReplies = input.visibleReplies;
+        return { drafts: [{ type: 'decision', title: '认证方案', summary: '当前 Run', content: '只保留当前 Run。', confidence: 90, operation: 'create' }], reason: 'public_evidence' };
+      },
+    });
+    await service.generate({ workspaceId: 'workspace-a', workspaceRoot: root, runId: 'run-a', memoryEnabled: true });
+    assert.deepEqual(visibleReplies, ['当前 Run 的认证方案。']);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('keeps pending candidates out of retrieval until explicit approval', async () => {
   const root = createRoot();
   let store: SqliteStore | undefined;

@@ -19,6 +19,7 @@ import { applyFinalReviewDecision, getWorkerEvidenceFailure } from '../routes/ta
 import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 import type { OperationService } from './OperationService.js';
 import { LEGACY_PIPELINE_FAILED, type TaskRunService } from './TaskRunService.js';
+import type { GenerateForRunTerminalInput } from './MemoryCandidateGenerationService.js';
 
 const LEGACY_STAGE_ORDER = Object.freeze([
   'codex_manager',
@@ -39,6 +40,10 @@ export type LegacyRunnerFactory = (
   onChunk: (text: string, done: boolean) => void,
   options: { onActivity: () => void },
 ) => LegacyPipelineRunner;
+
+export interface LegacyTerminalCandidateGenerator {
+  generateForRunTerminal(input: GenerateForRunTerminalInput): unknown;
+}
 
 export interface LegacyCanonicalExecutionInput {
   readonly workspaceId: string;
@@ -101,6 +106,7 @@ export class LegacyCanonicalExecutionService implements LegacyCanonicalExecution
     private readonly lifecycle: LifecycleTransactionService,
     private readonly operations: OperationService,
     private readonly createRunner: LegacyRunnerFactory = defaultLegacyRunnerFactory,
+    private readonly terminalCandidateGenerator?: LegacyTerminalCandidateGenerator,
   ) {}
 
   async execute(input: LegacyCanonicalExecutionInput): Promise<void> {
@@ -500,6 +506,7 @@ export class LegacyCanonicalExecutionService implements LegacyCanonicalExecution
       });
       this.taskRunService.reconcileCanonicalLegacyRunCompletedWithinTransaction(run.workspaceId, run.id);
     });
+    this.accumulateTerminalCandidate(authority);
   }
 
   private failStartup(authority: ExecutionAuthority, error: unknown, task: TaskItem): void {
@@ -546,6 +553,7 @@ export class LegacyCanonicalExecutionService implements LegacyCanonicalExecution
       }, timestamp);
       this.taskRunService.reconcileCanonicalLegacyRunFailedWithinTransaction(currentRun.workspaceId, currentRun.id);
     });
+    this.accumulateTerminalCandidate(authority);
   }
 
   private failRunningExecution(
@@ -595,6 +603,27 @@ export class LegacyCanonicalExecutionService implements LegacyCanonicalExecution
       });
       this.taskRunService.reconcileCanonicalLegacyRunFailedWithinTransaction(run.workspaceId, run.id);
     });
+    this.accumulateTerminalCandidate(authority);
+  }
+
+  /** Candidate failure is isolated after the canonical Run's terminal commit. */
+  private accumulateTerminalCandidate(authority: ExecutionAuthority): void {
+    if (!this.terminalCandidateGenerator) return;
+    const operation = authority.startOperation;
+    try {
+      this.terminalCandidateGenerator.generateForRunTerminal({
+        workspaceId: authority.run.workspaceId,
+        runId: authority.run.id,
+        createdAt: new Date().toISOString(),
+        eventContext: {
+          origin: 'operation',
+          operationId: operation.id,
+          context: { correlationId: operation.correlationId, causationId: operation.id },
+        },
+      });
+    } catch (error) {
+      console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${authority.run.id}:`, error instanceof Error ? error.name : 'unknown');
+    }
   }
 
   private requireRun(workspaceId: string, runId: string, status: Run['status']): Run {
