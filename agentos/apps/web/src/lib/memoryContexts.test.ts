@@ -45,6 +45,16 @@ test('metadata-only historical contexts retain missing explanations and unknown 
   assert.equal(context.exclusions, null);
 });
 
+test('quarantine and relevance exclusions retain their exact frozen Entry versions', () => {
+  const exclusions = [
+    {memoryId:'wrong-entry', memoryVersion:3, reason:'feedback-quarantined'},
+    {memoryId:'unrelated-entry', memoryVersion:1, reason:'no-relevance'},
+  ];
+  assert.deepEqual(parseMemoryContextsResponse({contexts:[{...CONTEXT,exclusions}]})[0].exclusions,exclusions);
+  assert.throws(() => parseMemoryContextsResponse({contexts:[{...CONTEXT,
+    exclusions:[{memoryId:'wrong-entry',memoryVersion:0,reason:'feedback-quarantined'}]}]}), /version must be positive/);
+});
+
 test('legacy exclusion reason arrays map to a readable reason and nullable memory versions stay nullable', () => {
   const [context] = parseMemoryContextsResponse({ contexts: [{
     ...CONTEXT, kind: 'legacy-execution', executionId: 'exec-1',

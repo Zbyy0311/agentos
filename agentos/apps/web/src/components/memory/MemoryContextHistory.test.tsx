@@ -54,6 +54,15 @@ test('history details expose version feedback against each frozen selected memor
   assert.ok(markup.includes('已过时'));
 });
 
+test('history details show the excluded version and the reason for quarantine or empty relevance', async () => {
+  const markup = await render({...BASE_CONTEXT, selected:[], contextText:'',
+    exclusions:[{memoryId:'wrong-entry',memoryVersion:3,reason:'feedback-quarantined'},
+      {memoryId:'unrelated-entry',memoryVersion:1,reason:'no-relevance'}]});
+  assert.ok(markup.includes('wrong-entry v3'));
+  assert.ok(markup.includes('该版本已报告错误，等待纠正'));
+  assert.ok(markup.includes('与当前请求无匹配'));
+});
+
 test('history details keep unknown legacy selection versions visibly unknown', async () => {
   const markup = await render({
     ...BASE_CONTEXT,

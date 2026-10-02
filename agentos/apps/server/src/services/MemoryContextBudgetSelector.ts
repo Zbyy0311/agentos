@@ -9,6 +9,7 @@ import {
 import { createHash } from 'node:crypto';
 import type { MemoryRetrievalService, RetrievedMemoryEntry, RetrieveMemoryInput, RetrieveMemoryResult } from './MemoryRetrievalService.js';
 import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import {
   MemoryContextSnapshotRepository,
   MemoryContextSnapshotError,
@@ -98,6 +99,7 @@ export function hashRetrievalQuery(input: RetrieveMemoryInput): string {
     tagFilter: [...(input.tagFilter ?? [])].sort(),
     limit: input.limit ?? null,
     context: input.context,
+    ...(input.selectionPolicy === undefined ? {} : {selectionPolicy: input.selectionPolicy}),
   });
   return createHash('sha256').update(canonical).digest('hex');
 }
@@ -117,14 +119,14 @@ export class MemoryContextBudgetSelector {
    */
   plan(input: SelectMemoryContextInput): PlannedMemoryContextSnapshot {
     this.validateInput(input);
-    const retrieval = this.retrieval.retrieveWithStatus(input.retrieval);
+    const retrieval = this.retrieval.retrieveWithStatus(this.executionRequest(input.retrieval));
     return this.planWithResult(input, retrieval);
   }
 
   /** Async seam for a caller that must warm vectors before this snapshot is frozen. */
   async planPrepared(input: SelectMemoryContextInput): Promise<PlannedMemoryContextSnapshot> {
     this.validateInput(input);
-    const retrieval = await this.retrieval.retrievePrepared(input.retrieval);
+    const retrieval = await this.retrieval.retrievePrepared(this.executionRequest(input.retrieval));
     return this.planWithResult(input, retrieval);
   }
 
@@ -135,6 +137,11 @@ export class MemoryContextBudgetSelector {
     }
     const policyCheck = validateMemoryBudgetPolicy(input.budget);
     if (!policyCheck.valid) throw new MemoryBudgetSelectionError('INPUT_INVALID');
+  }
+
+  private executionRequest(input: RetrieveMemoryInput): RetrieveMemoryInput {
+    // Original queryless MF-4 library clients keep their browsing contract.
+    return input.query === undefined ? input : {...input, selectionPolicy: MEMORY_RELEVANCE_POLICY};
   }
 
   private planWithResult(
@@ -158,7 +165,7 @@ export class MemoryContextBudgetSelector {
         runId: input.retrieval.context.runId as string,
         stageId: input.stageId,
         providerConfigId: input.providerConfigId,
-        queryHash: hashRetrievalQuery(input.retrieval),
+        queryHash: hashRetrievalQuery(this.executionRequest(input.retrieval)),
         retrievalStrategyVersion: withMemorySemanticStrategyVersion(RETRIEVAL_STRATEGY_VERSION_V1, retrieval),
         budget: input.budget,
         totalTokens,
@@ -167,7 +174,7 @@ export class MemoryContextBudgetSelector {
         promptArtifactId: input.promptArtifactId,
         createdAt: input.createdAt,
         selected: selected.map(item => item.explanation),
-        exclusions,
+        exclusions: [...(retrieval.exclusions ?? []), ...exclusions],
       },
     };
   }
@@ -320,7 +327,7 @@ export function applyBudget(
     const entry = item.entry;
     const reason = decisions.get(entry.id);
     if (reason !== undefined) {
-      exclusions.push({ memoryId: entry.id, reason });
+      exclusions.push({ memoryId: entry.id, memoryVersion: entry.version, reason });
       continue;
     }
     const reasons: MemorySelectionReasonCode[] = [...item.reasons];

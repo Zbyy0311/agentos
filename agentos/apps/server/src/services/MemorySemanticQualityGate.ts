@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import type { MemoryBudgetPolicyV1 } from '@agentos/shared';
 import { migration017 } from '../migrations/migrations/017-mf1-memory-entry-persistence.js';
 import { migration048 } from '../migrations/migrations/048-memory-vectors.js';
+import { migration049 } from '../migrations/migrations/049-memory-lexical-index.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
@@ -202,6 +204,7 @@ function createFixtureDatabase(): SqliteDatabase {
   db.exec('CREATE TABLE memories (id TEXT PRIMARY KEY)');
   migration017.apply({ db: db as unknown as MinimalDatabaseSync });
   migration048.apply({ db: db as unknown as MinimalDatabaseSync });
+  migration049.apply({ db: db as unknown as MinimalDatabaseSync });
   db.prepare('INSERT INTO workspaces (id) VALUES (?)').run(EVALUATION_WORKSPACE_ID);
   return db;
 }
@@ -280,7 +283,7 @@ export async function evaluateMemorySemanticQuality(
     let hybridNoMatchFalsePositives = 0;
 
     for (const query of corpus.queries) {
-      const request = { context: { workspaceId: EVALUATION_WORKSPACE_ID }, query: query.text };
+      const request = { context: { workspaceId: EVALUATION_WORKSPACE_ID }, query: query.text, selectionPolicy: MEMORY_RELEVANCE_POLICY };
       const baseline = baselineRetrieval.retrieveWithStatus(request);
       if (baseline.degraded) {
         throw new MemorySemanticQualityGateError('SQLITE_BASELINE_DEGRADED');
@@ -294,12 +297,15 @@ export async function evaluateMemorySemanticQuality(
         );
       }
 
-      const baselineSelected = selectedAfterProductionBudget(baseline.results).map(entry => entry.id);
-      const hybridSelected = selectedAfterProductionBudget(hybrid.results).map(entry => entry.id);
+      const baselineEntries = selectedAfterProductionBudget(baseline.results);
+      const hybridEntries = selectedAfterProductionBudget(hybrid.results);
+      const baselineSelected = baselineEntries.map(entry => entry.id);
+      const hybridSelected = hybridEntries.map(entry => entry.id);
       if (query.intent === 'no-match') {
         noMatchQueryCount += 1;
-        baselineNoMatchFalsePositives += baselineSelected.length;
-        hybridNoMatchFalsePositives += hybridSelected.length;
+        // Explicit pinned rules are defaults, recorded separately from query relevance.
+        baselineNoMatchFalsePositives += baselineEntries.filter(entry => !entry.pinned).length;
+        hybridNoMatchFalsePositives += hybridEntries.filter(entry => !entry.pinned).length;
         continue;
       }
 
@@ -326,7 +332,8 @@ export async function evaluateMemorySemanticQuality(
     const hybridParaphraseRecallAt5 = hybridParaphraseRecall / paraphraseQueryCount;
     const passed = corpus.queries.length >= MINIMUM_QUERY_COUNT
       && hybridRecallAt5 >= baselineRecallAt5
-      && hybridParaphraseRecallAt5 > baselineParaphraseRecallAt5;
+      && hybridParaphraseRecallAt5 > baselineParaphraseRecallAt5
+      && hybridNoMatchFalsePositives === 0;
 
     return {
       modelId: embedding.modelId,
@@ -375,8 +382,8 @@ export async function evaluateAndRecordMemorySemanticQualityReceipt(
       `INSERT INTO memory_semantic_quality_receipts
         (workspace_id, model_id, model_version, corpus_hash, evaluated_head,
          baseline_recall, hybrid_recall, baseline_paraphrase_recall,
-         hybrid_paraphrase_recall, no_match_false_positives, query_count, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         hybrid_paraphrase_recall, no_match_false_positives, query_count, created_at, selection_policy)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(workspace_id, model_id, model_version, corpus_hash) DO UPDATE SET
          evaluated_head = excluded.evaluated_head,
          baseline_recall = excluded.baseline_recall,
@@ -385,7 +392,8 @@ export async function evaluateAndRecordMemorySemanticQualityReceipt(
          hybrid_paraphrase_recall = excluded.hybrid_paraphrase_recall,
          no_match_false_positives = excluded.no_match_false_positives,
          query_count = excluded.query_count,
-         created_at = excluded.created_at`,
+         created_at = excluded.created_at,
+         selection_policy = excluded.selection_policy`,
     ).run(
       MEMORY_SEMANTIC_QUALITY_WORKSPACE_ID,
       report.modelId,
@@ -399,6 +407,7 @@ export async function evaluateAndRecordMemorySemanticQualityReceipt(
       report.hybridNoMatchFalsePositives,
       report.queryCount,
       createdAt,
+      MEMORY_RELEVANCE_POLICY,
     );
   });
   return { ...report, receiptWritten: true };
@@ -426,6 +435,7 @@ export function requireMemorySemanticQualityReceipt(
          AND length(trim(evaluated_head)) > 0 AND length(trim(created_at)) > 0
          AND query_count >= ? AND hybrid_recall >= baseline_recall
          AND hybrid_paraphrase_recall > baseline_paraphrase_recall
+         AND no_match_false_positives = 0 AND selection_policy = ?
        LIMIT 1`,
     ).get(
       MEMORY_SEMANTIC_QUALITY_WORKSPACE_ID,
@@ -433,6 +443,7 @@ export function requireMemorySemanticQualityReceipt(
       modelVersion,
       corpusHash,
       MINIMUM_QUERY_COUNT,
+      MEMORY_RELEVANCE_POLICY,
     ) !== undefined;
   } catch {
     return false;

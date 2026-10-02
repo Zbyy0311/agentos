@@ -20,9 +20,10 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048'] as const;
-// Planned integration order: relevance 049/050, owner actor 051, accumulation 052, preview 053, recovery 054.
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051'] as const;
+// Integrated P1 relevance/owner migrations precede pending accumulation, preview, and recovery migrations.
 const FINAL_P2_INTEGRATION_SEQUENCE = ['049', '050', '051', '052', '053', '054'] as const;
+const PENDING_P2_MIGRATION_IDS = ['052', '053', '054'] as const;
 
 test('P2 Migration Registry contains exactly the registered migrations in contract order', () => {
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
@@ -43,19 +44,22 @@ test('P2 Migration Registry preserves the exact padded order when instantiated',
   assert.deepEqual(registry.all.map(migration => migration.checksum), DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.checksum));
 });
 
-test('P2 recovery 054 sorts after relevance, owner actor, accumulation, and preview migrations', () => {
+test('P2 recovery 054 follows registered P1 migrations and pending accumulation/preview migrations', () => {
   assert.equal(migration054.id, '054');
   assert.equal(migration054.name, 'p2-interrupted-failure-recovery');
   assert.match(migration054.checksum, /^[0-9a-f]{16}$/);
   assert.deepEqual(FINAL_P2_INTEGRATION_SEQUENCE, ['049', '050', '051', '052', '053', '054']);
-  const plannedPredecessors: Migration[] = FINAL_P2_INTEGRATION_SEQUENCE.slice(0, -1).map(id => ({
+  const plannedPredecessors: Migration[] = PENDING_P2_MIGRATION_IDS.slice(0, -1).map(id => ({
     id, name: `planned-${id}`, checksum: '0000000000000000', destructive: false, apply: () => undefined,
   }));
   const integratedRegistry = new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS, ...plannedPredecessors, migration054]);
   assert.deepEqual(integratedRegistry.all.map(migration => migration.id).slice(-6), FINAL_P2_INTEGRATION_SEQUENCE);
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
-  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id >= '049'), false,
-    '054 is not activated on this 048-base branch before its 049–053 predecessors are integrated');
+  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id).slice(-3), ['049', '050', '051']);
+  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => PENDING_P2_MIGRATION_IDS.includes(migration.id as '052' | '053' | '054')), [],
+    '052–054 remain unregistered until their owning slices are integrated');
+  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === migration054.id), false,
+    'recovery 054 remains unregistered until 052 and 053 are integrated');
 });
 
 test('P2 recovery 054 DDL applies to the registered base schema and creates both recovery ledgers', () => {
@@ -109,6 +113,24 @@ test('LITE-10-001 fresh install and supported upgrade both apply the complete re
       assert.equal((upgrade.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
       assert.deepEqual(fresh.prepare('PRAGMA foreign_key_check').all(), []);
       assert.deepEqual(upgrade.prepare('PRAGMA foreign_key_check').all(), []);
+      for (const db of [fresh, upgrade]) {
+        for (const [table, column] of [
+          ['memory_feedback_actions', 'resolved_by_workspace_id'],
+          ['memory_feedback_action_resolutions', 'resolver_workspace_id'],
+          ['memory_feedback_action_audit', 'actor_workspace_id'],
+        ]) {
+          const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+          assert.ok(columns.some(item => item.name === column), `${table}.${column} is registered by migration 051`);
+        }
+        const triggerNames = db.prepare(`SELECT name FROM sqlite_master WHERE type='trigger'`).all() as Array<{ name: string }>;
+        for (const trigger of [
+          'memory_feedback_actions_insert_guard',
+          'memory_feedback_actions_transition_guard',
+          'memory_feedback_action_resolutions_validate',
+          'memory_feedback_action_audit_validate',
+          'memory_feedback_actions_record_audit',
+        ]) assert.ok(triggerNames.some(item => item.name === trigger), `missing ${trigger}`);
+      }
     } finally {
       fresh.close();
       upgrade.close();
