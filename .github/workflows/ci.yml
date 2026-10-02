@@ -23,8 +23,6 @@ defaults:
 jobs:
   server:
     runs-on: windows-latest
-    env:
-      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,15 +57,6 @@ jobs:
 
       - name: Web tests
         run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
-
-      - name: Core tests
-        run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core test; exit $LASTEXITCODE'
-
-      - name: Process Runtime tests
-        run: node scripts/run-p4-ci-gate.mjs process-runtime --mode real-windows-process -- pwsh -NoProfile -Command 'pnpm --filter @agentos/process-runtime exec vitest run --reporter=verbose; exit $LASTEXITCODE'
-
-      - name: Verify Windows native process test inventory
-        run: node scripts/verify-p4-windows-native-inventory.mjs --receipt "logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/receipt.json" --expected-sha "${{ github.sha }}"
 
       - name: P4 acceptance receipt contract tests
         run: node --test --test-reporter=tap scripts/validate-existing-project-acceptance.test.mjs
@@ -119,12 +108,79 @@ jobs:
           path: agentos/logs/pass-audit/
           if-no-files-found: error
 
-      - name: Preserve P4 core and runtime receipts
+  p4-core:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Core tests (simulated provider)
+        run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core test; exit $LASTEXITCODE'
+
+      - name: Preserve P4 Core receipt
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p4-core-runtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/
+          name: p4-core-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/agent-core/
+          if-no-files-found: error
+
+  p4-process-runtime:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Process Runtime tests (real Windows process)
+        run: node scripts/run-p4-ci-gate.mjs process-runtime --mode real-windows-process -- pwsh -NoProfile -Command 'pnpm --filter @agentos/process-runtime exec vitest run --reporter=verbose; exit $LASTEXITCODE'
+
+      - name: Verify Windows native process test inventory
+        run: node scripts/verify-p4-windows-native-inventory.mjs --receipt "logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/receipt.json" --expected-sha "${{ github.sha }}"
+
+      - name: Preserve P4 Process Runtime receipt and inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-process-runtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/
           if-no-files-found: error
 
   p4-browser:
