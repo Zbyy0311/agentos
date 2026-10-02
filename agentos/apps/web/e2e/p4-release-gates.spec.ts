@@ -297,3 +297,108 @@ for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
     }, null, 2));
   });
 }
+
+test('P4 collaboration recovery resumes the same reserved Run and intent after refresh', async ({ page }, testInfo) => {
+  const fixture = createFixture();
+  const target = { ...task(102), id: 'task-reserved', title: 'Reserved Recovery', status: 'failed' as const,
+    version: 7, canonicalRunId: 'failed-run', failureReason: 'Fixture startup failure' };
+  fixture.tasks = [target];
+  await installDeterministicApi(page, fixture);
+  let reserved = false;
+  let originalKey: string | undefined;
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const base = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+    if (request.method() === 'GET' && path === `${base}/recovery`) {
+      await json(route, { recovery: { taskId: target.id, taskVersion: target.version,
+        runId: reserved ? 'reserved-child' : 'failed-run', runVersion: reserved ? 1 : 3,
+        checkedBaseCommit: 'a'.repeat(40), actions: { retryKnownFailure: true, newLinkedTask: false },
+        ...(reserved ? { resumeRequest: { idempotencyKey: originalKey, expectedTaskVersion: 7,
+          expectedRunId: 'failed-run', expectedRunVersion: 3 } } : {}) } });
+      return;
+    }
+    if (request.method() === 'POST' && path === `${base}/recover`) {
+      fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+      const replayed = reserved;
+      if (!reserved) {
+        originalKey = request.headers()['idempotency-key'];
+        reserved = true;
+        target.version = 8;
+        target.canonicalRunId = 'reserved-child';
+      }
+      await json(route, { recovery: { action: 'retry-known-failure', task: target, priorRunId: 'failed-run',
+        newRunId: 'reserved-child', checkedBaseCommit: 'a'.repeat(40), replayed, pending: !replayed } });
+      return;
+    }
+    await route.fallback();
+  });
+  const url = `/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=${target.id}&view=execution`;
+  await page.goto(url);
+  await expect(page.getByRole('heading', { name: target.title, exact: true })).toBeVisible();
+  const panel = page.locator('section[aria-label="协作任务恢复"]');
+  await panel.getByRole('button', { name: '重试已知启动前失败', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('恢复请求仍在核验中');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: target.title, exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: '安全续办原重试', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('reserved-child');
+  const writes = fixture.requests.filter(item => item.method === 'POST');
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toEqual(writes[0]);
+  expect(JSON.parse(writes[0]!.body!)).toEqual({ action: 'retry-known-failure', expectedTaskVersion: 7,
+    expectedRunId: 'failed-run', expectedRunVersion: 3 });
+  expect(writes.some(item => /\/respond$|\/confirm$/u.test(item.path))).toBe(false);
+  expect(fixture.failures).toEqual([]);
+  await writeFile(testInfo.outputPath('reserved-recovery-requests.json'), JSON.stringify({
+    providerExecution: 'none', api: 'deterministic-fixture', requests: fixture.requests,
+  }, null, 2));
+});
+
+test('P4 collaboration recovery ignores a late response after switching tasks', async ({ page }) => {
+  const fixture = createFixture();
+  const target = { ...task(102), id: 'task-delayed', title: 'Delayed Recovery', status: 'failed' as const,
+    version: 7, canonicalRunId: 'failed-run' };
+  const sibling = { ...task(103), id: 'task-other', title: 'Other Selected Task' };
+  fixture.tasks = [target, sibling];
+  await installDeterministicApi(page, fixture);
+  let completeResponse: (() => Promise<void>) | undefined;
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const base = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+    if (request.method() === 'GET' && path === `${base}/recovery`) {
+      await json(route, { recovery: { taskId: target.id, taskVersion: 7, runId: 'failed-run', runVersion: 3,
+        actions: { retryKnownFailure: false, newLinkedTask: true }, recoveryRequired: true,
+        checkedBaseCommit: 'a'.repeat(40) } });
+      return;
+    }
+    if (request.method() === 'POST' && path === `${base}/recover`) {
+      fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+      await new Promise<void>(done => {
+        completeResponse = async () => {
+          const linked = { ...target, id: 'linked-delayed', title: 'Late Linked Task', status: 'awaiting_confirmation' as const };
+          fixture.tasks.push(linked);
+          await json(route, { recovery: { action: 'new-linked-task', task: linked, priorRunId: 'failed-run',
+            checkedBaseCommit: 'a'.repeat(40), replayed: false } });
+          done();
+        };
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto(`/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=${target.id}&view=execution`);
+  await page.getByRole('button', { name: '在干净基线上创建关联任务', exact: true }).click();
+  await expect.poll(() => completeResponse !== undefined).toBe(true);
+  await page.getByRole('combobox', { name: '选择历史协作任务' }).selectOption(sibling.id);
+  await expect(page.getByRole('heading', { name: sibling.title, exact: true })).toBeVisible();
+  const response = page.waitForResponse(item => item.url().endsWith(`/${target.id}/recover`));
+  await completeResponse!();
+  await response;
+  await expect(page).toHaveURL(/collaborationId=task-other/u);
+  await expect(page.getByRole('heading', { name: sibling.title, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Late Linked Task', exact: true })).toHaveCount(0);
+  expect(fixture.requests.filter(item => item.method === 'POST')).toHaveLength(1);
+  expect(fixture.failures).toEqual([]);
+});
