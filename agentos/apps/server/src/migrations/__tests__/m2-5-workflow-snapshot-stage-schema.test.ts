@@ -984,9 +984,9 @@ describe('M2.5 — Migration 009 run_stages', () => {
 });
 
 describe('M2.5 — Registry and integrity', () => {
-  it('REG-01 default registry IDs are exactly 001-041 in order with no duplicates', () => {
+  it('REG-01 default registry IDs are in order with no duplicates', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048']);
+    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '052']);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(migration007.id, '007');
     assert.equal(migration008.id, '008');
@@ -1006,11 +1006,11 @@ describe('M2.5 — Registry and integrity', () => {
   });
 
   // Keep this title synchronized with the M2CoreAcceptance coverage marker.
-  it('REG-03 migration records are exactly 001-041', () => {
+  it('REG-03 migration records match the default registry', () => {
     const db = migratedDb();
     try {
       const rows = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048']);
+    assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '052']);
     } finally {
       db.close();
     }

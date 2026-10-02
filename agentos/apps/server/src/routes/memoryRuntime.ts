@@ -205,7 +205,8 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     const entry = entries.findById(workspace.id, req.params.entryId)
       ?? entries.listConfirmedGlobalPreferences(workspace.id).find(item => item.id === req.params.entryId);
     if (entry === undefined) { res.status(404).json({ error: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
-    res.json({ entry });
+    const sourceBinding = workspacePromotion.findSourceBinding(workspace.id, entry.id);
+    res.json({ entry, ...(sourceBinding === undefined ? {} : { sourceBinding }) });
   });
 
   router.post('/memory/entries/:entryId/promote-to-workspace-knowledge', (req: Request, res: Response) => {

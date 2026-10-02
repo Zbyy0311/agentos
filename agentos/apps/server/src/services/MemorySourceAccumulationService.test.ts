@@ -325,10 +325,17 @@ test('the legacy accumulation route feeds the canonical review queue and promoti
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedVersion: 1 }),
     });
     assert.equal(promotedResponse.status, 201);
-    const promoted = await promotedResponse.json() as { entry: { id: string; scope: string; sources: Array<{ kind: string; id: string }> } };
+    const promoted = await promotedResponse.json() as {
+      entry: { id: string; scope: string; sources: Array<{ kind: string; id: string }> };
+      sourceBinding: { sourceEntryId: string; sourceEntryVersion: number; promotedEntryId: string; promotionEventId: string };
+    };
     assert.equal(promoted.entry.scope, 'workspace');
     assert.notEqual(promoted.entry.id, source.id);
     assert.deepEqual(promoted.entry.sources, source.sources);
+    assert.equal(promoted.sourceBinding.sourceEntryId, source.id);
+    assert.equal(promoted.sourceBinding.sourceEntryVersion, 1);
+    assert.equal(promoted.sourceBinding.promotedEntryId, promoted.entry.id);
+    assert.ok(promoted.sourceBinding.promotionEventId);
     assert.equal(new MemoryEntryRepository(store.getDatabase()).findById(WS, source.id)?.scope, 'conversation');
     const stale = await fetch(`${base}/memory/entries/${source.id}/promote-to-workspace-knowledge`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedVersion: 2 }),
@@ -338,9 +345,21 @@ test('the legacy accumulation route feeds the canonical review queue and promoti
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedVersion: 1 }),
     });
     assert.equal(replay.status, 200);
-    const replayed = await replay.json() as { outcome: string; entry: { id: string } };
+    const replayed = await replay.json() as {
+      outcome: string; entry: { id: string };
+      sourceBinding: { sourceEntryId: string; sourceEntryVersion: number; promotedEntryId: string };
+    };
     assert.equal(replayed.outcome, 'existing');
     assert.equal(replayed.entry.id, promoted.entry.id);
+    assert.equal(replayed.sourceBinding.sourceEntryId, source.id);
+    assert.equal(replayed.sourceBinding.sourceEntryVersion, 1);
+    assert.equal(replayed.sourceBinding.promotedEntryId, promoted.entry.id);
+    const detail = await fetch(`${base}/memory/entries/${promoted.entry.id}`).then(response => response.json()) as {
+      sourceBinding: { sourceEntryId: string; sourceEntryVersion: number; promotedEntryId: string };
+    };
+    assert.equal(detail.sourceBinding.sourceEntryId, source.id);
+    assert.equal(detail.sourceBinding.sourceEntryVersion, 1);
+    assert.equal(detail.sourceBinding.promotedEntryId, promoted.entry.id);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     store.close();
@@ -399,6 +418,8 @@ test('workspace promotion creates a separate Entry with validated links, CAS, an
       (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'PROMOTION_FAILED');
     assert.equal(entries.listEntries(WS, { status: 'all' }).length, 1, 'failed Event append rolls back only the new Entry');
     assert.equal(entries.findById(WS, source.id)?.version, 1);
+    assert.equal(Number((store.getDatabase().prepare('SELECT COUNT(*) AS count FROM memory_entry_source_bindings').get() as { count: number }).count), 0,
+      'failed Event append leaves no durable source binding');
 
     const db = store.getDatabase();
     db.prepare(`INSERT INTO memory_version_feedback
@@ -440,8 +461,23 @@ test('workspace promotion creates a separate Entry with validated links, CAS, an
       { kind: 'event', id: sourceEvent.id },
       { kind: 'message', id: 'promote-source-message' },
     ]);
+    assert.deepEqual(promoted.sourceBinding, {
+      workspaceId: WS,
+      sourceEntryId: source.id,
+      sourceEntryVersion: 2,
+      promotedEntryId: promoted.entry.id,
+      promotedEntryVersion: promoted.entry.version,
+      promotionEventId: promoted.sourceBinding.promotionEventId,
+      createdAt: NOW,
+    });
+    assert.ok(promoted.sourceBinding.promotionEventId);
+    assert.equal(service.findSourceBinding(WS, promoted.entry.id)?.sourceEntryVersion, 2);
     assert.equal(entries.findById(WS, source.id)?.scope, 'conversation', 'promotion preserves the scoped source Entry');
-    assert.equal(service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 2, promotedAt: NOW }).outcome, 'existing');
+    const replay = service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 2, promotedAt: NOW });
+    assert.equal(replay.outcome, 'existing');
+    assert.equal(replay.entry.id, promoted.entry.id, 'same source version replays idempotently');
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_entry_source_bindings').get() as { count: number }).count), 1,
+      'same-version replay does not create a second promotion');
     assert.throws(() => service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW }),
       (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'VERSION_CONFLICT');
 
@@ -455,6 +491,90 @@ test('workspace promotion creates a separate Entry with validated links, CAS, an
     assert.equal(taskPromotion.entry.scope, 'workspace');
     assert.equal(entries.findById(WS, taskEntry.id)?.scope, 'task', 'promotion leaves the task-scoped source Entry intact');
     assert.deepEqual(taskPromotion.entry.sources, taskEntry.sources);
+    const revisedTaskContent = 'A later verified task version records the accepted rollout result.';
+    db.prepare(`UPDATE memory_entries SET content = ?, exact_content_hash = ?, normalized_text_hash = ?,
+      version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = 1`).run(
+      revisedTaskContent, hashMemoryText(revisedTaskContent), hashMemoryText(normalizeMemoryText(revisedTaskContent)),
+      '2026-10-02T00:02:00.000Z', WS, taskEntry.id,
+    );
+    const revisedTaskPromotion = service.promote({ workspaceId: WS, entryId: taskEntry.id, expectedVersion: 2, promotedAt: NOW });
+    assert.notEqual(revisedTaskPromotion.entry.id, taskPromotion.entry.id,
+      'a distinct source version may be explicitly promoted as its own immutable snapshot');
+    assert.equal(revisedTaskPromotion.sourceBinding.sourceEntryVersion, 2);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_entry_source_bindings WHERE source_entry_id = ?')
+      .get(taskEntry.id) as { count: number }).count), 2);
+
+    db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at)
+      VALUES ('promote-run-owner', ?, 'promote-task-owner', 'promote-run-owner', 'completed', 'initial', 'v2_api', 'test', ?, ?)`)
+      .run(WS, NOW, NOW);
+    const runEntry = entries.createEntry({
+      id: 'memory-run-source', workspaceId: WS, scope: 'run', ownerTaskId: 'promote-task-owner', ownerRunId: 'promote-run-owner',
+      category: 'workflow', authority: 'agent-derived', confidence: 0.9, importance: 0.6,
+      title: 'Run execution learning', content: 'The verified execution used the reviewed rollback path.', status: 'active',
+      sources: [
+        { kind: 'task', id: 'promote-task-owner' },
+        { kind: 'run', id: 'promote-run-owner' },
+      ], createdAt: NOW,
+    });
+    const runPromotion = service.promote({ workspaceId: WS, entryId: runEntry.id, expectedVersion: 1, promotedAt: NOW });
+    assert.equal(runPromotion.entry.scope, 'workspace');
+    assert.equal(runPromotion.sourceBinding.sourceEntryId, runEntry.id);
+    assert.equal(runPromotion.sourceBinding.sourceEntryVersion, 1);
+    assert.equal(entries.findById(WS, runEntry.id)?.scope, 'run', 'Run execution Entry remains attached to its exact Run');
+
+    db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, created_by, created_at, updated_at, version)
+      VALUES ('promote-foreign-task', ?, 'Foreign task', 'open', 'test', ?, ?, 1)`).run(WS, NOW, NOW);
+    db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at)
+      VALUES ('promote-foreign-run', ?, 'promote-foreign-task', 'promote-foreign-run', 'completed', 'initial', 'v2_api', 'test', ?, ?)`)
+      .run(WS, NOW, NOW);
+    const foreignRunEntry = entries.createEntry({
+      id: 'memory-foreign-run-source', workspaceId: WS, scope: 'run', ownerTaskId: 'promote-task-owner', ownerRunId: 'promote-foreign-run',
+      category: 'workflow', authority: 'agent-derived', confidence: 0.9, importance: 0.6,
+      title: 'Foreign execution', content: 'This Run belongs to another task.', status: 'active',
+      sources: [
+        { kind: 'task', id: 'promote-task-owner' },
+        { kind: 'run', id: 'promote-foreign-run' },
+      ], createdAt: NOW,
+    });
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: foreignRunEntry.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'SOURCE_INVALID');
+
+    db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, created_by, created_at, updated_at, version)
+      VALUES ('promote-running-task', ?, 'Running task', 'open', 'test', ?, ?, 1)`).run(WS, NOW, NOW);
+    db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at)
+      VALUES ('promote-running-run', ?, 'promote-running-task', 'promote-running-run', 'running', 'initial', 'v2_api', 'test', ?, ?)`)
+      .run(WS, NOW, NOW);
+    const runningRunEntry = entries.createEntry({
+      id: 'memory-running-run-source', workspaceId: WS, scope: 'run', ownerTaskId: 'promote-running-task', ownerRunId: 'promote-running-run',
+      category: 'workflow', authority: 'agent-derived', confidence: 0.9, importance: 0.6,
+      title: 'Unfinished execution', content: 'A still-running Run is not durable evidence.', status: 'active',
+      sources: [
+        { kind: 'task', id: 'promote-running-task' },
+        { kind: 'run', id: 'promote-running-run' },
+      ], createdAt: NOW,
+    });
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: runningRunEntry.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'SOURCE_INVALID');
+
+    const expiredEntry = entries.createEntry({
+      id: 'memory-expired-source', workspaceId: WS, scope: 'conversation', ownerConversationId: 'promote-conversation',
+      category: 'decision', authority: 'agent-derived', confidence: 0.7, importance: 0.4,
+      title: 'Expired decision', content: 'This evidence is expired despite active status.', status: 'active',
+      expiresAt: '2026-10-01T23:59:59.000Z', sources: [{ kind: 'conversation', id: 'promote-conversation' }], createdAt: NOW,
+    });
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: expiredEntry.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'ENTRY_NOT_PROMOTABLE');
+    assert.equal(db.prepare('SELECT 1 FROM memory_entry_source_bindings WHERE source_entry_id = ?').get(expiredEntry.id), undefined);
+    assert.equal(entries.listEntries(WS, { status: 'all' }).some(entry => entry.title === expiredEntry.title && entry.scope === 'workspace'), false);
+
+    const futureEntry = entries.createEntry({
+      id: 'memory-future-source', workspaceId: WS, scope: 'conversation', ownerConversationId: 'promote-conversation',
+      category: 'decision', authority: 'agent-derived', confidence: 0.7, importance: 0.4,
+      title: 'Future decision', content: 'This evidence is not valid yet.', status: 'active',
+      validFrom: '2026-10-03T00:00:00.000Z', sources: [{ kind: 'conversation', id: 'promote-conversation' }], createdAt: NOW,
+    });
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: futureEntry.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'ENTRY_NOT_PROMOTABLE');
 
     const invalidSource = entries.createEntry({
       id: 'memory-invalid-source', workspaceId: WS, scope: 'conversation', ownerConversationId: 'promote-conversation',
