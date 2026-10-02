@@ -393,7 +393,6 @@ export class MemoryCandidateGenerationService {
         AND id = ? AND artifact_type IN ('review', 'test')
     `);
     for (const artifactId of referencedIds) {
-      if (!payload.artifactIds.includes(artifactId)) continue;
       const row = findArtifact.get(workspaceId, runId, artifactId) as {
         id: string; artifact_type: 'review' | 'test'; summary: string | null; source_stage_id: string | null;
       } | undefined;

@@ -49,7 +49,15 @@ const WS = 'ws_mf2rg';
 const TASK = 'task_mf2rg';
 const RUN = 'run_mf2rg';
 
-function seedTerminalSummaryArtifact(db: SqliteDb, runId: string, taskId: string, artifactId: string, summary: string): void {
+function seedTerminalSummaryArtifact(
+  db: SqliteDb,
+  runId: string,
+  taskId: string,
+  artifactId: string,
+  summary: string,
+  artifactIds: readonly string[] = [artifactId],
+  summaryArtifactId = artifactId,
+): void {
   db.prepare(`INSERT INTO runtime_artifacts (
     id, workspace_id, provenance_kind, canonical_run_id, artifact_type, title, summary,
     size_bytes, content_available, created_at
@@ -71,7 +79,7 @@ function seedTerminalSummaryArtifact(db: SqliteDb, runId: string, taskId: string
     severity: 'info',
     visibility: 'public',
     durability: 'durable',
-    payload: { durationMs: 60_000, completedStageIds: [], artifactIds: [artifactId], summaryArtifactId: artifactId },
+    payload: { durationMs: 60_000, completedStageIds: [], artifactIds: [...artifactIds], summaryArtifactId },
   });
 }
 
@@ -79,6 +87,8 @@ function fixture(
   runStatus = 'completed',
   failure: { readonly code?: string; readonly message?: string } = {},
   extractor?: Pick<MemoryExtractor, 'extract'>,
+  terminalArtifactIds?: readonly string[],
+  terminalSummaryArtifactId?: string,
 ): {
   db: SqliteDb;
   service: MemoryCandidateGenerationService;
@@ -119,7 +129,8 @@ function fixture(
     runStatus === 'completed' ? 'completed' : 'running',
     NOW, runStatus === 'completed' ? '2026-09-11T00:01:00.000Z' : null, NOW, NOW);
   if (runStatus === 'completed') {
-    seedTerminalSummaryArtifact(db, RUN, TASK, 'artifact_mf2rg_test', 'pass: regression tests verified the requested behavior.');
+    seedTerminalSummaryArtifact(db, RUN, TASK, 'artifact_mf2rg_test',
+      'pass: regression tests verified the requested behavior.', terminalArtifactIds, terminalSummaryArtifactId);
   }
   const candidates = new MemoryCandidateRepository(tdb);
   const entries = new MemoryEntryRepository(tdb);
@@ -174,6 +185,42 @@ test('MF2R-G1 completed Run generates a review-required Candidate with bounded e
     assert.ok(!candidate.content.includes('UNREFERENCED_OUTPUT_MUST_NOT_BE_CAPTURED'));
     assert.ok(!candidate.content.includes('raw-provider')); // bounded bundle only
     assert.ok(candidate.exactContentHash !== null && candidate.normalizedTextHash !== null);
+  } finally { fx.close(); }
+});
+
+test('canonical Run accepts its durable summaryArtifactId when it is not repeated in artifactIds', () => {
+  const fx = fixture('completed', {}, undefined, []);
+  try {
+    const result = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(result.outcome, 'created');
+    assert.ok(result.candidate?.content.includes('pass: regression tests verified the requested behavior.'));
+    assert.ok(result.candidate?.sources.some(source => source.kind === 'artifact' && source.id === 'artifact_mf2rg_test'));
+    assert.ok(result.candidate?.sources.some(source => source.kind === 'event'));
+  } finally { fx.close(); }
+});
+
+test('canonical Run rejects a summaryArtifactId whose durable artifact belongs to another Run', () => {
+  const fx = fixture('completed', {}, undefined, [], 'artifact_mf2rg_next_test');
+  try {
+    const otherTask = 'task_mf2rg_next';
+    const otherRun = 'run_mf2rg_next';
+    fx.db.prepare(`INSERT INTO tasks
+      (id, workspace_id, title, status, created_by, created_at, updated_at, version)
+      VALUES (?, ?, ?, 'open', 'test', ?, ?, 1)`).run(otherTask, WS, '第二个任务', NOW, NOW);
+    fx.db.prepare(`INSERT INTO runs
+      (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at, version)
+      VALUES (?, ?, ?, ?, 'completed', 'initial', 'v2_api', 'test', ?, ?, 1)`)
+      .run(otherRun, WS, otherTask, otherRun, NOW, NOW);
+    seedTerminalSummaryArtifact(fx.db, otherRun, otherTask, 'artifact_mf2rg_next_test',
+      'pass: FOREIGN_RUN_SUMMARY_MUST_NOT_BE_CAPTURED; verified test evidence.');
+
+    const first = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.ok(first.candidate === undefined || first.candidate.sources.every(source => source.kind !== 'artifact'));
+    assert.ok(!first.candidate?.content.includes('FOREIGN_RUN_SUMMARY_MUST_NOT_BE_CAPTURED'));
+
+    const second = fx.service.generateForRunTerminal({ workspaceId: WS, runId: otherRun, createdAt: NOW });
+    assert.equal(second.outcome, 'created');
+    assert.ok(second.candidate?.content.includes('FOREIGN_RUN_SUMMARY_MUST_NOT_BE_CAPTURED'));
   } finally { fx.close(); }
 });
 
