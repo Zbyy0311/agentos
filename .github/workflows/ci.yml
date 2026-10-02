@@ -62,7 +62,7 @@ jobs:
         run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
 
       - name: P4 acceptance receipt contract tests
-        run: node --test --test-reporter=tap scripts/validate-existing-project-acceptance.test.mjs
+        run: node --test --test-reporter=tap scripts/validate-existing-project-acceptance.test.mjs scripts/verify-existing-project-acceptance.test.mjs scripts/acceptance-provider-identity.test.mjs
 
       - name: Validate P4 acceptance manifest without claiming a run
         run: node scripts/validate-existing-project-acceptance.mjs --check-manifest

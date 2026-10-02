@@ -3,9 +3,15 @@
 // verify-existing-project-acceptance.mjs against the local AgentOS database.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, sep, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  OFFICIAL_CODEX_PROVIDER_KIND,
+  OFFICIAL_CODEX_TRUST_BOUNDARY,
+  SIMULATED_CODEX_PROVIDER_KIND,
+  verifyOfficialCodexIdentity,
+} from './acceptance-provider-identity.mjs';
 
 const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -115,6 +121,87 @@ function verifyEvidenceArtifact(root, ref, description, usedPaths, requireNonEmp
   return bytes;
 }
 
+function isKnownGeneratedOutputDirectory(relativePath) {
+  const normalized = relativePath.replaceAll('\\', '/').replace(/^\/+|\/+$/gu, '').toLowerCase();
+  const parts = normalized.split('/');
+  const repoPrefixes = parts[0] === 'agentos' ? ['agentos/'] : [''];
+  for (const repoPrefix of repoPrefixes) {
+    const exactOutputs = [
+      `${repoPrefix}apps/server/dist`,
+      `${repoPrefix}apps/web/.next`,
+      `${repoPrefix}apps/web/.next-live`,
+      `${repoPrefix}apps/web/test-results`,
+      `${repoPrefix}apps/web/playwright-report`,
+    ];
+    if (exactOutputs.some(output => normalized === output || normalized.startsWith(`${output}/`))) return true;
+    const webPrefix = `${repoPrefix}apps/web/`;
+    if (normalized.startsWith(webPrefix)) {
+      const firstDirectory = normalized.slice(webPrefix.length).split('/')[0];
+      if (/^\.next-p4-[^/]+$/u.test(firstDirectory) || /^\.next-acceptance-[^/]+$/u.test(firstDirectory)) return true;
+    }
+    const rootLength = repoPrefix ? 1 : 0;
+    const appNodeModules = parts.length === rootLength + 3
+      && parts[rootLength] === 'apps' && parts[rootLength + 2] === 'node_modules';
+    const packageNodeModules = parts.length === rootLength + 3
+      && parts[rootLength] === 'packages' && parts[rootLength + 2] === 'node_modules';
+    const scriptNodeModules = parts.length === rootLength + 2
+      && parts[rootLength] === 'scripts' && parts[rootLength + 1] === 'node_modules';
+    if (appNodeModules || packageNodeModules || scriptNodeModules) return true;
+  }
+  return false;
+}
+
+function findUntrackedBuildInputs(root) {
+  const sourceRoots = ['apps', 'packages', 'scripts', 'agentos/apps', 'agentos/packages', 'agentos/scripts'];
+  const trackedText = git(root, ['ls-files', '--full-name', '-z', '--', ...sourceRoots], 'buffer').toString('utf8');
+  const tracked = new Set(trackedText.split('\0').filter(Boolean).map(path => path.replaceAll('\\', '/').toLowerCase()));
+  const untracked = [];
+  const visit = (absoluteDirectory, relativeDirectory) => {
+    for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
+      const relativePath = `${relativeDirectory}/${entry.name}`.replaceAll('\\', '/');
+      if (isKnownGeneratedOutputDirectory(relativePath)) continue;
+      const absolutePath = resolve(absoluteDirectory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '.git') {
+          if (!tracked.has(relativePath.toLowerCase())) untracked.push(relativePath);
+          continue;
+        }
+        visit(absolutePath, relativePath);
+      } else if (!tracked.has(relativePath.toLowerCase())) {
+        untracked.push(relativePath);
+      }
+    }
+  };
+  for (const sourceRoot of sourceRoots) {
+    const absoluteDirectory = resolve(root, sourceRoot);
+    try { visit(absoluteDirectory, sourceRoot); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+  return untracked;
+}
+
+/** Capture the exact Git tree after rejecting tracked changes and untracked build inputs. */
+export function verifySourceSnapshot(root) {
+  const rootReal = realpathSync(root);
+  const fromRootToTop = git(rootReal, ['rev-parse', '--show-cdup']).trim();
+  requireCondition(fromRootToTop.length === 0, '--repository-root must be the Git repository root');
+  const commitSha = git(rootReal, ['rev-parse', 'HEAD']).trim();
+  const treeSha = git(rootReal, ['rev-parse', 'HEAD^{tree}']).trim();
+  requireCondition(/^[0-9a-f]{40}$/i.test(commitSha) && /^[0-9a-f]{40}$/i.test(treeSha),
+    'could not resolve the frozen Git commit and tree');
+  const trackedChanges = git(rootReal, ['status', '--porcelain=v1', '--untracked-files=no']).trim();
+  requireCondition(trackedChanges.length === 0, 'tracked checkout files differ from the frozen Git tree');
+  const untracked = findUntrackedBuildInputs(rootReal);
+  requireCondition(untracked.length === 0,
+    `untracked source/build inputs are present under apps, packages, or scripts: ${untracked.slice(0, 8).join(', ')}${untracked.length > 8 ? ` (and ${untracked.length - 8} more)` : ''}`);
+  requireCondition(git(rootReal, ['rev-parse', 'HEAD']).trim() === commitSha
+    && git(rootReal, ['rev-parse', 'HEAD^{tree}']).trim() === treeSha,
+  'Git HEAD changed while verifying the source snapshot');
+  return { root: rootReal, commitSha, treeSha };
+}
+
 function readEvidenceJson(root, ref, description, usedPaths) {
   const bytes = verifyEvidenceArtifact(root, ref, description, usedPaths, true);
   try {
@@ -168,6 +255,19 @@ export function validateManifest(manifest) {
   const scenarios = requirements.scenarios;
   requireCondition(sameArray(scenarios?.exactKinds, scenarioKinds) && scenarios?.exactCount === scenarioKinds.length,
     'exactly one defect and one feature scenario are required');
+  if (Object.hasOwn(scenarios, 'directApprovalAllowed')) {
+    requireCondition(typeof scenarios.directApprovalAllowed === 'boolean',
+      'scenarios.directApprovalAllowed must be a boolean');
+  }
+  if (Object.hasOwn(scenarios, 'minimumReworkScenarios')) {
+    requireCondition(Number.isInteger(scenarios.minimumReworkScenarios)
+      && scenarios.minimumReworkScenarios >= 1 && scenarios.minimumReworkScenarios <= scenarios.exactCount,
+    'scenarios.minimumReworkScenarios must be between one and the exact scenario count');
+  }
+  if (scenarios.directApprovalAllowed === true) {
+    requireCondition((scenarios.minimumReworkScenarios ?? scenarios.exactCount) >= 1,
+      'direct approval requires at least one scenario with a complete rework history');
+  }
   requireCondition(scenarios?.baselineReproduction === 'capture-declared-baseline-probes-separately-from-acceptance-commands-and-require-a-matching-nonzero-failure-on-the-frozen-base',
     'each scenario must reproduce its declared defect or feature gap on the frozen base');
   requireCondition(sameArray(scenarios?.requiredIdentityFields, identityFields), 'every scenario requires project, task, run, and candidate identities');
@@ -195,16 +295,11 @@ export function validateManifest(manifest) {
 
 function verifyRepositorySnapshot(root, receipt, expectedSha) {
   requireCondition(typeof expectedSha === 'string' && shaPattern.test(expectedSha), '--expected-sha must be a full 40-character Git SHA');
-  const rootReal = realpathSync(root);
-  const fromRootToTop = git(rootReal, ['rev-parse', '--show-cdup']).trim();
-  requireCondition(fromRootToTop.length === 0,
-    '--repository-root must be the Git repository root');
-  const actualCommit = git(rootReal, ['rev-parse', 'HEAD']).trim();
+  const snapshot = verifySourceSnapshot(root);
+  const rootReal = snapshot.root;
+  const actualCommit = snapshot.commitSha;
   requireCondition(actualCommit.toLowerCase() === expectedSha.toLowerCase(), 'actual checkout HEAD does not match --expected-sha');
-  const actualTree = git(rootReal, ['rev-parse', 'HEAD^{tree}']).trim();
-  requireCondition(/^[0-9a-f]{40}$/i.test(actualTree), 'could not resolve the actual Git tree SHA');
-  const trackedChanges = git(rootReal, ['status', '--porcelain=v1', '--untracked-files=no']).trim();
-  requireCondition(trackedChanges.length === 0, 'tracked checkout files differ from the frozen Git tree');
+  const actualTree = snapshot.treeSha;
 
   const repository = receipt.repository;
   requireCondition(repository?.commitSha?.toLowerCase() === actualCommit.toLowerCase()
@@ -218,14 +313,18 @@ function verifyRepositorySnapshot(root, receipt, expectedSha) {
   return { root: rootReal, commitSha: actualCommit, treeSha: actualTree };
 }
 
-function validateReviewHistory(root, scenario, priorCandidateSha, frozenCandidateSha, usedPaths) {
+function validateReviewHistory(root, scenario, priorCandidateSha, frozenCandidateSha, usedPaths, directApprovalAllowed) {
   const history = scenario.reviewHistory;
-  requireCondition(Array.isArray(history) && history.length === reviewTransitions.length,
-    `scenario ${scenario.kind} must include the complete review history`);
+  const directApproval = Array.isArray(history) && history.length === 1;
+  requireCondition(Array.isArray(history)
+    && (history.length === reviewTransitions.length || directApproval)
+    && (!directApproval || directApprovalAllowed),
+  `scenario ${scenario.kind} must include a permitted direct approval or the complete review history`);
+  const transitions = directApproval ? ['approved'] : reviewTransitions;
   const eventIds = new Set();
   const requestId = history[0]?.id;
   for (const [index, event] of history.entries()) {
-    const transition = reviewTransitions[index];
+    const transition = transitions[index];
     requireCondition(event?.transition === transition, `scenario ${scenario.kind} review history must include ${transition} in order`);
     requireCondition(nonEmpty(event.id) && !eventIds.has(event.id),
       `scenario ${scenario.kind} review history event ids must be present and unique`);
@@ -387,9 +486,22 @@ export function validateReceipt(manifest, receipt, options = {}) {
   requireCondition(receipt.providerExecution === mode.providerExecution, 'provider execution type does not match the selected mode');
   requireCondition(receipt.credentialBoundary === mode.credentialBoundary, 'credential boundary does not match the selected mode');
   requireCondition(mode.platform === 'any' || receipt.platform === mode.platform, `mode ${receipt.mode} requires platform ${mode.platform}`);
+  const providerEvidence = receipt.providerEvidence;
+  if (receipt.mode === 'simulated-provider') {
+    requireCondition(providerEvidence?.kind === SIMULATED_CODEX_PROVIDER_KIND
+      && receipt.model?.provider === 'fixture-provider',
+    'simulated-provider receipts must identify the deterministic fixture and fixture model');
+  } else {
+    requireCondition(providerEvidence?.kind === OFFICIAL_CODEX_PROVIDER_KIND
+      && receipt.model?.provider === 'codex',
+    'real acceptance rejects fixture/simulated Provider evidence and requires the official npm Codex identity');
+    requireCondition(providerEvidence.trustBoundary === OFFICIAL_CODEX_TRUST_BOUNDARY,
+      'real acceptance Provider identity must declare the local-operator trust boundary');
+  }
   if (receipt.mode === 'real-windows-acceptance') {
     requireCondition(process.env.CI?.toLowerCase() !== 'true', 'real-windows-acceptance receipts cannot be captured or validated inside CI');
     requireCondition(process.platform === 'win32', 'real-windows-acceptance receipts can only be validated on Windows');
+    verifyOfficialCodexIdentity(providerEvidence);
   }
 
   const expectedSha = options.expectedSha;
@@ -408,6 +520,7 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const scenarioIdsSeen = new Set();
   const scenarioKindsSeen = new Set();
   const usedPaths = new Set();
+  let reworkScenarioCount = 0;
 
   for (const scenario of receipt.scenarios) {
     requireCondition(scenario && typeof scenario === 'object' && !Array.isArray(scenario), 'each scenario must be an object');
@@ -447,19 +560,32 @@ export function validateReceipt(manifest, receipt, options = {}) {
         `scenario ${scenario.kind} real acceptance must separate baseline reproduction from candidate acceptance`);
     }
 
-    const priorCandidate = scenario.priorCandidate;
-    requireCondition(priorCandidate && typeof priorCandidate === 'object'
-      && typeof priorCandidate.sha256 === 'string' && hashPattern.test(priorCandidate.sha256)
-      && priorCandidate.sha256 !== finalCandidateSha,
-    `scenario ${scenario.kind} must preserve a distinct pre-review candidate hash`);
-  verifyEvidenceArtifact(evidenceRoot, priorCandidate,
-      `scenario ${scenario.kind} pre-review candidate`, usedPaths, true);
+    const directApproval = Array.isArray(scenario.reviewHistory) && scenario.reviewHistory.length === 1;
+    const directApprovalAllowed = scenarios.directApprovalAllowed === true;
+    let priorCandidateSha;
+    if (directApproval) {
+      requireCondition(directApprovalAllowed && scenario.priorCandidate === undefined,
+        `scenario ${scenario.kind} direct approval must be enabled and omit priorCandidate`);
+    } else {
+      const priorCandidate = scenario.priorCandidate;
+      requireCondition(priorCandidate && typeof priorCandidate === 'object'
+        && typeof priorCandidate.sha256 === 'string' && hashPattern.test(priorCandidate.sha256)
+        && priorCandidate.sha256 !== finalCandidateSha,
+      `scenario ${scenario.kind} must preserve a distinct pre-review candidate hash`);
+      verifyEvidenceArtifact(evidenceRoot, priorCandidate,
+        `scenario ${scenario.kind} pre-review candidate`, usedPaths, true);
+      priorCandidateSha = priorCandidate.sha256;
+      reworkScenarioCount += 1;
+    }
 
-    validateReviewHistory(evidenceRoot, scenario, priorCandidate.sha256, finalCandidateSha, usedPaths);
+    validateReviewHistory(evidenceRoot, scenario, priorCandidateSha, finalCandidateSha, usedPaths, directApprovalAllowed);
     validateCommands(evidenceRoot, scenario, finalCandidateSha, usedPaths);
   }
   requireCondition(scenarioKindsSeen.size === scenarioKinds.length && scenarioKinds.every(kind => scenarioKindsSeen.has(kind)),
     'receipt must contain both the defect and feature scenarios');
+  const minimumReworkScenarios = scenarios.minimumReworkScenarios ?? scenarios.exactCount;
+  requireCondition(reworkScenarioCount >= minimumReworkScenarios,
+    `receipt must contain at least ${minimumReworkScenarios} scenario with the complete three-step rework history`);
 
   return {
     status: 'structurally-verified',

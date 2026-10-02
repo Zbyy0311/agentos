@@ -6,7 +6,12 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { validateManifest, validateReceipt } from './validate-existing-project-acceptance.mjs';
+import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
+import {
+  OFFICIAL_CODEX_PROVIDER_KIND,
+  OFFICIAL_CODEX_TRUST_BOUNDARY,
+  SIMULATED_CODEX_PROVIDER_KIND,
+} from './acceptance-provider-identity.mjs';
 
 const manifestPath = new URL('./p4-existing-project-acceptance.manifest.json', import.meta.url);
 const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -23,11 +28,15 @@ function git(root, args) {
 
 // Build a temporary committed checkout so the tests exercise actual HEAD/tree
 // and Git blob verification instead of accepting a self-reported snapshot.
-function fixture(mode = 'simulated-provider') {
+function fixture(mode = 'simulated-provider', options = {}) {
   const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
   const root = mkdtempSync(resolve(temporaryRoot, 'agentos-p4-acceptance-'));
   const templateRoot = resolve(root, '.fixture-template');
   mkdirSync(templateRoot);
+  const trackedSourceRoot = options.sourceLayout === 'agentos' ? 'agentos/apps' : 'apps';
+  const trackedSourcePath = `${trackedSourceRoot}/server/src/tracked-build-input.ts`;
+  mkdirSync(dirname(resolve(root, trackedSourcePath)), { recursive: true });
+  writeFileSync(resolve(root, trackedSourcePath), 'export const trackedBuildInput = true;\n');
   const addArtifact = (artifactPath, bytes) => {
     const filePath = resolve(root, artifactPath);
     mkdirSync(dirname(filePath), { recursive: true });
@@ -39,7 +48,10 @@ function fixture(mode = 'simulated-provider') {
   const scenarios = ['defect', 'feature'].map(kind => {
     const id = `${kind}-scenario`;
     const candidate = addArtifact(`candidates/${kind}-frozen.patch`, `frozen ${kind} candidate\n`);
-    const priorCandidate = addArtifact(`candidates/${kind}-prior.patch`, `prior ${kind} candidate\n`);
+    const directApproval = options.directApprovalKinds?.includes(kind) === true;
+    const priorCandidate = directApproval
+      ? undefined
+      : addArtifact(`candidates/${kind}-prior.patch`, `prior ${kind} candidate\n`);
     const roles = {
       planner: `${kind}-planner`,
       implementer: `${kind}-implementer`,
@@ -49,40 +61,41 @@ function fixture(mode = 'simulated-provider') {
     const changedPaths = [`src/${kind}-change.ts`];
     const acceptanceCommands = [`pnpm acceptance:existing-project --scenario ${kind}`];
     const baselineCommands = [`node --test agentos/apps/server/src/${kind}.baseline-probe.test.mjs`];
-    const requestId = `${kind}-review-request`;
-    const revisionId = `${kind}-revision`;
     const approvalId = `${kind}-approval`;
-    const reviews = [
-      {
-        id: requestId,
-        transition: 'changes-requested',
-        actorRole: 'reviewer',
-        actorId: roles.reviewer,
-        timestamp: '2026-10-01T10:00:00.000Z',
-        candidateSha256: priorCandidate.sha256,
-        requestedChanges,
-      },
-      {
-        id: revisionId,
-        transition: 'revision-submitted',
-        actorRole: 'implementer',
-        actorId: roles.implementer,
-        timestamp: '2026-10-01T10:05:00.000Z',
-        fromCandidateSha256: priorCandidate.sha256,
-        toCandidateSha256: candidate.sha256,
-        addressedReviewEventId: requestId,
-        changedPaths,
-      },
-      {
-        id: approvalId,
-        transition: 'approved',
-        actorRole: 'reviewer',
-        actorId: roles.reviewer,
-        timestamp: '2026-10-01T10:10:00.000Z',
-        candidateSha256: candidate.sha256,
-        decision: 'approved',
-      },
-    ].map(event => {
+    const changesRequested = {
+      id: `${kind}-review-request`,
+      transition: 'changes-requested',
+      actorRole: 'reviewer',
+      actorId: roles.reviewer,
+      timestamp: '2026-10-01T10:00:00.000Z',
+      candidateSha256: priorCandidate?.sha256,
+      requestedChanges,
+    };
+    const revision = {
+      id: `${kind}-revision`,
+      transition: 'revision-submitted',
+      actorRole: 'implementer',
+      actorId: roles.implementer,
+      timestamp: '2026-10-01T10:05:00.000Z',
+      fromCandidateSha256: priorCandidate?.sha256,
+      toCandidateSha256: candidate.sha256,
+      addressedReviewEventId: changesRequested.id,
+      changedPaths,
+    };
+    const approval = {
+      id: approvalId,
+      transition: 'approved',
+      actorRole: 'reviewer',
+      actorId: roles.reviewer,
+      timestamp: directApproval ? '2026-10-01T10:00:00.000Z' : '2026-10-01T10:10:00.000Z',
+      candidateSha256: candidate.sha256,
+      decision: 'approved',
+    };
+    const reviews = (directApproval ? [approval] : [
+      changesRequested,
+      revision,
+      approval,
+    ]).map(event => {
       const evidence = {
         schemaVersion: 1,
         kind: 'review-history-event',
@@ -149,7 +162,7 @@ function fixture(mode = 'simulated-provider') {
       baselineCommands,
       acceptanceCommands,
       frozenCandidate: candidate,
-      priorCandidate,
+      ...(priorCandidate ? { priorCandidate } : {}),
       reviewHistory: reviews,
       commands,
     };
@@ -159,7 +172,7 @@ function fixture(mode = 'simulated-provider') {
   git(root, ['config', 'user.email', 'acceptance-fixture@example.invalid']);
   git(root, ['config', 'user.name', 'Acceptance Fixture']);
   git(root, ['config', 'core.autocrlf', 'false']);
-  git(root, ['add', 'candidates']);
+  git(root, ['add', 'candidates', trackedSourcePath]);
   git(root, ['commit', '-q', '-m', 'fixture evidence']);
   const commitSha = git(root, ['rev-parse', 'HEAD']);
   const treeSha = git(root, ['rev-parse', 'HEAD^{tree}']);
@@ -207,6 +220,9 @@ function fixture(mode = 'simulated-provider') {
       provider: mode === 'simulated-provider' ? 'fixture-provider' : 'operator-provider',
       id: mode === 'simulated-provider' ? 'synthetic-model-v1' : 'operator-model-v1',
     },
+    providerEvidence: mode === 'simulated-provider'
+      ? { kind: SIMULATED_CODEX_PROVIDER_KIND }
+      : { kind: OFFICIAL_CODEX_PROVIDER_KIND, trustBoundary: OFFICIAL_CODEX_TRUST_BOUNDARY },
     processExitCode: 0,
     acceptanceExitCode: 0,
     scenarios,
@@ -214,8 +230,8 @@ function fixture(mode = 'simulated-provider') {
   return { root, receipt, addArtifact, commitSha, treeSha };
 }
 
-function withFixture(run, mode) {
-  const item = fixture(mode);
+function withFixture(run, mode, options) {
+  const item = fixture(mode, options);
   try { return run(item); }
   finally {
     rmSync(item.root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
@@ -238,6 +254,78 @@ test('fully structured defect and feature evidence is reported as structural ver
   assert.deepEqual(result.scenarioKinds, ['defect', 'feature']);
   assert.match(result.verificationBoundary, /run the local verifier for runtime acceptance/);
 }));
+
+test('accepts one directly approved candidate and one complete rework history with committed approval evidence', () => withFixture(item => {
+  const directScenario = item.receipt.scenarios.find(scenario => scenario.kind === 'defect');
+  assert.equal(directScenario.reviewHistory.length, 1);
+  assert.equal(directScenario.reviewHistory[0].transition, 'approved');
+  assert.equal(Object.hasOwn(directScenario, 'priorCandidate'), false);
+  const result = validate(item);
+  assert.equal(result.structuralStatus, 'structurally-verified');
+}, 'simulated-provider', { directApprovalKinds: ['defect'] }));
+
+test('rejects a group where both scenarios only have direct approvals', () => withFixture(item => {
+  assert.throws(() => validate(item), /at least 1 scenario with the complete three-step rework history/);
+}, 'simulated-provider', { directApprovalKinds: ['defect', 'feature'] }));
+
+test('rejects direct approval evidence whose candidate hash was forged and rehashed', () => withFixture(item => {
+  const approval = item.receipt.scenarios.find(scenario => scenario.kind === 'defect').reviewHistory[0];
+  const evidencePath = resolve(item.root, approval.evidence.artifactPath);
+  const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+  evidence.candidateSha256 = 'f'.repeat(64);
+  const bytes = Buffer.from(JSON.stringify(evidence));
+  writeFileSync(evidencePath, bytes);
+  approval.evidence.sha256 = hash(bytes);
+  assert.throws(() => validate(item), /approval evidence is inconsistent/);
+}, 'simulated-provider', { directApprovalKinds: ['defect'] }));
+
+test('source snapshot handles both package-root layouts, ignores exact generated outputs, and rejects ignored source inputs', () => {
+  for (const sourceLayout of ['apps', 'agentos']) withFixture(item => {
+    const prefix = sourceLayout === 'agentos' ? 'agentos/' : '';
+    const generatedFiles = [
+      `${prefix}apps/server/dist/index.js`,
+      `${prefix}apps/web/.next-p4-preview-test/cache.bin`,
+      `${prefix}apps/web/test-results/results.json`,
+    ];
+    for (const path of generatedFiles) {
+      const absolutePath = resolve(item.root, path);
+      mkdirSync(dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, 'generated');
+    }
+    // The fixture commits a source file under the selected layout. Passing
+    // proves git ls-files results are compared using that layout's root paths.
+    assert.doesNotThrow(() => verifySourceSnapshot(item.root));
+
+    const hiddenIgnoredSource = resolve(item.root, `${prefix}apps/server/src/.hidden/ignored-untracked.ts`);
+    const arbitraryDistSource = resolve(item.root, `${prefix}apps/server/src/dist/ignored-untracked.ts`);
+    const arbitraryLogsSource = resolve(item.root, `${prefix}apps/web/logs/ignored-untracked.ts`);
+    for (const sourcePath of [hiddenIgnoredSource, arbitraryDistSource, arbitraryLogsSource]) {
+      mkdirSync(dirname(sourcePath), { recursive: true });
+    }
+    mkdirSync(resolve(item.root, '.git', 'info'), { recursive: true });
+    writeFileSync(resolve(item.root, '.git', 'info', 'exclude'), [
+      `${prefix}apps/server/src/.hidden/ignored-untracked.ts`,
+      `${prefix}apps/server/src/dist/ignored-untracked.ts`,
+      `${prefix}apps/web/logs/ignored-untracked.ts`,
+      '',
+    ].join('\n'));
+    for (const sourcePath of [hiddenIgnoredSource, arbitraryDistSource, arbitraryLogsSource]) {
+      writeFileSync(sourcePath, 'export const injectedBuildInput = true;\n');
+    }
+    const sourcePrefix = `${prefix}apps/server/src/`.replaceAll('/', '\\/');
+    assert.throws(() => verifySourceSnapshot(item.root), new RegExp(sourcePrefix));
+
+    rmSync(hiddenIgnoredSource);
+    assert.throws(() => verifySourceSnapshot(item.root), new RegExp(
+      `${prefix}apps/server/src/dist/ignored-untracked\\.ts`.replaceAll('/', '\\/'),
+    ));
+
+    rmSync(arbitraryDistSource);
+    assert.throws(() => verifySourceSnapshot(item.root), new RegExp(
+      `${prefix}apps/web/logs/ignored-untracked\\.ts`.replaceAll('/', '\\/'),
+    ));
+  }, 'simulated-provider', { sourceLayout });
+});
 
 test('requires both scenario kinds; arbitrary labels and duplicate kinds cannot satisfy the contract', () => withFixture(item => {
   item.receipt.scenarios[1].kind = 'some-success-label';
@@ -333,6 +421,11 @@ test('real Windows acceptance is blocked in CI even when the receipt claims succ
   item.receipt.platform = 'win32';
   item.receipt.providerExecution = 'real';
   item.receipt.credentialBoundary = 'operator-managed-outside-ci';
+  item.receipt.model.provider = 'codex';
+  item.receipt.providerEvidence = {
+    kind: OFFICIAL_CODEX_PROVIDER_KIND,
+    trustBoundary: OFFICIAL_CODEX_TRUST_BOUNDARY,
+  };
   try {
     process.env.CI = 'true';
     assert.throws(() => validate(item), /cannot be captured or validated inside CI/);

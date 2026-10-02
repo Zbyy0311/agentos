@@ -14,7 +14,8 @@ import { tmpdir, homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { validateManifest, validateReceipt } from './validate-existing-project-acceptance.mjs';
+import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
+import { captureOfficialCodexIdentity, verifyOfficialCodexIdentity } from './acceptance-provider-identity.mjs';
 
 const scriptRoot = fileURLToPath(new URL('../', import.meta.url));
 const repoRoot = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: scriptRoot, encoding: 'utf8' }).stdout.trim();
@@ -95,6 +96,68 @@ export function verifyFrozenCandidatePreview(response, expected) {
   };
 }
 
+/** Accept the review that actually happened; never invent a change request. */
+export function verifyCandidateReviewSequence(candidates, reviews, reviewerId) {
+  invariant([1, 2].includes(candidates.length) && reviews.length === candidates.length,
+    'acceptance needs an independently approved candidate and at most one revision');
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const review = reviews[index];
+    invariant(candidate.round === index
+      && (review.candidateId ?? review.candidate_id) === candidate.id
+      && (review.reviewerAgentId ?? review.reviewer_agent_id) === reviewerId
+      && review.conclusion === (index === candidates.length - 1 ? 'approved' : 'changes_requested'),
+    'review does not bind its actual candidate, assigned reviewer, or approval sequence');
+    const reviewHash = review.candidateDiffHash ?? review.candidate_diff_hash;
+    if (reviewHash !== undefined) invariant(reviewHash === (candidate.diffHash ?? candidate.diff_hash),
+      'review hash differs from the frozen candidate');
+  }
+  const reworked = candidates.length === 2;
+  if (reworked) {
+    invariant((candidates[0].diffHash ?? candidates[0].diff_hash) !== (candidates[1].diffHash ?? candidates[1].diff_hash),
+      'review revision did not change the frozen candidate');
+    invariant((candidates[0].canonicalRunId ?? candidates[0].canonical_run_id)
+      !== (candidates[1].canonicalRunId ?? candidates[1].canonical_run_id),
+    'review revision did not create a linked new Run');
+  }
+  return { finalCandidate: candidates.at(-1), finalReview: reviews.at(-1), reworked };
+}
+
+export function frozenCandidateContentHash(candidate) {
+  const manifest = JSON.parse(candidate.manifest_json).map(item => [
+    item.path, item.sizeBytes, item.sha256 ?? null, item.gitObjectId?.toLowerCase() ?? null,
+    item.baseSizeBytes ?? null, item.baseSha256 ?? null, item.baseObjectId?.toLowerCase() ?? null,
+    item.binary ?? false, item.deleted ?? false,
+  ]).sort((left, right) => left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0);
+  return sha256(JSON.stringify({ schemaVersion: 1, diffHash: candidate.diff_hash.toLowerCase(),
+    snapshotVersion: candidate.snapshot_version, manifestVersion: candidate.manifest_version, manifest }));
+}
+
+async function observeOwnedProviderProcesses(server, workspaceId, runId, evidenceRoot, kind) {
+  if (process.platform !== 'win32') return;
+  server.nativeObservations ??= new Map();
+  server.nativeVerifier ??= (await import('../packages/process-runtime/dist/index.js')).createProductionRecoveredProcessVerifier();
+  const db = new DatabaseSync(server.databasePath, { readOnly: true });
+  let rows;
+  try {
+    rows = db.prepare(`SELECT id,provider_session_id,native_pid,native_birth_identity,executable_resolved
+      FROM runtime_processes WHERE workspace_id=? AND run_id=? AND process_type='provider'
+      AND native_pid IS NOT NULL AND native_birth_identity IS NOT NULL`).all(workspaceId, runId);
+  } finally { db.close(); }
+  for (const row of rows) {
+    if (server.nativeObservations.has(row.id)) continue;
+    const observed = await server.nativeVerifier.verify(row.native_pid);
+    if (observed.kind !== 'alive') continue;
+    invariant(observed.identity.nativeBirthIdentity === row.native_birth_identity,
+      'Provider PID no longer belongs to the persisted native process birth identity');
+    const observation = { processId: row.id, providerSessionId: row.provider_session_id,
+      pid: row.native_pid, nativeBirthIdentity: observed.identity.nativeBirthIdentity,
+      observedAt: new Date().toISOString(), source: 'windows-openprocess-getprocesstimes' };
+    server.nativeObservations.set(row.id, observation);
+    recordProgress(evidenceRoot, kind, { event: 'native-provider-observed', ...observation });
+  }
+}
+
 /** Read only the exact terminal candidates from this runner's isolated data root.
  * The public task response intentionally contains summaries, never raw patches. */
 export function loadOwnedFrozenCandidates(databasePath, workspaceId, taskId, summaries) {
@@ -159,10 +222,9 @@ function assertNoSecretLikeDiff(text) {
   'candidate diff resembles credential material; refusing to write it to the acceptance evidence');
 }
 function gitSnapshot(root, expectedSha) {
-  const actual = git(root, ['rev-parse', 'HEAD']);
-  invariant(shaPattern.test(expectedSha) && actual.toLowerCase() === expectedSha.toLowerCase(), 'source HEAD does not match --expected-sha');
-  invariant(git(root, ['status', '--porcelain=v1', '--untracked-files=no']) === '', 'source checkout has tracked changes');
-  return { commitSha: actual, treeSha: git(root, ['rev-parse', 'HEAD^{tree}']) };
+  const snapshot = verifySourceSnapshot(root);
+  invariant(shaPattern.test(expectedSha) && snapshot.commitSha.toLowerCase() === expectedSha.toLowerCase(), 'source HEAD does not match --expected-sha');
+  return { commitSha: snapshot.commitSha, treeSha: snapshot.treeSha };
 }
 
 function writeArtifact(evidenceRoot, relativePath, bytes) {
@@ -712,6 +774,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     try {
       const observed = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/progress`, { timeoutMs: 5000 });
       task = observed.body.progress.task;
+      if (task.canonicalRunId) await observeOwnedProviderProcesses(server, workspaceId, task.canonicalRunId, evidenceRoot, plan.kind);
       console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: confirm pending; task=${task.status}; control=${task.pendingControl?.state ?? 'none'}`);
     } catch (error) {
       console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: confirm pending; progress probe=${safeText(error instanceof Error ? error.message : String(error))}`);
@@ -753,6 +816,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
       lastProgressSignature = signature;
     }
     if (currentRun?.runId) {
+      await observeOwnedProviderProcesses(server, workspaceId, currentRun.runId, evidenceRoot, plan.kind);
       await approveOwnedProviderStages(server, workspaceId, currentRun.runId,
         agents.implementer.id, executable, plan.kind, evidenceRoot);
     }
@@ -768,30 +832,28 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   invariant(task.status === 'awaiting_application', `${plan.kind} task did not reach approved application state: ${task.status}; ${safeText(task.failureReason || '')}`);
   const candidates = loadOwnedFrozenCandidates(server.databasePath, workspaceId, taskId, details.body.candidates);
   const reviews = details.body.reviews.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  invariant(candidates.length === 2 && candidates[0].round === 0 && candidates[1].round === 1, `${plan.kind} did not produce exactly one review revision`);
-  invariant(reviews.length === 2 && reviews[0].conclusion === 'changes_requested' && reviews[1].conclusion === 'approved', `${plan.kind} lacks changes-requested -> revision -> approved review history`);
-  invariant(candidates[0].diffHash !== candidates[1].diffHash, `${plan.kind} revision did not change the frozen candidate`);
-  invariant(reviews[0].candidateId === candidates[0].id && reviews[1].candidateId === candidates[1].id, `${plan.kind} reviews do not bind the respective candidates`);
-  invariant(reviews.every(review => review.reviewerAgentId === agents.reviewer.id), `${plan.kind} review was not performed by its assigned reviewer`);
-  invariant(candidates[1].testStatus === 'passed' && candidates[1].testExitCode === 0, `${plan.kind} final acceptance command did not pass`);
-  console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: review requested changes; revision hash ${candidates[0].diffHash} -> ${candidates[1].diffHash}; independent approval persisted`);
-  recordProgress(evidenceRoot, plan.kind, { event: 'review-revision-approved', taskId,
+  const { finalCandidate, finalReview, reworked } = verifyCandidateReviewSequence(candidates, reviews, agents.reviewer.id);
+  if (mode === 'simulated-provider') invariant(reworked, `${plan.kind} deterministic fixture must exercise review rework`);
+  invariant(finalCandidate.testStatus === 'passed' && finalCandidate.testExitCode === 0, `${plan.kind} final acceptance command did not pass`);
+  console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: independent approval persisted; reworked=${reworked}`);
+  recordProgress(evidenceRoot, plan.kind, { event: reworked ? 'review-revision-approved' : 'review-directly-approved', taskId,
     runId: task.canonicalRunId, priorCandidateId: candidates[0].id, priorCandidateSha256: candidates[0].diffHash,
-    finalCandidateId: candidates[1].id, finalCandidateSha256: candidates[1].diffHash,
-    reviewIds: reviews.map(review => review.id), retestExitCode: candidates[1].testExitCode });
+    finalCandidateId: finalCandidate.id, finalCandidateSha256: finalCandidate.diffHash,
+    reviewIds: reviews.map(review => review.id), retestExitCode: finalCandidate.testExitCode });
 
   const initialPatch = Buffer.from(candidates[0].diffText, 'utf8');
-  const finalPatch = Buffer.from(candidates[1].diffText, 'utf8');
+  const finalPatch = Buffer.from(finalCandidate.diffText, 'utf8');
+  assertCandidateChangesStayInScope(plan, changedPathsFromPatch(finalCandidate.diffText));
   assertNoSecretLikeDiff(initialPatch.toString('utf8'));
   assertNoSecretLikeDiff(finalPatch.toString('utf8'));
-  const priorRef = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/prior.patch`, initialPatch);
+  const priorRef = reworked ? writeArtifact(evidenceRoot, `scenarios/${plan.kind}/prior.patch`, initialPatch) : undefined;
   const finalRef = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/final.patch`, finalPatch);
-  invariant(priorRef.sha256 === candidates[0].diffHash && finalRef.sha256 === candidates[1].diffHash, `${plan.kind} candidate patch bytes differ from stored hashes`);
+  invariant((!priorRef || priorRef.sha256 === candidates[0].diffHash) && finalRef.sha256 === finalCandidate.diffHash, `${plan.kind} candidate patch bytes differ from stored hashes`);
 
   const approvedTask = details.body.task;
   const candidateSummary = details.body.candidate;
   const candidateBaseCommit = approvedTask.baseCommit;
-  invariant(candidateSummary?.id === candidates[1].id && candidateSummary.diffHash === finalRef.sha256
+  invariant(candidateSummary?.id === finalCandidate.id && candidateSummary.diffHash === finalRef.sha256
     && hashPattern.test(candidateSummary.contentHash ?? '') && shaPattern.test(candidateBaseCommit ?? ''),
   `${plan.kind} approved task details lack the frozen candidate preview identity`);
   const previewIdentity = {
@@ -802,11 +864,11 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     candidateBaseCommit: previewIdentity.baseCommit,
     candidateContentHash: previewIdentity.contentHash,
   });
-  const previewRoute = `${base}/${encodeURIComponent(taskId)}/candidates/${encodeURIComponent(candidates[1].id)}/preview?${previewQuery}`;
+  const previewRoute = `${base}/${encodeURIComponent(taskId)}/candidates/${encodeURIComponent(finalCandidate.id)}/preview?${previewQuery}`;
   const preview = await api(server.baseUrl, previewRoute);
   const appliedPreviewIdentity = verifyFrozenCandidatePreview(preview.body, previewIdentity);
   const previewBytes = Buffer.from(JSON.stringify(preview.body, null, 2) + '\n');
-  recordProgress(evidenceRoot, plan.kind, { event: 'candidate-preview-verified', candidateId: candidates[1].id,
+  recordProgress(evidenceRoot, plan.kind, { event: 'candidate-preview-verified', candidateId: finalCandidate.id,
     candidateSha256: finalRef.sha256, candidateContentHash: previewIdentity.contentHash, previewPath: previewRoute });
 
   const applyRoute = `${base}/${encodeURIComponent(taskId)}/apply`;
@@ -819,37 +881,39 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const applied = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/apply`, {
     method: 'POST', body: applyRequestBody, headers: { 'Idempotency-Key': `p4-acceptance-apply-${randomUUID()}` },
   });
-  invariant(applied.body.task?.status === 'applied' && applied.body.task.currentCandidateId === candidates[1].id,
+  invariant(applied.body.task?.status === 'applied' && applied.body.task.currentCandidateId === finalCandidate.id,
     `${plan.kind} apply API did not apply the reviewed candidate`);
   const afterApply = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}`);
-  invariant(afterApply.body.task.status === 'applied' && afterApply.body.task.currentCandidateId === candidates[1].id
-    && afterApply.body.candidate?.id === candidates[1].id && afterApply.body.candidate.diffHash === finalRef.sha256,
+  invariant(afterApply.body.task.status === 'applied' && afterApply.body.task.currentCandidateId === finalCandidate.id
+    && afterApply.body.candidate?.id === finalCandidate.id && afterApply.body.candidate.diffHash === finalRef.sha256,
   `${plan.kind} persisted apply state or frozen candidate identity is missing`);
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: retest exit=0; preview verified; apply persisted`);
-  recordProgress(evidenceRoot, plan.kind, { event: 'candidate-applied-and-persisted', candidateId: candidates[1].id,
+  recordProgress(evidenceRoot, plan.kind, { event: 'candidate-applied-and-persisted', candidateId: finalCandidate.id,
     candidateSha256: finalRef.sha256, applyStatus: afterApply.body.task.status });
 
   const history = [];
+  const scenarioId = `${plan.kind}-${taskId}`;
+  if (reworked) {
   const requestedChanges = [safeText(reviews[0].summary)];
   const reviewRequest = {
     id: reviews[0].id, transition: 'changes-requested', actorRole: 'reviewer', actorId: agents.reviewer.id,
     timestamp: reviews[0].createdAt, candidateSha256: candidates[0].diffHash, requestedChanges,
   };
-  const scenarioId = `${plan.kind}-${taskId}`;
   reviewRequest.evidence = writeReviewEvidence(evidenceRoot, plan.kind, scenarioId, reviewRequest.id, reviewRequest);
   history.push(reviewRequest);
-  const changedPaths = changedPathsFromPatch(candidates[1].diffText);
+  const changedPaths = changedPathsFromPatch(finalCandidate.diffText);
   assertCandidateChangesStayInScope(plan, changedPaths);
   const revision = {
-    id: candidates[1].id, transition: 'revision-submitted', actorRole: 'implementer', actorId: agents.implementer.id,
-    timestamp: candidates[1].createdAt, fromCandidateSha256: candidates[0].diffHash,
-    toCandidateSha256: candidates[1].diffHash, addressedReviewEventId: reviews[0].id, changedPaths,
+    id: finalCandidate.id, transition: 'revision-submitted', actorRole: 'implementer', actorId: agents.implementer.id,
+    timestamp: finalCandidate.createdAt, fromCandidateSha256: candidates[0].diffHash,
+    toCandidateSha256: finalCandidate.diffHash, addressedReviewEventId: reviews[0].id, changedPaths,
   };
   revision.evidence = writeReviewEvidence(evidenceRoot, plan.kind, scenarioId, revision.id, revision);
   history.push(revision);
+  }
   const approval = {
-    id: reviews[1].id, transition: 'approved', actorRole: 'reviewer', actorId: agents.reviewer.id,
-    timestamp: reviews[1].createdAt, candidateSha256: candidates[1].diffHash, decision: 'approved',
+    id: finalReview.id, transition: 'approved', actorRole: 'reviewer', actorId: agents.reviewer.id,
+    timestamp: finalReview.createdAt, candidateSha256: finalCandidate.diffHash, decision: 'approved',
   };
   approval.evidence = writeReviewEvidence(evidenceRoot, plan.kind, scenarioId, approval.id, approval);
   history.push(approval);
@@ -860,7 +924,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     const outputText = Buffer.isBuffer(rawOutput) ? rawOutput.toString('utf8') : String(rawOutput ?? '');
     const sanitizedOutput = safeText(outputText);
     const stdout = writeJsonArtifact(evidenceRoot, `scenarios/${plan.kind}/commands/${commandId}.stdout.json`, {
-      schemaVersion: 1, commandId, frozenCandidateSha256: candidates[1].diffHash,
+      schemaVersion: 1, commandId, frozenCandidateSha256: finalCandidate.diffHash,
       outputSha256: sha256(Buffer.from(sanitizedOutput, 'utf8')), output: sanitizedOutput,
     });
     const stderr = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/commands/${commandId}.stderr.txt`, '');
@@ -868,26 +932,26 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     const cwd = workspaceRoot.root;
     const artifact = writeJsonArtifact(evidenceRoot, `scenarios/${plan.kind}/commands/${commandId}.json`, {
       schemaVersion: 1, kind: 'acceptance-command', scenarioId, stage, commandId, argv,
-      cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: candidates[1].diffHash,
+      cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: finalCandidate.diffHash,
       stdout, stderr, stageResult: result, observedAt, apiPath: pathFragment, requestBody,
     });
-    commands.push({ id: commandId, stage, argv, cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: candidates[1].diffHash, artifact });
+    commands.push({ id: commandId, stage, argv, cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: finalCandidate.diffHash, artifact });
   };
-  makeCommand('retest', plan.acceptanceCommands, candidates[1].testOutput, {
-    status: 'passed', testRunId: candidates[1].id, commandCount: plan.acceptanceCommands.length, rawExitCode: candidates[1].testExitCode,
+  makeCommand('retest', plan.acceptanceCommands, finalCandidate.testOutput, {
+    status: 'passed', testRunId: finalCandidate.id, commandCount: plan.acceptanceCommands.length, rawExitCode: finalCandidate.testExitCode,
   }, undefined);
   makeCommand('preview', ['GET', previewRoute], previewBytes, {
-    status: 'ready', previewId: candidates[1].id, candidateSha256: candidates[1].diffHash, rawExitCode: 0,
+    status: 'ready', previewId: finalCandidate.id, candidateSha256: finalCandidate.diffHash, rawExitCode: 0,
   }, previewRoute);
   makeCommand('apply', ['POST', applyRoute], JSON.stringify(applied.body), {
-    status: 'applied', applicationId: applied.body.task.applyIdempotencyKey ?? taskId, candidateSha256: candidates[1].diffHash, rawExitCode: 0,
+    status: 'applied', applicationId: applied.body.task.applyIdempotencyKey ?? taskId, candidateSha256: finalCandidate.diffHash, rawExitCode: 0,
   }, applyRoute, applyRequestBody);
 
   const progress = (await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/progress`)).body.progress;
   const runIds = progress.runs.map(run => run.runId);
   const scenario = {
     id: `${plan.kind}-${taskId}`, kind: plan.kind, status: 'passed',
-    ids: { projectId: workspaceId, taskId, runId: candidates[1].canonicalRunId, candidateId: candidates[1].id },
+    ids: { projectId: workspaceId, taskId, runId: finalCandidate.canonicalRunId, candidateId: finalCandidate.id },
     baselineCommands: plan.baselineCommands,
     acceptanceCommands: plan.acceptanceCommands,
     previewIdentity: {
@@ -897,8 +961,8 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     baselineReproduction: baselineEvidence,
     roles: { planner: agents.planner.id, implementer: agents.implementer.id, reviewer: agents.reviewer.id },
     frozenCandidate: { ...finalRef, commitSha: server.sourceSnapshot.commitSha, treeSha: server.sourceSnapshot.treeSha },
-    priorCandidate: priorRef,
-    workspaceBaseCommit: candidates[1].baseCommit,
+    ...(priorRef ? { priorCandidate: priorRef } : {}),
+    workspaceBaseCommit: finalCandidate.baseCommit,
     workspaceBaseTreeSha: workspaceRoot.baseTreeSha,
     reviewHistory: history,
     commands,
@@ -908,7 +972,20 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
 }
 
 function tableRows(db, sql, ...args) { return db.prepare(sql).all(...args); }
-function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
+function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { requireCapturedExit = false } = {}) {
+  if (requireCapturedExit) {
+    const outcome = JSON.parse(readFileSync(join(evidenceRoot, 'runner-outcome.json'), 'utf8'));
+    invariant(outcome.schemaVersion === 1 && outcome.source === 'parent-child-process-close'
+      && outcome.commitSha === receipt.repository.commitSha
+      && outcome.result?.exitCode === 0 && outcome.result.signal === null && outcome.result.spawnError === null
+      && outcome.receiptSha256 === hashFile(join(evidenceRoot, 'receipt.json')),
+    'runner success is not bound to an externally captured zero process exit and exact receipt bytes');
+    for (const stream of ['stdout', 'stderr']) {
+      invariant(outcome.logs?.[stream]?.artifactPath === `runner-${stream}.log`
+        && outcome.logs[stream].sha256 === hashFile(join(evidenceRoot, `runner-${stream}.log`)),
+      'externally captured runner output hash changed');
+    }
+  }
   const databaseRef = receipt.runtimeEvidence?.database;
   invariant(databaseRef && typeof databaseRef.artifactPath === 'string' && hashPattern.test(databaseRef.sha256), 'runtime database evidence reference is required');
   const databasePath = resolve(evidenceRoot, databaseRef.artifactPath);
@@ -978,20 +1055,21 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       invariant(workspace && resolve(workspace.root_path).toLowerCase() === resolve(scenario.commands[0].cwd).toLowerCase(),
         `${scenario.kind} command working directory differs from the persisted workspace`);
 
-      const candidates = tableRows(db, `SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,content_hash,diff_text,test_status,test_command,test_exit_code,test_output,status,review_conclusion,review_summary,created_at,manifest_json
+      const candidates = tableRows(db, `SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,content_hash,diff_text,test_status,test_command,test_exit_code,test_output,status,review_conclusion,review_summary,created_at,manifest_json,snapshot_version,manifest_version
         FROM collaboration_candidates WHERE collaboration_task_id=? AND workspace_id=? ORDER BY round ASC`, task.id, task.workspace_id);
-      invariant(candidates.length === 2 && candidates[0].round === 0 && candidates[1].round === 1,
-        `${scenario.kind} database must contain the initial and revised candidates`);
-      invariant(candidates[1].id === scenario.ids.candidateId && candidates[1].id === task.current_candidate_id,
+      invariant([1, 2].includes(candidates.length) && candidates.every((candidate, index) => candidate.round === index),
+        `${scenario.kind} database must contain an approved initial candidate or its one revision`);
+      const finalCandidate = candidates.at(-1);
+      const reworked = candidates.length === 2;
+      invariant(finalCandidate.id === scenario.ids.candidateId && finalCandidate.id === task.current_candidate_id,
         `${scenario.kind} final candidate identity differs from the applied task`);
-      invariant(sha256(Buffer.from(candidates[0].diff_text, 'utf8')) === candidates[0].diff_hash
-        && sha256(Buffer.from(candidates[1].diff_text, 'utf8')) === candidates[1].diff_hash,
+      invariant(candidates.every(candidate => sha256(Buffer.from(candidate.diff_text, 'utf8')) === candidate.diff_hash
+        && frozenCandidateContentHash(candidate) === candidate.content_hash),
       `${scenario.kind} database candidate bytes do not match their persisted SHA-256`);
-      invariant(candidates[0].diff_hash !== candidates[1].diff_hash, `${scenario.kind} review revision did not change candidate bytes`);
-      invariant(candidates[1].test_status === 'passed' && candidates[1].test_exit_code === 0 && candidates[1].status === 'applied'
-        && candidates[1].test_output && candidates[1].test_command === acceptanceCommands.join(' && '),
+      invariant(finalCandidate.test_status === 'passed' && finalCandidate.test_exit_code === 0 && finalCandidate.status === 'applied'
+        && finalCandidate.test_output && finalCandidate.test_command === acceptanceCommands.join(' && '),
       `${scenario.kind} final candidate lacks persisted passing acceptance-command evidence`);
-      invariant(task.base_commit === candidates[1].base_commit && task.base_commit === scenario.workspaceBaseCommit
+      invariant(task.base_commit === finalCandidate.base_commit && task.base_commit === scenario.workspaceBaseCommit
         && scenario.workspaceBaseTreeSha === scenario.baselineReproduction.baseTreeSha,
       `${scenario.kind} candidate base does not match the frozen workspace base`);
       invariant(scenario.baselineReproduction.status === 'reproduced'
@@ -1020,35 +1098,35 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
 
       const reviews = tableRows(db, `SELECT id,candidate_id,canonical_run_id,stage_id,stage_attempt,reviewer_agent_id,candidate_diff_hash,conclusion,summary,created_at
         FROM collaboration_reviews WHERE collaboration_task_id=? AND workspace_id=? ORDER BY created_at ASC,id ASC`, task.id, task.workspace_id);
-      invariant(reviews.length === 2 && reviews[0].conclusion === 'changes_requested' && reviews[1].conclusion === 'approved',
-        `${scenario.kind} persisted reviews do not contain the required change request and approval`);
-      invariant(reviews[0].candidate_id === candidates[0].id && reviews[1].candidate_id === candidates[1].id
-        && reviews.every(review => review.reviewer_agent_id === task.reviewer_agent_id)
-        && reviews[0].candidate_diff_hash === candidates[0].diff_hash && reviews[1].candidate_diff_hash === candidates[1].diff_hash,
-      `${scenario.kind} review rows do not independently bind the assigned reviewer and candidate hashes`);
-      invariant(reviews[0].canonical_run_id === candidates[0].canonical_run_id && reviews[1].canonical_run_id === candidates[1].canonical_run_id
-        && candidates[0].canonical_run_id !== candidates[1].canonical_run_id,
-      `${scenario.kind} review rows are not tied to the initial and revision Runs`);
-      const [requestEvent, revisionEvent, approvalEvent] = scenario.reviewHistory;
+      const { finalReview } = verifyCandidateReviewSequence(candidates, reviews, task.reviewer_agent_id);
+      invariant(reviews.every((review, index) => review.canonical_run_id === candidates[index].canonical_run_id),
+        `${scenario.kind} review rows are not tied to their respective Runs`);
+      const approvalEvent = scenario.reviewHistory.at(-1);
+      if (reworked) {
+      const [requestEvent, revisionEvent] = scenario.reviewHistory;
       invariant(requestEvent.id === reviews[0].id && requestEvent.candidateSha256 === candidates[0].diff_hash
         && requestEvent.actorId === reviews[0].reviewer_agent_id && requestEvent.requestedChanges.includes(safeText(reviews[0].summary)),
       `${scenario.kind} changes-requested receipt differs from the persisted independent review`);
-      invariant(revisionEvent.fromCandidateSha256 === candidates[0].diff_hash && revisionEvent.toCandidateSha256 === candidates[1].diff_hash
+      invariant(revisionEvent.fromCandidateSha256 === candidates[0].diff_hash && revisionEvent.toCandidateSha256 === finalCandidate.diff_hash
         && revisionEvent.addressedReviewEventId === reviews[0].id && revisionEvent.actorId === task.implementer_agent_id,
       `${scenario.kind} revision receipt does not address the actual requested review`);
-      const persistedChangedPaths = changedPathsFromPatch(candidates[1].diff_text);
+      const persistedChangedPaths = changedPathsFromPatch(finalCandidate.diff_text);
       invariant(JSON.stringify(revisionEvent.changedPaths) === JSON.stringify(persistedChangedPaths),
         `${scenario.kind} revision changed paths do not match the persisted frozen candidate patch`);
-      invariant(approvalEvent.id === reviews[1].id && approvalEvent.candidateSha256 === candidates[1].diff_hash
-        && approvalEvent.actorId === reviews[1].reviewer_agent_id && approvalEvent.decision === reviews[1].conclusion,
+      }
+      invariant(approvalEvent.id === finalReview.id && approvalEvent.candidateSha256 === finalCandidate.diff_hash
+        && approvalEvent.actorId === finalReview.reviewer_agent_id && approvalEvent.decision === finalReview.conclusion,
       `${scenario.kind} approval receipt differs from the persisted independent review`);
 
       const runs = tableRows(db, `SELECT id,parent_run_id,reason,status,task_id FROM runs WHERE task_id=? AND workspace_id=? ORDER BY created_at ASC,id ASC`, task.canonical_task_id, task.workspace_id);
-      invariant(runs.length === 2 && runs[0].reason === 'initial' && runs[1].reason === 'review-fix'
-        && runs[1].parent_run_id === runs[0].id && runs.every(run => run.status === 'completed'),
-      `${scenario.kind} canonical Run chain does not prove revision after requested changes`);
+      invariant(runs.length === candidates.length && runs[0].reason === 'initial'
+        && (!reworked || (runs[1].reason === 'review-fix' && runs[1].parent_run_id === runs[0].id))
+        && runs.every(run => run.status === 'completed'),
+      `${scenario.kind} canonical Run chain does not match its actual review sequence`);
+      const finalRun = runs.at(-1);
+      const runPlaceholders = runs.map(() => '?').join(',');
       requireSameSet(evidence.runIds, runs.map(run => run.id), `${scenario.kind} Run ids`);
-      invariant(task.canonical_run_id === runs[1].id && candidates[1].canonical_run_id === runs[1].id,
+      invariant(task.canonical_run_id === finalRun.id && finalCandidate.canonical_run_id === finalRun.id,
         `${scenario.kind} applied candidate is not bound to the final review Run`);
       invariant(scenario.frozenCandidate.commitSha === receipt.repository.commitSha && scenario.frozenCandidate.treeSha === receipt.repository.treeSha,
         `${scenario.kind} candidate is not bound to the frozen source commit and tree`);
@@ -1056,8 +1134,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       const sessions = tableRows(db, `SELECT ps.id,ps.run_id,ps.stage_id,ps.stage_attempt,ps.agent_id,ps.provider_config_id,ps.provider_type,ps.adapter_id,ps.status,ps.completed_at,pc.model,pc.executable,rs.workflow_stage_key
         FROM provider_sessions ps JOIN provider_configurations pc ON pc.id=ps.provider_config_id AND pc.workspace_id=ps.workspace_id
         JOIN run_stages rs ON rs.id=ps.stage_id AND rs.run_id=ps.run_id AND rs.workspace_id=ps.workspace_id
-        WHERE ps.workspace_id=? AND ps.run_id IN (?,?) ORDER BY ps.run_id,rs.sequence,ps.stage_attempt`, task.workspace_id, runs[0].id, runs[1].id);
-      invariant(sessions.length === 6 && sessions.every(session => session.status === 'completed' && session.completed_at
+        WHERE ps.workspace_id=? AND ps.run_id IN (${runPlaceholders}) ORDER BY ps.run_id,rs.sequence,ps.stage_attempt`, task.workspace_id, ...runs.map(run => run.id));
+      invariant(sessions.length === runs.length * 3 && sessions.every(session => session.status === 'completed' && session.completed_at
         && session.provider_type === 'codex' && session.adapter_id === 'builtin.codex' && session.model === receipt.model.id),
       `${scenario.kind} native Provider session/model evidence is incomplete or does not match the receipt`);
       const stageAgents = new Map(sessions.map(session => [`${session.run_id}:${session.workflow_stage_key}`, session.agent_id]));
@@ -1065,14 +1143,14 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
         invariant(stageAgents.get(`${run.id}:plan`) === task.planner_agent_id
           && stageAgents.get(`${run.id}:implement`) === task.implementer_agent_id
           && stageAgents.get(`${run.id}:review`) === task.reviewer_agent_id,
-        `${scenario.kind} Provider sessions do not prove all three assigned workflow roles for both Runs`);
+        `${scenario.kind} Provider sessions do not prove all three assigned workflow roles for each Run`);
       }
       const providerExecutable = receipt.providerEvidence?.executablePath;
       invariant(typeof providerExecutable === 'string' && sessions.every(session => session.provider_type === 'codex'
         && resolve(session.executable).toLowerCase() === resolve(providerExecutable).toLowerCase()),
       `${scenario.kind} configured Provider executable differs from the receipt`);
       const processRows = tableRows(db, `SELECT id,run_id,stage_id,stage_attempt,provider_session_id,process_type,status,executable_resolved,native_pid,native_started_at,native_birth_identity,exit_code,authority_role
-        FROM runtime_processes WHERE workspace_id=? AND run_id IN (?,?) AND process_type='provider' ORDER BY run_id,stage_id,stage_attempt`, task.workspace_id, runs[0].id, runs[1].id);
+        FROM runtime_processes WHERE workspace_id=? AND run_id IN (${runPlaceholders}) AND process_type='provider' ORDER BY run_id,stage_id,stage_attempt`, task.workspace_id, ...runs.map(run => run.id));
       invariant(processRows.length === sessions.length && processRows.every(process => process.status === 'exited' && process.exit_code === 0
         && Number.isSafeInteger(process.native_pid) && process.native_pid > 0 && process.native_started_at
         && process.native_birth_identity && process.executable_resolved && resolve(process.executable_resolved).toLowerCase() === resolve(providerExecutable).toLowerCase()
@@ -1081,9 +1159,22 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       invariant(new Set(processRows.map(process => `${process.native_pid}:${process.native_started_at}:${process.native_birth_identity}`)).size === processRows.length,
         `${scenario.kind} native Provider process birth identities are not unique`);
       const sessionIds = new Set(sessions.map(session => session.id));
-      invariant(processRows.every(process => sessionIds.has(process.provider_session_id)), `${scenario.kind} process rows are not tied to persisted Provider sessions`);
+      invariant(processRows.every(process => sessionIds.has(process.provider_session_id))
+        && new Set(processRows.map(process => process.provider_session_id)).size === sessions.length,
+      `${scenario.kind} process rows do not bind exactly one native process per persisted Provider session`);
 
-      const eventRows = tableRows(db, `SELECT id,run_id,type,durability,sequence,timestamp FROM runtime_events WHERE workspace_id=? AND run_id IN (?,?) ORDER BY run_id,sequence`, task.workspace_id, runs[0].id, runs[1].id);
+      if (receipt.mode === 'real-windows-acceptance') {
+        const observations = evidence.nativeObservations;
+        invariant(Array.isArray(observations) && observations.length === processRows.length
+          && new Set(observations.map(item => item.processId)).size === observations.length
+          && processRows.every(row => observations.some(item => item.processId === row.id
+            && item.providerSessionId === row.provider_session_id && item.pid === row.native_pid
+            && item.nativeBirthIdentity === row.native_birth_identity
+            && item.source === 'windows-openprocess-getprocesstimes'
+            && Number.isFinite(Date.parse(item.observedAt)))),
+        `${scenario.kind} real native process identity was not independently observed while alive`);
+      }
+      const eventRows = tableRows(db, `SELECT id,run_id,type,durability,sequence,timestamp FROM runtime_events WHERE workspace_id=? AND run_id IN (${runPlaceholders}) ORDER BY run_id,sequence`, task.workspace_id, ...runs.map(run => run.id));
       invariant(eventRows.length > 0 && runs.every(run => eventRows.some(event => event.run_id === run.id && event.type === 'run.completed' && event.durability === 'durable')),
         `${scenario.kind} persisted runtime Events lack durable Run completion evidence`);
       const expectedSets = {
@@ -1096,23 +1187,23 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
         `${scenario.kind} top-level runtime identity differs from the persisted task`);
       for (const [field, actual] of Object.entries(expectedSets)) requireSameSet(topScenario[field], actual, `${scenario.kind} top-level ${field}`);
 
-      const priorPatch = readFileSync(resolve(evidenceRoot, scenario.priorCandidate.artifactPath));
+      const priorPatch = reworked ? readFileSync(resolve(evidenceRoot, scenario.priorCandidate.artifactPath)) : undefined;
       const finalPatch = readFileSync(resolve(evidenceRoot, scenario.frozenCandidate.artifactPath));
-      invariant(priorPatch.toString('utf8') === candidates[0].diff_text && finalPatch.toString('utf8') === candidates[1].diff_text,
+      invariant((!priorPatch || priorPatch.toString('utf8') === candidates[0].diff_text) && finalPatch.toString('utf8') === finalCandidate.diff_text,
         `${scenario.kind} candidate evidence bytes do not match the runtime database`);
       const retest = readCommand(scenario, 'retest');
-      invariant(retest.record.rawExitCode === candidates[1].test_exit_code && retest.record.stageResult.rawExitCode === candidates[1].test_exit_code
-        && retest.record.stageResult.testRunId === candidates[1].id && retest.outputRecord.output === safeText(candidates[1].test_output),
+      invariant(retest.record.rawExitCode === finalCandidate.test_exit_code && retest.record.stageResult.rawExitCode === finalCandidate.test_exit_code
+        && retest.record.stageResult.testRunId === finalCandidate.id && retest.outputRecord.output === safeText(finalCandidate.test_output),
       `${scenario.kind} retest artifact does not match the persisted acceptance command result`);
       const preview = readCommand(scenario, 'preview');
       const previewResponse = JSON.parse(preview.outputRecord.output);
       const previewIdentity = scenario.previewIdentity;
-      invariant(previewIdentity?.candidateId === candidates[1].id && previewIdentity.baseCommit === task.base_commit
-        && previewIdentity.contentHash === candidates[1].content_hash && previewIdentity.diffHash === candidates[1].diff_hash,
+      invariant(previewIdentity?.candidateId === finalCandidate.id && previewIdentity.baseCommit === task.base_commit
+        && previewIdentity.contentHash === finalCandidate.content_hash && previewIdentity.diffHash === finalCandidate.diff_hash,
       `${scenario.kind} preview identity differs from the persisted candidate row`);
       invariant(previewResponse.workspaceId === task.workspace_id && previewResponse.collaborationTaskId === task.id
-        && previewResponse.candidateId === candidates[1].id && previewResponse.baseCommit === task.base_commit
-        && previewResponse.contentHash === candidates[1].content_hash && previewResponse.diffHash === candidates[1].diff_hash,
+        && previewResponse.candidateId === finalCandidate.id && previewResponse.baseCommit === task.base_commit
+        && previewResponse.contentHash === finalCandidate.content_hash && previewResponse.diffHash === finalCandidate.diff_hash,
       `${scenario.kind} captured preview response does not match the persisted frozen candidate`);
       const previewUrl = new URL(preview.command.argv[1], 'http://agentos.local');
       invariant(preview.command.argv[0] === 'GET'
@@ -1125,7 +1216,7 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
         && apply.record.requestBody?.candidateBaseCommit === previewResponse.baseCommit
         && apply.record.requestBody?.candidateContentHash === previewResponse.contentHash,
       `${scenario.kind} apply request is not bound to the exact displayed candidate preview`);
-      invariant(applyResponse.task?.status === 'applied' && applyResponse.task?.currentCandidateId === candidates[1].id,
+      invariant(applyResponse.task?.status === 'applied' && applyResponse.task?.currentCandidateId === finalCandidate.id,
         `${scenario.kind} captured apply response does not identify the applied candidate`);
       totalProviderCalls += sessions.length;
       provenScenarios.push({ kind: scenario.kind, runCount: runs.length, providerCalls: sessions.length, nativeProcessCount: processRows.length, durableEventCount: eventRows.length });
@@ -1135,10 +1226,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       invariant(receipt.providerEvidence.kind === 'deterministic-fixture-cli' && receipt.model.id === 'agentos-p4-deterministic-fixture-v1',
         'simulated receipt must identify the deterministic fixture and model');
     } else {
-      const providerExecutable = receipt.providerEvidence.executablePath;
-      invariant(process.platform === 'win32' && basename(providerExecutable).toLowerCase().startsWith('codex'),
-        'real receipt must prove the configured native Windows Codex executable');
-      invariant(receipt.providerEvidence.executableSha256 === hashFile(providerExecutable), 'configured Codex executable bytes changed after capture');
+      invariant(process.platform === 'win32', 'real receipt requires Windows');
+      verifyOfficialCodexIdentity(receipt.providerEvidence);
     }
     return { status: receipt.mode === 'simulated-provider' ? 'simulated-runtime-verified' : 'runtime-verified', provenScenarios };
   } finally {
@@ -1154,7 +1243,7 @@ async function main() {
     const structure = validateReceipt(manifest, receipt, {
       expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot: options.evidenceDir,
     });
-    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt);
+    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, { requireCapturedExit: true });
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: receipt.providerEvidence.invocationCount, receiptPath: options.receiptPath };
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -1193,6 +1282,7 @@ async function main() {
     }
     const model = options.mode === 'simulated-provider' ? 'agentos-p4-deterministic-fixture-v1' : (options.model || process.env.AGENTOS_CODEX_MODEL);
     let executable;
+    let officialIdentity;
     if (options.mode === 'simulated-provider') {
       executable = createSimulationExecutable(runRoot, statePath);
       const version = spawnSync(executable, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10_000 });
@@ -1206,6 +1296,10 @@ async function main() {
       invariant(version.status === 0 && !version.error, `configured Codex CLI is not executable: ${version.error?.message || safeText(version.stderr)}`);
       const help = spawnSync(executable, ['exec', '--help'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 15_000 });
       invariant(help.status === 0 && /--json/u.test(`${help.stdout}${help.stderr}`), 'configured Codex CLI does not advertise structured --json output');
+      const npmRoot = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm root -g'],
+        { encoding: 'utf8', windowsHide: true, shell: false, timeout: 15_000 });
+      invariant(npmRoot.status === 0, 'cannot resolve the operator-managed official npm installation');
+      officialIdentity = captureOfficialCodexIdentity(executable, { npmGlobalRoot: npmRoot.stdout.trim(), versionOutput: version.stdout });
     }
     const workspaces = [];
     const baselineResults = [];
@@ -1220,7 +1314,10 @@ async function main() {
       const result = await createAndRunScenario(server, plans[index], workspaces[index], baselineResults[index], options.mode, model, executable, evidenceRoot);
       scenarioResults.push(result);
     }
+    invariant(scenarioResults.some(result => result.scenario.reviewHistory.some(event => event.transition === 'revision-submitted')),
+      'acceptance requires at least one real changes-requested -> revision -> approval cycle across its scenarios');
     const serverIdentity = { pid: server.child.pid, port: server.port, readinessPath: server.readinessPath };
+    const serverNativeObservations = server.nativeObservations ?? new Map();
     await stopServer(server);
     serverIdentity.exitCode = server.child.exitCode;
     serverIdentity.signalCode = server.child.signalCode;
@@ -1235,7 +1332,8 @@ async function main() {
     const databaseArtifact = { artifactPath: 'runtime/agentos.sqlite', sha256: hashFile(databaseDestination) };
     const providerExecutable = realpathSync(executable);
     const providerEvidence = {
-      kind: options.mode === 'simulated-provider' ? 'deterministic-fixture-cli' : 'configured-codex-cli',
+    kind: options.mode === 'simulated-provider' ? 'deterministic-fixture-cli' : officialIdentity.kind,
+      ...(officialIdentity ?? {}),
       providerType: 'codex', adapterId: 'builtin.codex', executablePath: providerExecutable,
       executableSha256: hashFile(providerExecutable),
       invocationCount: 0,
@@ -1246,13 +1344,21 @@ async function main() {
     try {
       for (const result of scenarioResults) {
         const { scenario } = result;
-        const sessions = tableRows(db, `SELECT id FROM provider_sessions WHERE workspace_id=? AND run_id IN (?,?) ORDER BY run_id,created_at,id`, scenario.ids.projectId, ...result.runIds);
-        const processRows = tableRows(db, `SELECT id FROM runtime_processes WHERE workspace_id=? AND run_id IN (?,?) AND process_type='provider' ORDER BY run_id,stage_id,stage_attempt`, scenario.ids.projectId, ...result.runIds);
-        const events = tableRows(db, `SELECT id FROM runtime_events WHERE workspace_id=? AND run_id IN (?,?) ORDER BY run_id,sequence`, scenario.ids.projectId, ...result.runIds);
+        const placeholders = result.runIds.map(() => '?').join(',');
+        const sessions = tableRows(db, `SELECT id FROM provider_sessions WHERE workspace_id=? AND run_id IN (${placeholders}) ORDER BY run_id,created_at,id`, scenario.ids.projectId, ...result.runIds);
+        const processRows = tableRows(db, `SELECT id FROM runtime_processes WHERE workspace_id=? AND run_id IN (${placeholders}) AND process_type='provider' ORDER BY run_id,stage_id,stage_attempt`, scenario.ids.projectId, ...result.runIds);
+        const events = tableRows(db, `SELECT id FROM runtime_events WHERE workspace_id=? AND run_id IN (${placeholders}) ORDER BY run_id,sequence`, scenario.ids.projectId, ...result.runIds);
         const scenarioEvidence = scenario.runtimeEvidence;
         scenarioEvidence.providerSessionIds = sessions.map(row => row.id);
         scenarioEvidence.providerProcessIds = processRows.map(row => row.id);
         scenarioEvidence.eventIds = events.map(row => row.id);
+        if (options.mode === 'real-windows-acceptance') {
+          scenarioEvidence.nativeObservations = processRows.map(row => {
+            const observation = serverNativeObservations.get(row.id);
+            invariant(observation, 'real Provider process lacks an independent live Windows birth-identity observation');
+            return observation;
+          });
+        }
         runtimeScenarios.push({ id: scenario.id, ...scenarioEvidence });
       }
     } finally { db.close(); }

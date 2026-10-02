@@ -44,6 +44,8 @@
       "uniqueReviewEventIds": true,
       "status": "passed",
       "reviewTransitions": ["changes-requested", "revision-submitted", "approved"],
+      "directApprovalAllowed": true,
+      "minimumReworkScenarios": 1,
       "requiredCommandStages": ["retest", "preview", "apply"],
       "successfulExitCode": 0,
       "commandArtifactFields": ["schemaVersion", "kind", "scenarioId", "stage", "commandId", "argv", "cwd", "rawExitCode", "expectedExitCode", "frozenCandidateSha256", "stdout", "stderr", "stageResult", "observedAt"]

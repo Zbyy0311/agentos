@@ -9,7 +9,34 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
+  verifyCandidateReviewSequence, frozenCandidateContentHash,
 } from './verify-existing-project-acceptance.mjs';
+
+test('an independent direct approval is preserved without inventing a revision', () => {
+  const candidate = { id: 'candidate-1', round: 0, diffHash: 'a'.repeat(64), canonicalRunId: 'run-1' };
+  const review = { candidateId: candidate.id, reviewerAgentId: 'reviewer', conclusion: 'approved', candidateDiffHash: candidate.diffHash };
+  assert.equal(verifyCandidateReviewSequence([candidate], [review], 'reviewer').reworked, false);
+  assert.throws(() => verifyCandidateReviewSequence([candidate], [{ ...review, reviewerAgentId: 'implementer' }], 'reviewer'), /assigned reviewer/u);
+  assert.throws(() => verifyCandidateReviewSequence([candidate], [{ ...review, candidateDiffHash: 'b'.repeat(64) }], 'reviewer'), /review hash/u);
+  assert.throws(() => verifyCandidateReviewSequence([candidate], [{ ...review, conclusion: 'changes_requested' }], 'reviewer'), /approval sequence/u);
+});
+
+test('review rework must change candidate bytes and create a linked new Run', () => {
+  const candidates = [{ id: 'candidate-0', round: 0, diffHash: 'a'.repeat(64), canonicalRunId: 'run-0' },
+    { id: 'candidate-1', round: 1, diffHash: 'b'.repeat(64), canonicalRunId: 'run-1' }];
+  const reviews = candidates.map((candidate, index) => ({ candidateId: candidate.id, reviewerAgentId: 'reviewer',
+    conclusion: index ? 'approved' : 'changes_requested', candidateDiffHash: candidate.diffHash }));
+  assert.equal(verifyCandidateReviewSequence(candidates, reviews, 'reviewer').reworked, true);
+  assert.throws(() => verifyCandidateReviewSequence([candidates[0], { ...candidates[1], canonicalRunId: 'run-0' }], reviews, 'reviewer'), /linked new Run/u);
+});
+
+test('frozen candidate digest independently binds binary classification and sizes', () => {
+  const candidate = { manifest_json: JSON.stringify([{ path: 'file', sizeBytes: 5, sha256: 'b'.repeat(64), binary: true }]),
+    snapshot_version: 2, manifest_version: 2, diff_hash: 'a'.repeat(64) };
+  const digest = frozenCandidateContentHash(candidate);
+  assert.notEqual(frozenCandidateContentHash({ ...candidate, manifest_json: candidate.manifest_json.replace('true', 'false') }), digest);
+  assert.notEqual(frozenCandidateContentHash({ ...candidate, diff_hash: 'c'.repeat(64) }), digest);
+});
 
 test('real multistage acceptance has a bounded total and a separate durable-progress timeout', () => {
   assert.deepEqual(acceptanceWaitBudget('real-windows-acceptance'), { totalMs: 3_600_000, idleMs: 600_000 });
