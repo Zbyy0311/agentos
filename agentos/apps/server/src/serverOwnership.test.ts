@@ -49,6 +49,30 @@ function closeServer(server: net.Server): Promise<void> {
   return new Promise(resolvePromise => server.close(() => resolvePromise()));
 }
 
+async function isLoopbackPortBindableWithoutConnections(port: number): Promise<boolean> {
+  const server = net.createServer();
+  try {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.once('error', rejectPromise);
+      server.listen(port, '127.0.0.1', () => resolvePromise());
+    });
+    await closeServer(server);
+    return true;
+  } catch (error) {
+    if (server.listening) await closeServer(server).catch(() => {});
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EACCES' || code === 'EADDRINUSE') return false;
+    throw error;
+  }
+}
+
+async function isLoopbackPortRebindableWithoutConnections(port: number): Promise<boolean> {
+  if (!await isLoopbackPortBindableWithoutConnections(port)) return false;
+  // These probes never accept a connection, so closing cannot create TCP
+  // TIME_WAIT state; the immediate second bind confirms the port was released.
+  return isLoopbackPortBindableWithoutConnections(port);
+}
+
 function observeOwnershipServerCreations(): { count(): number; restore(): void } {
   const mutableNet = net as typeof net & { createServer: typeof net.createServer };
   const originalCreateServer = mutableNet.createServer;
@@ -282,7 +306,10 @@ function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence
   });
 }
 
-async function makeUnoccupiedR39Root(label: string): Promise<{
+async function makeUnoccupiedOwnershipRoot(
+  label: string,
+  options: { requireBindablePrimary?: boolean } = {},
+): Promise<{
   root: string;
   candidatePorts: number[];
 }> {
@@ -294,12 +321,14 @@ async function makeUnoccupiedR39Root(label: string): Promise<{
     const allCandidatesHaveNoListener = evidence.every(item => (
       (item.rawSocketError as { code?: unknown } | undefined)?.code === 'ECONNREFUSED'
     ));
-    if (allCandidatesHaveNoListener) {
+    const primaryPortIsBindable = !options.requireBindablePrimary
+      || await isLoopbackPortRebindableWithoutConnections(candidatePorts[0]!);
+    if (allCandidatesHaveNoListener && primaryPortIsBindable) {
       return { root, candidatePorts };
     }
     rmSync(root, { recursive: true, force: true });
   }
-  throw new Error(`R39 could not establish an unoccupied candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
+  throw new Error(`Could not establish an unoccupied ownership candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
 }
 
 function assertAlreadyRunning(error: unknown): boolean {
@@ -577,7 +606,7 @@ test('R37 unknown port occupants fail closed without jumping to the next candida
 });
 
 test('R38 loopback ownership is released automatically after a subprocess crash', { timeout: 120_000 }, async () => {
-  const root = makeRoot('r38');
+  const { root } = await makeUnoccupiedOwnershipRoot('r38', { requireBindablePrimary: true });
   const spawned = spawnLoopbackChild(root);
   let ownership: ServerOwnership | undefined;
   try {
@@ -603,7 +632,7 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   const ROUNDS = 5;
   const CHILDREN = 3;
   for (let round = 0; round < ROUNDS; round += 1) {
-    const { root, candidatePorts } = await makeUnoccupiedR39Root(`r39-${round}`);
+    const { root, candidatePorts } = await makeUnoccupiedOwnershipRoot(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
     const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
     const parentProbeAttempts: R39CandidateEvidence[] = [];
