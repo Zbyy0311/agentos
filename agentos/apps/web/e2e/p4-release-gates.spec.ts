@@ -121,7 +121,7 @@ async function installDeterministicApi(page: Page, fixture: Fixture) {
       if (body.memoryId !== 'memory-b' || body.contextId !== 'context-b') fixture.failures.push('Feedback was posted for a different stable context or memory key');
       await json(route, { feedback: {
         id: 'feedback-b', workspaceId, memoryId: 'memory-b', memoryVersion: 4, currentEntryVersion: 9,
-        contextKind: 'run', contextId: 'context-b', contextHash: 'context-hash-b', kind: 'helpful',
+        contextKind: 'run', contextId: 'context-b', contextHash: 'b'.repeat(64), kind: 'helpful',
         comment: body.comment ?? '', createdAt: now, action: null,
       } });
       return;

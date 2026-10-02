@@ -441,6 +441,7 @@ test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', 
       const base = {
         workspaceId: 'workspace-a', authority: 'system-verified' as const, confidence: 0.9, importance: 0.7,
         tags: [], status: 'active' as const, sources: [{ kind: 'task' as const, id: 'task_origin' }],
+        pinned: true,
         createdAt: '2026-07-12T00:00:00.000Z',
       };
       entries.createEntry({ ...base, id: codexOnly, scope: 'agent', ownerAgentId: 'codex', category: 'preference',

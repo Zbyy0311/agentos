@@ -187,7 +187,7 @@ describe('CLIExecutor', () => {
     const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-structured-codex-'));
     const commandPath = join(commandRoot, 'codex.cmd');
     const scriptPath = join(commandRoot, 'fake-codex.mjs');
-    writeFileSync(commandPath, '@echo off\r\nnode "%~dp0fake-codex.mjs" %*\r\nexit /b %ERRORLEVEL%\r\n', 'utf8');
+    writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "%~dp0fake-codex.mjs" %*\r\nexit /b %ERRORLEVEL%\r\n`, 'utf8');
     writeFileSync(scriptPath, [
       "const args = process.argv.slice(2);",
       "if (args.includes('--version')) { console.log('codex 0.0.0'); }",
@@ -217,7 +217,9 @@ describe('CLIExecutor', () => {
     } finally {
       rmSync(commandRoot, { recursive: true, force: true });
     }
-  });
+  // Two real capability probes each have a 5s bound before the stream starts.
+  // Keep the fixture deadline above that budget on Windows CI runners.
+  }, 20_000);
 
   it('emits OpenCode token usage from the per-run SQLite delta', async () => {
     const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-opencode-usage-cli-'));

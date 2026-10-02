@@ -9,6 +9,8 @@ import type { TransactionDatabase } from '../store/Transaction.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { migration017 } from '../migrations/migrations/017-mf1-memory-entry-persistence.js';
 import { migration048 } from '../migrations/migrations/048-memory-vectors.js';
+import { migration049 } from '../migrations/migrations/049-memory-lexical-index.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import { applyBudget } from './MemoryContextBudgetSelector.js';
 import { MemoryRetrievalService, type RetrievedMemoryEntry } from './MemoryRetrievalService.js';
 import { MemorySemanticRetrieval, type MemoryEmbeddingPort } from './MemorySemanticRetrieval.js';
@@ -111,6 +113,7 @@ function createDb(): SqliteDb {
   db.exec('CREATE TABLE memories (id TEXT PRIMARY KEY)');
   migration017.apply({ db: db as unknown as MinimalDatabaseSync });
   migration048.apply({ db: db as unknown as MinimalDatabaseSync });
+  migration049.apply({ db: db as unknown as MinimalDatabaseSync });
   db.prepare('INSERT INTO workspaces (id) VALUES (?)').run(WS);
   return db;
 }
@@ -147,8 +150,10 @@ function recallAtK(results: readonly MemoryEntryRecord[], relevantIds: readonly 
 
 test('fixed bilingual corpus evaluates real MF-3 SQLite retrieval and its production budget gate', async t => {
   assert.equal(corpus.formatVersion, 1);
-  assert.ok(corpus.entries.length >= 80, `expected >=80 entries, got ${corpus.entries.length}`);
-  assert.ok(corpus.queries.length >= 80, `expected >=80 queries, got ${corpus.queries.length}`);
+  assert.equal(corpus.entries.length, 80, 'the accepted corpus stays fixed');
+  assert.equal(corpus.queries.length, 96, 'all accepted queries stay fixed');
+  assert.equal(corpus.queries.filter(query => query.intent === 'no-match').length, 16);
+  assert.equal(corpus.queries.filter(query => query.intent === 'exact-zh').length, 16);
   for (const intent of ['exact-en', 'exact-zh', 'paraphrase-en', 'paraphrase-zh', 'no-match'] as const) {
     assert.ok(corpus.queries.some(query => query.intent === intent), `missing ${intent} queries`);
   }
@@ -184,6 +189,9 @@ test('fixed bilingual corpus evaluates real MF-3 SQLite retrieval and its produc
     let noMatchQueries = 0;
     let exactChineseQueries = 0;
     let exactChineseFtsMatches = 0;
+    let executionChineseHits = 0;
+    let executionRecall = 0;
+    let executionNonPinnedFalsePositives = 0;
     const k = BUDGET.maxEntries;
 
     for (const query of corpus.queries) {
@@ -204,6 +212,17 @@ test('fixed bilingual corpus evaluates real MF-3 SQLite retrieval and its produc
       }
 
       const beforeBudget = selectedFromBudget(baseline.results);
+      const execution = retrieval.retrieveWithStatus({ context: {workspaceId: WS}, query: query.text, selectionPolicy: MEMORY_RELEVANCE_POLICY });
+      assert.equal(execution.degraded,false);
+      const executionSelected = selectedFromBudget(execution.results);
+      if (query.intent === 'exact-zh' && execution.results.some(item =>
+        item.ftsRank !== null && query.relevantIds.includes(item.entry.id))) executionChineseHits += 1;
+      if (query.relevantIds.length) executionRecall += recallAtK(executionSelected,query.relevantIds,k);
+      else {
+        const falsePositives = executionSelected.filter(entry => !entry.pinned);
+        assert.equal(falsePositives.length, 0, `${query.id}: unrelated non-fixed entries were selected`);
+        executionNonPinnedFalsePositives += falsePositives.length;
+      }
       const ranked = await retrievalWithSidecar.retrievePrepared({ context: { workspaceId: WS }, query: query.text });
       assert.equal(ranked.degraded, false, `${query.id} prepared retrieval degraded: ${ranked.semantic?.reason ?? 'unknown'}`);
       assert.equal(ranked.semantic?.prepared, true, `${query.id} did not use async preparation`);
@@ -269,6 +288,10 @@ test('fixed bilingual corpus evaluates real MF-3 SQLite retrieval and its produc
       'semantic reranking should not increase non-pinned no-match selections');
     assert.ok(noMatchPinned >= noMatchQueries && noMatchBaselinePinned >= noMatchQueries,
       'the default pinned memory should remain an intentional no-match selection');
+    assert.equal(executionNonPinnedFalsePositives,0,'execution must not inject unrelated non-pinned entries');
+    assert.ok(executionChineseHits >= 12,`Chinese indexed hits ${executionChineseHits}/16 below 12`);
+    assert.ok(executionRecall >= baselineRecall,`execution recall ${(executionRecall/measuredQueries).toFixed(3)} below old FTS ${(baselineRecall/measuredQueries).toFixed(3)}`);
+    t.diagnostic(`P1 execution policy: no-match non-pinned=${executionNonPinnedFalsePositives}; Chinese FTS=${executionChineseHits}/16; recall@5=${(executionRecall/measuredQueries).toFixed(3)}.`);
     t.diagnostic(`queries=${corpus.queries.length}; relevant-label queries=${measuredQueries}; no-match queries=${noMatchQueries}; budgeted recall@${k} relevant-only baseline=${(baselineRecall / measuredQueries).toFixed(3)}, hybrid=${(hybridRecall / measuredQueries).toFixed(3)}; paraphrase baseline=${(baselineParaphraseRecall / paraphrases).toFixed(3)}, hybrid=${(hybridParaphraseRecall / paraphrases).toFixed(3)}.`);
     t.diagnostic(`no-match@${k}: every selected item is a false positive (empty gold set); baseline/hybrid total selections=${noMatchBaselineSelected}/${noMatchSelected}; non-pinned false positives=${noMatchBaselineNonPinnedFalsePositives}/${noMatchHybridNonPinnedFalsePositives}; pinned defaults=${noMatchBaselinePinned}/${noMatchPinned} (reported separately, never counted as relevant hits).`);
     t.diagnostic(`Chinese exact-query SQLite FTS5 hits=${exactChineseFtsMatches}/${exactChineseQueries}; remaining cases still exercise semantic/fallback ranking.`);
