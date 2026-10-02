@@ -568,6 +568,51 @@ test('P2 recovery review: UNKNOWN effects fail closed and clean linked recovery 
   } finally { await fx.close(); }
 });
 
+test('P2 linked recovery binds its new task to the exact SHA returned by preflight', async () => {
+  const fx = fixture();
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_PROCESS_UNKNOWN', failureMessage: 'Provider side effects could not be determined',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-unknown-linked-preflight-race-01', action: 'new-linked-task' as const,
+    };
+
+    const realPreflight = fx.worktrees.preflight.bind(fx.worktrees);
+    let checkedAtPreflight: string | undefined;
+    fx.worktrees.preflight = async (workspaceRoot, options) => {
+      const checked = await realPreflight(workspaceRoot, options);
+      if (checkedAtPreflight === undefined) {
+        checkedAtPreflight = checked;
+        writeFileSync(join(workspaceRoot, 'README.md'), 'clean source advanced after preflight returned its checked SHA\n');
+        execFileSync('git', ['add', 'README.md'], { cwd: workspaceRoot, windowsHide: true });
+        execFileSync('git', ['commit', '-qm', 'advance source after preflight'], { cwd: workspaceRoot, windowsHide: true });
+      }
+      return checked;
+    };
+
+    const result = await fx.service.recover(input);
+    assert.ok(checkedAtPreflight);
+    const liveHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true,
+    }).trim();
+    assert.notEqual(liveHead, checkedAtPreflight, 'the fixture advanced HEAD after preflight had completed its check');
+    assert.equal(result.checkedBaseCommit, checkedAtPreflight);
+    assert.equal(result.task.baseCommit, checkedAtPreflight, 'the linked task is anchored to the SHA preflight actually validated');
+    const persisted = fx.store.getDatabase().prepare(`SELECT checked_base_commit,state FROM p2_collaboration_recoveries
+      WHERE workspace_id = ? AND idempotency_key = ?`).get('workspace-a', input.idempotencyKey) as {
+      checked_base_commit: string; state: string;
+    };
+    assert.deepEqual({ ...persisted }, { checked_base_commit: checkedAtPreflight, state: 'completed' });
+  } finally { await fx.close(); }
+});
+
 test('positive control: queued collaboration cancellation cancels its canonical Run', async () => {
   const fx = fixture();
   try {

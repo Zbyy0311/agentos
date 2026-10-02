@@ -699,8 +699,7 @@ export class CollaborationWorkflowService {
     let checkedBaseCommit: string;
     try {
       const workspace = this.requireWorkspace(workspaceId);
-      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-      checkedBaseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+      checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
     } catch {
       return unavailable('当前源工作区不是干净且可检查的基线');
     }
@@ -952,8 +951,7 @@ export class CollaborationWorkflowService {
     const workspace = this.requireWorkspace(input.workspaceId);
     let checkedBaseCommit: string;
     try {
-      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-      checkedBaseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+      checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
     } catch {
       // A dirty/uninspectable baseline must not consume the unique recovery
       // action. The caller may repair the workspace and retry the same intent.
