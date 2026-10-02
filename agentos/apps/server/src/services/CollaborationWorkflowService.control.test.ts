@@ -27,6 +27,7 @@ import { recoverInterruptedRuns } from '../runRecovery.js';
 import { RunEngine } from './run-engine/RunEngine.js';
 import { StageExecutor } from './run-engine/StageExecutor.js';
 import { WorktreeManager } from './WorktreeManager.js';
+import { WorkspaceGitRootRegistry } from './WorkspaceGitRootRegistry.js';
 
 const NOW = '2026-09-30T00:00:00.000Z';
 const PATCH = 'diff --git a/README.md b/README.md\nindex df967b9..a9a2f8e 100644\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-base\n+candidate\n';
@@ -278,7 +279,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
             dispatches.push(runId); admitFollowerToApproval(store, workspaceId, runId);
           };
           if (recovery === 'same-key-retry') {
-            const production = productionServiceFor({ root: fx.root, store: fx.store }, 'true', dispatch(fx.store));
+            const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: fx.store }, 'true', dispatch(fx.store));
             assert.deepEqual(await production.service.cancel(cancelInput), cancelled);
             assert.deepEqual(await production.service.cancel(cancelInput), cancelled);
             assert.equal((db.prepare(admissionSql).get(runIdB) as { state: string }).state, 'CANCELLED');
@@ -292,7 +293,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
           let stableAdmissions: unknown[] | undefined;
           for (let reboot = 1; reboot <= 2; reboot++) {
             reopened = new SqliteStore(fx.dataRoot); const activeStore = reopened;
-            const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', dispatch(activeStore));
+            const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: activeStore }, 'true', dispatch(activeStore));
             if (reboot === 1) assert.equal((activeStore.getDatabase().prepare(admissionSql).get(runIdB) as { state: string }).state,
               recovery === 'restart' ? 'QUEUED' : 'CANCELLED', 'the original cancellation window must be durable');
             const beforeDispatch = dispatches.length;
@@ -601,7 +602,7 @@ function productionCollaborationSlices() {
 }
 
 function productionServiceFor(
-  fx: { root: string; store: SqliteStore },
+  fx: { root: string; dataRoot: string; store: SqliteStore },
   runtimeValue: string | undefined,
   dispatchRun: (workspaceId: string, runId: string) => Promise<void>,
   beforeApplicationRelease?: (input: { workspaceId: string; controlId: string }) => void,
@@ -625,10 +626,13 @@ function productionServiceFor(
   const environment = { env: { AGENTOS_RUNTIME_DISPATCH_ENABLED: runtimeValue } };
   const compile = (source: string) => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const withDispatchPermit = async (operation: () => Promise<void>) => { await operation(); return true; };
-  const construct = new Function('store', 'workspaceManager', 'worktreeManager', 'providerExecutionChain', 'collaborationWorktreePaths', 'CollaborationWorkflowService', 'process', 'withDispatchPermit',
+  const workspaceManager = new WorkspaceManager(fx.store);
+  const worktreeManager = new WorktreeManager(join(fx.root, 'worktrees'));
+  const workspaceGitRoots = new WorkspaceGitRootRegistry(fx.dataRoot, fx.store, workspaceManager, worktreeManager);
+  const construct = new Function('store', 'workspaceManager', 'worktreeManager', 'providerExecutionChain', 'collaborationWorktreePaths', 'CollaborationWorkflowService', 'process', 'withDispatchPermit', 'workspaceGitRoots',
     compile(`${slices.flag}\nlet collaborationService;\n${slices.construction}\nreturn collaborationService;`));
-  const service = construct(fx.store, new WorkspaceManager(fx.store), new WorktreeManager(join(fx.root, 'worktrees')), chain,
-    new Map<string, string>(), CollaborationWorkflowService, environment, withDispatchPermit) as CollaborationWorkflowService;
+  const service = construct(fx.store, workspaceManager, worktreeManager, chain,
+    new Map<string, string>(), CollaborationWorkflowService, environment, withDispatchPermit, workspaceGitRoots) as CollaborationWorkflowService;
   return { service, authority, approvalResumes: () => approvalResumes,
     async startProductionBackground(quiescing = false): Promise<void> {
       const pending: Promise<void>[] = [];
@@ -939,7 +943,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
       for (let reboot = 1; reboot <= 2; reboot++) {
         reopened = new SqliteStore(fx.dataRoot);
         const activeStore = reopened;
-        const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
+        const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
           assert.equal(resumedRunId, runId);
           dispatches.push(resumedRunId);
           admitFollowerToApproval(activeStore, workspaceId, resumedRunId);
@@ -1305,7 +1309,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
           atomicObservations++;
           return 1;
         });
-        const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', async (workspaceId, runId) => {
+        const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: activeStore }, 'true', async (workspaceId, runId) => {
           assert.equal(runId, runIdB, 'startup may only dispatch the original unstarted follower, never the apply Run');
           dispatches.push(runId);
           admitFollowerToApproval(activeStore, workspaceId, runId);
@@ -1419,7 +1423,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
         for (let reboot = 1; reboot <= 2; reboot++) {
           reopened = new SqliteStore(fx.dataRoot);
           const activeStore = reopened;
-          const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
+          const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
             assert.equal(resumedRunId, runIdB, 'post-listen may resume B, never replay A or create another Run');
             dispatches.push(resumedRunId);
             admitFollowerToApproval(activeStore, workspaceId, resumedRunId);
