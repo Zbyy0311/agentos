@@ -281,6 +281,111 @@ test('F27 records an explicit text classification for v2 renames', async () => {
   }
 });
 
+test('F28 classifies frozen raw binary blobs when diff attributes force text patches', async () => {
+  const baseBytes = Buffer.from('\0baseline-binary-image');
+  const modifiedBytes = Buffer.from('\0modified-binary-image');
+  const deletedBytes = Buffer.from('\0deleted-binary-image');
+  const renamedBytes = Buffer.from('\0renamed-binary-image');
+  const addedBytes = Buffer.from('\0added-binary-image');
+  const repo = await createRepository({
+    attributes: 'src/*.bin diff\n',
+    baseBinary: baseBytes,
+    additionalBaseBinaries: [
+      { name: 'deleted.bin', bytes: deletedBytes },
+      { name: 'renamed-old.bin', bytes: renamedBytes },
+    ],
+  });
+  try {
+    await writeFile(join(repo.root, 'src', 'base.bin'), modifiedBytes);
+    await unlink(join(repo.root, 'src', 'deleted.bin'));
+    await rename(join(repo.root, 'src', 'renamed-old.bin'), join(repo.root, 'src', 'renamed-new.bin'));
+    await writeFile(join(repo.root, 'src', 'added.bin'), addedBytes);
+
+    const snapshot = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    assert.doesNotMatch(snapshot.patch, /GIT binary patch/u, 'the fixture must exercise text diffs forced by .gitattributes');
+
+    const images = new Map(snapshot.binaryManifest.map(item => [item.path, item]));
+    for (const [path, bytes] of [
+      ['src/base.bin', modifiedBytes],
+      ['src/deleted.bin', deletedBytes],
+      ['src/renamed-new.bin', renamedBytes],
+      ['src/added.bin', addedBytes],
+    ] as const) {
+      const image = images.get(path);
+      assert.equal(image?.binary, true, `${path} must be classified from its frozen Git blob`);
+      assert.equal(image?.sizeBytes, bytes.byteLength);
+      assert.equal(image?.sha256, sha256(bytes));
+    }
+    assert.equal(images.get('src/base.bin')?.baseSha256, sha256(baseBytes));
+    assert.equal(images.get('src/base.bin')?.baseObjectId,
+      execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/base.bin`], { cwd: repo.root, encoding: 'utf8' }).trim());
+    assert.equal(images.get('src/deleted.bin')?.deleted, true);
+    assert.equal(images.get('src/renamed-new.bin')?.baseSha256, sha256(renamedBytes));
+    assert.equal(images.get('src/renamed-new.bin')?.baseObjectId,
+      execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/renamed-old.bin`], { cwd: repo.root, encoding: 'utf8' }).trim());
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('F29 enforces injectable inventory, per-file, source-byte, and Git-blob resource limits', async () => {
+  const repo = await createRepository();
+  try {
+    let freezeReached = false;
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxInventoryPaths: 1 },
+      afterGitContextFrozen: () => { freezeReached = true; },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: inventory contains/u);
+    assert.equal(freezeReached, false, 'path limit must reject before freezing or copying the inventory');
+
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxFileBytes: 4 },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: single file exceeds/u);
+
+    let sourceBudgetFreezeReached = false;
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxFileBytes: 100, maxTotalSourceBytes: 8 },
+      afterGitContextFrozen: () => { sourceBudgetFreezeReached = true; },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: source inventory exceeds/u);
+    assert.equal(sourceBudgetFreezeReached, false,
+      'aggregate source-byte budget must reject during metadata preflight before freezing or copying source files');
+
+    await writeFile(join(repo.root, 'src', 'tracked.txt'), 'candidate\n');
+    let gitPreflightPassed = false;
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxGitBlobBytesPerFile: 1 },
+      afterGitContextFrozen: () => { gitPreflightPassed = true; },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: single Git blob exceeds/u);
+    assert.equal(gitPreflightPassed, true, 'changed Git blobs are checked after frozen source context and staging');
+
+    gitPreflightPassed = false;
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxTotalGitBlobBytes: 1 },
+      afterGitContextFrozen: () => { gitPreflightPassed = true; },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: base and candidate Git blobs exceed/u);
+    assert.equal(gitPreflightPassed, true, 'aggregate changed-blob limit is evaluated on the frozen candidate images');
+
+    let patchReached = false;
+    let sourceFreezeReached = false;
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxTotalGitBlobBytes: 15, maxGitBlobBytesPerFile: 10 },
+      afterGitContextFrozen: () => { sourceFreezeReached = true; },
+      beforePatch: () => { patchReached = true; },
+    }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: base and candidate Git blobs exceed/u);
+    assert.equal(sourceFreezeReached, true, 'candidate blob limit must run after source preflight');
+    assert.equal(patchReached, false, 'Git blob limit must reject before producing a frozen candidate patch');
+
+    await writeFile(join(repo.root, 'src', 'tracked.txt'), 'x');
+    const withinChangedBlobBudget = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
+      resourceLimits: { maxTotalGitBlobBytes: 15, maxGitBlobBytesPerFile: 9 },
+    });
+    assert.deepEqual(withinChangedBlobBudget.changedPaths, ['src/tracked.txt'],
+      'unchanged base blobs must not consume the changed-object budget');
+  } finally {
+    await repo.dispose();
+  }
+});
+
 test('F27 bounds total frozen blob hashing across many deleted binary files', async () => {
   const first = Buffer.alloc(17 * 1024 * 1024);
   const second = Buffer.alloc(16 * 1024 * 1024);

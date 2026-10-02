@@ -377,57 +377,108 @@ test('task 101 deep link loads directly and pagination preserves the selected ta
   expect(model.failures).toEqual([]);
 });
 
-test('frozen candidate preview loads a frozen candidate page and fetches one text diff on demand', async ({ page }, testInfo) => {
-  // Browser API replies are fixture-mocked here; persisted-candidate behavior is covered by the server workflow integration test.
+test('frozen candidate preview renders lazy text and binary metadata, pages on demand, and rejects stale apply after refresh', async ({ page }, testInfo) => {
+  // Browser rendering and interactions are real Playwright; only the API provider is fixture-mocked.
+  // Persisted frozen reads and apply-journal rejection are independently covered by server workflow integration tests.
   const model = fixture();
   const baseCommit = 'b'.repeat(40);
-  const diffHash = 'd'.repeat(64);
-  const contentHash = 'e'.repeat(64);
   const target = { ...task(102), id: 'task-preview', title: 'Frozen Preview Task', status: 'awaiting_application' as const,
     baseCommit, currentCandidateId: 'candidate-preview' };
   model.tasks.splice(0, model.tasks.length, target);
-  const candidate = { id: 'candidate-preview', round: 0, diffHash, contentHash, testStatus: 'passed', testExitCode: 0,
-    testCommand: 'pnpm test', reviewConclusion: 'approved', reviewSummary: 'Frozen candidate reviewed' };
-  const frozenPage = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
-    headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2, diffHash, contentHash, offset: 0, totalFiles: 1,
-    totalAdditions: 1, totalDeletions: 1, files: [{ fileIndex: 0, path: 'src/frozen.ts', status: 'modified',
-      additions: 1, deletions: 1, binary: false, withheld: false }], withheldContent: false, withheldReasons: [] };
-  const frozenDiff = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
-    manifestVersion: 2, diffHash, contentHash, fileIndex: 0, path: 'src/frozen.ts',
-    diffText: 'diff --git a/src/frozen.ts b/src/frozen.ts\n@@ -1 +1 @@\n-old\n+new', withheld: false };
-  await install(page, model, async (route, current) => {
+  const candidate = { id: 'candidate-preview', round: 0, diffHash: 'd'.repeat(64), contentHash: 'e'.repeat(64),
+    testStatus: 'passed', testExitCode: 0, testCommand: 'pnpm test', reviewConclusion: 'approved', reviewSummary: 'Frozen candidate reviewed' };
+  const replacement = { ...candidate, id: 'candidate-preview-next', diffHash: 'f'.repeat(64), contentHash: '1'.repeat(64) };
+  let activeCandidate = candidate;
+  const frozenFiles = Array.from({ length: 52 }, (_, fileIndex) => fileIndex === 0
+    ? { fileIndex, path: 'src/frozen.ts', status: 'modified', additions: 1, deletions: 1, binary: false, withheld: false }
+    : fileIndex === 1
+      ? { fileIndex, path: 'assets/removed.bin', status: 'deleted', additions: null, deletions: null, binary: true, withheld: true,
+        binarySizeBytes: 7, binarySha256: 'c'.repeat(64), binarySha256Available: true, binaryGitObjectId: '3'.repeat(40) }
+      : { fileIndex, path: `src/frozen-${fileIndex}.ts`, status: 'modified', additions: 1, deletions: 0, binary: false, withheld: false });
+  await install(page, model, async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/task-preview/progress')) {
-      await json(route, { progress: { task: target, runs: [], events: [], eventCursor: 0, candidates: [candidate], reviews: [] } });
+      target.currentCandidateId = activeCandidate.id;
+      await json(route, { progress: { task: target, runs: [], events: [], eventCursor: 0, candidates: [activeCandidate], reviews: [] } });
       return true;
     }
-    if (url.pathname.endsWith('/candidates/candidate-preview/preview/files/0')) { await json(route, frozenDiff); return true; }
-    if (url.pathname.endsWith('/candidates/candidate-preview/preview')) {
-      await route.fulfill({ json: frozenPage, headers: { 'Cache-Control': 'no-store' } });
+    if (url.pathname.endsWith(`/candidates/${activeCandidate.id}/preview/files/0`)) {
+      await json(route, { workspaceId: ws, collaborationTaskId: target.id, candidateId: activeCandidate.id, baseCommit,
+        manifestVersion: 2, diffHash: activeCandidate.diffHash, contentHash: activeCandidate.contentHash, fileIndex: 0, path: 'src/frozen.ts',
+        diffText: 'diff --git a/src/frozen.ts b/src/frozen.ts\n@@ -1 +1 @@\n-old\n+new', withheld: false });
+      return true;
+    }
+    if (url.pathname.endsWith(`/candidates/${activeCandidate.id}/preview`)) {
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const files = frozenFiles.slice(offset, offset + 50);
+      await route.fulfill({ json: { workspaceId: ws, collaborationTaskId: target.id, candidateId: activeCandidate.id, baseCommit,
+        headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2, diffHash: activeCandidate.diffHash,
+        contentHash: activeCandidate.contentHash, offset, ...(offset + files.length < frozenFiles.length ? { nextOffset: offset + files.length } : {}),
+        totalFiles: frozenFiles.length, totalAdditions: frozenFiles.length - 1, totalDeletions: 1, files,
+        withheldContent: true, withheldReasons: ['binary'] }, headers: { 'Cache-Control': 'no-store' } });
       return true;
     }
     return false;
   });
 
-  await page.goto(`/workspace/${ws}?conversationSource=runtime&conversationId=same-id&collaborationId=task-preview&view=execution`);
+  const deepLink = `/workspace/${ws}?conversationSource=runtime&conversationId=same-id&collaborationId=task-preview&view=execution`;
+  await page.goto(deepLink);
+  await expect(page).toHaveURL(/conversationSource=runtime.*collaborationId=task-preview.*view=execution/u);
   await expect(page.getByRole('heading', { name: 'Frozen Preview Task' })).toBeVisible();
-  const applyButton = page.getByRole('button', { name: '先查看候选差异' });
-  await expect(applyButton).toBeDisabled();
+  await expect(page.getByText(candidate.contentHash, { exact: true })).toBeVisible();
+  const applyBeforePreview = page.getByRole('button', { name: '先查看候选差异' });
+  await expect(applyBeforePreview).toBeDisabled();
   await page.getByRole('button', { name: '查看冻结文件与差异' }).click();
-  await expect(page.getByText('src/frozen.ts', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-candidate-preview] code').filter({ hasText: contentHash })).toBeVisible();
-  await expect(applyButton).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '确认应用已预览候选' })).toBeEnabled();
-  expect(model.requests.some(item => item.path.includes('/candidates/candidate-preview/preview?')
-    && item.path.includes(`candidateBaseCommit=${baseCommit}`) && item.path.includes(`candidateContentHash=${contentHash}`))).toBe(true);
-  expect(model.requests.some(item => item.path.includes('/preview/files/0'))).toBe(false,
-    'the text body remains lazy until the user expands its file');
+  const preview = page.locator('[data-candidate-preview]');
+  await expect(preview.getByText('src/frozen.ts', { exact: true })).toBeVisible();
+  await expect(preview.getByText('assets/removed.bin', { exact: true })).toBeVisible();
+  await expect(preview.getByText(/基线文件：7 B/u)).toBeVisible();
+  await expect(preview.getByText('c'.repeat(64), { exact: true })).toBeVisible();
+  await expect(preview.getByText('已加载 50/52 个文件')).toBeVisible();
+  await expect(applyBeforePreview).toBeDisabled();
+  expect(model.requests.some(item => item.path.includes('/candidates/candidate-preview/preview/files/0'))).toBe(false,
+    'the text body must remain lazy until its file is expanded');
 
-  await page.getByRole('button', { name: '按需加载文本差异' }).click();
+  await preview.getByRole('listitem').filter({ hasText: 'src/frozen.ts' })
+    .getByRole('button', { name: '按需加载文本差异' }).click();
   await expect(page.locator('pre')).toContainText('+new');
-  await page.locator('[data-candidate-preview]').screenshot({ path: testInfo.outputPath('candidate-preview.png') });
-  expect(model.requests.some(item => item.path.includes('/preview/files/0')
-    && item.path.includes(`candidateContentHash=${contentHash}`))).toBe(true);
+  await preview.getByRole('listitem').filter({ hasText: 'src/frozen.ts' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('candidate-preview-text-diff-viewport.png') });
+  await preview.getByRole('listitem').filter({ hasText: 'assets/removed.bin' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('candidate-preview-binary-viewport.png') });
+  const previewPageRequests = model.requests.filter(item => item.method === 'GET' && item.path.includes('/candidates/candidate-preview/preview?'));
+  expect(previewPageRequests.length).toBeGreaterThan(0);
+  for (const item of previewPageRequests) {
+    const firstPageUrl = new URL(item.path, 'http://fixture.local');
+    expect(firstPageUrl.searchParams.get('candidateBaseCommit')).toBe(baseCommit);
+    expect(firstPageUrl.searchParams.get('candidateContentHash')).toBe(candidate.contentHash);
+    expect(firstPageUrl.searchParams.get('offset')).toBe('0');
+    expect(firstPageUrl.searchParams.get('limit')).toBe('50');
+  }
+  const diffRequestBeforeExpand = model.requests.filter(item => item.method === 'GET' && item.path.includes('/preview/files/0'));
+  expect(diffRequestBeforeExpand).toHaveLength(1);
+  expect(new URL(diffRequestBeforeExpand[0]!.path, 'http://fixture.local').searchParams.get('candidateContentHash')).toBe(candidate.contentHash);
+
+  await page.getByRole('button', { name: '按需加载接下来的 2 个文件' }).click();
+  await expect(preview.getByText('已加载 52/52 个文件')).toBeVisible();
+  await expect(page.getByRole('button', { name: '确认应用已预览候选' })).toBeEnabled();
+  const secondPageRequest = model.requests.find(item => item.method === 'GET' && item.path.includes('/candidates/candidate-preview/preview?')
+    && new URL(item.path, 'http://fixture.local').searchParams.get('offset') === '50');
+  expect(secondPageRequest).toBeDefined();
+  expect(new URL(secondPageRequest!.path, 'http://fixture.local').searchParams.get('candidateContentHash')).toBe(candidate.contentHash);
+
+  // Refresh the same deep link after the canonical candidate identity changes.
+  // The previously loaded preview is transient and must not authorize the new candidate.
+  activeCandidate = replacement;
+  await page.reload();
+  await expect(page).toHaveURL(/conversationSource=runtime.*collaborationId=task-preview.*view=execution/u);
+  await expect(page.getByText(replacement.contentHash, { exact: true })).toBeVisible();
+  await expect(page.locator('[data-candidate-preview]')).toHaveCount(0);
+  const applyAfterIdentityChange = page.getByRole('button', { name: '先查看候选差异' });
+  await expect(applyAfterIdentityChange).toBeDisabled();
+  await applyAfterIdentityChange.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('candidate-identity-refresh-apply-disabled.png') });
+  expect(model.requests.filter(item => item.method === 'POST' && item.path.endsWith('/task-preview/apply'))).toHaveLength(0);
   expect(model.failures).toEqual([]);
 });
 
