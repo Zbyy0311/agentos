@@ -1,4 +1,9 @@
-import type { MemoryConflictDisposition, MemoryConflictType, PreferenceEvidence } from '@agentos/shared';
+import type {
+  MemoryConflictDisposition,
+  MemoryConflictType,
+  MemoryWorkspaceKnowledgePromotionRequestV1,
+  PreferenceEvidence,
+} from '@agentos/shared';
 import type { MemoryEntryDto } from './memoryEntries.js';
 
 export type MemoryLifecycleAction = 'archive' | 'restore' | 'delete' | 'revalidate' | 'set-validity';
@@ -69,7 +74,7 @@ export function memoryEntryWorkspacePromotionPath(workspaceId: string, entryId: 
   return `/api/workspaces/${encodeURIComponent(workspaceId)}/memory/entries/${encodeURIComponent(entryId)}/promote-to-workspace-knowledge`;
 }
 
-export function memoryEntryWorkspacePromotionPayload(entry: Pick<MemoryEntryDto, 'version'>): { expectedVersion: number } {
+export function memoryEntryWorkspacePromotionPayload(entry: Pick<MemoryEntryDto, 'version'>): MemoryWorkspaceKnowledgePromotionRequestV1 {
   return { expectedVersion: entry.version };
 }
 

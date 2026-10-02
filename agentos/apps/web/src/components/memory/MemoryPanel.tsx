@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '@/lib/useApi';
+import type { MemoryWorkspaceKnowledgePromotionResponseV1 } from '@agentos/shared';
 import {
   memoryEntriesPath,
   memoryEntryCreatePayload,
@@ -207,7 +208,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setNotice('');
     setStaleEntry(false);
     try {
-      const response = await request<{ entry: MemoryEntryDto; outcome: 'created' | 'existing' }>(
+      const response = await request<MemoryWorkspaceKnowledgePromotionResponseV1<MemoryEntryDto>>(
         memoryEntryWorkspacePromotionPath(workspaceId, target.id),
         { method: 'POST', body: memoryEntryWorkspacePromotionPayload(target) },
       );
@@ -217,8 +218,8 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
       setIsNew(false);
       setStatus('active');
       setNotice(response.outcome === 'created'
-        ? '已创建工作区知识；原任务或会话记忆仍保留。'
-        : '工作区知识已存在；原任务或会话记忆仍保留。');
+        ? '已创建工作区知识；原任务、Run 或会话记忆仍保留。'
+        : '工作区知识已存在；原任务、Run 或会话记忆仍保留。');
       await loadEntries();
     } catch (promotionError) {
       setError([asMessage(promotionError), memoryVersionConflictGuidance(promotionError)].filter(Boolean).join(' '));

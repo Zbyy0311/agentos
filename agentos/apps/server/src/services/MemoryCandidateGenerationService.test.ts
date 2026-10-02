@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createM3RuntimeEventRegistry } from '@agentos/shared';
 
 import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
@@ -18,6 +19,8 @@ import { RunRepository } from '../store/RunRepository.js';
 import { RunStageRepository } from '../store/RunStageRepository.js';
 import { TaskRepository } from '../store/TaskRepository.js';
 import { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
+import { createEntityId } from '../store/Identity.js';
+import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import type { MemoryCandidateDraft, MemoryExtractionInput } from './MemoryExtractor.js';
 import { MemoryExtractor } from './MemoryExtractor.js';
@@ -45,6 +48,32 @@ const NOW = '2026-09-11T00:00:00.000Z';
 const WS = 'ws_mf2rg';
 const TASK = 'task_mf2rg';
 const RUN = 'run_mf2rg';
+
+function seedTerminalSummaryArtifact(db: SqliteDb, runId: string, taskId: string, artifactId: string, summary: string): void {
+  db.prepare(`INSERT INTO runtime_artifacts (
+    id, workspace_id, provenance_kind, canonical_run_id, artifact_type, title, summary,
+    size_bytes, content_available, created_at
+  ) VALUES (?, ?, 'CANONICAL', ?, 'test', 'test result', ?, ?, 0, ?)`)
+    .run(artifactId, WS, runId, summary, summary.length, NOW);
+  db.prepare('UPDATE runs SET next_event_sequence = 2 WHERE workspace_id = ? AND id = ?').run(WS, runId);
+  const events = new RuntimeEventRepository(db as unknown as TransactionDatabase, createM3RuntimeEventRegistry());
+  events.appendWithinTransaction({
+    id: createEntityId('event'),
+    schemaVersion: 1,
+    type: 'run.completed',
+    workspaceId: WS,
+    taskId,
+    runId,
+    sequence: 1,
+    timestamp: NOW,
+    source: 'run-engine',
+    correlationId: `corr_${runId}`,
+    severity: 'info',
+    visibility: 'public',
+    durability: 'durable',
+    payload: { durationMs: 60_000, completedStageIds: [], artifactIds: [artifactId], summaryArtifactId: artifactId },
+  });
+}
 
 function fixture(
   runStatus = 'completed',
@@ -89,6 +118,9 @@ function fixture(
   ).run('stage_mf2rg', WS, RUN, 'snap_mf2rg', 'implement', 'implement', 1, 1,
     runStatus === 'completed' ? 'completed' : 'running',
     NOW, runStatus === 'completed' ? '2026-09-11T00:01:00.000Z' : null, NOW, NOW);
+  if (runStatus === 'completed') {
+    seedTerminalSummaryArtifact(db, RUN, TASK, 'artifact_mf2rg_test', 'pass: regression tests verified the requested behavior.');
+  }
   const candidates = new MemoryCandidateRepository(tdb);
   const entries = new MemoryEntryRepository(tdb);
   const service = new MemoryCandidateGenerationService({
@@ -106,13 +138,19 @@ function generatedContent(): string {
   return [
     '任务：修复登录页样式',
     '',
-    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。\nStage 结果：implement: completed (attempt 1, duration 60000ms)`,
+    `结果：持久化test结果：pass: regression tests verified the requested behavior.\nRun ${RUN} 完成（origin v2_api，reason initial）。\nStage 结果：implement: completed (attempt 1, duration 60000ms)`,
   ].join('\n');
 }
 
 test('MF2R-G1 completed Run generates a review-required Candidate with bounded evidence', () => {
   const fx = fixture();
   try {
+    fx.db.prepare(`INSERT INTO runtime_artifacts (
+      id, workspace_id, provenance_kind, canonical_run_id, artifact_type, title, summary,
+      size_bytes, content_available, created_at
+    ) VALUES ('artifact_mf2rg_unlinked', ?, 'CANONICAL', ?, 'test', 'unlinked result',
+      'UNREFERENCED_OUTPUT_MUST_NOT_BE_CAPTURED', 40, 0, ?)`)
+      .run(WS, RUN, NOW);
     const result = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
     assert.equal(result.outcome, 'created');
     const candidate = result.candidate!;
@@ -120,7 +158,11 @@ test('MF2R-G1 completed Run generates a review-required Candidate with bounded e
     assert.equal(candidate.outcome, 'review-required'); // agent-derived + conservative gate
     assert.equal(candidate.authority, 'agent-derived'); // never promoted by generated confidence
     assert.equal(candidate.scope, 'task');
+    const terminalEvent = fx.db.prepare("SELECT id FROM runtime_events WHERE run_id = ? AND type = 'run.completed'")
+      .get(RUN) as { id: string };
     assert.deepEqual(candidate.sources, [
+      { kind: 'artifact', id: 'artifact_mf2rg_test' },
+      { kind: 'event', id: terminalEvent.id },
       { kind: 'run', id: RUN },
       { kind: 'stage', id: 'stage_mf2rg' },
       { kind: 'task', id: TASK },
@@ -128,6 +170,8 @@ test('MF2R-G1 completed Run generates a review-required Candidate with bounded e
     assert.equal(candidate.category, 'knowledge');
     assert.ok(candidate.title.includes('修复登录页样式'));
     assert.ok(candidate.content.includes('implement: completed'));
+    assert.ok(candidate.content.includes('pass: regression tests verified the requested behavior.'));
+    assert.ok(!candidate.content.includes('UNREFERENCED_OUTPUT_MUST_NOT_BE_CAPTURED'));
     assert.ok(!candidate.content.includes('raw-provider')); // bounded bundle only
     assert.ok(candidate.exactContentHash !== null && candidate.normalizedTextHash !== null);
   } finally { fx.close(); }
@@ -174,7 +218,10 @@ test('canonical Run reuses MemoryExtractor and caps its exact-source review queu
     assert.equal(observed[0]?.objective, '修复登录页样式');
     assert.match(observed[0]?.resultSummary ?? '', new RegExp(RUN));
     assert.match(observed[0]?.resultSummary ?? '', /implement: completed/);
+    assert.match(observed[0]?.resultSummary ?? '', /持久化test结果：pass: regression tests verified/);
     assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'run' && source.id === RUN));
+    assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'event'));
+    assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'artifact' && source.id === 'artifact_mf2rg_test'));
     assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'stage' && source.id === 'stage_mf2rg'));
   } finally { fx.close(); }
 });
@@ -190,6 +237,8 @@ test('consecutive canonical Runs at the same timestamp cannot mix Task or Run ev
     fx.db.prepare(`INSERT INTO runs
       (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at, version)
       VALUES (?, ?, ?, ?, 'completed', 'initial', 'v2_api', 'test', ?, ?, 1)`).run(otherRun, WS, otherTask, otherRun, NOW, NOW);
+    seedTerminalSummaryArtifact(fx.db, otherRun, otherTask, 'artifact_mf2rg_next_test',
+      'pass: second task uses a separate test result.');
 
     const first = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW }).candidate!;
     const second = fx.service.generateForRunTerminal({ workspaceId: WS, runId: otherRun, createdAt: NOW }).candidate!;
@@ -197,12 +246,16 @@ test('consecutive canonical Runs at the same timestamp cannot mix Task or Run ev
     assert.match(first.content, /修复登录页样式/);
     assert.ok(!first.content.includes(`Run ${otherRun} `));
     assert.doesNotMatch(first.content, /二阶段消息隔离/);
+    assert.doesNotMatch(first.content, /second task uses a separate test result/);
     assert.match(second.content, new RegExp(otherRun));
     assert.match(second.content, /二阶段消息隔离/);
     assert.ok(!second.content.includes(`Run ${RUN} `));
     assert.doesNotMatch(second.content, /登录页样式/);
+    assert.doesNotMatch(second.content, /regression tests verified the requested behavior/);
     assert.deepEqual(first.sources.filter(source => source.kind === 'run'), [{ kind: 'run', id: RUN }]);
     assert.deepEqual(second.sources.filter(source => source.kind === 'run'), [{ kind: 'run', id: otherRun }]);
+    assert.deepEqual(first.sources.filter(source => source.kind === 'artifact'), [{ kind: 'artifact', id: 'artifact_mf2rg_test' }]);
+    assert.deepEqual(second.sources.filter(source => source.kind === 'artifact'), [{ kind: 'artifact', id: 'artifact_mf2rg_next_test' }]);
   } finally { fx.close(); }
 });
 
@@ -326,6 +379,9 @@ test('LITE-07-107 exact terminal dedup adds source once without changing accepte
     assert.equal(fx.service.generateForRunTerminal(input).outcome, 'converged');
     const merged = fx.entries.findById(WS, entry.id)!;
     assert.deepEqual(merged.sources, [
+      { kind: 'artifact', id: 'artifact_mf2rg_test' },
+      { kind: 'event', id: (fx.db.prepare("SELECT id FROM runtime_events WHERE run_id = ? AND type = 'run.completed'")
+        .get(RUN) as { id: string }).id },
       { kind: 'run', id: RUN }, { kind: 'stage', id: 'stage_mf2rg' }, { kind: 'task', id: TASK },
     ]);
     assert.equal(merged.version, 2);

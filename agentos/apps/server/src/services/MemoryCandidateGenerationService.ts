@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
+import { isRunCompletedPayload, type RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import { MemoryEntryRepository, type MemoryEntryDedupScope } from '../store/MemoryEntryRepository.js';
 import {
@@ -22,9 +22,10 @@ import type { MergeExactMemorySourcesInput } from '../store/MemoryEntryRepositor
  * docs/implementation/milestones/MF2-remainder-audit.md).
  *
  * Bound to the canonical terminal-outcome seam: after a Run completes, build
- * a bounded Evidence Bundle from the exact Task, Run, and linked Stage
- * records, pass it through MemoryExtractor, then persist up to three
- * review-gated Candidates through the canonical MF-0/MF-5 path.
+ * a bounded Evidence Bundle from the exact Task, Run, linked Stage records,
+ * and public result summaries explicitly referenced by the terminal Event;
+ * pass it through MemoryExtractor, then persist up to three review-gated
+ * Candidates through the canonical MF-0/MF-5 path.
  *
  * Deduplication runs in spec order and never converges silently past step 1:
  *   1. exact content hash: converge, no new Candidate;
@@ -132,6 +133,20 @@ function terminalCandidateId(runId: string, index: number): string {
   return index === 0 ? `mcand_terminal_${runId}` : `mcand_terminal_${runId}_${index + 1}`;
 }
 
+interface TerminalArtifactEvidence {
+  readonly eventId: string;
+  readonly artifactId: string;
+  readonly artifactType: 'review' | 'test';
+  readonly summary: string;
+  readonly sourceStageId: string | null;
+}
+
+const MAX_TERMINAL_ARTIFACTS = 8;
+
+function parseJson(value: string): unknown {
+  try { return JSON.parse(value) as unknown; } catch { return undefined; }
+}
+
 export class MemoryCandidateGenerationService {
   private readonly db: TransactionDatabase;
   private readonly candidates: MemoryCandidateRepository;
@@ -179,6 +194,7 @@ export class MemoryCandidateGenerationService {
 
     const task = this.tasks.findById(input.workspaceId, run.taskId);
     const stageList = this.stages.listByRun(input.workspaceId, input.runId).slice(0, 32);
+    const artifactEvidence = this.readTerminalArtifactEvidence(input.workspaceId, run.taskId, run.id, run.nextEventSequence);
     const stageLines = stageList.map(stage => {
       const duration = stage.startedAt !== undefined && stage.completedAt !== undefined
         ? `${Date.parse(stage.completedAt) - Date.parse(stage.startedAt)}ms`
@@ -190,10 +206,12 @@ export class MemoryCandidateGenerationService {
         + (failureMessage ? `; failure detail ${failureMessage}` : '');
     });
     const taskTitle = safeEvidence(task?.title, 200) || safeEvidence(run.objective, 200) || run.taskId;
-    // Bounded, record-only facts: status, failure code/message and stage
-    // outcomes. Never raw Provider output or hidden reasoning.
+    // Bounded durable facts: explicitly linked result summaries plus terminal
+    // status and stage outcomes. Never artifact bytes, raw Provider output,
+    // or hidden reasoning.
     const statusLabel = completed ? '完成' : run.status === 'cancelled' ? '已取消' : '失败';
     const statusSummary = truncate([
+      ...artifactEvidence.map(artifact => `持久化${artifact.artifactType}结果：${artifact.summary}`),
       completed
         ? `Run ${input.runId} 完成（origin ${run.origin}，reason ${run.reason}）。`
         : `Run ${input.runId} ${statusLabel}（origin ${run.origin}，reason ${run.reason}，status ${run.status}）。`,
@@ -222,6 +240,17 @@ export class MemoryCandidateGenerationService {
     const buildCandidate = (draft: MemoryCandidateDraft, index: number, duplicateResolved: boolean): CreateMemoryCandidateInput => {
       const content = truncate(draft.content, 12000);
       const exactHash = hashMemoryText(content);
+      const sourceRefs = [
+        { kind: 'task' as const, id: run.taskId },
+        { kind: 'run' as const, id: input.runId },
+        ...artifactEvidence.flatMap(artifact => [
+          { kind: 'event' as const, id: artifact.eventId },
+          { kind: 'artifact' as const, id: artifact.artifactId },
+          ...(artifact.sourceStageId ? [{ kind: 'stage' as const, id: artifact.sourceStageId }] : []),
+        ]),
+        ...stageList.map(stage => ({ kind: 'stage' as const, id: stage.id })),
+      ];
+      const sources = [...new Map(sourceRefs.map(source => [`${source.kind}\u0000${source.id}`, source])).values()];
       return {
         id: terminalCandidateId(input.runId, index),
         workspaceId: input.workspaceId,
@@ -240,11 +269,7 @@ export class MemoryCandidateGenerationService {
         normalizedTextHash: hashMemoryText(normalizeMemoryText(content)),
         tokenEstimate: Math.max(1, Math.ceil(content.length / 4)),
         duplicateResolved,
-        sources: [
-          { kind: 'task', id: run.taskId },
-          { kind: 'run', id: input.runId },
-          ...stageList.map(stage => ({ kind: 'stage' as const, id: stage.id })),
-        ],
+        sources,
         createdAt: input.createdAt,
         minConfidence: 0.9,
         maxTokenEstimate: 4000,
@@ -334,6 +359,50 @@ export class MemoryCandidateGenerationService {
       }
       throw new MemoryCandidateGenerationError('GENERATION_FAILED');
     }
+  }
+
+  /**
+   * Reads only durable, public output summaries explicitly linked by this
+   * Run's terminal event. Artifact bytes, provider logs, and other Run output
+   * are deliberately outside the evidence bundle.
+   */
+  private readTerminalArtifactEvidence(
+    workspaceId: string,
+    taskId: string,
+    runId: string,
+    nextEventSequence: number,
+  ): TerminalArtifactEvidence[] {
+    const event = this.db.prepare(`
+      SELECT id, payload_json FROM runtime_events
+      WHERE workspace_id = ? AND task_id = ? AND run_id = ? AND type = 'run.completed'
+        AND visibility = 'public' AND durability = 'durable' AND sequence < ?
+      ORDER BY sequence DESC LIMIT 1
+    `).get(workspaceId, taskId, runId, nextEventSequence) as { id: string; payload_json: string } | undefined;
+    if (!event) return [];
+    const payload = parseJson(event.payload_json);
+    if (!isRunCompletedPayload(payload)) return [];
+
+    const referencedIds = [...new Set([
+      ...(payload.summaryArtifactId ? [payload.summaryArtifactId] : []),
+      ...payload.artifactIds,
+    ])].slice(0, MAX_TERMINAL_ARTIFACTS);
+    const evidence: TerminalArtifactEvidence[] = [];
+    const findArtifact = this.db.prepare(`
+      SELECT id, artifact_type, summary, source_stage_id FROM runtime_artifacts
+      WHERE workspace_id = ? AND canonical_run_id = ? AND provenance_kind = 'CANONICAL'
+        AND id = ? AND artifact_type IN ('review', 'test')
+    `);
+    for (const artifactId of referencedIds) {
+      if (!payload.artifactIds.includes(artifactId)) continue;
+      const row = findArtifact.get(workspaceId, runId, artifactId) as {
+        id: string; artifact_type: 'review' | 'test'; summary: string | null; source_stage_id: string | null;
+      } | undefined;
+      const summary = safeEvidence(row?.summary, 1_000);
+      if (!row || !summary) continue;
+      evidence.push({ eventId: event.id, artifactId: row.id, artifactType: row.artifact_type,
+        summary, sourceStageId: row.source_stage_id });
+    }
+    return evidence;
   }
 
   /**

@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from 'express';
 
-import { MEMORY_CANDIDATE_OUTCOMES, type MemoryCandidateOutcome, type MemoryRetrievalContext } from '@agentos/shared';
+import {
+  MEMORY_CANDIDATE_OUTCOMES,
+  type MemoryCandidateOutcome,
+  type MemoryRetrievalContext,
+  type MemoryWorkspaceKnowledgePromotionResponseV1,
+} from '@agentos/shared';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryEntryRepository, type CreateMemoryEntryInput, type MemoryEntryRecord, type UpdateMemoryEntryInput } from '../store/MemoryEntryRepository.js';
@@ -225,7 +230,8 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         expectedVersion: body.expectedVersion as number,
         promotedAt: new Date().toISOString(),
       });
-      res.status(result.outcome === 'created' ? 201 : 200).json(result);
+      const response: MemoryWorkspaceKnowledgePromotionResponseV1<MemoryEntryRecord> = result;
+      res.status(response.outcome === 'created' ? 201 : 200).json(response);
     } catch (error) {
       if (error instanceof MemoryWorkspaceKnowledgePromotionError) {
         const status = error.code === 'ENTRY_NOT_FOUND' ? 404
