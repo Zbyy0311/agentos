@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { lstat, readdir, rmdir, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +20,7 @@ import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateS
 import { WorkspaceAdmissionAuthority } from './WorkspaceAdmissionAuthority.js';
 import { WorkspaceAdmissionStartupReconciler } from './WorkspaceAdmissionStartupReconciler.js';
 import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
+import { migration054 } from '../migrations/migrations/054-p2-recovery.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { TaskRunService } from './TaskRunService.js';
 import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
@@ -188,6 +189,16 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
         process.emitWarning(`Fixture cleanup incomplete; retained ${root}: ${(error as NodeJS.ErrnoException).code}`);
       }
     } };
+}
+
+function grantRecoveryFixturePermissions(fx: ReturnType<typeof fixture>): void {
+  const db = fx.store.getDatabase();
+  db.prepare('UPDATE agent_profiles SET permissions_json = ? WHERE workspace_id = ? AND id = ?')
+    .run(JSON.stringify(['read']), 'workspace-a', 'planner');
+  db.prepare('UPDATE agent_profiles SET permissions_json = ? WHERE workspace_id = ? AND id = ?')
+    .run(JSON.stringify(['read', 'write']), 'workspace-a', 'implementer');
+  db.prepare('UPDATE agent_profiles SET permissions_json = ? WHERE workspace_id = ? AND id = ?')
+    .run(JSON.stringify(['read', 'review']), 'workspace-a', 'reviewer');
 }
 
 for (let repetition = 1; repetition <= 3; repetition++) {
@@ -387,6 +398,115 @@ for (let repetition = 1; repetition <= 3; repetition++) {
     } finally { await fx.close(); }
   });
 }
+
+test('P2 recovery review: deterministic failure duplicate continue creates one canonical retry Run', async () => {
+  const fx = fixture({ runtimeDispatchEnabled: false });
+  try {
+    migration054.apply({ db: fx.store.getDatabase() as unknown as MinimalDatabaseSync });
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-known-failure-review-01', action: 'retry-known-failure' as const,
+    };
+
+    const [first, duplicate] = await Promise.all([fx.service.recover(input), fx.service.recover(input)]);
+    assert.equal([first, duplicate].filter(result => result.pending).length, 1,
+      'the duplicate observes the in-flight canonical claim instead of retrying it');
+    const accepted = first.pending ? duplicate : first;
+    assert.ok(accepted.newRunId);
+    const retry = await fx.service.recover(input);
+    assert.equal(retry.replayed, true);
+    assert.ok(retry.newRunId);
+    assert.equal(retry.newRunId, accepted.newRunId);
+    assert.equal(fx.store.runRepository().findById('workspace-a', retry.newRunId!)?.parentRunId, failed.id);
+    assert.equal(fx.store.runRepository().findById('workspace-a', failed.id)?.version, failed.version,
+      'the failed parent Run remains immutable');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, 2,
+      'duplicate continue creates exactly one child Run');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', failed.id).filter(item => item.type === 'run.retry').length, 1);
+
+    await assert.rejects(() => fx.service.recover({ ...input, expectedRunVersion: failed.version + 1 }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT');
+    await assert.rejects(() => fx.service.recover({ ...input, expectedTaskVersion: blocked.version + 1,
+      idempotencyKey: 'p2-known-failure-stale-01' }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, 2);
+  } finally { await fx.close(); }
+});
+
+test('P2 recovery review: UNKNOWN effects fail closed and clean linked recovery is body-bound/idempotent', async () => {
+  let dispatchCalls = 0;
+  const fx = fixture({ runtimeDispatchEnabled: false, dispatchRun: async () => { dispatchCalls++; } });
+  try {
+    migration054.apply({ db: fx.store.getDatabase() as unknown as MinimalDatabaseSync });
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_PROCESS_UNKNOWN', failureMessage: 'Provider side effects could not be determined',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const linkedInput = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-unknown-linked-review-01', action: 'new-linked-task' as const,
+    };
+    const retryInput = { ...linkedInput, idempotencyKey: 'p2-unknown-retry-review-01', action: 'retry-known-failure' as const };
+    const runCountBefore = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n;
+
+    await assert.rejects(() => fx.service.recover(retryInput), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_UNRESOLVED');
+    const dirtyMarker = join(fx.repositoryRoot, 'uncommitted-recovery-marker.txt');
+    writeFileSync(dirtyMarker, 'must not be copied into a linked recovery baseline\n');
+    await assert.rejects(() => fx.service.recover(linkedInput), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_UNRESOLVED');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_collaboration_recoveries').get() as { n: number }).n, 0,
+      'a dirty/uninspectable baseline must not burn the unique recovery idempotency key');
+    rmSync(dirtyMarker);
+    writeFileSync(join(fx.repositoryRoot, 'README.md'), 'clean, reviewed recovery baseline\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: fx.repositoryRoot, windowsHide: true });
+    execFileSync('git', ['commit', '-qm', 'advance clean recovery baseline'], { cwd: fx.repositoryRoot, windowsHide: true });
+
+    const [first, concurrent] = await Promise.all([
+      fx.service.recover(linkedInput), fx.service.recover(linkedInput),
+    ]);
+    assert.equal(first.task.id, concurrent.task.id);
+    assert.deepEqual([first.replayed, concurrent.replayed].sort(), [false, true]);
+    assert.equal(first.task.status, 'awaiting_confirmation');
+    assert.equal(first.task.baseCommit, first.checkedBaseCommit);
+    assert.equal(first.task.canonicalRunId, undefined, 'linked task requires fresh confirmation and has no old Run attached');
+    assert.match(first.task.objective, new RegExp(`linked from collaboration ${fx.plan.id}, Run ${failed.id}`));
+    assert.match(first.task.objective, /interrupted Provider call was not resumed/);
+    assert.equal(first.checkedBaseCommit, execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true,
+    }).trim());
+    assert.notEqual(first.checkedBaseCommit, fx.plan.baseCommit,
+      'linked recovery uses the newly checked clean baseline rather than the interrupted task baseline');
+    const original = fx.repository.findById('workspace-a', fx.plan.id)!;
+    assert.equal(original.status, 'blocked');
+    assert.equal(original.canonicalRunId, failed.id, 'the previous collaboration keeps its original canonical Run');
+    assert.equal(fx.store.runRepository().findById('workspace-a', failed.id)?.version, failed.version);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, runCountBefore,
+      'unknown side effects never create a retry Run');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_collaboration_recoveries').get() as { n: number }).n, 1);
+    assert.equal(dispatchCalls, 0, 'unknown Provider call is never replayed');
+
+    await assert.rejects(() => fx.service.recover({ ...linkedInput, expectedRunVersion: failed.version + 1 }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT');
+    await assert.rejects(() => fx.service.recover({ ...linkedInput, expectedTaskVersion: blocked.version + 1,
+      idempotencyKey: 'p2-unknown-linked-stale-01' }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_tasks WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, 2,
+      'body conflict and stale CAS do not create another linked task');
+  } finally { await fx.close(); }
+});
 
 test('positive control: queued collaboration cancellation cancels its canonical Run', async () => {
   const fx = fixture();
