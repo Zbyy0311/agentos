@@ -17,6 +17,10 @@ import {
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import {
+  assertCollaborationPathBoundaryUnchanged,
+  captureCollaborationPathBoundary,
+} from './CollaborationPathBoundary.js';
 import { getAgentOsBuildIdentity } from './BuildIdentity.js';
 
 const require = createRequire(import.meta.url);
@@ -149,6 +153,8 @@ export interface CleanupApplyResult {
 interface MaintenanceServiceSeams {
   readonly beforeCleanupQuarantine?: (input: { readonly sourcePath: string }) => void | Promise<void>;
   readonly afterCleanupQuarantine?: (input: { readonly sourcePath: string; readonly quarantinedPath: string }) => void | Promise<void>;
+  /** @internal Deterministic source replacement seam for stable-copy tests. */
+  readonly beforeStableCopyOpen?: (input: { readonly sourcePath: string }) => void | Promise<void>;
 }
 
 export class MaintenanceServiceError extends Error {
@@ -213,7 +219,8 @@ export class MaintenanceService {
         throwIfAborted(signal);
         const payloadPath = `payload/${String(index).padStart(6, '0')}.bin`;
         const payloadAbsolute = join(stage, ...payloadPath.split('/'));
-        await copyStable(source.absolutePath, payloadAbsolute, signal);
+        await copyStable(source.absolutePath, payloadAbsolute, this.dataRoot, signal,
+          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }));
         files.push(await makeEntry('data-root', source.targetPath, payloadPath, payloadAbsolute));
         index += 1;
       }
@@ -225,7 +232,8 @@ export class MaintenanceService {
         await validateWorkspacePath(workspaceRoot, source.absolutePath);
         const payloadPath = `payload/${String(index).padStart(6, '0')}.bin`;
         const payloadAbsolute = join(stage, ...payloadPath.split('/'));
-        await copyStable(source.absolutePath, payloadAbsolute, signal);
+        await copyStable(source.absolutePath, payloadAbsolute, workspaceRoot, signal,
+          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }));
         files.push(await makeEntry('workspace-root', source.relativePath, payloadPath, payloadAbsolute, source.workspaceId));
         index += 1;
       }
@@ -342,14 +350,14 @@ export class MaintenanceService {
         const payload = resolveInside(backupRoot, entry.payloadPath);
         const destination = resolveInside(staging, entry.targetPath);
         await mkdir(dirname(destination), { recursive: true });
-        await copyStable(payload, destination);
+        await copyStable(payload, destination, backupRoot);
         const copied = await hashStable(destination);
         if (copied.sizeBytes !== entry.sizeBytes || copied.sha256 !== entry.sha256) throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
       }
       const databaseEntry = manifest.files.find(item => item.scope === 'database')!;
       const stagedDatabase = resolveInside(staging, databaseEntry.targetPath);
       await mkdir(dirname(stagedDatabase), { recursive: true });
-      await copyStable(resolveInside(backupRoot, databaseEntry.payloadPath), stagedDatabase);
+      await copyStable(resolveInside(backupRoot, databaseEntry.payloadPath), stagedDatabase, backupRoot);
       const databaseHash = await hashStable(stagedDatabase);
       if (databaseHash.sizeBytes !== databaseEntry.sizeBytes || databaseHash.sha256 !== databaseEntry.sha256) {
         throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
@@ -367,7 +375,7 @@ export class MaintenanceService {
         const destination = resolveWorkspaceAsset(workspaceRoot, entry.targetPath);
         const payload = resolveInside(backupRoot, entry.payloadPath);
         await mkdir(dirname(destination), { recursive: true });
-        await copyStable(payload, destination);
+        await copyStable(payload, destination, backupRoot);
         const copied = await hashStable(destination);
         if (copied.sizeBytes !== entry.sizeBytes || copied.sha256 !== entry.sha256) {
           throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
@@ -1149,16 +1157,55 @@ async function makeEntry(
   };
 }
 
-async function copyStable(sourcePath: string, targetPath: string, signal?: AbortSignal): Promise<void> {
+async function copyStable(
+  sourcePath: string,
+  targetPath: string,
+  boundaryRoot: string,
+  signal?: AbortSignal,
+  beforeOpen?: () => void | Promise<void>,
+): Promise<void> {
   throwIfAborted(signal);
-  const info = await lstat(sourcePath);
-  if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+  const source = resolve(sourcePath);
+  let root: string;
+  let canonicalSource: string;
+  try {
+    // Windows may return an 8.3 short name for one path and a long name for
+    // another path to the same directory. Compare and witness canonical paths
+    // so that this representation difference does not look like traversal.
+    root = await realpath(resolve(boundaryRoot));
+    canonicalSource = await realpath(source);
+  } catch {
+    throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
+  }
+  const initial = await lstat(source, { bigint: true });
+  if (!initial.isFile() || initial.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+  const rel = relative(root, canonicalSource);
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
+  }
+  let witness: Awaited<ReturnType<typeof captureCollaborationPathBoundary>>;
+  try { witness = await captureCollaborationPathBoundary(root, [rel.split(sep).join('/')]); }
+  catch { throw new MaintenanceServiceError('BACKUP_PATH_INVALID'); }
+  await beforeOpen?.();
   const input = await open(sourcePath, 'r');
   try {
-    const before = await input.stat();
+    const before = await input.stat({ bigint: true });
+    if (!before.isFile() || !sameFileIdentity(initial, before)) {
+      throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
+    }
+    // Re-check both opened-handle identity and every parent directory witness.
+    // A junction swapped after lstat but before open must fail before reading.
+    try { await assertCollaborationPathBoundaryUnchanged(root, witness); }
+    catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
+    const openedPath = await lstat(source, { bigint: true });
+    if (!sameFileIdentity(before, openedPath)) throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
     const bytes = await input.readFile();
-    const after = await input.stat();
-    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+    const after = await input.stat({ bigint: true });
+    try { await assertCollaborationPathBoundaryUnchanged(root, witness); }
+    catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
+    const afterPath = await lstat(source, { bigint: true });
+    if (!sameFileIdentity(before, after) || !sameFileIdentity(before, afterPath)
+      || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
       throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED');
     }
     throwIfAborted(signal);
@@ -1173,6 +1220,10 @@ async function copyStable(sourcePath: string, targetPath: string, signal?: Abort
   } finally {
     await input.close();
   }
+}
+
+function sameFileIdentity(left: { dev: bigint; ino: bigint; mode: bigint }, right: { dev: bigint; ino: bigint; mode: bigint }): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode;
 }
 
 async function hashStable(filePath: string): Promise<{ sizeBytes: number; sha256: string }> {

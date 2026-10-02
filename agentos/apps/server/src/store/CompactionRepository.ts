@@ -309,7 +309,7 @@ export class CompactionRepository {
     const changed = this.db.prepare(`UPDATE conversation_compactions
       SET status = 'failed', failure_code = ?, failure_message = ?, lease_owner = NULL,
         lease_expires_at = NULL, updated_at = ?, version = version + 1
-      WHERE workspace_id = ? AND id = ? AND version = ? AND status = 'running'`).run(
+      WHERE workspace_id = ? AND id = ? AND version = ? AND status IN ('running', 'retry-pending')`).run(
       input.failureCode, input.failureMessage, input.now, input.workspaceId, input.id, input.expectedVersion,
     ) as { changes?: number | bigint };
     if (Number(changed.changes ?? 0) !== 1) throw new CompactionRepositoryError('CONFLICT');
@@ -333,6 +333,24 @@ export class CompactionRepository {
     ) as { changes?: number | bigint };
     if (Number(changed.changes ?? 0) !== 1) throw new CompactionRepositoryError('CONFLICT');
     return this.requireById(input.workspaceId, input.id);
+  }
+
+  /**
+   * After server ownership has been acquired at startup, no prior summarizer
+   * can still hold the data-root writer. Move its durable lease to retry-pending
+   * so maintenance does not wait on an execution that died with the old process.
+   */
+  reconcileInterruptedOnStartupWithinTransaction(now: string): number {
+    assertTransaction(this.db);
+    if (!isCanonicalUtcTimestamp(now)) throw new CompactionRepositoryError('INPUT_INVALID');
+    const changed = this.db.prepare(`UPDATE conversation_compactions
+      SET status = 'retry-pending', failure_code = 'COMPACTION_SERVER_RESTARTED',
+        failure_message = 'summary execution was interrupted by server restart',
+        lease_owner = NULL, lease_expires_at = NULL, updated_at = ?, version = version + 1
+      WHERE status = 'running' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL`).run(now) as {
+      changes?: number | bigint;
+    };
+    return Number(changed.changes ?? 0);
   }
 
   /**

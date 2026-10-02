@@ -6,6 +6,8 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { SqliteStore } from './store/SqliteStore.js';
+import { CompactionRepository } from './store/CompactionRepository.js';
+import { inTransaction } from './store/Transaction.js';
 import { WorkspaceManager } from './managers/WorkspaceManager.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createTaskRoutes } from './routes/tasks.js';
@@ -309,6 +311,12 @@ async function bootstrap(): Promise<void> {
       recoveredRuns = recoverInterruptedRuns(store);
       const interruptedDiscussions = store.groupInteractionRepository().reconcileInterruptedOnStartup(new Date().toISOString());
       diagLog(`GROUP_RECOVERY interrupted=${interruptedDiscussions}`);
+      // Data-root ownership is exclusive before store recovery starts, so any
+      // persisted running compaction belongs to a process that has exited.
+      const startupDatabase = store.getDatabase();
+      const interruptedCompactions = inTransaction(startupDatabase, () =>
+        new CompactionRepository(startupDatabase).reconcileInterruptedOnStartupWithinTransaction(new Date().toISOString()));
+      if (interruptedCompactions > 0) diagLog(`COMPACTION_RECOVERY interrupted=${interruptedCompactions}`);
     } catch {
       // The recovery transaction already rolled back; only the stable code escapes.
       throw new StartupFailure('STARTUP_RECOVERY_FAILED');

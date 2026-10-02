@@ -4,8 +4,8 @@ import { createHash } from 'node:crypto';
 import { getWorkflowTemplate } from '@agentos/shared';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MaintenanceBarrier } from './MaintenanceBarrier.js';
 import { MaintenanceCoordinator } from './MaintenanceCoordinator.js';
@@ -125,6 +125,47 @@ test('backup includes references from workspaces created after the service start
     assert.equal(readFileSync(join(restoredRoot, 'workspace-roots', fx.workspace.id,
       'agent-memory', 'records', 'knowledge', 'memory_fixture.md'), 'utf8').includes('Durable memory evidence'), true);
   } finally { fx.cleanup(); }
+});
+
+test('backup rejects a source ancestor junction swapped after path inspection and does not publish its bytes', async () => {
+  const fx = createFixture();
+  const evidenceDirectory = join(fx.dataRoot, '.agentos', 'evidence');
+  const heldEvidenceDirectory = join(fx.root, 'evidence-before-junction-swap');
+  const outsideDirectory = join(fx.root, 'outside-evidence');
+  mkdirSync(outsideDirectory, { recursive: true });
+  const outsideEvidence = join(outsideDirectory, 'review_fixture.json');
+  const outsideBytes = 'outside-root secret must never enter backup';
+  writeFileSync(outsideEvidence, outsideBytes);
+  let originalMoved = false;
+  let junctionCreated = false;
+  const service = new MaintenanceService(
+    fx.dataRoot,
+    fx.store.getDatabase() as any,
+    [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }],
+    () => new Date(),
+    {
+      beforeStableCopyOpen: ({ sourcePath }) => {
+        if (realpathSync.native(sourcePath) !== realpathSync.native(join(evidenceDirectory, 'review_fixture.json')) || originalMoved) return;
+        renameSync(evidenceDirectory, heldEvidenceDirectory);
+        originalMoved = true;
+        symlinkSync(outsideDirectory, evidenceDirectory, 'junction');
+        junctionCreated = true;
+      },
+    },
+  );
+  try {
+    await assert.rejects(service.createBackup(), (error: { code?: string }) =>
+      error.code === 'BACKUP_SOURCE_IDENTITY_CHANGED' || error.code === 'BACKUP_SOURCE_CHANGED');
+    assert.equal(originalMoved, true, 'the race fixture reached the post-inspection replacement seam');
+    assert.equal(readdirSync(join(fx.dataRoot, '.agentos', 'backups')).length, 0,
+      'a rejected source replacement must leave no published backup');
+    assert.equal(readFileSync(outsideEvidence, 'utf8'), outsideBytes,
+      'the outside file remains unchanged and its bytes are not admitted through the replaced ancestor');
+  } finally {
+    if (junctionCreated) rmSync(evidenceDirectory, { recursive: true, force: true });
+    if (originalMoved && existsSync(heldEvidenceDirectory)) renameSync(heldEvidenceDirectory, evidenceDirectory);
+    fx.cleanup();
+  }
 });
 
 test('online backup drains writes and active executions, then restores SQLite candidates, memory, attachments and evidence', async () => {
@@ -341,27 +382,63 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
         const detailResponse = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}/collaboration/tasks/${collaboration.taskId}`);
         assert.equal(detailResponse.status, 200);
         const details = await detailResponse.json() as {
-          task: { version: number };
-          candidates: Array<{ id: string; diffText: string; manifest: Array<{ path: string; sizeBytes: number; sha256: string }> }>;
+          task: { version: number; baseCommit: string };
+          candidates: Array<{ id: string; diffHash: string; contentHash: string }>;
           reviews: Array<{ id: string; summary: string }>;
         };
         const candidate = details.candidates.find(item => item.id === collaboration.candidateId);
         assert.ok(candidate);
-        assert.match(candidate.diffText, /GIT binary patch/u);
-        assert.deepEqual(candidate.manifest, [{
-          path: 'payload.bin', sizeBytes: collaboration.candidateBytes.byteLength,
-          sha256: createHash('sha256').update(collaboration.candidateBytes).digest('hex'),
-        }]);
+        assert.equal(JSON.stringify(details).includes('GIT binary patch'), false,
+          'task detail keeps the frozen binary patch out of the default payload');
+        const previewIdentity = new URLSearchParams({
+          candidateBaseCommit: details.task.baseCommit,
+          candidateContentHash: candidate.contentHash,
+        });
+        const previewResponse = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}`
+          + `/collaboration/tasks/${collaboration.taskId}/candidates/${candidate.id}/preview?${previewIdentity}`);
+        assert.equal(previewResponse.status, 200, await previewResponse.clone().text());
+        const preview = await previewResponse.json() as {
+          files: Array<{
+            fileIndex: number; path: string; binary: boolean; withheld: boolean; binarySizeBytes?: number; binarySha256?: string;
+            binarySha256Available?: boolean; binaryGitObjectId?: string; baseSizeBytes?: number; baseSha256Available?: boolean;
+          }>;
+          withheldReasons: string[];
+        };
+        assert.equal(preview.files[0]?.path, 'payload.bin');
+        assert.equal(preview.files[0]?.binary, true);
+        assert.equal(preview.files[0]?.withheld, true);
+        assert.equal(preview.files[0]?.binarySizeBytes, collaboration.candidateBytes.byteLength);
+        assert.equal(preview.files[0]?.binarySha256, createHash('sha256').update(collaboration.candidateBytes).digest('hex'));
+        assert.equal(preview.files[0]?.binarySha256Available, true);
+        assert.match(preview.files[0]?.binaryGitObjectId ?? '', /^[a-f0-9]{40}$/u);
+        assert.equal(preview.files[0]?.baseSizeBytes, 5);
+        assert.equal(preview.files[0]?.baseSha256Available, true);
+        assert.equal(preview.withheldReasons.includes('binary'), true);
+        const fileDiffResponse = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}`
+          + `/collaboration/tasks/${collaboration.taskId}/candidates/${candidate.id}/preview/files/0?${previewIdentity}`);
+        assert.equal(fileDiffResponse.status, 200);
+        const fileDiff = await fileDiffResponse.json() as { diffText: string; withheld: boolean; withheldReason?: string };
+        assert.equal(fileDiff.withheld, true);
+        assert.equal(fileDiff.withheldReason, 'binary');
+        assert.equal(fileDiff.diffText.includes('GIT binary patch'), false,
+          'the on-demand preview withholds binary patch bytes after restore');
         assert.equal(details.reviews.some(review => review.id === collaboration.reviewId), true);
-        assert.equal(readFileSync(join(restoredRoot, '.agentos', 'artifacts', fx.workspace.id, collaboration.runId,
-          collaboration.diffArtifactId, 'content'), 'utf8'), candidate.diffText);
+        const restoredDiffArtifact = readFileSync(join(restoredRoot, '.agentos', 'artifacts', fx.workspace.id, collaboration.runId,
+          collaboration.diffArtifactId, 'content'), 'utf8');
+        assert.match(restoredDiffArtifact, /GIT binary patch/u, 'the exact frozen patch remains durably backed up');
+        assert.equal(createHash('sha256').update(restoredDiffArtifact).digest('hex'), candidate.diffHash);
         assert.equal(readFileSync(join(restoredRoot, '.agentos', 'artifacts', fx.workspace.id, collaboration.runId,
           collaboration.reviewArtifactId, 'content'), 'utf8'), 'Binary candidate reviewed and approved.');
 
         const applyResponse = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}/collaboration/tasks/${collaboration.taskId}/apply`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'restored-binary-candidate-apply' },
-          body: JSON.stringify({ expectedVersion: details.task.version }),
+          body: JSON.stringify({
+            expectedVersion: details.task.version,
+            candidateId: candidate.id,
+            candidateBaseCommit: details.task.baseCommit,
+            candidateContentHash: candidate.contentHash,
+          }),
         });
         assert.equal(applyResponse.status, 200, await applyResponse.clone().text());
         const applied = await applyResponse.json() as { task: { status: string } };
@@ -437,7 +514,14 @@ function seedBinaryCollaborationCandidate(fx: Fixture): {
   const diffArtifactId = 'artifact-binary-diff';
   const manifestArtifactId = 'artifact-binary-manifest';
   const reviewArtifactId = 'artifact-binary-review';
-  const manifest = [{ path: 'payload.bin', sizeBytes: candidateBytes.byteLength, sha256: createHash('sha256').update(candidateBytes).digest('hex') }];
+  const baselineBytes = Buffer.from([0, 1, 2, 3, 4]);
+  const manifest = [{
+    path: 'payload.bin', binary: true, sizeBytes: candidateBytes.byteLength,
+    sha256: createHash('sha256').update(candidateBytes).digest('hex'),
+    gitObjectId: execFileSync('git', ['hash-object', 'payload.bin'], { cwd: candidateWorktree, encoding: 'utf8', windowsHide: true }).trim(),
+    baseSizeBytes: baselineBytes.byteLength, baseSha256: createHash('sha256').update(baselineBytes).digest('hex'),
+    baseObjectId: execFileSync('git', ['rev-parse', `${baseCommit}:payload.bin`], { cwd: fx.workspaceRoot, encoding: 'utf8', windowsHide: true }).trim(),
+  }];
   repository.createCandidate({
     id: candidateId, collaborationTaskId: plan.id, workspaceId: fx.workspace.id, canonicalRunId: graph.run.id,
     round: 0, baseCommit, headCommit: baseCommit, diffHash: createHash('sha256').update(diffText).digest('hex'),
