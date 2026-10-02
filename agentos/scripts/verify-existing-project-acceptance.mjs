@@ -16,6 +16,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
 import { captureOfficialCodexIdentity, verifyOfficialCodexIdentity } from './acceptance-provider-identity.mjs';
+import {
+  verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateOutput,
+  verifyProbeCandidateRecord, verifyProbeWorkspaceSource, verifyRealPlanReceiptBinding,
+} from './p4-plan-bindings.mjs';
 
 const scriptRoot = fileURLToPath(new URL('../', import.meta.url));
 const repoRoot = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: scriptRoot, encoding: 'utf8' }).stdout.trim();
@@ -367,7 +371,7 @@ function validatePlan(value) {
   return ['defect', 'feature'].map(kind => byKind.get(kind));
 }
 
-function validateRealPlanPaths(plans, repositoryRoot) {
+function validateRealPlanPaths(plans, repositoryRoot, sourceCommitSha) {
   const root = realpathSync(repositoryRoot);
   for (const plan of plans) {
     const existing = [];
@@ -390,12 +394,11 @@ function validateRealPlanPaths(plans, repositoryRoot) {
       existing.push(scopedPath);
     }
     invariant(existing.length > 0, `${plan.kind} real plan must anchor its scope to at least one existing frozen AgentOS source path`);
-    invariant(JSON.stringify(plan.baselineCommands) !== JSON.stringify(plan.acceptanceCommands),
-      `${plan.kind} real plan must separate frozen-baseline reproduction commands from candidate acceptance commands`);
     invariant(plan.baselineCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
       `${plan.kind} real baseline commands cannot execute the deterministic runner fixture`);
     invariant(plan.acceptanceCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
       `${plan.kind} real acceptance commands cannot execute the deterministic runner fixture`);
+    verifyPlanProbeSource(plan, root, sourceCommitSha);
   }
   return plans;
 }
@@ -419,8 +422,9 @@ function parseArguments(argv) {
   }
   invariant(options.expectedSha && shaPattern.test(options.expectedSha), '--expected-sha must be a full commit SHA');
   if (options.receiptPath) {
-    invariant(!options.mode && !options.runReal && !options.planPath, '--verify-receipt cannot be combined with execution options');
+    invariant(!options.mode && !options.runReal, '--verify-receipt cannot be combined with execution mode options');
     invariant(existsSync(options.receiptPath), '--verify-receipt path does not exist');
+    if (options.planPath) invariant(existsSync(options.planPath), '--plan path does not exist');
     options.evidenceDir ??= dirname(options.receiptPath);
     return options;
   }
@@ -598,6 +602,7 @@ function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePa
   // Configure only the disposable clone before materializing the frozen source.
   // Git for Windows can otherwise leave deep tracked cache paths absent.
   if (process.platform === 'win32') git(target, ['config', 'core.longpaths', 'true']);
+  git(target, ['config', 'core.autocrlf', 'false']);
   git(target, ['checkout', '--detach', sourceSha]);
   // A tracked .claude/worktrees gitlink is local worktree metadata, not an
   // application source file. The production snapshot service correctly rejects
@@ -642,13 +647,23 @@ function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePa
   };
 }
 
-function captureBaselineReproduction(evidenceRoot, plan, workspace) {
+function captureBaselineReproduction(evidenceRoot, plan, workspace, sourceRoot) {
+  if (plan.baselineProbe) {
+    verifyPlanProbeSource(plan, sourceRoot, workspace.sourceCommitSha);
+    verifyProbeWorkspaceSource(plan, workspace.root);
+  }
   const commands = plan.baselineCommands.map((command, index) => {
     const observedAt = new Date().toISOString();
-    const result = spawnSync(command, {
-      cwd: workspace.root, encoding: 'utf8', shell: true, windowsHide: true,
-      timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
-    });
+    const isBoundProbe = plan.baselineProbe?.command === command;
+    const result = isBoundProbe
+      ? spawnSync(plan.baselineProbe.argv[0], plan.baselineProbe.argv.slice(1), {
+        cwd: workspace.root, encoding: 'utf8', shell: false, windowsHide: true,
+        timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
+      })
+      : spawnSync(command, {
+        cwd: workspace.root, encoding: 'utf8', shell: true, windowsHide: true,
+        timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
+      });
     invariant(!result.error && Number.isInteger(result.status),
       `${plan.kind} baseline command could not complete: ${safeText(result.error?.message || '')}`);
     const stdoutText = safeText(result.stdout || '');
@@ -663,15 +678,26 @@ function captureBaselineReproduction(evidenceRoot, plan, workspace) {
       workspaceBaseTreeSha: workspace.baseTreeSha, sourceCommitSha: workspace.sourceCommitSha,
       baseParentCommitSha: workspace.baseParentCommitSha, excludedGitlinkPaths: workspace.excludedGitlinkPaths,
       workspaceKind: workspace.workspaceKind,
+      ...(isBoundProbe ? {
+        argv: plan.baselineProbe.argv, argvSha256: plan.baselineProbe.argvSha256,
+        sourcePath: plan.baselineProbe.sourcePath, sourceSha256: plan.baselineProbe.sourceSha256,
+        sourceBlobSha: plan.baselineProbe.sourceBlobSha, sourceCommitSha: plan.baselineProbe.sourceCommitSha,
+      } : {}),
       observedAt, stdout, stderr,
     });
-    return { id: commandId, command, rawExitCode: result.status, artifact };
+    return { id: commandId, command, rawExitCode: result.status, artifact,
+      ...(isBoundProbe ? { argv: plan.baselineProbe.argv, argvSha256: plan.baselineProbe.argvSha256 } : {}) };
   });
   const expectedFailureCaptured = commands.some(command => {
     const artifactPath = resolve(evidenceRoot, command.artifact.artifactPath);
     const record = JSON.parse(readFileSync(artifactPath, 'utf8'));
     const stdout = readFileSync(resolve(evidenceRoot, record.stdout.artifactPath), 'utf8');
     const stderr = readFileSync(resolve(evidenceRoot, record.stderr.artifactPath), 'utf8');
+    if (plan.baselineProbe) {
+      if (command.command !== plan.baselineProbe.command) return false;
+      verifyProbeBaselineRecord(plan, record, stdout, stderr);
+      return true;
+    }
     return command.rawExitCode !== 0 && `${stdout}\n${stderr}`.includes(plan.expectedBaselineFailure);
   });
   invariant(expectedFailureCaptured, `${plan.kind} frozen workspace did not reproduce its declared baseline failure`);
@@ -681,6 +707,60 @@ function captureBaselineReproduction(evidenceRoot, plan, workspace) {
     sourceCommitSha: workspace.sourceCommitSha, baseParentCommitSha: workspace.baseParentCommitSha,
     excludedGitlinkPaths: workspace.excludedGitlinkPaths, workspaceKind: workspace.workspaceKind, commands,
   };
+}
+
+function gitApplyPatch(root, patch, args) {
+  const result = spawnSync('git', ['-C', root, ...args, '-'], {
+    input: patch, encoding: 'utf8', windowsHide: true, shell: false,
+    timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+  });
+  invariant(!result.error && result.status === 0,
+    `frozen candidate patch could not be applied to its probe checkout: ${safeText(result.stderr || result.stdout || result.error?.message)}`);
+}
+
+function captureCandidateProbe(evidenceRoot, plan, workspace, candidate, runRoot) {
+  if (!plan.baselineProbe) return undefined;
+  const probe = plan.baselineProbe;
+  const target = join(runRoot, 'candidate-probes', plan.kind);
+  mkdirSync(dirname(target), { recursive: true });
+  const cloned = spawnSync('git', ['clone', '--shared', '--no-checkout', workspace.root, target], {
+    encoding: 'utf8', windowsHide: true, shell: false, timeout: 90_000,
+  });
+  invariant(!cloned.error && cloned.status === 0,
+    `could not create isolated ${plan.kind} candidate probe checkout: ${safeText(cloned.stderr || cloned.error?.message)}`);
+  git(target, ['config', 'core.autocrlf', 'false']);
+  git(target, ['checkout', '--detach', candidate.baseCommit]);
+  verifyProbeWorkspaceSource(plan, target);
+  const patch = Buffer.from(candidate.diffText, 'utf8');
+  invariant(candidate.baseCommit === workspace.baseCommit && sha256(patch) === candidate.diffHash,
+    `${plan.kind} final candidate patch hash or frozen base differs from its workspace`);
+  gitApplyPatch(target, patch, ['apply', '--check', '--whitespace=nowarn']);
+  gitApplyPatch(target, patch, ['apply', '--whitespace=nowarn']);
+  verifyProbeWorkspaceSource(plan, target);
+  const result = spawnSync(probe.argv[0], probe.argv.slice(1), {
+    cwd: target, encoding: 'utf8', shell: false, windowsHide: true,
+    timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
+  });
+  invariant(!result.error && Number.isInteger(result.status),
+    `${plan.kind} final candidate probe could not complete: ${safeText(result.error?.message || result.stderr || '')}`);
+  const stdoutText = safeText(result.stdout || '');
+  const stderrText = safeText(result.stderr || '');
+  verifyProbeCandidateOutput(plan, stdoutText);
+  invariant(result.status === 0, `${plan.kind} final candidate probe exited ${result.status}: ${stdoutText}\n${stderrText}`);
+  const commandId = `${plan.kind}-candidate-probe-${randomUUID()}`;
+  const stdout = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/candidate-probe/${commandId}.stdout.txt`, stdoutText);
+  const stderr = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/candidate-probe/${commandId}.stderr.txt`, stderrText);
+  const artifact = writeJsonArtifact(evidenceRoot, `scenarios/${plan.kind}/candidate-probe/${commandId}.json`, {
+    schemaVersion: 1, kind: 'candidate-probe-command', scenarioKind: plan.kind, commandId,
+    command: probe.command, argv: probe.argv, argvSha256: probe.argvSha256,
+    sourcePath: probe.sourcePath, sourceSha256: probe.sourceSha256,
+    sourceBlobSha: probe.sourceBlobSha, sourceCommitSha: probe.sourceCommitSha,
+    candidateSha256: candidate.diffHash, workspaceBaseCommit: candidate.baseCommit,
+    workspaceKind: 'frozen-candidate-overlay', rawExitCode: result.status,
+    observedAt: new Date().toISOString(), stdout, stderr,
+  });
+  return { commandId, command: probe.command, argv: probe.argv, argvSha256: probe.argvSha256,
+    candidateSha256: candidate.diffHash, rawExitCode: result.status, artifact };
 }
 
 function selectAgents(agents) {
@@ -736,7 +816,11 @@ export function acceptanceCodexArguments(mode, permissions) {
     permissions.includes('write') ? 'workspace-write' : 'read-only'];
 }
 
-async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidence, mode, model, executable, evidenceRoot) {
+async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidence, mode, model, executable, evidenceRoot, runRoot, sourceRoot) {
+  if (plan.baselineProbe) {
+    verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha);
+    verifyProbeWorkspaceSource(plan, workspaceRoot.root);
+  }
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: creating isolated workspace and task`);
   recordProgress(evidenceRoot, plan.kind, { event: 'workspace-creation-started', mode });
   const workspace = await api(server.baseUrl, '/api/workspaces', {
@@ -840,6 +924,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const { finalCandidate, finalReview, reworked } = verifyCandidateReviewSequence(candidates, reviews, agents.reviewer.id);
   if (mode === 'simulated-provider') invariant(reworked, `${plan.kind} deterministic fixture must exercise review rework`);
   invariant(finalCandidate.testStatus === 'passed' && finalCandidate.testExitCode === 0, `${plan.kind} final acceptance command did not pass`);
+  if (plan.baselineProbe) verifyProbeCandidateOutput(plan, finalCandidate.testOutput);
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: independent approval persisted; reworked=${reworked}`);
   recordProgress(evidenceRoot, plan.kind, { event: reworked ? 'review-revision-approved' : 'review-directly-approved', taskId,
     runId: task.canonicalRunId, priorCandidateId: candidates[0].id, priorCandidateSha256: candidates[0].diffHash,
@@ -849,6 +934,8 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const initialPatch = Buffer.from(candidates[0].diffText, 'utf8');
   const finalPatch = Buffer.from(finalCandidate.diffText, 'utf8');
   assertCandidateChangesStayInScope(plan, changedPathsFromPatch(finalCandidate.diffText));
+  const candidateProbe = captureCandidateProbe(evidenceRoot, plan, workspaceRoot, finalCandidate, runRoot);
+  if (plan.baselineProbe) verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha);
   assertNoSecretLikeDiff(initialPatch.toString('utf8'));
   assertNoSecretLikeDiff(finalPatch.toString('utf8'));
   const priorRef = reworked ? writeArtifact(evidenceRoot, `scenarios/${plan.kind}/prior.patch`, initialPatch) : undefined;
@@ -956,6 +1043,11 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const runIds = progress.runs.map(run => run.runId);
   const scenario = {
     id: `${plan.kind}-${taskId}`, kind: plan.kind, status: 'passed',
+    ...(plan.baselineProbe ? {
+      title: plan.title, objective: plan.objective, scope: plan.scope,
+      expectedBaselineFailure: plan.expectedBaselineFailure, baselineProbe: plan.baselineProbe,
+      candidateProbe,
+    } : {}),
     ids: { projectId: workspaceId, taskId, runId: finalCandidate.canonicalRunId, candidateId: finalCandidate.id },
     baselineCommands: plan.baselineCommands,
     acceptanceCommands: plan.acceptanceCommands,
@@ -1077,6 +1169,7 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
       invariant(finalCandidate.test_status === 'passed' && finalCandidate.test_exit_code === 0 && finalCandidate.status === 'applied'
         && finalCandidate.test_output && finalCandidate.test_command === acceptanceCommands.join(' && '),
       `${scenario.kind} final candidate lacks persisted passing acceptance-command evidence`);
+      if (scenario.baselineProbe) verifyProbeCandidateOutput(scenario, finalCandidate.test_output);
       invariant(task.base_commit === finalCandidate.base_commit && task.base_commit === scenario.workspaceBaseCommit
         && scenario.workspaceBaseTreeSha === scenario.baselineReproduction.baseTreeSha,
       `${scenario.kind} candidate base does not match the frozen workspace base`);
@@ -1099,10 +1192,27 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
           && record.workspaceBaseCommit === task.base_commit && record.workspaceBaseTreeSha === scenario.workspaceBaseTreeSha,
         `${scenario.kind} baseline command is not bound to its frozen workspace`);
         const combinedOutput = `${readFileSync(stdoutPath, 'utf8')}\n${readFileSync(stderrPath, 'utf8')}`;
+        if (scenario.baselineProbe && record.command === scenario.baselineProbe.command) {
+          verifyProbeBaselineRecord(scenario, record,
+            readFileSync(stdoutPath, 'utf8'), readFileSync(stderrPath, 'utf8'));
+        }
         if (record.rawExitCode !== 0 && combinedOutput.includes(scenario.baselineReproduction.expectedFailurePattern)) baselineFailures.push(record);
       }
       invariant(baselineFailures.length > 0,
         `${scenario.kind} did not reproduce the declared baseline failure using its frozen-baseline probes`);
+      if (scenario.baselineProbe) {
+        const candidateProbePath = resolve(evidenceRoot, scenario.candidateProbe.artifact.artifactPath);
+        invariant(hashFile(candidateProbePath) === scenario.candidateProbe.artifact.sha256,
+          `${scenario.kind} candidate probe command artifact hash mismatch`);
+        const candidateProbe = JSON.parse(readFileSync(candidateProbePath, 'utf8'));
+        const candidateProbeStdoutPath = resolve(evidenceRoot, candidateProbe.stdout.artifactPath);
+        const candidateProbeStderrPath = resolve(evidenceRoot, candidateProbe.stderr.artifactPath);
+        invariant(hashFile(candidateProbeStdoutPath) === candidateProbe.stdout.sha256
+          && hashFile(candidateProbeStderrPath) === candidateProbe.stderr.sha256,
+        `${scenario.kind} candidate probe output artifact hash mismatch`);
+        verifyProbeCandidateRecord(scenario, candidateProbe,
+          readFileSync(candidateProbeStdoutPath, 'utf8'), finalCandidate.diff_hash);
+      }
 
       const reviews = tableRows(db, `SELECT id,candidate_id,canonical_run_id,stage_id,stage_attempt,reviewer_agent_id,candidate_diff_hash,conclusion,summary,created_at
         FROM collaboration_reviews WHERE collaboration_task_id=? AND workspace_id=? ORDER BY created_at ASC,id ASC`, task.id, task.workspace_id);
@@ -1248,8 +1358,10 @@ async function main() {
   const sourceRoot = realpathSync(options.repositoryRoot);
   if (options.receiptPath) {
     const receipt = JSON.parse(readFileSync(options.receiptPath, 'utf8'));
+    const realPlanBytes = options.planPath ? readFileSync(options.planPath) : undefined;
     const structure = validateReceipt(manifest, receipt, {
       expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot: options.evidenceDir,
+      realPlanBytes,
     });
     const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, { capturedReceiptPath: options.receiptPath });
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: receipt.providerEvidence.invocationCount, receiptPath: options.receiptPath };
@@ -1257,15 +1369,19 @@ async function main() {
     return;
   }
   const sourceSnapshot = gitSnapshot(sourceRoot, options.expectedSha);
+  const realPlanBytes = options.mode === 'real-windows-acceptance' ? readFileSync(options.planPath) : undefined;
   const plans = options.mode === 'simulated-provider'
     ? ['defect', 'feature'].map(simulationPlan)
-    : validatePlan(JSON.parse(readFileSync(options.planPath, 'utf8')));
-  if (options.mode === 'real-windows-acceptance') validateRealPlanPaths(plans, sourceRoot);
+    : validatePlan(JSON.parse(realPlanBytes.toString('utf8')));
+  if (options.mode === 'real-windows-acceptance') validateRealPlanPaths(plans, sourceRoot, sourceSnapshot.commitSha);
   const runId = `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`;
   const evidenceRoot = options.evidenceDir ?? (options.mode === 'real-windows-acceptance'
     ? join(homedir(), 'Documents', 'AgentOS', 'existing-project-acceptance', runId)
     : join(tmpdir(), 'agentos-existing-project-acceptance', runId));
   mkdirSync(evidenceRoot, { recursive: true });
+  const realPlanArtifact = realPlanBytes
+    ? writeArtifact(evidenceRoot, 'plan/real-plan.json', realPlanBytes)
+    : undefined;
   const runRoot = mkdtempSync(join(tmpdir(), 'agentos-existing-project-run-'));
   const statePath = join(runRoot, 'simulator-state.json');
   writeFileSync(statePath, JSON.stringify({ defect: { implementations: 0, reviews: 0 }, feature: { implementations: 0, reviews: 0 } }));
@@ -1315,15 +1431,19 @@ async function main() {
       const workspace = setupWorkspaceClone(sourceRoot, runRoot, plan.kind, sourceSnapshot.commitSha, options.mode, statePath);
       workspaceRoots.push(workspace.root);
       workspaces.push(workspace);
-      baselineResults.push(captureBaselineReproduction(evidenceRoot, plan, workspace));
+      baselineResults.push(captureBaselineReproduction(evidenceRoot, plan, workspace, sourceRoot));
     }
     server.sourceSnapshot = sourceSnapshot;
     for (let index = 0; index < plans.length; index += 1) {
-      const result = await createAndRunScenario(server, plans[index], workspaces[index], baselineResults[index], options.mode, model, executable, evidenceRoot);
+      const result = await createAndRunScenario(server, plans[index], workspaces[index], baselineResults[index],
+        options.mode, model, executable, evidenceRoot, runRoot, sourceRoot);
       scenarioResults.push(result);
     }
     invariant(scenarioResults.some(result => result.scenario.reviewHistory.some(event => event.transition === 'revision-submitted')),
       'acceptance requires at least one real changes-requested -> revision -> approval cycle across its scenarios');
+    if (realPlanBytes) {
+      for (const plan of plans) verifyPlanProbeSource(plan, sourceRoot, sourceSnapshot.commitSha);
+    }
     const serverIdentity = { pid: server.child.pid, port: server.port, readinessPath: server.readinessPath };
     const serverNativeObservations = server.nativeObservations ?? new Map();
     await stopServer(server);
@@ -1383,6 +1503,9 @@ async function main() {
       },
       model: { provider: options.mode === 'simulated-provider' ? 'fixture-provider' : 'codex', id: model },
       providerEvidence,
+      ...(realPlanArtifact ? {
+        realPlanEvidence: { kind: 'real-plan', sha256: sha256(realPlanBytes), artifact: realPlanArtifact },
+      } : {}),
       runtimeEvidence: {
         database: databaseArtifact, serverPid: serverIdentity.pid, port: serverIdentity.port,
         readinessPath: serverIdentity.readinessPath,
@@ -1396,7 +1519,7 @@ async function main() {
       scenarios: scenarioResults.map(item => item.scenario),
     };
     const structure = validateReceipt(manifest, receipt, {
-      expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot,
+      expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot, realPlanBytes,
     });
     const runtime = verifyRuntimeDatabaseEvidence(evidenceRoot, receipt);
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: providerEvidence.invocationCount, receiptPath: join(evidenceRoot, 'receipt.json') };

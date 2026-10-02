@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import {
   acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
@@ -160,50 +161,114 @@ function realPlans(root) {
   const source = join(root, 'agentos', 'apps', 'server', 'src', 'routes', 'collaborations.ts');
   mkdirSync(join(root, 'agentos', 'apps', 'server', 'src', 'routes'), { recursive: true });
   writeFileSync(source, 'export {}\n');
-  return ['defect', 'feature'].map(kind => ({
+  const fixtureRoot = join(root, 'agentos', 'scripts', 'fixtures', 'p4-memory-source-probes');
+  mkdirSync(fixtureRoot, { recursive: true });
+  for (const kind of ['defect', 'feature']) {
+    const fixtureSource = fileURLToPath(new URL(`./fixtures/p4-memory-source-probes/${kind}-baseline.mjs`, import.meta.url));
+    writeFileSync(join(fixtureRoot, `${kind}-baseline.mjs`), readFileSync(fixtureSource));
+  }
+  const runGit = args => {
+    const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true, shell: false });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  runGit(['init', '-q']);
+  runGit(['config', 'user.name', 'P4 plan binding test']);
+  runGit(['config', 'user.email', 'p4-plan-binding@example.invalid']);
+  runGit(['config', 'core.autocrlf', 'false']);
+  runGit(['add', '--', 'agentos']);
+  runGit(['commit', '-q', '-m', 'tracked probe sources']);
+  const sourceCommit = runGit(['rev-parse', 'HEAD']);
+  const plans = ['defect', 'feature'].map(kind => {
+    const sourcePath = `agentos/scripts/fixtures/p4-memory-source-probes/${kind}-baseline.mjs`;
+    const sourceBytes = readFileSync(join(root, sourcePath));
+    const argv = ['node', '--test', sourcePath];
+    const argvSha256 = createHash('sha256').update(JSON.stringify(argv)).digest('hex');
+    const command = argv.join(' ');
+    const fixtureName = kind === 'defect' ? 'defect' : 'feature';
+    const baselineProbe = {
+      sourcePath,
+      sourceSha256: createHash('sha256').update(sourceBytes).digest('hex'),
+      sourceBlobSha: runGit(['rev-parse', `${sourceCommit}:${sourcePath}`]),
+      sourceCommitSha: sourceCommit,
+      argv,
+      argvSha256,
+      command,
+      argvFileBindings: [],
+      passMarker: kind === 'defect'
+        ? 'P4_MEMORY_PROBE_PASS:constructor-term'
+        : 'P4_MEMORY_PROBE_PASS:language-terms',
+    };
+    const agentTest = `node --test agentos/apps/server/src/${kind}.test.mjs`;
+    const expectedBaselineFailure = kind === 'defect'
+      ? 'LEXICAL_CONSTRUCTOR_TERM_MUST_REMAIN_TEXT'
+      : 'LEXICAL_LANGUAGE_TERMS_MUST_REMAIN_DISTINCT';
+    return {
     ...simulationPlan(kind),
     scope: ['agentos/apps/server/src/routes/collaborations.ts'],
-    baselineCommands: ['node --input-type=module -e "throw new Error(\'baseline behavior reproduces the reported defect\')"'],
-    acceptanceCommands: ['node --test agentos/apps/server/src/routes/collaborations.test.ts'],
-  }));
+    expectedBaselineFailure,
+    baselineProbe,
+    baselineCommands: [command],
+    acceptanceCommands: [command, agentTest],
+    title: `P4 ${fixtureName} source probe plan`,
+  };
+  });
+  return { plans, sourceCommit };
+}
+
+function removeRealPlanFixture(root) {
+  try { rmSync(root, { recursive: true, force: true, maxRetries: 12, retryDelay: 100 }); }
+  catch (error) {
+    if (process.platform !== 'win32' || error.code !== 'ENOTEMPTY') throw error;
+  }
 }
 
 test('real plan accepts existing AgentOS production paths with exact repository-relative scopes', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
   try {
-    const plans = realPlans(root);
-    assert.equal(validateRealPlanPaths(plans, root), plans);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    const { plans, sourceCommit } = realPlans(root);
+    assert.equal(validateRealPlanPaths(plans, root, sourceCommit), plans);
+  } finally { removeRealPlanFixture(root); }
 });
 
-test('real plan rejects using candidate acceptance tests as the baseline probe', () => {
+test('real plan rejects an arbitrary throw command as baseline instead of the bound assertion probe', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
   try {
-    const plans = realPlans(root);
-    plans[0].baselineCommands = plans[0].acceptanceCommands;
-    assert.throws(() => validateRealPlanPaths(plans, root), /separate frozen-baseline reproduction commands/u);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    const { plans, sourceCommit } = realPlans(root);
+    plans[0].baselineCommands = ['node --input-type=module -e "throw new Error(\'LEXICAL_CONSTRUCTOR_TERM_MUST_REMAIN_TEXT\')"'];
+    assert.throws(() => validateRealPlanPaths(plans, root, sourceCommit), /exact baselineProbe command must occur once/u);
+  } finally { removeRealPlanFixture(root); }
+});
+
+test('real plans may append candidate acceptance tests while retaining the exact probe in both command lists', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
+  try {
+    const { plans, sourceCommit } = realPlans(root);
+    assert.equal(validateRealPlanPaths(plans, root, sourceCommit), plans);
+    assert.equal(plans[0].acceptanceCommands[0], plans[0].baselineCommands[0]);
+    assert.equal(plans[0].acceptanceCommands.length, 2);
+  } finally { removeRealPlanFixture(root); }
 });
 
 test('real plan rejects deterministic fixture paths and commands even when receipts can be hashed', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
   try {
-    const plans = realPlans(root);
+    const { plans, sourceCommit } = realPlans(root);
     plans[0].scope = ['agentos/scripts/fixtures/p4-existing-project-acceptance/defect.mjs'];
     plans[0].acceptanceCommands = ['node --test agentos/scripts/fixtures/p4-existing-project-acceptance/defect.test.mjs'];
-    assert.throws(() => validateRealPlanPaths(plans, root), /actual AgentOS application\/package files/u);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    assert.throws(() => validateRealPlanPaths(plans, root, sourceCommit), /actual AgentOS application\/package files/u);
+  } finally { removeRealPlanFixture(root); }
 });
 
 test('real plan rejects traversal and a wholly nonexistent source scope', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
   try {
-    const plans = realPlans(root);
+    const { plans, sourceCommit } = realPlans(root);
     plans[1].scope = ['agentos/apps/server/src/../../../../outside.ts'];
-    assert.throws(() => validateRealPlanPaths(plans, root), /safe repository-relative paths/u);
+    assert.throws(() => validateRealPlanPaths(plans, root, sourceCommit), /safe repository-relative paths/u);
     plans[1].scope = ['agentos/apps/server/src/new-feature.ts'];
-    assert.throws(() => validateRealPlanPaths(plans, root), /at least one existing frozen AgentOS source path/u);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    assert.throws(() => validateRealPlanPaths(plans, root, sourceCommit), /at least one existing frozen AgentOS source path/u);
+  } finally { removeRealPlanFixture(root); }
 });
 
 test('deterministic provider executable satisfies the production Codex version and structured-output probes', () => {

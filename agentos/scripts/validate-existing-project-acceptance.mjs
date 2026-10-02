@@ -3,7 +3,7 @@
 // verify-existing-project-acceptance.mjs against the local AgentOS database.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, sep, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -12,6 +12,10 @@ import {
   SIMULATED_CODEX_PROVIDER_KIND,
   verifyOfficialCodexIdentity,
 } from './acceptance-provider-identity.mjs';
+import {
+  verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateRecord,
+  verifyProbeCandidateOutput, verifyRealPlanReceiptBinding,
+} from './p4-plan-bindings.mjs';
 
 const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -257,6 +261,21 @@ export function validateManifest(manifest) {
     && requirements.evidenceArtifacts?.hashAlgorithm === 'sha256-file-bytes'
     && requirements.evidenceArtifacts?.mustBeCommittedBeforeExecution === false,
   'execution evidence must be hash-checked without requiring it to be committed before execution');
+  requireCondition(requirements.realPlanEvidence?.mode === 'real-windows-acceptance-only'
+    && requirements.realPlanEvidence.artifactPath === 'plan/real-plan.json'
+    && requirements.realPlanEvidence.hashAlgorithm === 'sha256-raw-plan-file-bytes'
+    && requirements.realPlanEvidence.receiptMustMatchCapturedPlanFields === true,
+  'real acceptance must preserve and bind the original raw plan bytes');
+  requireCondition(requirements.baselineProbe?.sourcePathPrefix === 'agentos/scripts/fixtures/p4-memory-source-probes/'
+    && requirements.baselineProbe.sourceMustBeTrackedCleanAndCommittedAtExpectedSha === true
+    && sameArray(requirements.baselineProbe.sourceBindings,
+      ['sourcePath', 'sourceSha256', 'sourceBlobSha', 'sourceCommitSha'])
+    && requirements.baselineProbe.argvMustBeBoundAndIdenticalAcrossBaselineAndCandidate === true
+    && requirements.baselineProbe.baselineRequiresNonzeroAndExpectedAssertionMarker === true
+    && requirements.baselineProbe.candidateRequiresZeroAndPassMarker === true
+    && requirements.baselineProbe.candidateRunsAgainstFrozenCandidatePatchOverlay === true
+    && requirements.baselineProbe.externalArgvFilesRequireSha256 === true,
+  'real baseline and candidate probes must be source-bound, reproducible, and exit-checked');
 
   const scenarios = requirements.scenarios;
   requireCondition(sameArray(scenarios?.exactKinds, scenarioKinds) && scenarios?.exactCount === scenarioKinds.length,
@@ -441,11 +460,25 @@ function validateCommands(root, scenario, frozenCandidateSha, usedPaths) {
       `scenario ${scenario.kind} ${stage} stderr`, usedPaths);
     requireCondition(stdout.includes(command.id) && stdout.includes(frozenCandidateSha),
       `scenario ${scenario.kind} ${stage} captured stdout must identify the command and frozen hash`);
+    if (stage === 'retest' && scenario.baselineProbe) {
+      let outputRecord;
+      try { outputRecord = JSON.parse(stdout); }
+      catch { throw new Error(`scenario ${scenario.kind} retest stdout must be structured JSON`); }
+      requireCondition(outputRecord.commandId === command.id
+        && outputRecord.frozenCandidateSha256 === frozenCandidateSha
+        && outputRecord.outputSha256 === sha256(Buffer.from(outputRecord.output ?? '', 'utf8')),
+      `scenario ${scenario.kind} retest stdout is not bound to the frozen candidate`);
+      verifyProbeCandidateOutput(scenario, outputRecord.output);
+    }
   }
 }
 
 function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths) {
   const baseline = scenario.baselineReproduction;
+  if (scenario.baselineProbe) {
+    requireCondition(baseline?.expectedFailurePattern === scenario.expectedBaselineFailure,
+      `real ${scenario.kind} baseline failure marker differs from the captured plan`);
+  }
   requireCondition(baseline?.status === 'reproduced' && nonEmpty(baseline.expectedFailurePattern)
     && shaPattern.test(baseline.baseCommit ?? '') && shaPattern.test(baseline.baseTreeSha ?? '')
     && baseline.sourceCommitSha?.toLowerCase() === frozenSourceSha.toLowerCase()
@@ -475,9 +508,70 @@ function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths
     `scenario ${scenario.kind} baseline command artifact does not match the receipt`);
     const stdout = verifyEvidenceArtifact(root, record.stdout, `scenario ${scenario.kind} baseline stdout`, usedPaths).toString('utf8');
     const stderr = verifyEvidenceArtifact(root, record.stderr, `scenario ${scenario.kind} baseline stderr`, usedPaths).toString('utf8');
-    if (command.rawExitCode !== 0 && `${stdout}\n${stderr}`.includes(baseline.expectedFailurePattern)) matchingFailure = true;
+    if (scenario.baselineProbe && command.command === scenario.baselineProbe.command) {
+      verifyProbeBaselineRecord(scenario, record, stdout, stderr);
+      matchingFailure = true;
+    } else if (command.rawExitCode !== 0 && `${stdout}\n${stderr}`.includes(baseline.expectedFailurePattern)) {
+      matchingFailure = true;
+    }
   }
   requireCondition(matchingFailure, `scenario ${scenario.kind} must capture its expected baseline failure with a nonzero exit`);
+}
+
+function validateRealPlanEvidence(root, receipt, snapshot, usedPaths, suppliedPlanBytes) {
+  const planEvidence = receipt.realPlanEvidence;
+  requireCondition(planEvidence?.kind === 'real-plan' && typeof planEvidence.sha256 === 'string'
+    && hashPattern.test(planEvidence.sha256) && planEvidence.artifact?.sha256 === planEvidence.sha256
+    && planEvidence.artifact.artifactPath === 'plan/real-plan.json',
+  'real acceptance receipt must bind the exact raw plan bytes');
+  const planBytes = verifyEvidenceArtifact(root, planEvidence.artifact,
+    'real acceptance plan bytes', usedPaths, true);
+  requireCondition(sha256(planBytes) === planEvidence.sha256,
+    'real acceptance plan SHA-256 does not match its captured bytes');
+  const parsedPlan = verifyRealPlanReceiptBinding(receipt, planBytes, suppliedPlanBytes);
+  requireCondition(parsedPlan.scenarios.length === scenarioKinds.length,
+    'captured real plan must contain exactly two defect/feature scenarios');
+  for (const planned of parsedPlan.scenarios) {
+    requireCondition(scenarioKinds.includes(planned.kind), 'captured real plan contains an unsupported scenario kind');
+    verifyPlanProbeSource(planned, snapshot.root, snapshot.commitSha);
+  }
+}
+
+function validateCandidateProbeEvidence(root, receipt, scenario, usedPaths) {
+  requireCondition(scenario.baselineProbe && scenario.candidateProbe,
+    `real ${scenario.kind} scenario requires source-bound baseline and candidate probe evidence`);
+  requireCondition(scenario.baselineProbe.sourceCommitSha?.toLowerCase() === receipt.repository.commitSha.toLowerCase(),
+    `real ${scenario.kind} baseline probe sourceCommit must match the receipt frozen SHA`);
+  const candidateEvidence = scenario.candidateProbe;
+  requireCondition(nonEmpty(candidateEvidence.commandId) && candidateEvidence.artifact,
+    `real ${scenario.kind} candidate probe command and artifact are required`);
+  const record = readEvidenceJson(root, candidateEvidence.artifact,
+    `real ${scenario.kind} candidate probe command`, usedPaths);
+  requireCondition(record.schemaVersion === 1 && record.kind === 'candidate-probe-command'
+    && record.scenarioKind === scenario.kind && record.commandId === candidateEvidence.commandId
+    && record.command === candidateEvidence.command && JSON.stringify(record.argv) === JSON.stringify(candidateEvidence.argv)
+    && record.argvSha256 === candidateEvidence.argvSha256
+    && candidateEvidence.command === scenario.baselineProbe.command
+    && JSON.stringify(candidateEvidence.argv) === JSON.stringify(scenario.baselineProbe.argv)
+    && candidateEvidence.argvSha256 === scenario.baselineProbe.argvSha256
+    && record.rawExitCode === candidateEvidence.rawExitCode
+    && record.candidateSha256 === candidateEvidence.candidateSha256
+    && record.sourcePath === scenario.baselineProbe.sourcePath
+    && record.sourceSha256 === scenario.baselineProbe.sourceSha256
+    && record.sourceBlobSha === scenario.baselineProbe.sourceBlobSha
+    && record.sourceCommitSha === scenario.baselineProbe.sourceCommitSha
+    && record.workspaceBaseCommit === scenario.workspaceBaseCommit
+    && record.workspaceKind === 'frozen-candidate-overlay'
+    && isIsoDate(record.observedAt),
+  `real ${scenario.kind} candidate probe artifact differs from its receipt binding`);
+  const stdout = verifyEvidenceArtifact(root, record.stdout,
+    `real ${scenario.kind} candidate probe stdout`, usedPaths, true).toString('utf8');
+  verifyEvidenceArtifact(root, record.stderr,
+    `real ${scenario.kind} candidate probe stderr`, usedPaths);
+  verifyProbeCandidateRecord(scenario, record, stdout, scenario.frozenCandidate.sha256);
+  requireCondition(candidateEvidence.rawExitCode === 0
+    && candidateEvidence.candidateSha256 === scenario.frozenCandidate.sha256,
+  `real ${scenario.kind} candidate probe must pass against the final frozen candidate`);
 }
 
 export function validateReceipt(manifest, receipt, options = {}) {
@@ -513,6 +607,12 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const expectedSha = options.expectedSha;
   const root = options.repositoryRoot ?? repositoryRoot;
   const snapshot = verifyRepositorySnapshot(root, receipt, expectedSha);
+  if (receipt.mode === 'real-windows-acceptance') {
+    requireCondition(options.evidenceRoot, 'real acceptance receipt validation requires its evidence directory');
+  } else {
+    requireCondition(receipt.realPlanEvidence === undefined,
+      'simulated-provider receipts cannot claim real plan or real source-probe evidence');
+  }
   for (const field of manifest.receiptRequirements.modelFields) {
     requireCondition(nonEmpty(receipt.model?.[field]), `receipt.model.${field} is required`);
   }
@@ -526,6 +626,10 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const scenarioIdsSeen = new Set();
   const scenarioKindsSeen = new Set();
   const usedPaths = new Set();
+  const evidenceRoot = options.evidenceRoot ?? root;
+  if (receipt.mode === 'real-windows-acceptance') {
+    validateRealPlanEvidence(evidenceRoot, receipt, snapshot, usedPaths, options.realPlanBytes);
+  }
   let reworkScenarioCount = 0;
 
   for (const scenario of receipt.scenarios) {
@@ -555,16 +659,17 @@ export function validateReceipt(manifest, receipt, options = {}) {
     `scenario ${scenario.kind} frozen candidate must name the actual checkout commit and tree`);
     requireCondition(typeof candidate.sha256 === 'string' && hashPattern.test(candidate.sha256),
       `scenario ${scenario.kind} frozen candidate requires a lowercase SHA-256`);
-  const evidenceRoot = options.evidenceRoot ?? root;
   const candidateBytes = verifyEvidenceArtifact(evidenceRoot, candidate,
     `scenario ${scenario.kind} frozen candidate`, usedPaths, true);
     const finalCandidateSha = sha256(candidateBytes);
 
-    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths);
     if (receipt.mode === 'real-windows-acceptance') {
-      requireCondition(JSON.stringify(scenario.baselineCommands) !== JSON.stringify(scenario.acceptanceCommands),
-        `scenario ${scenario.kind} real acceptance must separate baseline reproduction from candidate acceptance`);
+      validateCandidateProbeEvidence(evidenceRoot, receipt, scenario, usedPaths);
+    } else {
+      requireCondition(scenario.baselineProbe === undefined && scenario.candidateProbe === undefined,
+        'simulated-provider scenarios cannot claim real source-probe evidence');
     }
+    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths);
 
     const directApproval = Array.isArray(scenario.reviewHistory) && scenario.reviewHistory.length === 1;
     const directApprovalAllowed = scenarios.directApprovalAllowed === true;
@@ -612,12 +717,13 @@ function parseArguments(argv) {
     expectedSha: undefined,
     repositoryRoot: repositoryRoot,
     evidenceRoot: undefined,
+    planPath: undefined,
     checkManifest: false,
   };
   const seen = new Set();
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (['--manifest', '--receipt', '--expected-sha', '--repository-root', '--evidence-root'].includes(argument)) {
+    if (['--manifest', '--receipt', '--expected-sha', '--repository-root', '--evidence-root', '--plan'].includes(argument)) {
       requireCondition(!seen.has(argument), `${argument} may only be specified once`);
       seen.add(argument);
       const value = argv[index + 1];
@@ -627,7 +733,8 @@ function parseArguments(argv) {
       else if (argument === '--receipt') result.receiptPath = resolve(process.cwd(), value);
       else if (argument === '--expected-sha') result.expectedSha = value;
       else if (argument === '--repository-root') result.repositoryRoot = resolve(process.cwd(), value);
-      else result.evidenceRoot = resolve(process.cwd(), value);
+      else if (argument === '--evidence-root') result.evidenceRoot = resolve(process.cwd(), value);
+      else result.planPath = resolve(process.cwd(), value);
     } else if (argument === '--check-manifest') {
       requireCondition(!seen.has(argument), `${argument} may only be specified once`);
       seen.add(argument);
@@ -646,11 +753,13 @@ async function main() {
   }
   if (!options.receiptPath) throw new Error('ACCEPTANCE_RECEIPT_MISSING: a receipt is required for structural validation');
   if (!options.expectedSha) throw new Error('EXPECTED_SHA_MISSING: receipts require --expected-sha <full-commit-sha>');
+  if (options.planPath && !existsSync(options.planPath)) throw new Error('REAL_PLAN_MISSING: --plan path does not exist');
   const receipt = JSON.parse(readFileSync(options.receiptPath, 'utf8'));
   const result = validateReceipt(manifest, receipt, {
     expectedSha: options.expectedSha,
     repositoryRoot: options.repositoryRoot,
     evidenceRoot: options.evidenceRoot,
+    realPlanBytes: options.planPath ? readFileSync(options.planPath) : undefined,
   });
   console.log(JSON.stringify(result, null, 2));
   // This command verifies structure only. The separate local runner opens the

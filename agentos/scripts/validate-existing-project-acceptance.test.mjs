@@ -255,6 +255,14 @@ test('fully structured defect and feature evidence is reported as structural ver
   assert.match(result.verificationBoundary, /run the local verifier for runtime acceptance/);
 }));
 
+test('simulated-provider evidence cannot claim a captured real plan or source-bound probe', () => withFixture(item => {
+  item.receipt.realPlanEvidence = { kind: 'real-plan', sha256: 'a'.repeat(64), artifact: { sha256: 'a'.repeat(64) } };
+  assert.throws(() => validate(item), /simulated-provider receipts cannot claim real plan/u);
+  delete item.receipt.realPlanEvidence;
+  item.receipt.scenarios[0].baselineProbe = {};
+  assert.throws(() => validate(item), /simulated-provider scenarios cannot claim real source-probe evidence/u);
+}));
+
 test('accepts one directly approved candidate and one complete rework history with committed approval evidence', () => withFixture(item => {
   const directScenario = item.receipt.scenarios.find(scenario => scenario.kind === 'defect');
   assert.equal(directScenario.reviewHistory.length, 1);
