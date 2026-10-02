@@ -54,6 +54,14 @@ export interface ReplyWithTurnInput {
   /** Fired for each Provider delta as it becomes durable, with its checkpoint cursor. */
   readonly onDelta?: (delta: string, cursor: number) => void;
   readonly signal?: AbortSignal;
+  /** Group-only: require atomic native ownership so server exit reaps this Provider tree. */
+  readonly requireOwnedProcess?: boolean;
+  /** Persist the native identity against the currently claimed group owner/Turn. */
+  readonly onNativeProcessStarted?: (process: {
+    readonly invocationId: string;
+    readonly pid: number;
+    readonly nativeBirthIdentity: string;
+  }) => void;
   /** Group-only atomic finalization seam; direct conversations keep the ordinary stream transaction. */
   readonly groupFinalizer?: (
     input: FinalizeStreamInput,
@@ -628,6 +636,8 @@ export class ConversationTurnDriver {
       // recorded. An empty or whitespace-only selection adds nothing to the prompt.
       ...(memoryContext === undefined ? {} : { memoryContext }),
       onEvent,
+      ...(input.requireOwnedProcess === undefined ? {} : { requireOwnedProcess: input.requireOwnedProcess }),
+      ...(input.onNativeProcessStarted === undefined ? {} : { onNativeProcessStarted: input.onNativeProcessStarted }),
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     };
     const runner = this.runnerFactory === undefined ? new ConversationAgentRunner(options) : this.runnerFactory(options);

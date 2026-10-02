@@ -456,7 +456,7 @@ it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 014 witho
   }
 });
 
-it('[M27-P5-T005] The complete 001-041 schema passes integrity and foreign-key checks', () => {
+it('[M27-P5-T005] The complete registered schema passes integrity and foreign-key checks', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();

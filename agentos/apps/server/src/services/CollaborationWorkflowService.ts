@@ -832,6 +832,9 @@ export class CollaborationWorkflowService {
       }
       const leaseRecord = this.options.worktrees.getRecord(lease.id);
       if (!leaseRecord || leaseRecord.status !== 'active') throw new CollaborationWorkflowError('COLLABORATION_WORKTREE_MISSING', 'Fresh checked worktree is unavailable');
+      if (leaseRecord.baseCommit !== checkedBaseCommit) {
+        throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The source baseline changed while the recovery worktree was being created; no Provider call was started');
+      }
       this.options.registerWorktreePath(newRunId, leaseRecord.absolutePath);
 
       let currentTask = this.requireTask(input.workspaceId, task.id);

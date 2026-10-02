@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
+import type { GroupInteractionRepository } from '../store/GroupInteractionRepository.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 import {
@@ -38,6 +39,7 @@ import {
   type RunIntent,
 } from '@agentos/shared';
 import type { ConversationStatus } from '@agentos/shared';
+import { createProductionRecoveredProcessVerifier, isValidNativeBirthIdentity } from '@agentos/process-runtime';
 
 /**
  * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
@@ -79,6 +81,38 @@ function fail(res: Response, error: unknown): void {
 
 function hasP2GroupRecoverySchema(store: SqliteStore): boolean {
   return store.getDatabase().prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_group_recovery_links'").get() !== undefined;
+}
+
+async function proveInterruptedGroupProviderProcessesExited(input: {
+  readonly workspaceId: string;
+  readonly interactionId: string;
+  readonly conversationId: string;
+  readonly ownerEpoch: number;
+  readonly currentTurnId: string | null;
+}, interactions: GroupInteractionRepository): Promise<boolean> {
+  if (input.currentTurnId === null) return true;
+  const events = interactions.listExecutionEvents(
+    input.workspaceId, input.conversationId, input.interactionId, 0,
+  );
+  const processEvents = events.filter(event => event.eventType === 'group.provider.started');
+  if (!processEvents.some(event => event.payload.turnId === input.currentTurnId
+    && event.ownerEpoch === input.ownerEpoch)) return false;
+
+  const verifier = createProductionRecoveredProcessVerifier();
+  for (const event of processEvents) {
+    if (event.ownerEpoch !== input.ownerEpoch) return false;
+    const pid = event.payload.pid;
+    const birth = event.payload.nativeBirthIdentity;
+    if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0
+      || typeof birth !== 'string' || !isValidNativeBirthIdentity(birth)) return false;
+    const observed = await verifier.verify(pid);
+    if (observed.kind === 'not-found') continue;
+    if (observed.kind === 'alive'
+      && typeof observed.identity.nativeBirthIdentity === 'string'
+      && observed.identity.nativeBirthIdentity !== birth) continue;
+    return false;
+  }
+  return true;
 }
 
 function isConversationReplyMode(value: unknown): value is ConversationReplyMode {
@@ -776,7 +810,7 @@ export function createConversationRuntimeRoutes(
     });
   });
 
-  router.post('/interactions/:interactionId/recover', (req: Request, res: Response) => {
+  router.post('/interactions/:interactionId/recover', async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     if (!hasP2GroupRecoverySchema(store)) { res.status(409).json({ error: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
@@ -798,6 +832,26 @@ export function createConversationRuntimeRoutes(
     })).digest('hex');
     const db = store.getDatabase();
     try {
+      const existingLink = db.prepare(`SELECT 1 AS linked FROM p2_group_recovery_links
+        WHERE workspace_id = ? AND prior_interaction_id = ?`).get(workspace.id, interactionId);
+      if (existingLink === undefined) {
+        const prior = store.groupInteractionRepository().findInteractionById(workspace.id, interactionId);
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+        if (prior !== undefined && prior.version === expectedVersion && prior.status === 'active' && prior.integrityStatus === 'unusable'
+          && owner?.status === 'interrupted' && owner.ownerEpoch === expectedOwnerEpoch) {
+          const processTreeProvenGone = await proveInterruptedGroupProviderProcessesExited({
+            workspaceId: workspace.id,
+            interactionId,
+            conversationId: owner.conversationId,
+            ownerEpoch: owner.ownerEpoch,
+            currentTurnId: owner.currentTurnId,
+          }, store.groupInteractionRepository());
+          if (!processTreeProvenGone) {
+            res.status(409).json({ error: 'GROUP_RECOVERY_PROCESS_UNPROVEN' });
+            return;
+          }
+        }
+      }
       const result = inTransaction(db, () => {
         const priorLink = db.prepare(`SELECT * FROM p2_group_recovery_links
           WHERE workspace_id = ? AND prior_interaction_id = ?`).get(workspace.id, interactionId) as {
@@ -856,6 +910,11 @@ export function createConversationRuntimeRoutes(
         const interaction = store.groupInteractionRepository().createInteractionWithinTransaction({
           id: newInteractionId, workspaceId: workspace.id, conversationId: conversation.id,
           budget, sourceMessageId, createdAt: now,
+          recoverySupersedesInterrupted: {
+            interactionId: prior.id,
+            ownerId: owner.ownerId,
+            ownerEpoch: owner.ownerEpoch,
+          },
         });
         db.prepare(`INSERT INTO p2_group_recovery_links (
           id,workspace_id,conversation_id,prior_interaction_id,prior_owner_id,prior_owner_epoch,
@@ -916,6 +975,9 @@ export function createConversationRuntimeRoutes(
       );
       for (const event of events) {
         cursor = event.cursor;
+        // Native process identities are durable internal recovery evidence,
+        // not client-facing conversation events.
+        if (event.eventType === 'group.provider.started') continue;
         try {
           res.write(`id: ${event.cursor}\nevent: ${event.eventType}\ndata: ${JSON.stringify({
             ...event.payload, cursor: event.cursor, ownerEpoch: event.ownerEpoch,

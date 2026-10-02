@@ -99,6 +99,12 @@ export interface CreateGroupInteractionInput {
   readonly budget: GroupInteractionBudgetV1;
   readonly sourceMessageId?: string;
   readonly createdAt: string;
+  /** Internal recovery-only exception for the exact interrupted owner being superseded. */
+  readonly recoverySupersedesInterrupted?: {
+    readonly interactionId: string;
+    readonly ownerId: string;
+    readonly ownerEpoch: number;
+  };
 }
 
 export interface AppendGroupReplyInput {
@@ -140,6 +146,19 @@ export interface ClaimGroupExecutionInput {
   readonly allowEmptyParticipants?: boolean;
   readonly ownerId: string;
   readonly createdAt: string;
+}
+
+export interface RecordGroupProviderProcessInput {
+  readonly workspaceId: string;
+  readonly interactionId: string;
+  readonly ownerId: string;
+  readonly ownerEpoch: number;
+  readonly turnId: string;
+  readonly agentId: string;
+  readonly invocationId: string;
+  readonly pid: number;
+  readonly nativeBirthIdentity: string;
+  readonly startedAt: string;
 }
 
 export interface GroupExecutionOwnerInput {
@@ -185,6 +204,7 @@ export type GroupInteractionRepositoryErrorCode =
   | 'EXECUTION_ALREADY_OWNED'
   | 'EXECUTION_INTERRUPTED'
   | 'EXECUTION_STALE_OWNER'
+  | 'ACTIVE_INTERACTION_EXISTS'
   | 'REPLY_INPUT_INVALID'
   | 'GROUP_REPLY_ASSOCIATION_INVALID'
   | 'REPLY_PERSISTENCE_FAILED';
@@ -334,6 +354,9 @@ export class GroupInteractionRepository {
     if (!budgetCheck.valid) throw new GroupInteractionRepositoryError('INTERACTION_INPUT_INVALID');
     if (!nonBlank(input.sourceMessageId)) throw new GroupInteractionRepositoryError('INTERACTION_INPUT_INVALID');
     this.assertActiveGroupSource(input.workspaceId, input.conversationId, input.sourceMessageId);
+    this.assertNoOtherActiveInteraction(
+      input.workspaceId, input.conversationId, undefined, input.recoverySupersedesInterrupted,
+    );
     this.db.prepare(
       `INSERT INTO cr_group_interactions (
         id, conversation_id, workspace_id, source_message_id, max_agents_per_turn,
@@ -390,6 +413,7 @@ export class GroupInteractionRepository {
         if (interaction.conversationId !== input.conversationId) throw new GroupInteractionRepositoryError('INTERACTION_NOT_FOUND');
         if (interaction.sourceMessageId !== input.sourceMessageId) throw new GroupInteractionRepositoryError('INTERACTION_SOURCE_MISMATCH');
         this.assertActiveGroupSource(input.workspaceId, input.conversationId, input.sourceMessageId);
+        this.assertNoOtherActiveInteraction(input.workspaceId, input.conversationId, interaction.id);
         if (interaction.status !== 'active') throw new GroupInteractionRepositoryError('INTERACTION_NOT_TRANSITIONABLE');
         const existing = this.findExecutionOwner(input.workspaceId, input.interactionId);
         if (existing !== undefined) {
@@ -443,10 +467,64 @@ export class GroupInteractionRepository {
     return row === undefined ? undefined : toExecutionRecord(row);
   }
 
+  /**
+   * Bind a real native Provider process to the durable owner and current Turn.
+   * This is called immediately after the atomic Windows Job spawn; a stale
+   * owner/Turn must never be able to append process identity under a newer
+   * execution claim.
+   */
+  recordProviderProcessStarted(input: RecordGroupProviderProcessInput): GroupExecutionEventRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.interactionId) || !nonBlank(input.ownerId)
+      || !Number.isSafeInteger(input.ownerEpoch) || input.ownerEpoch < 1
+      || !nonBlank(input.turnId) || !nonBlank(input.agentId) || !nonBlank(input.invocationId)
+      || !Number.isSafeInteger(input.pid) || input.pid <= 0 || !nonBlank(input.startedAt)
+      || !/^win32:filetime:(0|[1-9][0-9]*)$/u.test(input.nativeBirthIdentity)) {
+      throw new GroupInteractionRepositoryError('INTERACTION_INPUT_INVALID');
+    }
+    return inTransaction(this.db, () => {
+      const owner = this.requireExecutionOwner(input.workspaceId, input.interactionId);
+      if (owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch
+        || owner.status !== 'running' || owner.currentTurnId !== input.turnId
+        || owner.currentAgentId !== input.agentId) {
+        throw new GroupInteractionRepositoryError('EXECUTION_STALE_OWNER');
+      }
+      return this.appendExecutionEventWithinTransaction({
+        workspaceId: input.workspaceId,
+        interactionId: input.interactionId,
+        ownerId: input.ownerId,
+        ownerEpoch: input.ownerEpoch,
+        eventType: 'group.provider.started',
+        payload: {
+          turnId: input.turnId,
+          agentId: input.agentId,
+          invocationId: input.invocationId,
+          pid: input.pid,
+          nativeBirthIdentity: input.nativeBirthIdentity,
+        },
+        updatedAt: input.startedAt,
+      });
+    });
+  }
+
   transitionExecutionWithinTransaction(input: GroupExecutionTransitionInput): GroupExecutionOwnerRecord {
     this.assertOwner(input);
     if (!nonBlank(input.eventType)) throw new GroupInteractionRepositoryError('INTERACTION_INPUT_INVALID');
     const current = this.requireExecutionOwner(input.workspaceId, input.interactionId);
+    const recoveryAbandon = current.status === 'interrupted'
+      && input.status === 'abandoned' && input.eventType === 'group.recovery.linked';
+    const allowedTransitions: Readonly<Record<GroupExecutionStatus, readonly GroupExecutionStatus[]>> = {
+      claimed: ['running', 'completed', 'failed', 'interrupted'],
+      running: ['running', 'completed', 'failed', 'interrupted'],
+      stop_requested: ['completed', 'failed', 'interrupted'],
+      completed: [],
+      failed: [],
+      interrupted: [],
+      abandoned: [],
+    };
+    if (!recoveryAbandon && !allowedTransitions[current.status].includes(input.status)) {
+      throw new GroupInteractionRepositoryError(current.status === 'interrupted'
+        ? 'EXECUTION_INTERRUPTED' : 'EXECUTION_STALE_OWNER');
+    }
     this.db.prepare(`
       UPDATE cr_group_interaction_executions SET status = ?, terminal_reason = ?,
         current_agent_id = ?, current_turn_id = ?, current_message_id = ?, updated_at = ?
@@ -473,6 +551,20 @@ export class GroupInteractionRepository {
   appendExecutionEventWithinTransaction(input: GroupExecutionEventInput): GroupExecutionEventRecord {
     this.assertOwner(input);
     const owner = this.requireExecutionOwner(input.workspaceId, input.interactionId);
+    const terminalEvents: Readonly<Record<'completed' | 'failed', readonly string[]>> = {
+      completed: ['group.done', 'group.reply.final', 'group.reply.rejected', 'group.stopped', 'group.turn.cancelled'],
+      failed: ['group.turn.failed'],
+    };
+    if (owner.status === 'interrupted' && input.eventType !== 'group.interrupted') {
+      throw new GroupInteractionRepositoryError('EXECUTION_INTERRUPTED');
+    }
+    if (owner.status === 'abandoned' && input.eventType !== 'group.recovery.linked') {
+      throw new GroupInteractionRepositoryError('EXECUTION_STALE_OWNER');
+    }
+    if ((owner.status === 'completed' || owner.status === 'failed')
+      && !terminalEvents[owner.status].includes(input.eventType)) {
+      throw new GroupInteractionRepositoryError('EXECUTION_STALE_OWNER');
+    }
     const interaction = this.requireInteraction(input.workspaceId, input.interactionId);
     const cursor = owner.eventCursor + 1;
     const payload = {
@@ -801,6 +893,52 @@ export class GroupInteractionRepository {
         AND sender_type = 'user' AND status = 'final'
     `).get(workspaceId, conversationId, sourceMessageId);
     if (source === undefined) throw new GroupInteractionRepositoryError('INTERACTION_SOURCE_MISMATCH');
+  }
+
+  private assertNoOtherActiveInteraction(
+    workspaceId: string,
+    conversationId: string,
+    exceptInteractionId?: string,
+    recoverySupersedesInterrupted?: CreateGroupInteractionInput['recoverySupersedesInterrupted'],
+  ): void {
+    const active = this.db.prepare(`
+      SELECT i.id, i.integrity_status, e.owner_id, e.owner_epoch, e.status AS owner_status,
+        EXISTS (
+          SELECT 1 FROM cr_group_interaction_events ev
+          WHERE ev.workspace_id = i.workspace_id AND ev.interaction_id = i.id
+            AND ev.owner_epoch = e.owner_epoch AND ev.event_type = 'group.recovery.linked'
+        ) AS has_recovery_link
+      FROM cr_group_interactions i
+      LEFT JOIN cr_group_interaction_executions e
+        ON e.workspace_id = i.workspace_id AND e.interaction_id = i.id
+      WHERE i.workspace_id = ? AND i.conversation_id = ? AND i.status = 'active'
+        AND (? IS NULL OR i.id <> ?)
+    `).all(workspaceId, conversationId, exceptInteractionId ?? null, exceptInteractionId ?? null) as Array<{
+      id: string;
+      integrity_status: string;
+      owner_id: string | null;
+      owner_epoch: number | null;
+      owner_status: string | null;
+      has_recovery_link: number;
+    }>;
+    let recoveryPriorMatched = recoverySupersedesInterrupted === undefined;
+    for (const row of active) {
+      if (recoverySupersedesInterrupted?.interactionId === row.id) {
+        if (row.integrity_status !== 'unusable' || row.owner_status !== 'interrupted'
+          || row.owner_id !== recoverySupersedesInterrupted.ownerId
+          || row.owner_epoch !== recoverySupersedesInterrupted.ownerEpoch) {
+          throw new GroupInteractionRepositoryError('EXECUTION_INTERRUPTED');
+        }
+        recoveryPriorMatched = true;
+        continue;
+      }
+      // A prior round stays visible and quarantined after a successful linked
+      // recovery. It ceases to block only with its durable recovery event.
+      if (row.integrity_status === 'unusable' && row.owner_status === 'abandoned'
+        && row.has_recovery_link === 1) continue;
+      throw new GroupInteractionRepositoryError('ACTIVE_INTERACTION_EXISTS');
+    }
+    if (!recoveryPriorMatched) throw new GroupInteractionRepositoryError('EXECUTION_INTERRUPTED');
   }
 
   private assertOwner(input: GroupExecutionOwnerInput): void {

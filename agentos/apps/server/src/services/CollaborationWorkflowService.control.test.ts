@@ -371,7 +371,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
   test(`F01 stale application is rejected before writing files (${repetition}/3)`, async () => {
     const fx = fixture();
     try {
-      const ready = fx.ready();
+      const ready = await fx.verifiedReady();
       await assert.rejects(fx.service.apply(fx.applicationInput(ready, 'stale-apply', ready.version - 1)), conflict);
       assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
       assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true }), '');
@@ -448,6 +448,57 @@ test('P2 recovery review: deterministic failure duplicate continue creates one c
       idempotencyKey: 'p2-known-failure-stale-01' }), error =>
       (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, 2);
+  } finally { await fx.close(); }
+});
+
+test('P2 recovery review: baseline change during lease creation fences retry before Provider start', async () => {
+  let dispatchCalls = 0;
+  const fx = fixture({ runtimeDispatchEnabled: false, dispatchRun: async () => { dispatchCalls++; } });
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-baseline-cas-review-01', action: 'retry-known-failure' as const,
+    };
+    const createLease = fx.worktrees.createLease.bind(fx.worktrees);
+    let changedBaseCommit: string | undefined;
+    fx.worktrees.createLease = async leaseInput => {
+      writeFileSync(join(fx.repositoryRoot, 'README.md'), 'baseline changed between recovery checks\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: fx.repositoryRoot, windowsHide: true });
+      execFileSync('git', ['commit', '-qm', 'advance baseline before retry lease'], { cwd: fx.repositoryRoot, windowsHide: true });
+      changedBaseCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true,
+      }).trim();
+      return createLease(leaseInput);
+    };
+
+    await assert.rejects(() => fx.service.recover(input), error =>
+      (error as { code?: string }).code === 'COLLABORATION_BASE_CHANGED');
+    assert.ok(changedBaseCommit);
+    const unchangedTask = fx.repository.findById('workspace-a', fx.plan.id)!;
+    assert.equal(unchangedTask.status, 'blocked');
+    assert.equal(unchangedTask.canonicalRunId, failed.id, 'the prior owner remains canonical when the lease baseline races');
+    assert.equal(fx.store.runRepository().findById('workspace-a', failed.id)?.version, failed.version);
+    const runs = fx.store.getDatabase().prepare('SELECT id,status FROM runs WHERE workspace_id = ?').all('workspace-a') as Array<{ id: string; status: string }>;
+    const retry = runs.find(item => item.id !== failed.id);
+    assert.ok(retry, 'the accepted retry identity remains durable for recovery inspection');
+    assert.equal(retry.status, 'queued');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', retry.id).filter(item => item.type === 'run.start').length, 0,
+      'the changed-baseline retry never receives Provider-start authorization');
+    assert.equal(dispatchCalls, 0);
+    const recovery = fx.store.getDatabase().prepare('SELECT state,error_code FROM p2_collaboration_recoveries WHERE idempotency_key = ?')
+      .get(input.idempotencyKey) as { state: string; error_code: string };
+    assert.equal(recovery.state, 'recovery_required');
+    assert.equal(recovery.error_code, 'COLLABORATION_BASE_CHANGED');
+    const lease = fx.worktrees.listLeases().find(item => item.runId === retry.id);
+    assert.equal(lease?.baseCommit, changedBaseCommit, 'the lease records the newer source commit that failed the CAS');
   } finally { await fx.close(); }
 });
 
