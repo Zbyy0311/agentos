@@ -375,6 +375,7 @@ test('MF5W-03 the production resolver emits one context_created event bound to t
     const resolved = resolver.resolve({
       workspaceId: fx.workspaceId,
       runId: fx.runId,
+      query: ENTRY_TEXT,
       createdAt: NOW,
       eventContext: eventContextFor(fx),
     });
@@ -447,6 +448,7 @@ test('MF5W-04 replaying the same input reuses the snapshot and appends no event'
     const input = {
       workspaceId: fx.workspaceId,
       runId: fx.runId,
+      query: ENTRY_TEXT,
       createdAt: NOW,
       eventContext: eventContextFor(fx),
     } as const;
@@ -502,6 +504,7 @@ test('MF5W-05 persisted workspace memory switch applies to new stage scopes and 
       workspaceId: fx.workspaceId,
       runId: fx.runId,
       stageId: originalStage.id,
+      query: ENTRY_TEXT,
       createdAt: NOW,
       eventContext: eventContextFor(fx),
     } as const;

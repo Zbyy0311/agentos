@@ -590,7 +590,7 @@ export class MemorySemanticRetrieval {
         if (similarity === null) return null;
         const semantic = (similarity + 1) / 2;
         const score = HYBRID_SEMANTIC_WEIGHT * semantic + HYBRID_BASELINE_WEIGHT * baseline[index]!;
-        return { item, score };
+        return { item, score, similarity };
       });
       if (scored.some(item => item === null)) return this.fallback(eligible, 'INVALID_VECTOR');
       scored.sort((left, right) => {
@@ -614,7 +614,7 @@ export class MemorySemanticRetrieval {
         if (rankedSlots[index] !== undefined) continue;
         const ranked = semanticOnly[semanticIndex++]!;
         rankedSlots[index] = {
-          ...ranked.item, rank: index + 1, score: ranked.score,
+          ...ranked.item, rank: index + 1, score: ranked.score, semanticSimilarity: ranked.similarity,
           reasons: [...new Set([...ranked.item.reasons, 'semantic-relevance' as const])],
         };
       }

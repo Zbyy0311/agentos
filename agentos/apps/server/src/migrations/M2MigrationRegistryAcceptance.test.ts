@@ -18,7 +18,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '052'] as const;
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052'] as const;
 
 test('P2 Migration Registry contains exactly the registered migrations in contract order', () => {
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
@@ -72,6 +72,24 @@ test('LITE-10-001 fresh install and supported upgrade both apply the complete re
       assert.equal((upgrade.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
       assert.deepEqual(fresh.prepare('PRAGMA foreign_key_check').all(), []);
       assert.deepEqual(upgrade.prepare('PRAGMA foreign_key_check').all(), []);
+      for (const db of [fresh, upgrade]) {
+        for (const [table, column] of [
+          ['memory_feedback_actions', 'resolved_by_workspace_id'],
+          ['memory_feedback_action_resolutions', 'resolver_workspace_id'],
+          ['memory_feedback_action_audit', 'actor_workspace_id'],
+        ]) {
+          const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+          assert.ok(columns.some(item => item.name === column), `${table}.${column} is registered by migration 051`);
+        }
+        const triggerNames = db.prepare(`SELECT name FROM sqlite_master WHERE type='trigger'`).all() as Array<{ name: string }>;
+        for (const trigger of [
+          'memory_feedback_actions_insert_guard',
+          'memory_feedback_actions_transition_guard',
+          'memory_feedback_action_resolutions_validate',
+          'memory_feedback_action_audit_validate',
+          'memory_feedback_actions_record_audit',
+        ]) assert.ok(triggerNames.some(item => item.name === trigger), `missing ${trigger}`);
+      }
     } finally {
       fresh.close();
       upgrade.close();

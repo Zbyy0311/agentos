@@ -46,6 +46,9 @@ import { migration045 } from './migrations/045-memory-lifecycle-audit.js';
 import { migration046 } from './migrations/046-memory-verified-facts.js';
 import { migration047 } from './migrations/047-memory-version-feedback.js';
 import { migration048 } from './migrations/048-memory-vectors.js';
+import { migration049 } from './migrations/049-memory-lexical-index.js';
+import { migration050 } from './migrations/050-memory-feedback-resolutions.js';
+import { migration051 } from './migrations/051-memory-feedback-resolver-actor.js';
 import { migration052 } from './migrations/052-memory-entry-source-bindings.js';
 import type { Migration } from './types.js';
 
@@ -143,5 +146,8 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration046,
   migration047,
   migration048,
+  migration049,
+  migration050,
+  migration051,
   migration052,
 ];

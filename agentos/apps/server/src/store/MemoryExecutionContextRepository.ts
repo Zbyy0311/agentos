@@ -15,7 +15,7 @@ export interface ExecutionMemoryContextInput {
   readonly conversationId: string; readonly agentId: string;
   readonly contextText: string; readonly queryHash: string;
   readonly selected: readonly ExecutionMemorySelection[];
-  readonly exclusions: readonly { memoryId: string; reason: string }[];
+  readonly exclusions: readonly { memoryId: string; memoryVersion?: number; reason: string }[];
   readonly retrievalDegraded: boolean; readonly truncated: boolean; readonly createdAt: string;
   readonly retrievalStrategyVersion?: string;
 }

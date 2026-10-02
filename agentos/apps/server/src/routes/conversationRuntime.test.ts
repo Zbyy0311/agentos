@@ -380,7 +380,7 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
       const conversation = (created.json as { conversation: { id: string } }).conversation;
       const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'plan the release' }),
+        body: JSON.stringify({ content: '发布前如何校验端口？' }),
       });
       assert.equal(response.status, 200);
       await response.text();
@@ -392,7 +392,7 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
       const frozen = snapshots[0]!;
       assert.deepEqual(JSON.parse(frozen.ids), [entryId], 'the reachable Entry must be selected');
       assert.ok(frozen.tokens > 0, 'the frozen selection carries its real token cost');
-      assert.equal(frozen.version, 'chat-memory.v1');
+      assert.equal(frozen.version, 'chat-memory.v1+memory-relevance.v2');
       assert.ok(frozen.turnId !== null, 'the snapshot belongs to the reply Turn');
       const turn = store.getDatabase()
         .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE id = ?')

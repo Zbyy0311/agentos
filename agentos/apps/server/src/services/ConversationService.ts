@@ -402,7 +402,8 @@ export class ConversationService {
     }));
 
     const runContext = await this.contextBuilder.build({
-      runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
+      runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot,
+      query: `Current request: ${content.slice(0, 900)}\nTask objective: ${run.objective.slice(0, 900)}`,
       agentId: agent.id, conversationId: conversation.id,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
@@ -854,7 +855,9 @@ export class ConversationService {
     this.store.updateRun(input.workspaceId, run.id, { status: 'running', waitingQuestion: undefined, waitingExecutionId: undefined, waitingAgentId: undefined, completedAt: undefined });
     input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({ type: 'conversation.message.created', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id, payload: { senderType: 'user' } }));
-    const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content, conversationId: conversation.id, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
+    const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot,
+      query: `Current request: ${content.slice(0, 900)}\nTask objective: ${run.objective.slice(0, 900)}`,
+      conversationId: conversation.id, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
     this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({ runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group' });
     this.preferenceService.recordApplications(preferenceContext.applications);
