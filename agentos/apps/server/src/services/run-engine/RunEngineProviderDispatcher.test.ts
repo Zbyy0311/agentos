@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
@@ -612,7 +613,7 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi', memoryGat
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
-  it('M1 real Codex reads frozen versioned memory on all canonical stages (env-gated)', {skip:process.env.M1_REAL_MEMORY_GATE !== '1'}, async () => {
+  it('M1 real Codex reads frozen versioned memory on all canonical stages (env-gated)', {skip:process.env.M1_REAL_MEMORY_GATE !== '1'}, async (t) => {
     const fx=realFixture('codex',true);
     try {
       await fx.dispatcher.drive(WS,RUN);
@@ -627,6 +628,24 @@ describe('RunEngineProviderDispatcher E2E', () => {
         assert.match(snapshots.readContextText(WS,context.id)??'',/AGENTOS_MEMORY_GATE_OK/);
       }
       assert.match(readSinkOutput(fx.root,50000),/AGENTOS_MEMORY_GATE_OK/);
+      const processes = fx.db.prepare(`SELECT id, stage_id, stage_attempt, provider_session_id,
+        native_pid, native_birth_identity, exit_code, status FROM runtime_processes
+        WHERE workspace_id = ? AND run_id = ? AND process_type = 'provider' ORDER BY stage_id`)
+        .all(WS, RUN) as Array<{ stage_id: string; exit_code: number | null }>;
+      assert.equal(processes.length, STAGE_KEYS.length, 'exactly one real Provider process per Stage');
+      assert.ok(processes.every(process => process.exit_code === 0), 'every real Provider must exit successfully');
+      t.diagnostic('REAL_PROVIDER_MEMORY_RECEIPT=' + JSON.stringify({
+        mode: 'real-windows-provider', platform: process.platform,
+        workspaceId: WS, taskId: TASK, runId: RUN,
+        provider: 'codex', model: process.env.AGENTOS_CODEX_MODEL ?? 'configured-default-unrecorded',
+        processes,
+        contexts: contexts.map(context => ({
+          id: context.id, stageId: context.stageId, queryHash: context.queryHash,
+          selected: context.selected,
+          contextSha256: createHash('sha256').update(snapshots.readContextText(WS, context.id)!).digest('hex'),
+        })),
+        limitation: 'Read-only memory injection proof; no existing-project candidate application or semantic-model quality claim.',
+      }));
     } finally { fx.restore(); fx.db.close(); rmSync(fx.root,{recursive:true,force:true}); }
   });
   it('LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once', async () => {
