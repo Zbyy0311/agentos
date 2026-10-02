@@ -135,6 +135,7 @@ export class RunContextBuilder {
     const memories = remainingItems > 0 && remainingCharacters() > 0
       ? await this.retriever.search(input.workspaceRoot, {
         ...input,
+        ...(this.entryRetriever ? { selectionPolicy: MEMORY_RELEVANCE_POLICY } : {}),
         limit: remainingItems,
         maxCharacters: remainingCharacters(),
       })
@@ -153,7 +154,7 @@ export class RunContextBuilder {
       append(text);
       truncated ||= body.length < `${item.memory.summary}\n${item.content}`.length;
       selectedRecords.push({ memoryId: item.memory.id, memoryVersion: null, store: 'legacy',
-        rank: sections.length, tokenCost: Math.ceil(text.length / 4), reasons: ['legacy-fallback'] });
+        rank: sections.length, tokenCost: Math.ceil(text.length / 4), reasons: ['legacy-fallback', ...(item.reasons ?? [])] });
       usages.push({ runId: input.runId, memoryId: item.memory.id, rank: this.entryRetriever ? sections.length : index + 1,
         injectedCharacters: text.length, usedAt: new Date().toISOString() });
     }

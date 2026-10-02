@@ -84,7 +84,7 @@ function fixture() {
         title: `Legacy ${seq}`, summary: 'legacy summary', content, confidence: 90, importance: 80 });
     },
     input(overrides: Partial<Parameters<RunContextBuilder['build']>[0]> = {}) {
-      return { workspaceId: WS, workspaceRoot: root, runId: LEGACY_RUN, query: '', agentId: AGENT,
+      return { workspaceId: WS, workspaceRoot: root, runId: LEGACY_RUN, query: 'canonical legacy', agentId: AGENT,
         conversationId: CONVERSATION, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS,
         memoryEnabled: true, ...overrides };
     },
@@ -92,13 +92,13 @@ function fixture() {
   };
 }
 
-test('real canonical Entries enter default context ahead of legacy without writes or fake usage FKs', async () => {
+test('real canonical Entries enter context ahead of relevant legacy without fake usage FKs', async () => {
   const fx = fixture();
   try {
     const entry = fx.addEntry({ title: 'Canonical deployment', content: 'canonical deployment rule' });
     const legacy = await fx.addLegacy('legacy deployment rule');
     const db = fx.store.getDatabase();
-    const before = db.prepare('SELECT total_changes() AS n').get();
+    const before = db.prepare('SELECT COUNT(*) AS n FROM memory_execution_contexts').get();
     const result = await fx.builder.build(fx.input());
     assert.ok(result.context.indexOf('canonical deployment rule') < result.context.indexOf('legacy deployment rule'));
     assert.deepEqual(result.entryUsages, [{ entryId: entry.id, version: 1, rank: 1,
@@ -107,7 +107,7 @@ test('real canonical Entries enter default context ahead of legacy without write
     assert.equal(result.usages[0].rank, 2, 'legacy follows the canonical Entry in actual injection order');
     assert.equal(result.usages[0].runId, LEGACY_RUN);
     assert.equal(result.retrievalDegraded, false);
-    assert.deepEqual(db.prepare('SELECT total_changes() AS n').get(), before, 'build is read-only, including snapshots and usage rows');
+    assert.deepEqual(db.prepare('SELECT COUNT(*) AS n FROM memory_execution_contexts').get(), before, 'derived index updates never create execution snapshots');
     assert.equal(fx.store.listMemories(WS, { status: 'all' }).length, 1, 'canonical Entry is not dual-written');
   } finally { fx.close(); }
 });
@@ -346,6 +346,26 @@ test('canonical retrieval failures propagate instead of silently falling back to
     fx.store.getDatabase().exec('ALTER TABLE memory_entries RENAME TO unavailable_entries');
     await assert.rejects(fx.builder.build(fx.input()), /MEMORY_RETRIEVAL_RETRIEVAL_FAILED/);
     assert.equal(calls, 0);
+  } finally { fx.close(); }
+});
+
+test('canonical no-match and framing-only requests cannot fill context with unrelated legacy', async () => {
+  const fx = fixture();
+  try {
+    const entry = fx.addEntry({ pinned: false, title: 'database', content: 'database migration' });
+    await fx.addLegacy('SQLite review reply database');
+    for (const query of ['星云鲸鱼望远镜', '', '***', 'Current request: how is it\nTurn stage: reply\nGroup role: review']) {
+      const result = await fx.builder.build(fx.input({ query }));
+      assert.equal(result.context, '', query);
+      assert.deepEqual(result.usages, []);
+      assert.deepEqual(result.entryUsages, []);
+      assert.deepEqual(result.selection?.selected, []);
+      assert.ok(result.selection?.exclusions.some(item => item.memoryId === entry.id && item.reason === 'no-relevance'));
+    }
+    const matching = await fx.builder.build(fx.input({ query: 'database' }));
+    assert.equal(matching.entryUsages?.length, 1);
+    assert.equal(matching.usages.length, 1, 'relevant compatibility knowledge remains available');
+    assert.ok(matching.selection?.selected.find(item => item.store === 'legacy')?.reasons.includes('lexical-match'));
   } finally { fx.close(); }
 });
 
