@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import type { BigIntStats } from 'node:fs';
 import type { CollaborationCandidateManifestEntry } from '@agentos/shared';
 import { lstat, open } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   assertCollaborationPathBoundaryUnchanged,
   captureCollaborationPathBoundary,
@@ -18,6 +18,21 @@ import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitConte
 
 const MAX_PATCH_BYTES = 8 * 1024 * 1024;
 const MAX_FROZEN_BLOB_HASH_BYTES = 32 * 1024 * 1024;
+const DEFAULT_RESOURCE_LIMITS = {
+  maxInventoryPaths: 50_000,
+  maxFileBytes: 64 * 1024 * 1024,
+  maxGitBlobBytesPerFile: 32 * 1024 * 1024,
+  maxTotalSourceBytes: 2 * 1024 * 1024 * 1024,
+  maxTotalGitBlobBytes: 2 * 1024 * 1024 * 1024,
+} as const;
+
+export interface CollaborationCandidateSnapshotResourceLimits {
+  readonly maxInventoryPaths: number;
+  readonly maxFileBytes: number;
+  readonly maxGitBlobBytesPerFile: number;
+  readonly maxTotalSourceBytes: number;
+  readonly maxTotalGitBlobBytes: number;
+}
 
 export interface CollaborationCandidateSnapshot {
   readonly baseCommit: string;
@@ -46,6 +61,92 @@ interface GitChange {
 interface FrozenSourceImage {
   readonly sizeBytes: number;
   readonly sha256: string;
+}
+
+function resourceLimitError(message: string): Error {
+  return new Error(`COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: ${message}`);
+}
+
+function resolveResourceLimits(overrides?: Partial<CollaborationCandidateSnapshotResourceLimits>): CollaborationCandidateSnapshotResourceLimits {
+  const limits = { ...DEFAULT_RESOURCE_LIMITS, ...overrides };
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value < 0) throw new TypeError(`Invalid snapshot resource limit: ${name}`);
+  }
+  return limits;
+}
+
+async function preflightSourceBytes(
+  root: string,
+  paths: readonly string[],
+  witness: PathBoundaryWitness,
+  limits: CollaborationCandidateSnapshotResourceLimits,
+): Promise<bigint> {
+  let totalBytes = 0n;
+  for (const path of paths) {
+    let stats: BigIntStats;
+    try {
+      stats = await lstat(resolve(root, ...path.split('/')), { bigint: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !sameFileIdentity(leafWitness(witness, path), stats)) {
+      throw new Error(`COLLABORATION_PATH_BOUNDARY: source identity changed before size preflight (${JSON.stringify(path)})`);
+    }
+    if (stats.isDirectory()) continue;
+    if (!stats.isFile()) throw new Error('COLLABORATION_PATH_BOUNDARY: unsupported source file type');
+    if (stats.size > BigInt(limits.maxFileBytes)) {
+      throw resourceLimitError(`single file exceeds ${limits.maxFileBytes} bytes (${JSON.stringify(path)})`);
+    }
+    totalBytes += stats.size;
+    if (totalBytes > BigInt(limits.maxTotalSourceBytes)) {
+      throw resourceLimitError(`source inventory exceeds ${limits.maxTotalSourceBytes} bytes`);
+    }
+  }
+  return totalBytes;
+}
+
+async function readBoundedFile(handle: Awaited<ReturnType<typeof open>>, path: string, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes - totalBytes + 1));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+    if (bytesRead === 0) break;
+    totalBytes += bytesRead;
+    if (totalBytes > maxBytes) throw resourceLimitError(`source file grew beyond its byte budget (${JSON.stringify(path)})`);
+    chunks.push(buffer.subarray(0, bytesRead));
+  }
+  return Buffer.concat(chunks, totalBytes);
+}
+
+async function assertGitBlobByteLimit(
+  context: CollaborationSnapshotGitContext,
+  entries: readonly GitTreeEntry[],
+  maxFileBytes: number,
+  maxTotalBytes: number,
+): Promise<void> {
+  const objectIds = [...new Set(entries.map(entry => entry.objectId))];
+  if (objectIds.length === 0) return;
+  const output = await context.run(['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'],
+    Buffer.from(`${objectIds.join('\n')}\n`, 'utf8'));
+  const records = output.toString('ascii').trimEnd().split('\n');
+  if (records.length !== objectIds.length) throw new Error('COLLABORATION_GIT_OUTPUT_INVALID: malformed frozen blob size inventory');
+  let totalBytes = 0n;
+  const maxBytes = BigInt(maxTotalBytes);
+  for (const [index, record] of records.entries()) {
+    const [objectId, type, sizeText, ...extra] = record.trim().split(' ');
+    if (extra.length !== 0 || !objectId || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(objectId)
+      || objectId !== objectIds[index] || type !== 'blob' || !sizeText || !/^\d+$/u.test(sizeText)) {
+      throw new Error('COLLABORATION_GIT_OUTPUT_INVALID: malformed frozen blob size record');
+    }
+    const sizeBytes = BigInt(sizeText);
+    if (sizeBytes > BigInt(maxFileBytes)) {
+      throw resourceLimitError(`single Git blob exceeds ${maxFileBytes} bytes (${objectId})`);
+    }
+    totalBytes += sizeBytes;
+    if (totalBytes > maxBytes) throw resourceLimitError(`base and candidate Git blobs exceed ${maxTotalBytes} bytes`);
+  }
 }
 
 type PathBoundaryWitness = Awaited<ReturnType<typeof captureCollaborationPathBoundary>>;
@@ -109,7 +210,7 @@ function sameFileIdentity(expected: PathComponentWitness, stats: BigIntStats): b
     && expected.inode === String(stats.ino) && expected.mode === Number(stats.mode);
 }
 
-async function readSourceImage(root: string, path: string, expected: PathComponentWitness): Promise<Buffer | null> {
+async function readSourceImage(root: string, path: string, expected: PathComponentWitness, maxBytes: number): Promise<Buffer | null> {
   const absolutePath = resolve(root, ...path.split('/'));
   let stats: BigIntStats;
   try {
@@ -123,6 +224,7 @@ async function readSourceImage(root: string, path: string, expected: PathCompone
   }
   if (stats.isDirectory()) return null;
   if (!stats.isFile()) throw new Error('COLLABORATION_PATH_BOUNDARY: unsupported source file type');
+  if (stats.size > BigInt(maxBytes)) throw resourceLimitError(`source file exceeds its byte budget (${JSON.stringify(path)})`);
   const handle = await open(absolutePath, 'r');
   try {
     const before = await handle.stat({ bigint: true });
@@ -131,9 +233,11 @@ async function readSourceImage(root: string, path: string, expected: PathCompone
     if (!before.isFile() || !sameFileIdentity(expected, before)) {
       throw new Error(`COLLABORATION_PATH_BOUNDARY: opened source does not match its witness (${JSON.stringify(path)})`);
     }
-    const bytes = await handle.readFile();
+    if (before.size > BigInt(maxBytes)) throw resourceLimitError(`source file exceeds its byte budget (${JSON.stringify(path)})`);
+    const bytes = await readBoundedFile(handle, path, maxBytes);
     const after = await handle.stat({ bigint: true });
-    if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
+    if (BigInt(bytes.byteLength) !== before.size || before.size !== after.size
+      || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
       throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: source changed while being read (${JSON.stringify(path)})`);
     }
     return bytes;
@@ -167,7 +271,15 @@ async function assertSourceImagesUnchanged(
     throw new Error('COLLABORATION_PATH_BOUNDARY: path or ancestor identity changed during the operation');
   }
   for (const [path, expected] of images) {
-    const current = await readSourceImage(root, path, leafWitness(currentWitness, path));
+    let current: Buffer | null;
+    try {
+      current = await readSourceImage(root, path, leafWitness(currentWitness, path), expected?.sizeBytes ?? 0);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('COLLABORATION_SNAPSHOT_RESOURCE_LIMIT:')) {
+        throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: source exceeded its frozen size (${JSON.stringify(path)})`);
+      }
+      throw error;
+    }
     if (expected === null ? current !== null : current === null
       || current.byteLength !== expected.sizeBytes || sha256(current) !== expected.sha256) {
       throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: source bytes changed during candidate capture (${JSON.stringify(path)})`);
@@ -204,8 +316,10 @@ export async function captureCollaborationCandidateSnapshot(
     readonly beforeGitAdd?: () => void | Promise<void>;
     readonly beforeFrozenNormalization?: () => void | Promise<void>;
     readonly beforePatch?: () => void | Promise<void>;
+    readonly resourceLimits?: Partial<CollaborationCandidateSnapshotResourceLimits>;
   },
 ): Promise<CollaborationCandidateSnapshot> {
+  const resourceLimits = resolveResourceLimits(testHooks?.resourceLimits);
   const scope = resolveCollaborationScopePolicy(approvedScope);
   const worktreeRoot = resolve(worktreePath);
   await captureCollaborationPathBoundary(worktreeRoot, []);
@@ -221,6 +335,9 @@ export async function captureCollaborationCandidateSnapshot(
     const baseEntries = parseTreeEntries(baseTree.toString('utf8'));
     const realIndexEntries = parseIndexEntries(realIndex.toString('utf8'));
     const inventoryPaths = [...new Set([...baseEntries.keys(), ...realIndexEntries.keys(), ...splitNul(untracked.toString('utf8'))])].sort();
+    if (inventoryPaths.length > resourceLimits.maxInventoryPaths) {
+      throw resourceLimitError(`inventory contains more than ${resourceLimits.maxInventoryPaths} paths`);
+    }
     const inventoryWitness = await captureCollaborationPathBoundary(worktreeRoot, inventoryPaths);
     const attributeWitness = await captureCollaborationPathBoundary(worktreeRoot, attributePathsFor(inventoryPaths));
     for (const path of inventoryPaths) {
@@ -228,6 +345,7 @@ export async function captureCollaborationCandidateSnapshot(
         throw new Error(`COLLABORATION_PATH_BOUNDARY: symlink, submodule, or unsupported Git mode is not allowed (${JSON.stringify(path)})`);
       }
     }
+    await preflightSourceBytes(worktreeRoot, inventoryPaths, inventoryWitness, resourceLimits);
     await context.freezeAttributes(inventoryPaths);
     await testHooks?.afterGitContextFrozen?.();
     await context.assertSourceContextUnchanged();
@@ -235,9 +353,18 @@ export async function captureCollaborationCandidateSnapshot(
     await assertCollaborationPathBoundaryUnchanged(worktreeRoot, attributeWitness);
 
     const sourceImages = new Map<string, FrozenSourceImage | null>();
+    let totalSourceBytesRead = 0;
     for (const path of inventoryPaths) {
       const leaf = leafWitness(inventoryWitness, path);
-      const bytes = await readSourceImage(worktreeRoot, path, leaf);
+      const remainingBytes = resourceLimits.maxTotalSourceBytes - totalSourceBytesRead;
+      const maxBytes = Math.max(0, Math.min(resourceLimits.maxFileBytes, remainingBytes));
+      const bytes = await readSourceImage(worktreeRoot, path, leaf, maxBytes);
+      if (bytes !== null) {
+        totalSourceBytesRead += bytes.byteLength;
+        if (totalSourceBytesRead > resourceLimits.maxTotalSourceBytes) {
+          throw resourceLimitError(`source inventory exceeds ${resourceLimits.maxTotalSourceBytes} bytes`);
+        }
+      }
       sourceImages.set(path, bytes === null ? null : { sizeBytes: bytes.byteLength, sha256: sha256(bytes) });
       if (bytes !== null) await context.writeFrozenSource(path, bytes, leaf.mode!);
     }
@@ -275,6 +402,14 @@ export async function captureCollaborationCandidateSnapshot(
     assertCollaborationPathsWithinScope(scope, changedPaths);
 
     const stagedEntries = parseIndexEntries((await context.run(['ls-files', '-s', '-z'])).toString('utf8'));
+    // Changed-object budgets apply only to the frozen candidate's baseline and
+    // result images. Unchanged repository blobs are already bounded by the
+    // complete source inventory limits above and must not consume candidate
+    // diff/hash budget.
+    const changedGitEntries = changedPaths.flatMap(path => [baseEntries.get(path), stagedEntries.get(path)])
+      .filter((entry): entry is GitTreeEntry => entry !== undefined);
+    await assertGitBlobByteLimit(context, changedGitEntries,
+      resourceLimits.maxGitBlobBytesPerFile, resourceLimits.maxTotalGitBlobBytes);
     for (const path of changedPaths) {
       const entry = stagedEntries.get(path);
       if (!isRegularBlob(baseEntries.get(path)) || !isRegularBlob(entry)) {
@@ -317,48 +452,58 @@ export async function captureCollaborationCandidateSnapshot(
       if (!image) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: added source was not frozen');
       return { path, sizeBytes: image.sizeBytes, sha256: image.sha256 };
     }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-    const blobImages = new Map<string, { sizeBytes: number; sha256: string; binary: boolean }>();
+    const blobImages = new Map<string, { sizeBytes: number; sha256?: string; binary: boolean }>();
     let frozenBlobHashBytes = 0;
-    const blobImage = async (entry: GitTreeEntry | undefined): Promise<{ sizeBytes: number; sha256: string; binary: boolean } | undefined> => {
+    const blobImage = async (entry: GitTreeEntry | undefined, includeSha256 = false): Promise<{ sizeBytes: number; sha256?: string; binary: boolean } | undefined> => {
       if (!entry) return undefined;
       const cached = blobImages.get(entry.objectId);
-      if (cached) return cached;
-      const sizeBytes = Number((await context.run(['cat-file', '-s', entry.objectId])).toString('utf8').trim());
+      if (cached && (!includeSha256 || cached.sha256 !== undefined)) return cached;
+      const sizeBytes = cached?.sizeBytes ?? Number((await context.run(['cat-file', '-s', entry.objectId])).toString('utf8').trim());
       if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary blob size is invalid');
-      if (frozenBlobHashBytes + sizeBytes > MAX_FROZEN_BLOB_HASH_BYTES) {
-        throw new Error('COLLABORATION_DIFF_TOO_LARGE: frozen blob hashing exceeds the 32 MiB aggregate limit');
-      }
-      frozenBlobHashBytes += sizeBytes;
       const frozenBlob = await context.run(['cat-file', 'blob', entry.objectId]);
       if (frozenBlob.byteLength !== sizeBytes) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: frozen binary blob size changed');
-      const image = { sizeBytes, sha256: sha256(frozenBlob), binary: frozenBlob.subarray(0, 8000).includes(0) };
+      const binary = cached?.binary ?? frozenBlob.includes(0);
+      let digest = cached?.sha256;
+      if ((includeSha256 || binary) && digest === undefined) {
+        if (frozenBlobHashBytes + sizeBytes > MAX_FROZEN_BLOB_HASH_BYTES) {
+          throw new Error('COLLABORATION_DIFF_TOO_LARGE: frozen blob hashing exceeds the 32 MiB aggregate limit');
+        }
+        frozenBlobHashBytes += sizeBytes;
+        digest = sha256(frozenBlob);
+      }
+      const image = { sizeBytes, ...(digest === undefined ? {} : { sha256: digest }), binary };
       blobImages.set(entry.objectId, image);
       return image;
     };
     const binaryManifest: CollaborationCandidateManifestEntry[] = [];
-    for (const record of diffRecords.filter(item => item.binary || item.status === 'renamed')) {
+    // Git attributes can force text hunks for blobs containing NUL bytes. Probe
+    // every changed base/candidate object so the frozen manifest does not trust
+    // the diff driver's presentation as its binary classification.
+    for (const record of diffRecords) {
       const sourcePath = record.newPath ?? record.oldPath;
       if (!sourcePath) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary patch path is missing');
       const targetEntry = record.newPath === null ? undefined : stagedEntries.get(record.newPath);
       const baseEntry = record.oldPath === null ? undefined : baseEntries.get(record.oldPath);
       const baseImage = await blobImage(baseEntry);
       const candidateImage = await blobImage(targetEntry);
-      if (!record.binary && !baseImage?.binary && !candidateImage?.binary) {
-        if (record.status === 'renamed') {
-          if (!targetEntry || !candidateImage) {
-            throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: renamed image was not frozen (${JSON.stringify(sourcePath)})`);
-          }
-          binaryManifest.push({
-            path: sourcePath, sizeBytes: candidateImage.sizeBytes, sha256: candidateImage.sha256,
-            gitObjectId: targetEntry.objectId, binary: false,
-          });
+      const binary = record.binary || baseImage?.binary === true || candidateImage?.binary === true;
+      if (!binary && record.status !== 'renamed') continue;
+      const baseMetadata = await blobImage(baseEntry, true);
+      const candidateMetadata = await blobImage(targetEntry, true);
+      if (!binary) {
+        if (!targetEntry || !candidateMetadata?.sha256) {
+          throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: renamed image was not frozen (${JSON.stringify(sourcePath)})`);
         }
+        binaryManifest.push({
+          path: sourcePath, sizeBytes: candidateMetadata.sizeBytes, sha256: candidateMetadata.sha256,
+          gitObjectId: targetEntry.objectId, binary: false,
+        });
         continue;
       }
-      const baselineImage = baseImage;
-      const sizeBytes = targetEntry === undefined ? baselineImage?.sizeBytes : candidateImage?.sizeBytes;
+      const baselineImage = baseMetadata;
+      const sizeBytes = targetEntry === undefined ? baselineImage?.sizeBytes : candidateMetadata?.sizeBytes;
       const gitObjectId = targetEntry?.objectId ?? baseEntry?.objectId;
-      const imageSha256 = targetEntry === undefined ? baselineImage?.sha256 : candidateImage?.sha256;
+      const imageSha256 = targetEntry === undefined ? baselineImage?.sha256 : candidateMetadata?.sha256;
       if (sizeBytes === undefined || imageSha256 === undefined || gitObjectId === undefined) {
         throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary image was not frozen (${JSON.stringify(sourcePath)})`);
       }
@@ -369,7 +514,7 @@ export async function captureCollaborationCandidateSnapshot(
         sha256: imageSha256,
         gitObjectId,
         binary: true,
-        ...(targetEntry && baseEntry && baselineImage ? {
+        ...(targetEntry && baseEntry && baselineImage?.sha256 ? {
           baseSizeBytes: baselineImage.sizeBytes,
           baseSha256: baselineImage.sha256,
           baseObjectId: baseEntry.objectId,
