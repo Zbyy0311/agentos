@@ -69,6 +69,12 @@ jobs:
       - name: Verify Windows native process test inventory
         run: node scripts/verify-p4-windows-native-inventory.mjs --receipt "logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/receipt.json" --expected-sha "${{ github.sha }}"
 
+      - name: P4 acceptance receipt contract tests
+        run: node --test --test-reporter=tap scripts/validate-existing-project-acceptance.test.mjs
+
+      - name: Validate P4 acceptance manifest without claiming a run
+        run: node scripts/validate-existing-project-acceptance.mjs --check-manifest
+
       - name: Lite scope and evidence gates
         run: |
           node scripts/capture-lite-verification.mjs lite-regressions -- node --test --test-reporter=tap scripts/verify-lite-scope.test.mjs scripts/verify-lite-acceptance.test.mjs scripts/run-lite-verification-batches.test.mjs scripts/capture-lite-verification.test.mjs
