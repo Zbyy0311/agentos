@@ -1,6 +1,6 @@
-// Validate the structure and Git binding of a future acceptance receipt.
-// Receipts remain incomplete until review, command execution and provider use
-// can be checked against a trusted external attestation.
+// Validate receipt structure and frozen source/candidate bindings. A receipt
+// is structurally verified here; runtime acceptance is checked separately by
+// verify-existing-project-acceptance.mjs against the local AgentOS database.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
@@ -131,7 +131,7 @@ export function validateManifest(manifest) {
   requireCondition(manifest && typeof manifest === 'object' && !Array.isArray(manifest), 'manifest must be an object');
   requireCondition(manifest.schemaVersion === 2, 'manifest.schemaVersion must be 2');
   requireCondition(manifest.manifestId === 'agentos-existing-project-acceptance-v2', 'manifestId is unsupported');
-  requireCondition(manifest.status === 'contract-only', 'manifest.status must remain contract-only');
+  requireCondition(manifest.status === 'runner-supported', 'manifest.status must be runner-supported');
   const modes = manifest.modes;
   requireCondition(modes && typeof modes === 'object' && !Array.isArray(modes), 'manifest.modes must be an object');
   requireCondition(
@@ -155,10 +155,10 @@ export function validateManifest(manifest) {
   requireCondition(sameArray(requirements?.modelFields, ['provider', 'id']), 'model provider and id are required');
   requireCondition(requirements.processExitCode === 0 && requirements.acceptanceExitCode === 0,
     'process and acceptance exits must both require 0');
-  requireCondition(requirements.candidate?.artifactPath === 'tracked-regular-repository-file',
-    'candidate must be a tracked regular repository file');
-  requireCondition(requirements.candidate?.hashAlgorithm === 'sha256-file-bytes-matching-git-tree-blob',
-    'candidate hash must match the frozen Git tree blob');
+  requireCondition(requirements.candidate?.artifactPath === 'runner-captured-runtime-diff',
+    'candidate must be captured from the collaboration runtime');
+  requireCondition(requirements.candidate?.hashAlgorithm === 'sha256-file-bytes-matching-runtime-database-diff',
+    'candidate hash must match the persisted collaboration runtime diff');
   requireCondition(requirements.candidate?.hashFormat === '64-character-lowercase-hex', 'candidate hash format is unsupported');
   requireCondition(requirements.evidenceArtifacts?.artifactPath === 'repository-relative-worktree-file'
     && requirements.evidenceArtifacts?.hashAlgorithm === 'sha256-file-bytes'
@@ -168,6 +168,8 @@ export function validateManifest(manifest) {
   const scenarios = requirements.scenarios;
   requireCondition(sameArray(scenarios?.exactKinds, scenarioKinds) && scenarios?.exactCount === scenarioKinds.length,
     'exactly one defect and one feature scenario are required');
+  requireCondition(scenarios?.baselineReproduction === 'capture-all-acceptance-commands-and-a-matching-nonzero-expected-failure-on-the-frozen-base',
+    'each scenario must reproduce its declared defect or feature gap on the frozen base');
   requireCondition(sameArray(scenarios?.requiredIdentityFields, identityFields), 'every scenario requires project, task, run, and candidate identities');
   requireCondition(sameArray(scenarios?.uniqueAcrossScenarios, ['taskId', 'runId', 'candidateId']),
     'task, run, and candidate identities must be distinct across scenarios');
@@ -182,12 +184,12 @@ export function validateManifest(manifest) {
   requireCondition(scenarios?.successfulExitCode === 0, 'all acceptance commands must exit 0');
   requireCondition(sameArray(scenarios?.commandArtifactFields, [
     'schemaVersion', 'kind', 'scenarioId', 'stage', 'commandId', 'argv', 'cwd', 'rawExitCode',
-    'expectedExitCode', 'frozenCandidateSha256', 'stdout', 'stderr', 'stageResult', 'startedAt', 'finishedAt',
+    'expectedExitCode', 'frozenCandidateSha256', 'stdout', 'stderr', 'stageResult', 'observedAt',
   ]), 'command artifacts must carry the complete structured execution record');
 
-  requireCondition(requirements.trust?.receiptSignature === 'not-configured'
-    && requirements.trust?.acceptanceVerdict === 'incomplete-until-trusted-attestation',
-  'receipts must remain incomplete until a trusted attestation verifier is configured');
+  requireCondition(requirements.trust?.receiptSignature === 'not-required'
+    && requirements.trust?.acceptanceVerdict === 'requires-local-runtime-database-verification',
+  'receipts must use local runtime evidence; no external signature is required');
   return manifest;
 }
 
@@ -229,8 +231,8 @@ function validateReviewHistory(root, scenario, priorCandidateSha, frozenCandidat
       `scenario ${scenario.kind} review history event ids must be present and unique`);
     eventIds.add(event.id);
     requireCondition(isIsoDate(event.timestamp), `scenario ${scenario.kind} review event ${transition} requires an ISO timestamp`);
-    if (index > 0) requireCondition(Date.parse(event.timestamp) > Date.parse(history[index - 1].timestamp),
-      `scenario ${scenario.kind} review history timestamps must increase`);
+    if (index > 0) requireCondition(Date.parse(event.timestamp) >= Date.parse(history[index - 1].timestamp),
+      `scenario ${scenario.kind} review history timestamps must not go backwards`);
 
     const isReviewerEvent = transition !== 'revision-submitted';
     const expectedRole = isReviewerEvent ? 'reviewer' : 'implementer';
@@ -284,9 +286,9 @@ function validateStageResult(stage, result, frozenCandidateSha, scenarioKind) {
   requireCondition(result && typeof result === 'object' && !Array.isArray(result), `${stage} stageResult is required`);
   if (stage === 'retest') {
     requireCondition(result.status === 'passed' && nonEmpty(result.testRunId)
-      && Number.isInteger(result.testsRun) && result.testsRun > 0
-      && Number.isInteger(result.failedTests) && result.failedTests === 0,
-    `${scenarioKind} retest must record a passing non-empty test run`);
+      && Number.isInteger(result.commandCount) && result.commandCount > 0
+      && result.rawExitCode === 0,
+    `${scenarioKind} retest must record a successful acceptance command`);
   } else if (stage === 'preview') {
     requireCondition(result.status === 'ready' && nonEmpty(result.previewId)
       && result.candidateSha256 === frozenCandidateSha,
@@ -324,9 +326,8 @@ function validateCommands(root, scenario, frozenCandidateSha, usedPaths) {
       && record.rawExitCode === command.rawExitCode && record.expectedExitCode === command.expectedExitCode
       && record.frozenCandidateSha256 === frozenCandidateSha,
     `scenario ${scenario.kind} ${stage} command artifact does not match its receipt entry`);
-    requireCondition(isIsoDate(record.startedAt) && isIsoDate(record.finishedAt)
-      && Date.parse(record.finishedAt) >= Date.parse(record.startedAt),
-    `scenario ${scenario.kind} ${stage} command artifact requires a valid execution interval`);
+    requireCondition(isIsoDate(record.observedAt),
+      `scenario ${scenario.kind} ${stage} command artifact requires a valid observation timestamp`);
     validateStageResult(stage, record.stageResult, frozenCandidateSha, scenario.kind);
 
     const stdout = verifyEvidenceArtifact(root, record.stdout,
@@ -336,6 +337,41 @@ function validateCommands(root, scenario, frozenCandidateSha, usedPaths) {
     requireCondition(stdout.includes(command.id) && stdout.includes(frozenCandidateSha),
       `scenario ${scenario.kind} ${stage} captured stdout must identify the command and frozen hash`);
   }
+}
+
+function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths) {
+  const baseline = scenario.baselineReproduction;
+  requireCondition(baseline?.status === 'reproduced' && nonEmpty(baseline.expectedFailurePattern)
+    && shaPattern.test(baseline.baseCommit ?? '') && shaPattern.test(baseline.baseTreeSha ?? '')
+    && baseline.sourceCommitSha?.toLowerCase() === frozenSourceSha.toLowerCase()
+    && baseline.baseParentCommitSha?.toLowerCase() === frozenSourceSha.toLowerCase(),
+  `scenario ${scenario.kind} requires a baseline failure on a workspace based on the frozen source commit`);
+  requireCondition(Array.isArray(scenario.acceptanceCommands) && scenario.acceptanceCommands.length > 0
+    && scenario.acceptanceCommands.every(nonEmpty) && Array.isArray(baseline.commands)
+    && baseline.commands.length === scenario.acceptanceCommands.length,
+  `scenario ${scenario.kind} baseline must run every declared acceptance command`);
+  requireCondition(JSON.stringify(scenario.commands?.[0]?.argv) === JSON.stringify(scenario.acceptanceCommands),
+    `scenario ${scenario.kind} retest must execute the exact declared acceptance commands`);
+  let matchingFailure = false;
+  for (const [index, command] of baseline.commands.entries()) {
+    requireCondition(command.command === scenario.acceptanceCommands[index] && nonEmpty(command.id)
+      && Number.isInteger(command.rawExitCode),
+    `scenario ${scenario.kind} baseline command identity or exit code is incomplete`);
+    const record = readEvidenceJson(root, command.artifact, `scenario ${scenario.kind} baseline command`, usedPaths);
+    requireCondition(record.schemaVersion === 1 && record.kind === 'baseline-command'
+      && record.scenarioKind === scenario.kind && record.commandId === command.id
+      && record.command === command.command && record.rawExitCode === command.rawExitCode
+      && record.expectedOutcome === 'nonzero-reproduction'
+      && record.expectedFailurePattern === baseline.expectedFailurePattern
+      && record.workspaceBaseCommit === baseline.baseCommit && record.workspaceBaseTreeSha === baseline.baseTreeSha
+      && record.sourceCommitSha === baseline.sourceCommitSha && record.baseParentCommitSha === baseline.baseParentCommitSha
+      && isIsoDate(record.observedAt),
+    `scenario ${scenario.kind} baseline command artifact does not match the receipt`);
+    const stdout = verifyEvidenceArtifact(root, record.stdout, `scenario ${scenario.kind} baseline stdout`, usedPaths).toString('utf8');
+    const stderr = verifyEvidenceArtifact(root, record.stderr, `scenario ${scenario.kind} baseline stderr`, usedPaths).toString('utf8');
+    if (command.rawExitCode !== 0 && `${stdout}\n${stderr}`.includes(baseline.expectedFailurePattern)) matchingFailure = true;
+  }
+  requireCondition(matchingFailure, `scenario ${scenario.kind} must capture its expected baseline failure with a nonzero exit`);
 }
 
 export function validateReceipt(manifest, receipt, options = {}) {
@@ -399,35 +435,33 @@ export function validateReceipt(manifest, receipt, options = {}) {
     `scenario ${scenario.kind} frozen candidate must name the actual checkout commit and tree`);
     requireCondition(typeof candidate.sha256 === 'string' && hashPattern.test(candidate.sha256),
       `scenario ${scenario.kind} frozen candidate requires a lowercase SHA-256`);
-    const candidateBytes = verifyTrackedArtifact(root, snapshot.commitSha, candidate,
-      `scenario ${scenario.kind} frozen candidate`, usedPaths, true);
+  const evidenceRoot = options.evidenceRoot ?? root;
+  const candidateBytes = verifyEvidenceArtifact(evidenceRoot, candidate,
+    `scenario ${scenario.kind} frozen candidate`, usedPaths, true);
     const finalCandidateSha = sha256(candidateBytes);
+
+    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths);
 
     const priorCandidate = scenario.priorCandidate;
     requireCondition(priorCandidate && typeof priorCandidate === 'object'
       && typeof priorCandidate.sha256 === 'string' && hashPattern.test(priorCandidate.sha256)
       && priorCandidate.sha256 !== finalCandidateSha,
     `scenario ${scenario.kind} must preserve a distinct pre-review candidate hash`);
-    verifyTrackedArtifact(root, snapshot.commitSha, priorCandidate,
+  verifyEvidenceArtifact(evidenceRoot, priorCandidate,
       `scenario ${scenario.kind} pre-review candidate`, usedPaths, true);
 
-    validateReviewHistory(root, scenario, priorCandidate.sha256, finalCandidateSha, usedPaths);
-    validateCommands(root, scenario, finalCandidateSha, usedPaths);
+    validateReviewHistory(evidenceRoot, scenario, priorCandidate.sha256, finalCandidateSha, usedPaths);
+    validateCommands(evidenceRoot, scenario, finalCandidateSha, usedPaths);
   }
   requireCondition(scenarioKindsSeen.size === scenarioKinds.length && scenarioKinds.every(kind => scenarioKindsSeen.has(kind)),
     'receipt must contain both the defect and feature scenarios');
 
   return {
-    status: 'incomplete',
-    structuralStatus: 'complete-unattested',
-    acceptanceStatus: 'incomplete-until-trusted-attestation',
-    trustedAttestationVerifier: 'not-configured',
-    unverifiedClaims: [
-      'provider execution and credential use are not independently attested',
-      'reviewer and agent identities/history are self-reported',
-      'command execution and captured outputs are self-reported artifacts',
-      'repository and artifact hashes prove byte consistency, not who produced the receipt',
-    ],
+    status: 'structurally-verified',
+    structuralStatus: 'structurally-verified',
+    acceptanceStatus: 'runtime-database-verification-required',
+    runtimeEvidenceStatus: 'not-checked',
+    verificationBoundary: 'structure-and-hashes-only; run the local verifier for runtime acceptance',
     commitSha: snapshot.commitSha,
     treeSha: snapshot.treeSha,
     scenarioKinds: scenarioKinds,
@@ -440,12 +474,13 @@ function parseArguments(argv) {
     receiptPath: undefined,
     expectedSha: undefined,
     repositoryRoot: repositoryRoot,
+    evidenceRoot: undefined,
     checkManifest: false,
   };
   const seen = new Set();
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (['--manifest', '--receipt', '--expected-sha', '--repository-root'].includes(argument)) {
+    if (['--manifest', '--receipt', '--expected-sha', '--repository-root', '--evidence-root'].includes(argument)) {
       requireCondition(!seen.has(argument), `${argument} may only be specified once`);
       seen.add(argument);
       const value = argv[index + 1];
@@ -454,7 +489,8 @@ function parseArguments(argv) {
       if (argument === '--manifest') result.manifestPath = resolve(process.cwd(), value);
       else if (argument === '--receipt') result.receiptPath = resolve(process.cwd(), value);
       else if (argument === '--expected-sha') result.expectedSha = value;
-      else result.repositoryRoot = resolve(process.cwd(), value);
+      else if (argument === '--repository-root') result.repositoryRoot = resolve(process.cwd(), value);
+      else result.evidenceRoot = resolve(process.cwd(), value);
     } else if (argument === '--check-manifest') {
       requireCondition(!seen.has(argument), `${argument} may only be specified once`);
       seen.add(argument);
@@ -468,7 +504,7 @@ async function main() {
   const options = parseArguments(process.argv.slice(2));
   const manifest = validateManifest(JSON.parse(readFileSync(options.manifestPath, 'utf8')));
   if (options.checkManifest) {
-    console.log(`MANIFEST_VALID=${manifest.manifestId}; contractStatus=contract-only; acceptanceStatus=incomplete; no acceptance run is claimed; trustedAttestationVerifier=not-configured.`);
+    console.log(`MANIFEST_VALID=${manifest.manifestId}; contractStatus=runner-supported; structuralStatus=structurally-verified; runtime evidence is checked by the local verifier.`);
     return;
   }
   if (!options.receiptPath) throw new Error('ACCEPTANCE_RECEIPT_MISSING: a receipt is required for structural validation');
@@ -477,11 +513,12 @@ async function main() {
   const result = validateReceipt(manifest, receipt, {
     expectedSha: options.expectedSha,
     repositoryRoot: options.repositoryRoot,
+    evidenceRoot: options.evidenceRoot,
   });
   console.log(JSON.stringify(result, null, 2));
-  // Structural consistency is not trusted acceptance. Never let a receipt
-  // consumer treat this result as a successful acceptance gate.
-  process.exitCode = 2;
+  // This command verifies structure only. The separate local runner opens the
+  // evidence database and verifies persisted task, Run, Event, review, process,
+  // command, preview, and apply records before claiming runtime acceptance.
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "manifestId": "agentos-existing-project-acceptance-v2",
-  "status": "contract-only",
-  "description": "Version 2 requires separate defect and feature scenarios, per-scenario frozen candidates, review-request/revision/approval history, and hashed retest/preview/apply command artifacts. Receipts remain incomplete until a trusted attestation verifier exists; this manifest is not evidence that acceptance ran.",
+  "status": "runner-supported",
+  "description": "Version 2 requires separate defect and feature scenarios, per-scenario frozen candidates, review-request/revision/approval history, and hashed retest/preview/apply evidence. Structural verification is distinct from runtime acceptance, which the local runner verifies against AgentOS persisted records; no external signer is required.",
   "modes": {
     "simulated-provider": {
       "providerExecution": "simulated",
@@ -24,8 +24,8 @@
     "processExitCode": 0,
     "acceptanceExitCode": 0,
     "candidate": {
-      "artifactPath": "tracked-regular-repository-file",
-      "hashAlgorithm": "sha256-file-bytes-matching-git-tree-blob",
+      "artifactPath": "runner-captured-runtime-diff",
+      "hashAlgorithm": "sha256-file-bytes-matching-runtime-database-diff",
       "hashFormat": "64-character-lowercase-hex"
     },
     "evidenceArtifacts": {
@@ -36,6 +36,7 @@
     "scenarios": {
       "exactKinds": ["defect", "feature"],
       "exactCount": 2,
+      "baselineReproduction": "capture-all-acceptance-commands-and-a-matching-nonzero-expected-failure-on-the-frozen-base",
       "requiredIdentityFields": ["projectId", "taskId", "runId", "candidateId"],
       "uniqueAcrossScenarios": ["taskId", "runId", "candidateId"],
       "requiredRoles": ["planner", "implementer", "reviewer"],
@@ -45,11 +46,18 @@
       "reviewTransitions": ["changes-requested", "revision-submitted", "approved"],
       "requiredCommandStages": ["retest", "preview", "apply"],
       "successfulExitCode": 0,
-      "commandArtifactFields": ["schemaVersion", "kind", "scenarioId", "stage", "commandId", "argv", "cwd", "rawExitCode", "expectedExitCode", "frozenCandidateSha256", "stdout", "stderr", "stageResult", "startedAt", "finishedAt"]
+      "commandArtifactFields": ["schemaVersion", "kind", "scenarioId", "stage", "commandId", "argv", "cwd", "rawExitCode", "expectedExitCode", "frozenCandidateSha256", "stdout", "stderr", "stageResult", "observedAt"]
     },
     "trust": {
-      "receiptSignature": "not-configured",
-      "acceptanceVerdict": "incomplete-until-trusted-attestation"
+      "receiptSignature": "not-required",
+      "acceptanceVerdict": "requires-local-runtime-database-verification",
+      "runtimeEvidence": [
+        "collaboration tasks, candidates, reviews, and review stage outputs",
+        "canonical Runs and durable runtime Events",
+        "provider sessions, configured model, native provider process identity and exit codes",
+        "persisted acceptance test exit codes and outputs",
+        "candidate preview response and applied candidate state"
+      ]
     }
   }
 }

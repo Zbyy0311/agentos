@@ -47,6 +47,7 @@ function fixture(mode = 'simulated-provider') {
     };
     const requestedChanges = [`${kind}: address the review finding with a concrete change`];
     const changedPaths = [`src/${kind}-change.ts`];
+    const acceptanceCommands = [`pnpm acceptance:existing-project --scenario ${kind}`];
     const requestId = `${kind}-review-request`;
     const revisionId = `${kind}-revision`;
     const approvalId = `${kind}-approval`;
@@ -94,14 +95,13 @@ function fixture(mode = 'simulated-provider') {
 
     const commands = ['retest', 'preview', 'apply'].map((stage, stageIndex) => {
       const commandId = `${kind}-${stage}-command`;
-      const argv = ['pnpm', 'acceptance:existing-project', '--scenario', kind, '--stage', stage];
-      const startedAt = `2026-10-01T10:${String(20 + stageIndex).padStart(2, '0')}:00.000Z`;
+      const argv = stage === 'retest' ? acceptanceCommands : ['agentos-acceptance', '--stage', stage, '--scenario', kind];
       const finishedAt = `2026-10-01T10:${String(21 + stageIndex).padStart(2, '0')}:00.000Z`;
       const stdout = addArtifact(`evidence/${kind}/${stage}.stdout.txt`,
         `${commandId} completed for frozen candidate ${candidate.sha256}\n`);
       const stderr = addArtifact(`evidence/${kind}/${stage}.stderr.txt`, '');
       const stageResult = stage === 'retest'
-        ? { status: 'passed', testRunId: `${kind}-test-run`, testsRun: 12, failedTests: 0 }
+        ? { status: 'passed', testRunId: `${kind}-test-run`, commandCount: 1, rawExitCode: 0 }
         : stage === 'preview'
           ? { status: 'ready', previewId: `${kind}-preview`, candidateSha256: candidate.sha256 }
           : { status: 'applied', applicationId: `${kind}-application`, candidateSha256: candidate.sha256 };
@@ -119,8 +119,7 @@ function fixture(mode = 'simulated-provider') {
         stdout,
         stderr,
         stageResult,
-        startedAt,
-        finishedAt,
+        observedAt: finishedAt,
       };
       const artifact = addArtifact(`evidence/${kind}/${stage}.command.json`, JSON.stringify(record));
       return {
@@ -146,6 +145,7 @@ function fixture(mode = 'simulated-provider') {
         candidateId: `candidate-${kind}`,
       },
       roles,
+      acceptanceCommands,
       frozenCandidate: candidate,
       priorCandidate,
       reviewHistory: reviews,
@@ -164,6 +164,25 @@ function fixture(mode = 'simulated-provider') {
   for (const scenario of scenarios) {
     scenario.frozenCandidate.commitSha = commitSha;
     scenario.frozenCandidate.treeSha = treeSha;
+    const expectedFailurePattern = scenario.kind === 'defect'
+      ? 'baseline exposes the whitespace defect'
+      : 'baseline lacks slug normalization';
+    const stdout = addArtifact(`evidence/${scenario.kind}/baseline.stdout.txt`, `not ok 1 - ${expectedFailurePattern}\n`);
+    const stderr = addArtifact(`evidence/${scenario.kind}/baseline.stderr.txt`, '');
+    const command = scenario.acceptanceCommands[0];
+    const commandId = `${scenario.kind}-baseline-command`;
+    const baselineRecord = {
+      schemaVersion: 1, kind: 'baseline-command', scenarioKind: scenario.kind, commandId, command,
+      cwd: 'C:/fixture/agentos', rawExitCode: 1, expectedOutcome: 'nonzero-reproduction', expectedFailurePattern,
+      workspaceBaseCommit: commitSha, workspaceBaseTreeSha: treeSha, sourceCommitSha: commitSha, baseParentCommitSha: commitSha,
+      observedAt: '2026-10-01T10:00:00.000Z', stdout, stderr,
+    };
+    const baselineArtifact = addArtifact(`evidence/${scenario.kind}/baseline.command.json`, JSON.stringify(baselineRecord));
+    scenario.baselineReproduction = {
+      status: 'reproduced', expectedFailurePattern, baseCommit: commitSha, baseTreeSha: treeSha,
+      sourceCommitSha: commitSha, baseParentCommitSha: commitSha,
+      commands: [{ id: commandId, command, rawExitCode: 1, artifact: baselineArtifact }],
+    };
   }
 
   const modeRequirements = manifest.modes[mode];
@@ -208,14 +227,14 @@ function validate(item) {
   });
 }
 
-test('fully structured defect and feature evidence remains explicitly unattested', () => withFixture(item => {
+test('fully structured defect and feature evidence is reported as structural verification only', () => withFixture(item => {
   const result = validate(item);
-  assert.equal(result.structuralStatus, 'complete-unattested');
-  assert.equal(result.status, 'incomplete');
-  assert.equal(result.acceptanceStatus, 'incomplete-until-trusted-attestation');
-  assert.equal(result.trustedAttestationVerifier, 'not-configured');
+  assert.equal(result.structuralStatus, 'structurally-verified');
+  assert.equal(result.status, 'structurally-verified');
+  assert.equal(result.acceptanceStatus, 'runtime-database-verification-required');
+  assert.equal(result.runtimeEvidenceStatus, 'not-checked');
   assert.deepEqual(result.scenarioKinds, ['defect', 'feature']);
-  assert.ok(result.unverifiedClaims.length >= 3);
+  assert.match(result.verificationBoundary, /run the local verifier for runtime acceptance/);
 }));
 
 test('requires both scenario kinds; arbitrary labels and duplicate kinds cannot satisfy the contract', () => withFixture(item => {
@@ -301,18 +320,17 @@ test('real Windows acceptance is blocked in CI even when the receipt claims succ
   }
 }, 'real-windows-acceptance'));
 
-test('manifest-only CLI check says no run occurred and trust is incomplete', () => {
+test('manifest-only CLI check describes structural and runtime verification separately', () => {
   const result = spawnSync(process.execPath, [validatorPath, '--check-manifest'], {
     cwd: agentosRoot,
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /acceptanceStatus=incomplete/);
-  assert.match(result.stdout, /no acceptance run is claimed/);
-  assert.match(result.stdout, /trustedAttestationVerifier=not-configured/);
+  assert.match(result.stdout, /structuralStatus=structurally-verified/);
+  assert.match(result.stdout, /runtime evidence is checked by the local verifier/);
 });
 
-test('receipt CLI exits 2 for structurally valid evidence because no trusted verifier exists', () => withFixture(item => {
+test('receipt CLI exits successfully for structure and does not claim runtime acceptance', () => withFixture(item => {
   const receiptPath = resolve(item.root, 'receipt.json');
   writeFileSync(receiptPath, JSON.stringify(item.receipt));
   const result = spawnSync(process.execPath, [
@@ -321,9 +339,9 @@ test('receipt CLI exits 2 for structurally valid evidence because no trusted ver
     '--expected-sha', item.commitSha,
     '--repository-root', item.root,
   ], { cwd: agentosRoot, encoding: 'utf8' });
-  assert.equal(result.status, 2, result.stderr);
-  assert.match(result.stdout, /"status": "incomplete"/);
-  assert.match(result.stdout, /"acceptanceStatus": "incomplete-until-trusted-attestation"/);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"status": "structurally-verified"/);
+  assert.match(result.stdout, /"acceptanceStatus": "runtime-database-verification-required"/);
 }));
 
 test('receipt CLI rejects omitted receipts and expected SHA instead of inferring success', () => {
