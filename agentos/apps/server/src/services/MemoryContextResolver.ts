@@ -18,6 +18,7 @@ import {
   type PlannedMemoryContextSnapshot,
 } from './MemoryContextBudgetSelector.js';
 import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 
 /**
  * MF-4 Run startup integration: resolve, freeze, and gate Memory context.
@@ -166,6 +167,7 @@ export class MemoryContextResolver {
       snapshotId: this.createSnapshotId(input),
       retrieval: {
         context,
+        selectionPolicy: MEMORY_RELEVANCE_POLICY,
         ...(input.query === undefined ? {} : { query: input.query }),
       },
       budget,
@@ -229,7 +231,7 @@ export class MemoryContextResolver {
     };
     const selection: SelectMemoryContextInput = {
       snapshotId: this.createSnapshotId(input),
-      retrieval: { context, ...(input.query === undefined ? {} : { query: input.query }) },
+      retrieval: { context, selectionPolicy: MEMORY_RELEVANCE_POLICY, ...(input.query === undefined ? {} : { query: input.query }) },
       budget,
       agentId: input.agentId,
       taskId: input.taskId,

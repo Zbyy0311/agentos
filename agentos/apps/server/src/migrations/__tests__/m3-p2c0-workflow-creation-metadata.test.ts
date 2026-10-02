@@ -104,6 +104,7 @@ test('Migration 013 is non-destructive, canonical, and preserves the frozen 007/
   const registryIds = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
   assert.deepEqual(registryIds.slice(0, EXPECTED_MIGRATION_PREFIX.length), EXPECTED_MIGRATION_PREFIX);
   assert.equal(registryIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.ok(registryIds.includes('052'), 'P1 source bindings migration 052 must be registered');
   assert.ok(registryIds.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
   assert.equal(migration013.id, '013');
   assert.equal(migration013.destructive, false);

@@ -23,6 +23,8 @@ import { RunStageRepository } from '../store/RunStageRepository.js';
 import { TaskRepository } from '../store/TaskRepository.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import type { MemoryCandidateDraft, MemoryExtractionInput } from './MemoryExtractor.js';
+import { MemoryExtractor } from './MemoryExtractor.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import {
   MemoryCandidateGenerationService,
@@ -97,7 +99,7 @@ interface Fixture {
   close(): void;
 }
 
-function fixture(): Fixture {
+function fixture(extractor?: Pick<MemoryExtractor, 'extract'>): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'agentos-mf5c-emit-'));
   const path = join(root, 'agentos.sqlite');
   const db = new DatabaseSync(path);
@@ -165,6 +167,7 @@ function fixture(): Fixture {
     tasks: new TaskRepository(tx as never),
     candidates,
     emitter,
+    extractor,
   });
   return {
     db, tx, service, emitter, candidates,
@@ -233,12 +236,12 @@ function assertGenerationError(error: unknown, code: MemoryCandidateGenerationEr
 function exactEntry(fx: Fixture) {
   const content = [
     '任务：修复登录页样式',
-    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。`,
-    'Stage 结果：implement: completed (attempt 1, duration 60000ms)',
+    '',
+    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。\nStage 结果：implement: completed (attempt 1, duration 60000ms)`,
   ].join('\n');
   return new MemoryEntryRepository(fx.tx).createEntry({
     id: 'mem_' + 'd'.repeat(26), workspaceId: WS, scope: 'task', ownerTaskId: TASK,
-    category: 'summary', authority: 'system-verified', confidence: 0.9, importance: 0.5,
+    category: 'knowledge', authority: 'system-verified', confidence: 0.9, importance: 0.5,
     title: 'accepted evidence', content, exactContentHash: hashMemoryText(content),
     status: 'active', sources: [{ kind: 'task', id: TASK }], createdAt: NOW,
   });
@@ -251,7 +254,9 @@ test('LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay 
     assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
     const stored = new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!;
     assert.equal(stored.version, 2);
-    assert.deepEqual(stored.sources, [{ kind: 'run', id: RUN }, { kind: 'task', id: TASK }]);
+    assert.deepEqual(stored.sources, [
+      { kind: 'run', id: RUN }, { kind: 'stage', id: 'stage_mf5c' }, { kind: 'task', id: TASK },
+    ]);
     const events = fx.db.prepare('SELECT * FROM runtime_events ORDER BY sequence').all() as EventRow[];
     assert.equal(events.length, 1);
     assert.equal(events[0].type, 'memory.entry_deduplicated');
@@ -259,7 +264,7 @@ test('LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay 
     assert.equal(events[0].causation_id, OP);
     assert.equal(events[0].correlation_id, OP_CORRELATION);
     assert.deepEqual(JSON.parse(events[0].payload_json), {
-      memoryEntryId: entry.id, version: 2, scope: 'task', category: 'summary', authority: 'system-verified',
+      memoryEntryId: entry.id, version: 2, scope: 'task', category: 'knowledge', authority: 'system-verified',
     });
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages WHERE event_id = ?', events[0].id), 1);
     assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
@@ -293,8 +298,8 @@ test('LITE-07-107 archived exact match between lookup and transaction falls thro
   const fx = fixture();
   try {
     const entry = exactEntry(fx);
-    const merge = fx.emitter.emitEntryDeduplicated.bind(fx.emitter);
-    fx.emitter.emitEntryDeduplicated = input => {
+    const merge = fx.emitter.emitTerminalMemoryGeneration.bind(fx.emitter);
+    fx.emitter.emitTerminalMemoryGeneration = input => {
       new MemoryEntryRepository(fx.tx).updateStatus({ workspaceId: WS, entryId: entry.id,
         expectedVersion: 1, status: 'archived', updatedAt: NOW });
       return merge(input);
@@ -354,7 +359,7 @@ test('MF5C-1 completed run persists the candidate with exactly one event and Out
     assert.equal(payload.candidateId, candidate.id);
     assert.deepEqual(
       { scope: payload.scope, category: payload.category, authority: payload.authority, decision: payload.decision },
-      { scope: 'task', category: 'summary', authority: 'agent-derived', decision: 'review-required' },
+      { scope: 'task', category: 'knowledge', authority: 'agent-derived', decision: 'review-required' },
     );
 
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 1);
@@ -405,6 +410,39 @@ test('MF5C-3 a failing Outbox write rolls the candidate and the event back toget
     assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'created');
     assert.equal(candidateCreatedEvents(fx).length, 1);
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 1);
+  } finally { fx.close(); }
+});
+
+test('canonical Run batch caps at three and rolls every Candidate/Event/Outbox back together', () => {
+  const extractor = {
+    extract(_input: MemoryExtractionInput) {
+      const drafts: MemoryCandidateDraft[] = [
+        { type: 'overview', title: 'Overview', summary: 'Overview summary.', content: 'Overview content.', confidence: 100, operation: 'create' },
+        { type: 'convention', title: 'Convention', summary: 'Convention summary.', content: 'Convention content.', confidence: 100, operation: 'create' },
+        { type: 'decision', title: 'Decision', summary: 'Decision summary.', content: 'Decision content.', confidence: 100, operation: 'create' },
+        { type: 'experience', title: 'Ignored excess', summary: 'Excess summary.', content: 'Excess content.', confidence: 100, operation: 'create' },
+      ];
+      return { drafts, reason: 'explicit_marker' as const };
+    },
+  };
+  const fx = fixture(extractor);
+  try {
+    fx.db.prepare(`CREATE TRIGGER fail_second_generated_candidate BEFORE INSERT ON outbox_messages
+      WHEN json_extract((SELECT payload_json FROM runtime_events WHERE id = NEW.event_id), '$.candidateId') = 'mcand_terminal_${RUN}_2'
+      BEGIN SELECT RAISE(ABORT, 'injected second candidate outbox failure'); END`).run();
+    assert.throws(() => fx.service.generateForRunTerminal(terminalInput()),
+      (error: unknown) => assertGenerationError(error, 'GENERATION_FAILED'));
+    assertNoFacts(fx);
+    assert.equal(nextEventSequence(fx.db, RUN), 1);
+
+    fx.db.prepare('DROP TRIGGER fail_second_generated_candidate').run();
+    const result = fx.service.generateForRunTerminal(terminalInput());
+    assert.equal(result.candidates?.length, 3);
+    assert.equal(fx.candidates.listCandidates(WS).length, 3);
+    assert.equal(candidateCreatedEvents(fx).length, 3);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 3);
+    assert.ok(result.candidates?.every(candidate => candidate.outcome === 'review-required'));
+    assert.ok(!fx.candidates.listCandidates(WS).some(candidate => candidate.title === 'Ignored excess'));
   } finally { fx.close(); }
 });
 

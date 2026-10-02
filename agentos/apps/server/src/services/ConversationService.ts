@@ -8,6 +8,7 @@ import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
 import { cleanupConversationAttachments, getAttachmentAbsolutePath, saveConversationAttachments, type ConversationAttachmentInput, type StoredConversationAttachment } from './ConversationAttachmentService.js';
 import { MemoryRetriever } from './MemoryRetriever.js';
+import { MemorySourceAccumulationService } from './MemorySourceAccumulationService.js';
 import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from './MemoryRetrievalRuntime.js';
 import { MAX_MEMORY_CHARACTERS, MAX_MEMORY_ITEMS, RunContextBuilder } from './RunContextBuilder.js';
 import { RuntimeEventProjector } from './RuntimeEventProjector.js';
@@ -144,6 +145,7 @@ export class ConversationService {
   private readonly runtimeBuffers = new Map<string, RuntimeEventBuffer>();
   private readonly runtimeQuotaNotices = new Set<string>();
   private readonly runtimeFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly memorySourceAccumulator: MemorySourceAccumulationService;
 
   constructor(
     private readonly store: SqliteStore,
@@ -152,6 +154,7 @@ export class ConversationService {
     preferenceService?: PreferenceLearningService,
     worktreeManager?: WorktreeManager,
   ) {
+    this.memorySourceAccumulator = new MemorySourceAccumulationService(store);
     const memoryRetrieval = createMemoryRetrievalRuntime(
       store.getDatabase(),
       memoryRetrievalRuntimeConfigFromEnvironment(),
@@ -360,6 +363,7 @@ export class ConversationService {
     await this.finishDirectRunSteps(input.workspaceId, run.id, finalStatus, finalFailureReason ?? runResult.error);
     await this.flushStepMutations();
     await this.flushEventsForRun(input.workspaceId, run.id);
+    if (finalStatus !== 'waiting_user') this.accumulateLegacyRunMemory(input.workspaceId, run.id);
 
     const latest = this.store.listExecutions(input.workspaceId, input.conversationId)
       .find(item => item.id === execution.id);
@@ -398,7 +402,8 @@ export class ConversationService {
     }));
 
     const runContext = await this.contextBuilder.build({
-      runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
+      runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot,
+      query: `Current request: ${content.slice(0, 900)}\nTask objective: ${run.objective.slice(0, 900)}`,
       agentId: agent.id, conversationId: conversation.id,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
@@ -480,6 +485,7 @@ export class ConversationService {
     await this.finishDirectRunSteps(input.workspaceId, run.id, finalStatus, finalFailureReason ?? runResult.error);
     await this.flushStepMutations();
     await this.flushEventsForRun(input.workspaceId, run.id);
+    if (finalStatus !== 'waiting_user') this.accumulateLegacyRunMemory(input.workspaceId, run.id);
     const latest = this.store.listExecutions(input.workspaceId, conversation.id).find(item => item.id === execution.id);
     if (!latest) throw new Error('Execution was not persisted');
     if (finalFailureReason) throw new Error(finalFailureReason);
@@ -695,6 +701,10 @@ export class ConversationService {
       await this.artifactCollector?.finalize(this.artifactContext(finalTurn.execution, input.workspaceRoot));
       await this.flushArtifacts();
       await this.flushEventsForRun(input.workspaceId, run.id);
+      const terminalRun = this.store.getRun(input.workspaceId, run.id);
+      if (terminalRun && ['completed', 'failed', 'cancelled'].includes(terminalRun.status)) {
+        this.accumulateLegacyRunMemory(input.workspaceId, run.id);
+      }
       this.learnFromRun({
         profileId: 'default', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
         objective: run.objective, status: this.store.getRun(input.workspaceId, run.id)?.status ?? 'failed',
@@ -811,6 +821,10 @@ export class ConversationService {
     await this.artifactCollector?.finalize(this.artifactContext(summary.execution, input.workspaceRoot));
     await this.flushArtifacts();
     await this.flushEventsForRun(input.workspaceId, run.id);
+    const terminalRun = this.store.getRun(input.workspaceId, run.id);
+    if (terminalRun && ['completed', 'failed', 'cancelled'].includes(terminalRun.status)) {
+      this.accumulateLegacyRunMemory(input.workspaceId, run.id);
+    }
     this.learnFromRun({
       profileId: 'default', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
       objective: run.objective, status: this.store.getRun(input.workspaceId, run.id)?.status ?? 'failed',
@@ -841,7 +855,9 @@ export class ConversationService {
     this.store.updateRun(input.workspaceId, run.id, { status: 'running', waitingQuestion: undefined, waitingExecutionId: undefined, waitingAgentId: undefined, completedAt: undefined });
     input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({ type: 'conversation.message.created', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id, payload: { senderType: 'user' } }));
-    const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content, conversationId: conversation.id, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
+    const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot,
+      query: `Current request: ${content.slice(0, 900)}\nTask objective: ${run.objective.slice(0, 900)}`,
+      conversationId: conversation.id, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
     this.publishMemoryRetrievalDiagnostic(input.workspaceId, conversation.id, run.id, runContext.retrievalDegraded, runContext.retrievalDegradedReason);
     const preferenceContext = this.resolvePreferenceContext({ runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group' });
     this.preferenceService.recordApplications(preferenceContext.applications);
@@ -850,6 +866,7 @@ export class ConversationService {
     await this.finishGroupRunSteps(input.workspaceId, run.id, planned.status, planned.responseMessage.content);
     await this.flushStepMutations();
     await this.flushEventsForRun(input.workspaceId, run.id);
+    if (planned.status !== 'waiting_user') this.accumulateLegacyRunMemory(input.workspaceId, run.id);
     return { userMessage, agentMessages: [planned.responseMessage], executions: [planned.execution] };
   }
 
@@ -1245,6 +1262,17 @@ export class ConversationService {
     const terminal = status === 'completed' ? 'completed' : status === 'cancelled' ? 'cancelled' : 'failed';
     const current = this.store.getRunStep(workspaceId, runId, summaryStep.stableStepKey);
     if (current?.status === 'running') await this.runStepService.update({ workspaceId, runId, stableStepKey: current.stableStepKey, status: terminal, summary });
+  }
+
+  private accumulateLegacyRunMemory(workspaceId: string, runId: string): void {
+    if (this.store.workspaceRepo.findById(workspaceId)?.memoryEnabled !== true) return;
+    try {
+      this.memorySourceAccumulator.generateForLegacyRun({ workspaceId, runId, createdAt: new Date().toISOString() });
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error ? String((error as { code?: unknown }).code)
+        : error instanceof Error ? error.message : 'UNKNOWN';
+      console.error(`MEMORY_SOURCE_ACCUMULATION_FAILED source=legacy-run code=${code}`);
+    }
   }
 
   private async flushEventsForRun(workspaceId: string, runId: string): Promise<void> {

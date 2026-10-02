@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { listenFetchSafe } from '../test-support/listenFetchSafe.js';
 import express from 'express';
 import test from 'node:test';
 import type { CollaborationTask } from '@agentos/shared';
@@ -24,11 +24,7 @@ async function withServer<T>(service: RouteService, action: (baseUrl: string) =>
   app.use('/workspaces/:workspaceId', createCollaborationRoutes(service as CollaborationWorkflowService, workspaces));
 
   const server = createServer(app);
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address() as AddressInfo;
+  const address = await listenFetchSafe(server);
   try {
     return await action(`http://127.0.0.1:${address.port}`);
   } finally {

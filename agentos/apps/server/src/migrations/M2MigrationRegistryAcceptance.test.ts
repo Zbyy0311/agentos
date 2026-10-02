@@ -23,6 +23,7 @@ test('P2 Migration Registry contains exactly the registered migrations in contra
   assert.deepEqual(ids, [...ids].sort());
   assert.equal(new Set(ids).size, DEFAULT_REGISTRY_MIGRATIONS.length);
   assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.ok(ids.includes('052'), 'P1 source bindings migration 052 must be registered');
   assert.ok(ids.includes('053'), 'Frozen candidate manifest integrity migration 053 must be registered');
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);
   for (const migration of DEFAULT_REGISTRY_MIGRATIONS) {

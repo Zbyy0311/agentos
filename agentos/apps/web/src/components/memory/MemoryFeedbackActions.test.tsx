@@ -4,11 +4,12 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { MemoryEntryDto } from '@/lib/memoryEntries';
 import type { MemoryFeedbackActionDto, MemoryFeedbackActionView, MemoryVersionFeedbackDto } from '@/lib/memoryFeedback';
-import { MemoryFeedbackActionRow, MemoryFeedbackActions } from './MemoryFeedbackActions.js';
+import { MemoryFeedbackActionRow, MemoryFeedbackActions, MemoryFeedbackResolutionEditor } from './MemoryFeedbackActions.js';
 
 const action: MemoryFeedbackActionDto = {
   id: 'action-1', feedbackId: 'feedback-1', workspaceId: 'workspace-1', memoryId: 'entry-1',
   memoryVersion: 2, action: 'correction', status: 'pending', version: 6,
+  resolvedByWorkspaceId: null, resolution: null,
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 const feedback: MemoryVersionFeedbackDto = {
@@ -30,33 +31,133 @@ const entry: MemoryEntryDto = {
 test('pending feedback action shows current Entry, frozen context, and resolution controls', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
     view={view}
     entry={entry}
     busy={false}
-    onResolve={() => undefined}
+    onReject={() => undefined}
+    onApply={() => undefined}
   />);
   assert.ok(markup.includes('Deployment workflow'));
   assert.ok(markup.includes('当前 v5'));
   assert.ok(markup.includes('run:run-1'));
   assert.ok(markup.includes('Turn · turn-1'));
   assert.ok(markup.includes('context-hash-1'));
-  assert.ok(markup.includes('标记已解决'));
+  assert.ok(markup.includes('处理反馈'));
   assert.ok(markup.includes('拒绝'));
+  assert.ok(!markup.includes('标记已解决'));
+  assert.ok(!markup.includes('应用并解决'), 'evidence and a new version are required before resolution');
 });
 
 test('resolved feedback history retains Entry/context links without pending controls', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
     view={{ ...view, action: { ...action, status: 'resolved', version: 7 } }}
     entry={entry}
     busy={false}
-    onResolve={() => undefined}
+    onReject={() => undefined}
+    onApply={() => undefined}
   />);
   assert.ok(markup.includes('已解决'));
   assert.ok(markup.includes('Deployment workflow'));
   assert.ok(markup.includes('turn-1'));
   assert.ok(!markup.includes('标记已解决'));
   assert.ok(!markup.includes('拒绝'));
+});
+
+test('entry correction editor asks for the new formal text, conclusion, and evidence', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const markup = renderToStaticMarkup(<MemoryFeedbackResolutionEditor
+    entry={entry}
+    busy={false}
+    onCancel={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('修正后的正式记忆（会生成新版本）'));
+  assert.ok(markup.includes('处理结论'));
+  assert.ok(markup.includes('证据与依据'));
+  assert.ok(markup.includes('提交修正版'));
+  assert.ok(markup.includes('归档这条记忆'));
+  assert.ok(markup.includes('重新验证当前版本'));
+  assert.ok(markup.includes('应用并解决'));
+  assert.ok(!markup.includes('标记已解决'));
+});
+
+test('global Entry owned by another workspace is read-only in the reporter workspace', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
+    view={view}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global' }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('归属工作区处理报告'));
+  assert.ok(!markup.includes('拒绝'));
+  assert.ok(!markup.includes('处理反馈'));
+});
+
+test('global Entry owner can edit a consumer report while the row retains the reporter workspace', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const consumerAction = { ...action, workspaceId: 'consumer-workspace' };
+  const consumerFeedback = { ...feedback, workspaceId: 'consumer-workspace', action: consumerAction };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="owner-workspace"
+    view={{ action: consumerAction, feedback: consumerFeedback }}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global' }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('报告工作区：consumer-workspace'));
+  assert.ok(markup.includes('处理反馈'));
+  assert.ok(!markup.includes('其他工作区拥有'));
+});
+
+test('resolved consumer feedback displays the distinct owner resolver identity', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const resolvedAction = {
+    ...action,
+    workspaceId: 'consumer-workspace',
+    status: 'resolved' as const,
+    resolvedByWorkspaceId: 'owner-workspace',
+    resolution: {
+      expectedActionVersion: 1,
+      expectedEntryVersion: 1,
+      resolvedEntryVersion: 2,
+      resolverWorkspaceId: 'owner-workspace',
+      resolution: 'corrected' as const,
+      conclusion: 'Owner reviewed the report.',
+      evidence: 'Checked the canonical procedure.',
+      createdAt: '2026-10-01T00:00:00.000Z',
+    },
+  };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="owner-workspace"
+    view={{ action: resolvedAction, feedback: { ...feedback, workspaceId: 'consumer-workspace', action: resolvedAction } }}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global', version: 2 }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('报告工作区：consumer-workspace'));
+  assert.ok(markup.includes('处理工作区：owner-workspace'));
+});
+
+test('legacy resolved feedback with missing actor is shown as historically unknown', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const legacyAction = { ...action, status: 'rejected' as const, resolvedByWorkspaceId: null };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
+    view={{ action: legacyAction, feedback: { ...feedback, action: legacyAction } }}
+    entry={entry}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('处理工作区：历史记录未留存'));
 });
 
 test('feedback management embeds the separate auto-accept policy pane', () => {

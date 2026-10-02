@@ -9,6 +9,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
 
@@ -88,6 +89,69 @@ test('direct Conversation lifecycle: create, send, list, archive, restore', asyn
   });
 });
 
+test('production direct streaming captures two consecutive task Turns with only their exact Message sources', async () => {
+  const previousMock = process.env.AGENTOS_FORCE_MOCK;
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(baseUrl + '/conversations', { kind: 'direct', agentId: 'codex' });
+      assert.equal(created.status, 201);
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+      const objectives = [
+        '决定第一任务采用 alpha-key 认证轮换方案。',
+        '决定第二任务采用 beta-signature 发布规范。',
+      ];
+
+      for (const content of objectives) {
+        const response = await fetch(baseUrl + '/conversations/' + conversationId + '/messages/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        assert.equal(response.status, 200);
+        const events = await response.text();
+        assert.ok(events.includes('event: turn.final'), events);
+      }
+
+      const persisted = await fetch(baseUrl + '/conversations/' + conversationId + '/messages')
+        .then(response => response.json()) as {
+          messages: Array<{
+            id: string;
+            senderType: string;
+            status: string;
+            replyToMessageId: string | null;
+          }>;
+        };
+      const userMessages = persisted.messages.filter(message => message.senderType === 'user');
+      assert.equal(userMessages.length, 2);
+      const replies = userMessages.map(source => {
+        const reply = persisted.messages.find(message => message.replyToMessageId === source.id);
+        assert.ok(reply, 'a persisted reply must point to source ' + source.id);
+        assert.equal(reply.status, 'final');
+        return { source, reply };
+      });
+      const candidates = new MemoryCandidateRepository(store.getDatabase()).listCandidates('workspace-a');
+
+      for (const { source, reply } of replies) {
+        const captured = candidates.filter(candidate => candidate.sources.some(
+          reference => reference.kind === 'message' && reference.id === reply.id,
+        ));
+        assert.ok(captured.length > 0, 'the terminal Turn reply ' + reply.id + ' must enter the review queue');
+        assert.ok(captured.length <= 3, 'one Turn creates no more than three candidates');
+        for (const candidate of captured) {
+          assert.deepEqual(
+            candidate.sources.filter(reference => reference.kind === 'message').map(reference => reference.id),
+            [source.id, reply.id],
+            'a candidate may only bind its exact user Message and terminal reply',
+          );
+        }
+      }
+    });
+  } finally {
+    if (previousMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = previousMock;
+  }
+});
 test('group Conversation defaults to sequential discussion and requires two Agents', async () => {
   await withServer(async (baseUrl) => {
     const defaultDiscussion = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex', 'kimi'] });
@@ -380,7 +444,7 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
       const conversation = (created.json as { conversation: { id: string } }).conversation;
       const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'plan the release' }),
+        body: JSON.stringify({ content: '发布前如何校验端口？' }),
       });
       assert.equal(response.status, 200);
       await response.text();
@@ -392,7 +456,7 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
       const frozen = snapshots[0]!;
       assert.deepEqual(JSON.parse(frozen.ids), [entryId], 'the reachable Entry must be selected');
       assert.ok(frozen.tokens > 0, 'the frozen selection carries its real token cost');
-      assert.equal(frozen.version, 'chat-memory.v1');
+      assert.equal(frozen.version, 'chat-memory.v1+memory-relevance.v2');
       assert.ok(frozen.turnId !== null, 'the snapshot belongs to the reply Turn');
       const turn = store.getDatabase()
         .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE id = ?')

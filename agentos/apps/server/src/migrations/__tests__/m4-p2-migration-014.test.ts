@@ -791,6 +791,7 @@ test('registry order is 001–014, duplicate ids are rejected, and checksum mism
   assert.equal(registryIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
   assert.equal(new Set(registryIds).size, registryIds.length);
   assert.deepEqual(registryIds, [...registryIds].sort());
+  assert.ok(registryIds.includes('052'), 'P1 source bindings migration 052 must be registered');
   assert.ok(registryIds.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
   const migration = migration014();
   assert.equal(migration.id, '014');

@@ -420,6 +420,8 @@ export const MEMORY_SELECTION_REASONS = [
   'diversity',
   'high-authority-reserve',
   'truncation',
+  'fixed-default',
+  'lexical-fallback',
 ] as const;
 export type MemorySelectionReasonCode = (typeof MEMORY_SELECTION_REASONS)[number];
 
@@ -450,11 +452,14 @@ export const MEMORY_EXCLUSION_REASONS = [
   'diversity-limit',
   'truncated',
   'conflict-penalty',
+  'no-relevance',
+  'feedback-quarantined',
 ] as const;
 export type MemoryExclusionReasonCode = (typeof MEMORY_EXCLUSION_REASONS)[number];
 
 export interface MemoryExclusionExplanationV1 {
   readonly memoryId: string;
+  readonly memoryVersion?: number;
   readonly reason: MemoryExclusionReasonCode;
 }
 

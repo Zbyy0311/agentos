@@ -1,0 +1,46 @@
+name: Memory relevance and correction gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: memory-relevance-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: agentos
+
+jobs:
+  memory-relevance:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build memory contract dependencies
+        run: pnpm --filter @agentos/server run build:workspace-deps
+      - name: Fixed corpus, exact version isolation and snapshot replay
+        run: node scripts/capture-lite-verification.mjs p1-memory-relevance apps/server -- node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/MemoryRelevancePolicy.test.ts src/services/MemoryRetrievalEvaluation.test.ts src/services/MemoryFeedbackService.test.ts src/services/MemorySemanticQualityGate.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryRetriever.test.ts src/services/RunContextBuilder.test.ts src/services/ConversationService.memory.test.ts src/routes/memoryActions.test.ts src/migrations/__tests__/p1-memory-lexical-index.test.ts
+      - name: Preserve exact commit receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-relevance-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/pass-audit/
+          if-no-files-found: error

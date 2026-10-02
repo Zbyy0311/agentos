@@ -368,8 +368,8 @@ export class MemoryEntryRepository {
     return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
   }
 
-  /** Preserve identity, ownership, authority and provenance; caller commits the Event. */
-  updateEntryWithinTransaction(input: UpdateMemoryEntryInput): MemoryEntryRecord {
+  /** Preserve ownership and sources; explicit feedback corrections carry human provenance. */
+  updateEntryWithinTransaction(input: UpdateMemoryEntryInput, provenance?: 'user-correction'): MemoryEntryRecord {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.entryId) || !nonBlank(input.updatedAt)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
@@ -392,10 +392,11 @@ export class MemoryEntryRepository {
     }
     const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
     const result = this.db.prepare(
-      'UPDATE memory_entries SET title = ?, summary = ?, content = ?, tags_json = ?, category = ?, confidence = ?, importance = ?, pinned = ?, '
+      'UPDATE memory_entries SET authority = ?, title = ?, summary = ?, content = ?, tags_json = ?, category = ?, confidence = ?, importance = ?, pinned = ?, '
       + 'exact_content_hash = ?, normalized_text_hash = ?, token_estimate = ?, version = version + 1, updated_at = ? '
       + 'WHERE workspace_id = ? AND id = ? AND version = ?',
-    ).run(next.title, next.summary, next.content, JSON.stringify(next.tags), next.category, next.confidence, next.importance,
+    ).run(provenance === 'user-correction' ? 'user-explicit' : current.authority,
+      next.title, next.summary, next.content, JSON.stringify(next.tags), next.category, next.confidence, next.importance,
       next.pinned ? 1 : 0, hash(next.content), hash(next.content.toLowerCase().replace(/\s+/gu, ' ').trim()),
       Math.max(1, Math.ceil(('### ' + next.title + '\n' + next.content).length / 4)), input.updatedAt,
       input.workspaceId, input.entryId, input.expectedVersion) as { changes: number | bigint };

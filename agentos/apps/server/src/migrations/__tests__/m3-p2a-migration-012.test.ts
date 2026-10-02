@@ -229,6 +229,7 @@ test('Migration Registry contains 012 in contract order', () => {
   assert.equal(ids.length, DEFAULT_REGISTRY_MIGRATIONS.length);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(ids, [...ids].sort());
+  assert.ok(ids.includes('052'), 'P1 source bindings migration 052 must be registered');
   assert.ok(ids.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
 });
 

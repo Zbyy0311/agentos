@@ -6,12 +6,20 @@ import {
   canProvideMemoryVersionFeedback,
   isMemoryAutoAcceptPolicyDto,
   joinMemoryFeedbackActions,
+  isMemoryFeedbackActionDto,
+  isMemoryVersionFeedbackDto,
   memoryAutoAcceptPolicyPath,
   memoryAutoAcceptPolicyPayload,
   memoryFeedbackActionResolutionPayload,
+  memoryFeedbackActionApplyPayload,
+  memoryFeedbackActionResponseMatchesRequest,
   memoryFeedbackActionResolvePath,
   memoryFeedbackActionsPath,
   memoryFeedbackPath,
+  parseMemoryFeedbackActionsResponse,
+  parseMemoryFeedbackActionResult,
+  parseMemoryVersionFeedbackListResponse,
+  parseMemoryVersionFeedbackResponse,
   memoryFeedbackResponseIsCurrent,
   submitMemoryVersionFeedback,
   type MemoryFeedbackActionDto,
@@ -36,11 +44,12 @@ const entry: MemoryEntryDto = {
 const action: MemoryFeedbackActionDto = {
   id: 'action-1', feedbackId: 'feedback-1', workspaceId: 'ws one', memoryId: 'entry/one',
   memoryVersion: 4, action: 'correction', status: 'pending', version: 3,
+  resolvedByWorkspaceId: null, resolution: null,
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 const feedback: MemoryVersionFeedbackDto = {
   id: 'feedback-1', workspaceId: 'ws one', memoryId: 'entry/one', memoryVersion: 4,
-  currentEntryVersion: 11, contextKind: 'run', contextId: 'run/one', contextHash: 'hash-1',
+  currentEntryVersion: 11, contextKind: 'run', contextId: 'run/one', contextHash: 'a'.repeat(64),
   kind: 'wrong', comment: 'This is no longer accurate', createdAt: action.createdAt, action,
 };
 
@@ -147,14 +156,75 @@ test('a feedback POST 404 explains that the current workspace cannot yet use the
   assert.equal(calls, 2);
 });
 
-test('action resolution payload uses the action version as the compare-and-swap version', () => {
-  assert.deepEqual(memoryFeedbackActionResolutionPayload(action, 'resolved'), { expectedVersion: 3, status: 'resolved' });
+test('action rejection payload uses the action version as the compare-and-swap version', () => {
   assert.deepEqual(memoryFeedbackActionResolutionPayload(action, 'rejected'), { expectedVersion: 3, status: 'rejected' });
+});
+
+test('evidenced action apply payload binds the current action and Entry versions', () => {
+  assert.deepEqual(memoryFeedbackActionApplyPayload(action, entry, {
+    resolution: 'corrected',
+    conclusion: 'The entry was corrected after review.',
+    evidence: 'Checked the current operational source.',
+    correctedEntry: { title: 'Updated deployment constraint', content: 'Use the local database.' },
+  }), {
+    expectedActionVersion: 3,
+    expectedEntryVersion: 11,
+    resolution: 'corrected',
+    conclusion: 'The entry was corrected after review.',
+    evidence: 'Checked the current operational source.',
+    correctedEntry: { title: 'Updated deployment constraint', content: 'Use the local database.' },
+  });
 });
 
 test('action views join feedback by feedback ID and tolerate missing feedback', () => {
   assert.deepEqual(joinMemoryFeedbackActions([action], [feedback]), [{ action, feedback }]);
   assert.deepEqual(joinMemoryFeedbackActions([action], []), [{ action, feedback: null }]);
+});
+
+test('owner queue joins consumer feedback by ID and preserves the reporter identity for owner-path actions', () => {
+  const reporterAction = { ...action, workspaceId: 'consumer-workspace' };
+  const reporterFeedback = { ...feedback, workspaceId: 'consumer-workspace', action: reporterAction };
+  const [view] = joinMemoryFeedbackActions([reporterAction], [reporterFeedback]);
+  assert.equal(view?.feedback?.workspaceId, 'consumer-workspace');
+  assert.equal(view?.action.workspaceId, 'consumer-workspace');
+  assert.equal(memoryFeedbackActionResolvePath('global-owner', reporterAction.id),
+    '/api/workspaces/global-owner/memory/feedback-actions/action-1/resolve');
+  const resolvedByOwner = { ...reporterAction, status: 'rejected' as const, resolvedByWorkspaceId: 'global-owner' };
+  assert.equal(memoryFeedbackActionResponseMatchesRequest(reporterAction, resolvedByOwner, 'global-owner'), true);
+  assert.equal(memoryFeedbackActionResponseMatchesRequest(reporterAction, resolvedByOwner, 'consumer-workspace'), false);
+  assert.equal(memoryFeedbackActionResponseMatchesRequest(reporterAction,
+    { ...resolvedByOwner, workspaceId: 'global-owner' }, 'global-owner'), false);
+});
+
+test('feedback response parsers require nullable actor fields and preserve unknown historical provenance', () => {
+  const resolution = {
+    resolverWorkspaceId: null,
+    expectedActionVersion: 1,
+    expectedEntryVersion: 1,
+    resolvedEntryVersion: 2,
+    resolution: 'corrected' as const,
+    conclusion: 'Owner reviewed the report.',
+    evidence: 'Checked the canonical procedure.',
+    createdAt: action.createdAt,
+  };
+  assert.equal(isMemoryFeedbackActionDto(action), true);
+  assert.equal(isMemoryVersionFeedbackDto(feedback), true);
+  assert.equal(parseMemoryFeedbackActionResult({ action: { ...action, resolvedByWorkspaceId: undefined } }), undefined,
+    'legacy payload without actor fields is rejected');
+  assert.equal(isMemoryFeedbackActionDto({ ...action, resolvedByWorkspaceId: undefined }), false);
+  assert.equal(isMemoryFeedbackActionDto({ ...action, unexpected: true }), false);
+  assert.equal(isMemoryFeedbackActionDto({ ...action, status: 'resolved', resolvedByWorkspaceId: null,
+    resolution: null }), true, 'old resolution rows can remain actor-unknown');
+  assert.equal(isMemoryFeedbackActionDto({ ...action, status: 'resolved', resolvedByWorkspaceId: 'owner',
+    resolution }), false);
+
+  const result = { feedback };
+  assert.equal(parseMemoryVersionFeedbackResponse(result), feedback);
+  assert.deepEqual(parseMemoryFeedbackActionsResponse({ actions: [action] }), [action]);
+  assert.deepEqual(parseMemoryVersionFeedbackListResponse({ feedback: [feedback] }), [feedback]);
+  assert.equal(parseMemoryFeedbackActionsResponse({ actions: [{ ...action, resolvedByWorkspaceId: undefined }] }), undefined);
+  assert.equal(parseMemoryVersionFeedbackListResponse({ feedback: [{ ...feedback, extra: 1 }] }), undefined);
+  assert.equal(parseMemoryVersionFeedbackResponse({ feedback: { ...feedback, action: { ...action, workspaceId: 'foreign' } } }), undefined);
 });
 
 test('workspace response guard rejects changed workspaces and superseded generations', () => {
