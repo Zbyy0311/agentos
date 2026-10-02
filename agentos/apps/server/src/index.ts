@@ -69,7 +69,7 @@ import { createCollaborationRoutes } from './routes/collaborations.js';
 import { createMaintenanceRoutes, createMaintenanceWriteBarrier } from './routes/maintenance.js';
 import { createReadinessRoutes } from './routes/readiness.js';
 import { MaintenanceBarrier } from './services/MaintenanceBarrier.js';
-import { MaintenanceCoordinator } from './services/MaintenanceCoordinator.js';
+import { MaintenanceCoordinator, MaintenanceError } from './services/MaintenanceCoordinator.js';
 import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './services/MaintenanceDiagnosticsService.js';
 import { MaintenanceService } from './services/MaintenanceService.js';
 import { WorkspaceGitRootRegistry } from './services/WorkspaceGitRootRegistry.js';
@@ -139,6 +139,9 @@ type StartupPhase = 'ownership' | 'store' | 'recovery' | 'services' | 'routes' |
 type StableStartupCode =
   | 'SERVER_ALREADY_RUNNING'
   | 'SERVER_OWNERSHIP_UNAVAILABLE'
+  | 'MAINTENANCE_IN_PROGRESS'
+  | 'MAINTENANCE_STATE_INVALID'
+  | 'MAINTENANCE_STATE_UNREADABLE'
   | 'STARTUP_RECOVERY_FAILED'
   | 'STARTUP_ADMISSION_RECONCILIATION_FAILED'
   | 'SERVER_LISTEN_FAILED'
@@ -168,6 +171,10 @@ function classifyStartupError(error: unknown): StableStartupCode {
   }
   if (error instanceof StartupAdmissionReconciliationFailure) {
     return 'STARTUP_ADMISSION_RECONCILIATION_FAILED';
+  }
+  if (error instanceof MaintenanceError && (error.code === 'MAINTENANCE_IN_PROGRESS'
+    || error.code === 'MAINTENANCE_STATE_INVALID' || error.code === 'MAINTENANCE_STATE_UNREADABLE')) {
+    return error.code;
   }
   return 'SERVER_STARTUP_FAILED';
 }
@@ -279,6 +286,7 @@ async function bootstrap(): Promise<void> {
       onResumeBackground: resumeBackgroundWorkers,
     });
     await maintenance.initialize();
+    maintenance.assertStartupWritable();
 
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
@@ -603,7 +611,7 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     // Single sanitized startup boundary: only stable codes escape this catch.
     const code = classifyStartupError(error);
-    if (code === 'SERVER_ALREADY_RUNNING' || code === 'SERVER_OWNERSHIP_UNAVAILABLE') {
+    if (code === 'SERVER_ALREADY_RUNNING' || code === 'SERVER_OWNERSHIP_UNAVAILABLE' || code.startsWith('MAINTENANCE_')) {
       console.error(`[AgentOS Server] startup blocked: ${code}`);
     } else {
       console.error(`[AgentOS Server] startup failed: ${code}`);

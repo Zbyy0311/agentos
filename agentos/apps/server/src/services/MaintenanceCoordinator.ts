@@ -79,27 +79,19 @@ export class MaintenanceCoordinator {
     try {
       const parsed = JSON.parse(raw) as Partial<DurableMaintenanceState>;
       if (parsed.formatVersion === 1 && typeof parsed.operationId === 'string'
-        && typeof parsed.kind === 'string' && typeof parsed.status === 'string'
+        && typeof parsed.kind === 'string' && ['active', 'completed', 'expired', 'failed'].includes(parsed.status ?? '')
         && typeof parsed.leaseExpiresAt === 'string' && typeof parsed.ownerInstanceId === 'string'
-        && typeof parsed.startedAt === 'string' && typeof parsed.updatedAt === 'string') {
+        && typeof parsed.startedAt === 'string' && typeof parsed.updatedAt === 'string'
+        && [parsed.startedAt, parsed.updatedAt, parsed.leaseExpiresAt].every(value => Number.isFinite(Date.parse(value)))) {
         state = parsed as DurableMaintenanceState;
       }
     } catch { /* malformed state is handled fail-closed below */ }
 
     if (!state) {
-      const now = this.now();
-      state = {
-        formatVersion: 1,
-        operationId: 'unknown',
-        kind: 'unknown',
-        status: 'active',
-        ownerInstanceId: 'unknown',
-        startedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        leaseExpiresAt: new Date(now.getTime() + MAINTENANCE_LEASE_MS).toISOString(),
-        resultCode: 'MAINTENANCE_STATE_INVALID',
-      };
-      await this.persist(state);
+      // Preserve damaged recovery evidence. A fabricated expiring lease would
+      // silently permit database writes later without proving maintenance ended.
+      this.barrier.begin();
+      throw new MaintenanceError('MAINTENANCE_STATE_INVALID');
     }
 
     if (state.status !== 'active') {
@@ -125,6 +117,13 @@ export class MaintenanceCoordinator {
       ...(this.state ? { state: this.state } : {}),
       recoveredAfterRestart: this.recoveredAfterRestart,
     });
+  }
+
+  /** Must run before opening SQLite: migration and recovery are writes too. */
+  assertStartupWritable(): void {
+    if (this.state?.status === 'active' || this.barrier.snapshot.quiescing) {
+      throw new MaintenanceError('MAINTENANCE_IN_PROGRESS');
+    }
   }
 
   async run<T>(kind: string, operation: (context: { signal: AbortSignal; operationId: string }) => Promise<T>): Promise<{
