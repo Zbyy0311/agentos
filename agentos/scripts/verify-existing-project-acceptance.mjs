@@ -423,17 +423,19 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
   for (let attempt = 0; attempt < 90; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`isolated AgentOS server exited ${child.exitCode}: ${output.text}`);
     let response;
+    let readinessEndpointsMissing = true;
     for (const path of ['/api/health/ready', '/api/maintenance/readiness']) {
       try { response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(1500) }); }
-      catch { response = undefined; break; }
+      catch { response = undefined; readinessEndpointsMissing = false; break; }
       if (response.status === 404) continue;
+      readinessEndpointsMissing = false;
       if (response.status === 503) { response = undefined; readinessPath = path; break; }
       if (response.ok) { readinessPath = path; break; }
       throw new Error(`AgentOS readiness ${path} returned ${response.status}`);
     }
     if (response?.ok) { ready = true; break; }
     if (readinessPath && !response) { await delay(250); continue; }
-    if (!readinessPath) {
+    if (!readinessPath && readinessEndpointsMissing) {
       if (requireP2Ready) {
         throw new Error('P2 readiness endpoint is not present; refusing to begin an acceptance task');
       }
