@@ -284,7 +284,7 @@ jobs:
         run: pnpm --filter @agentos/web exec playwright install chrome
 
       - name: Deterministic P4 browser regression
-        run: node scripts/run-p4-ci-gate.mjs browser-stable-keys --mode no-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web exec playwright test --config=playwright.config.ts --project=desktop-1280 e2e/p4-release-gates.spec.ts e2e/workspace-identity.spec.ts --grep "P4 stable-key|frozen candidate preview" --output=../../logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/browser-stable-keys/playwright-results; exit $LASTEXITCODE'
+        run: node scripts/run-p4-ci-gate.mjs browser-stable-keys --mode no-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web exec playwright test --config=playwright.config.ts --project=desktop-1280 e2e/p4-release-gates.spec.ts e2e/workspace-identity.spec.ts --grep "P4 stable-key|P4 collaboration recovery|frozen candidate preview" --output=../../logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/browser-stable-keys/playwright-results; exit $LASTEXITCODE'
 
       - name: Preserve P4 browser receipts
         if: always()

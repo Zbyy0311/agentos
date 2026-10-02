@@ -9,7 +9,7 @@ import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitConte
 
 type LeaseRecord = WorktreeLease & { absolutePath: string; workspaceRoot: string; recoveryBundle?: WorktreeRecoveryBundle };
 type PreflightOptions = { readonly controlledGitContent?: boolean };
-type CreateInput = { workspaceId: string; workspaceRoot: string; runId: string; executionId: string; agentId: string } & PreflightOptions;
+type CreateInput = { workspaceId: string; workspaceRoot: string; runId: string; executionId: string; agentId: string; expectedBaseCommit?: string } & PreflightOptions;
 
 export class WorktreeError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
@@ -20,6 +20,9 @@ export class WorktreeManager {
 
   async createLease(input: CreateInput): Promise<WorktreeLease> {
     const baseCommit = await this.assertClean(input.workspaceRoot, input);
+    if (input.expectedBaseCommit !== undefined && baseCommit !== input.expectedBaseCommit) {
+      throw new WorktreeError('workspace_changed', 'workspace_changed: clean source baseline differs from the expected commit');
+    }
     const branchName = `agentos/run-${segment(input.runId)}-exec-${segment(input.executionId)}`;
     const absolutePath = resolve(this.worktreeRoot, segment(input.workspaceId), segment(input.runId), segment(input.executionId));
     if (await gitSucceeds(input.workspaceRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`])) {
@@ -37,7 +40,7 @@ export class WorktreeManager {
         await context.freezeCheckoutAttributes(paths);
       }
       await git(input.workspaceRoot, ['worktree', 'add', ...(controlled ? ['--no-checkout'] : []), '-b', branchName, absolutePath, baseCommit], controlled);
-      const { controlledGitContent: _controlled, ...identity } = input;
+      const { controlledGitContent: _controlled, expectedBaseCommit: _expectedBaseCommit, ...identity } = input;
       const record: LeaseRecord = { id, ...identity, branchName, pathLabel: `worktree/${segment(input.workspaceId)}/${segment(input.runId)}/${segment(input.executionId)}`, baseCommit, status:controlled ? 'creating' : 'active', createdAt:now, updatedAt:now, absolutePath, workspaceRoot:input.workspaceRoot };
       this.leases.set(id, record); this.persist();
       try {

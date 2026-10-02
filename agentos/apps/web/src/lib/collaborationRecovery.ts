@@ -8,8 +8,45 @@ export interface CollaborationRecoveryAvailability {
   readonly failureCode?: string;
   readonly recoveryRequired?: boolean;
   readonly checkedBaseCommit?: string;
+  readonly resumeRequest?: {
+    readonly idempotencyKey: string;
+    readonly expectedTaskVersion: number;
+    readonly expectedRunId: string;
+    readonly expectedRunVersion: number;
+  };
   readonly actions: { readonly retryKnownFailure: boolean; readonly newLinkedTask: boolean };
   readonly reason?: string;
+}
+
+export interface CollaborationRecoveryTarget {
+  readonly workspaceId: string;
+  readonly taskId: string;
+  readonly generation: number;
+}
+
+export function isRecoveryTargetCurrent(
+  target: CollaborationRecoveryTarget,
+  current: CollaborationRecoveryTarget,
+): boolean {
+  return target.workspaceId === current.workspaceId && target.taskId === current.taskId
+    && target.generation === current.generation;
+}
+
+export function invalidateRecoveryTargetOnDispose(
+  target: CollaborationRecoveryTarget,
+  current: CollaborationRecoveryTarget,
+): CollaborationRecoveryTarget | null {
+  return isRecoveryTargetCurrent(target, current) ? { ...current, generation: current.generation + 1 } : null;
+}
+
+export function commitIfRecoveryTargetCurrent(
+  target: CollaborationRecoveryTarget,
+  current: CollaborationRecoveryTarget,
+  commit: () => void,
+): boolean {
+  if (!isRecoveryTargetCurrent(target, current)) return false;
+  commit();
+  return true;
 }
 
 function stableIntentHash(value: string): string {
@@ -30,6 +67,19 @@ export function collaborationRecoveryRequest(
   availability: CollaborationRecoveryAvailability,
   action: CollaborationRecoveryAction,
 ): { readonly method: 'POST'; readonly body: { readonly action: CollaborationRecoveryAction; readonly expectedTaskVersion: number; readonly expectedRunId: string; readonly expectedRunVersion: number }; readonly headers: { readonly 'Idempotency-Key': string } } {
+  if (action === 'retry-known-failure' && availability.resumeRequest) {
+    const resume = availability.resumeRequest;
+    return {
+      method: 'POST',
+      body: {
+        action,
+        expectedTaskVersion: resume.expectedTaskVersion,
+        expectedRunId: resume.expectedRunId,
+        expectedRunVersion: resume.expectedRunVersion,
+      },
+      headers: { 'Idempotency-Key': resume.idempotencyKey },
+    };
+  }
   if (!availability.runId || availability.runVersion === undefined) throw new Error('The current failed Run is unavailable');
   const intent = [workspaceId, availability.taskId, availability.taskVersion, availability.runId, availability.runVersion, action].join(':');
   return {

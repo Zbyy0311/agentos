@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import type { AgentProfile, CollaborationProgress, CollaborationTask, Conversation, ConversationMessage, Workspace } from '@agentos/shared';
 
 const workspaceId = 'p4-browser-fixture';
@@ -38,7 +39,7 @@ const candidates = [
   outcome: 'review-required', decision: null, version, createdAt: now, sources: [],
 }));
 
-type RequestRecord = { path: string; method: string; body: string | null };
+type RequestRecord = { path: string; method: string; body: string | null; key?: string };
 type Fixture = {
   workspace: Workspace;
   agents: AgentProfile[];
@@ -75,7 +76,7 @@ async function installDeterministicApi(page: Page, fixture: Fixture) {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
-    fixture.requests.push({ path: path + url.search, method: request.method(), body: request.postData() });
+    fixture.requests.push({ path: path + url.search, method: request.method(), body: request.postData(), key: request.headers()['idempotency-key'] });
 
     if (request.method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
@@ -203,5 +204,201 @@ test('P4 stable-key regression keeps group history, feedback, and candidate acti
   });
   expect(JSON.parse(writes[1]!.body ?? '{}')).toMatchObject({ expectedVersion: 3, outcome: 'reject' });
   expect(JSON.parse(writes[2]!.body ?? '{}')).toMatchObject({ expectedVersion: 7, outcome: 'accept' });
+  expect(fixture.failures).toEqual([]);
+});
+
+for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
+  test(`P4 collaboration recovery binds ${mode} to the selected task and a stable request key`, async ({ page }, testInfo) => {
+    const fixture = createFixture();
+    const target = { ...task(102), id: 'task-recovery', title: 'Recovery Target', status: 'failed' as const,
+      version: 7, canonicalRunId: 'failed-run', failureReason: 'Fixture failure' };
+    const sibling = { ...task(103), id: 'task-sibling', title: 'Unrelated Task' };
+    fixture.tasks = [target, sibling];
+    const consoleErrors: { text: string; url: string }[] = [];
+    const failedRequests: { url: string; error: string }[] = [];
+    page.on('console', message => {
+      if (message.type() === 'error') consoleErrors.push({ text: message.text(), url: message.location().url });
+    });
+    page.on('requestfailed', request => failedRequests.push({ url: request.url(), error: request.failure()?.errorText ?? '' }));
+    let recoveryWrites = 0;
+    await installDeterministicApi(page, fixture);
+    await page.route('**/api/**', async route => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const recoveryPath = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+      if (request.method() === 'GET' && path === `${recoveryPath}/recovery`) {
+        await json(route, { recovery: { taskId: target.id, taskVersion: 7, runId: 'failed-run', runVersion: 3,
+          failureCode: mode === 'known-failure' ? 'PROVIDER_NOT_AVAILABLE' : 'OWNER_STATE_UNKNOWN',
+          recoveryRequired: mode === 'unknown-side-effects', checkedBaseCommit: 'a'.repeat(40),
+          actions: { retryKnownFailure: mode === 'known-failure', newLinkedTask: mode === 'unknown-side-effects' } } });
+        return;
+      }
+      if (request.method() === 'POST' && path === `${recoveryPath}/recover`) {
+        fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+        recoveryWrites += 1;
+        if (recoveryWrites === 1) {
+          // A lost response must keep the exact intent and key on user retry.
+          await route.abort('failed');
+          return;
+        }
+        if (mode === 'unknown-side-effects') {
+          const linked = { ...target, id: 'linked-task', title: 'Linked Recovery Task', status: 'awaiting_confirmation' as const,
+            version: 1, canonicalRunId: undefined };
+          fixture.tasks.push(linked);
+          await json(route, { recovery: { action: 'new-linked-task', task: linked, priorRunId: 'failed-run',
+            checkedBaseCommit: 'a'.repeat(40), replayed: true } });
+        } else {
+          target.canonicalRunId = 'retry-run';
+          await json(route, { recovery: { action: 'retry-known-failure', task: target, priorRunId: 'failed-run',
+            newRunId: 'retry-run', checkedBaseCommit: 'a'.repeat(40), replayed: true } });
+        }
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto(`/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=task-recovery&view=execution`);
+    await expect(page).toHaveTitle('AgentOS');
+    await expect(page.locator('[data-signal-workspace]')).toBeVisible();
+    await expect(page.locator('nextjs-portal')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Recovery Target', exact: true })).toBeVisible();
+    const panel = page.locator('section[aria-label="协作任务恢复"]');
+    await expect(panel).toBeVisible();
+    const action = mode === 'known-failure' ? '重试已知启动前失败' : '在干净基线上创建关联任务';
+    const forbiddenAction = mode === 'known-failure' ? '在干净基线上创建关联任务' : '重试已知启动前失败';
+    await expect(panel.getByRole('button', { name: forbiddenAction })).toHaveCount(0);
+    await panel.getByRole('button', { name: action, exact: true }).click();
+    await expect(panel.getByRole('alert')).toBeVisible();
+    await expect(panel.getByRole('button', { name: action, exact: true })).toBeEnabled();
+    await panel.getByRole('button', { name: action, exact: true }).click();
+    if (mode === 'unknown-side-effects') {
+      await expect(page.getByRole('heading', { name: 'Linked Recovery Task', exact: true })).toBeVisible();
+      await expect(page).toHaveURL(/collaborationId=linked-task/u);
+      await expect(page.getByRole('button', { name: '确认并启动', exact: true })).toBeEnabled();
+    } else {
+      await expect(panel.getByRole('status')).toContainText('failed-run');
+      await expect(page.getByRole('heading', { name: 'Recovery Target', exact: true })).toBeVisible();
+    }
+    const writes = fixture.requests.filter(record => record.method === 'POST');
+    expect(writes).toHaveLength(2);
+    expect(writes[0]!.path).toBe(`/api/workspaces/${workspaceId}/collaboration/tasks/task-recovery/recover`);
+    expect(writes[1]).toEqual(writes[0]);
+    expect(writes[0]!.key).toMatch(/^p2-recovery-/u);
+    expect(JSON.parse(writes[0]!.body!)).toEqual({ action: mode === 'known-failure' ? 'retry-known-failure' : 'new-linked-task',
+      expectedTaskVersion: 7, expectedRunId: 'failed-run', expectedRunVersion: 3 });
+    expect(writes.some(record => /\/respond$|\/confirm$/u.test(record.path))).toBe(false);
+    expect(fixture.failures).toEqual([]);
+    expect(consoleErrors.filter(error => !(error.text === 'Failed to load resource: net::ERR_FAILED'
+      && error.url.endsWith('/task-recovery/recover')
+      && failedRequests.some(request => request.url === error.url && request.error === 'net::ERR_FAILED')))).toEqual([]);
+    await expect(page.locator('nextjs-portal')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`collaboration-recovery-${mode}.png`) });
+    await writeFile(testInfo.outputPath('fixture-network-and-console.json'), JSON.stringify({
+      providerExecution: 'none', api: 'deterministic-fixture', requests: fixture.requests, consoleErrors, failedRequests,
+    }, null, 2));
+  });
+}
+
+test('P4 collaboration recovery resumes the same reserved Run and intent after refresh', async ({ page }, testInfo) => {
+  const fixture = createFixture();
+  const target = { ...task(102), id: 'task-reserved', title: 'Reserved Recovery', status: 'failed' as const,
+    version: 7, canonicalRunId: 'failed-run', failureReason: 'Fixture startup failure' };
+  fixture.tasks = [target];
+  await installDeterministicApi(page, fixture);
+  let reserved = false;
+  let originalKey: string | undefined;
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const base = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+    if (request.method() === 'GET' && path === `${base}/recovery`) {
+      await json(route, { recovery: { taskId: target.id, taskVersion: target.version,
+        runId: reserved ? 'reserved-child' : 'failed-run', runVersion: reserved ? 1 : 3,
+        checkedBaseCommit: 'a'.repeat(40), actions: { retryKnownFailure: true, newLinkedTask: false },
+        ...(reserved ? { resumeRequest: { idempotencyKey: originalKey, expectedTaskVersion: 7,
+          expectedRunId: 'failed-run', expectedRunVersion: 3 } } : {}) } });
+      return;
+    }
+    if (request.method() === 'POST' && path === `${base}/recover`) {
+      fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+      const replayed = reserved;
+      if (!reserved) {
+        originalKey = request.headers()['idempotency-key'];
+        reserved = true;
+        target.version = 8;
+        target.canonicalRunId = 'reserved-child';
+      }
+      await json(route, { recovery: { action: 'retry-known-failure', task: target, priorRunId: 'failed-run',
+        newRunId: 'reserved-child', checkedBaseCommit: 'a'.repeat(40), replayed, pending: !replayed } });
+      return;
+    }
+    await route.fallback();
+  });
+  const url = `/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=${target.id}&view=execution`;
+  await page.goto(url);
+  await expect(page.getByRole('heading', { name: target.title, exact: true })).toBeVisible();
+  const panel = page.locator('section[aria-label="协作任务恢复"]');
+  await panel.getByRole('button', { name: '重试已知启动前失败', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('恢复请求仍在核验中');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: target.title, exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: '安全续办原重试', exact: true }).click();
+  await expect(panel.getByRole('status')).toContainText('reserved-child');
+  const writes = fixture.requests.filter(item => item.method === 'POST');
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toEqual(writes[0]);
+  expect(JSON.parse(writes[0]!.body!)).toEqual({ action: 'retry-known-failure', expectedTaskVersion: 7,
+    expectedRunId: 'failed-run', expectedRunVersion: 3 });
+  expect(writes.some(item => /\/respond$|\/confirm$/u.test(item.path))).toBe(false);
+  expect(fixture.failures).toEqual([]);
+  await writeFile(testInfo.outputPath('reserved-recovery-requests.json'), JSON.stringify({
+    providerExecution: 'none', api: 'deterministic-fixture', requests: fixture.requests,
+  }, null, 2));
+});
+
+test('P4 collaboration recovery ignores a late response after switching tasks', async ({ page }) => {
+  const fixture = createFixture();
+  const target = { ...task(102), id: 'task-delayed', title: 'Delayed Recovery', status: 'failed' as const,
+    version: 7, canonicalRunId: 'failed-run' };
+  const sibling = { ...task(103), id: 'task-other', title: 'Other Selected Task' };
+  fixture.tasks = [target, sibling];
+  await installDeterministicApi(page, fixture);
+  let completeResponse: (() => Promise<void>) | undefined;
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const base = `/api/workspaces/${workspaceId}/collaboration/tasks/${target.id}`;
+    if (request.method() === 'GET' && path === `${base}/recovery`) {
+      await json(route, { recovery: { taskId: target.id, taskVersion: 7, runId: 'failed-run', runVersion: 3,
+        actions: { retryKnownFailure: false, newLinkedTask: true }, recoveryRequired: true,
+        checkedBaseCommit: 'a'.repeat(40) } });
+      return;
+    }
+    if (request.method() === 'POST' && path === `${base}/recover`) {
+      fixture.requests.push({ path, method: 'POST', body: request.postData(), key: request.headers()['idempotency-key'] });
+      await new Promise<void>(done => {
+        completeResponse = async () => {
+          const linked = { ...target, id: 'linked-delayed', title: 'Late Linked Task', status: 'awaiting_confirmation' as const };
+          fixture.tasks.push(linked);
+          await json(route, { recovery: { action: 'new-linked-task', task: linked, priorRunId: 'failed-run',
+            checkedBaseCommit: 'a'.repeat(40), replayed: false } });
+          done();
+        };
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto(`/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=${target.id}&view=execution`);
+  await page.getByRole('button', { name: '在干净基线上创建关联任务', exact: true }).click();
+  await expect.poll(() => completeResponse !== undefined).toBe(true);
+  await page.getByRole('combobox', { name: '选择历史协作任务' }).selectOption(sibling.id);
+  await expect(page.getByRole('heading', { name: sibling.title, exact: true })).toBeVisible();
+  const response = page.waitForResponse(item => item.url().endsWith(`/${target.id}/recover`));
+  await completeResponse!();
+  await response;
+  await expect(page).toHaveURL(/collaborationId=task-other/u);
+  await expect(page.getByRole('heading', { name: sibling.title, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Late Linked Task', exact: true })).toHaveCount(0);
+  expect(fixture.requests.filter(item => item.method === 'POST')).toHaveLength(1);
   expect(fixture.failures).toEqual([]);
 });

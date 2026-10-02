@@ -499,7 +499,193 @@ test('P2 recovery review: baseline change during lease creation fences retry bef
     assert.equal(recovery.state, 'recovery_required');
     assert.equal(recovery.error_code, 'COLLABORATION_BASE_CHANGED');
     const lease = fx.worktrees.listLeases().find(item => item.runId === retry.id);
-    assert.equal(lease?.baseCommit, changedBaseCommit, 'the lease records the newer source commit that failed the CAS');
+    assert.equal(lease, undefined, 'the lease manager rejects a baseline change before creating a worktree');
+    assert.notEqual(changedBaseCommit, fx.plan.baseCommit);
+  } finally { await fx.close(); }
+});
+
+test('P2 retry recovery resumes one queued child after a pre-Start interruption, but only on its bound clean base', async () => {
+  let dispatchCalls = 0;
+  const fx = fixture({ runtimeDispatchEnabled: false, dispatchRun: async () => { dispatchCalls++; } });
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-recovery-resume-queued-child-01', action: 'retry-known-failure' as const,
+    };
+    const createLease = fx.worktrees.createLease.bind(fx.worktrees);
+    let interruptOnce = true;
+    fx.worktrees.createLease = async leaseInput => {
+      if (interruptOnce) {
+        interruptOnce = false;
+        throw new Error('simulated process interruption after durable Retry acceptance');
+      }
+      return createLease(leaseInput);
+    };
+
+    await assert.rejects(() => fx.service.recover(input), /simulated process interruption/u);
+    const rows = () => fx.store.getDatabase().prepare(
+      'SELECT id,status FROM runs WHERE workspace_id = ? AND parent_run_id = ?',
+    ).all('workspace-a', failed.id) as Array<{ id: string; status: string }>;
+    assert.equal(rows().length, 1, 'the crash window leaves one durable child Run');
+    assert.equal(rows()[0]!.status, 'queued');
+    const childId = rows()[0]!.id;
+    const originalAttempts = fx.store.getDatabase().prepare(`SELECT id,workflow_stage_key,attempt,status FROM run_stages
+      WHERE workspace_id = ? AND run_id = ? ORDER BY sequence`).all('workspace-a', childId);
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, failed.id,
+      'the interrupted task has not linked the child or authorized its Start');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', rows()[0]!.id)
+      .filter(item => item.type === 'run.start').length, 0);
+    assert.equal(dispatchCalls, 0);
+
+    const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.retryKnownFailure, true);
+    assert.equal(options.resumeRequest?.idempotencyKey, input.idempotencyKey);
+    assert.equal(options.resumeRequest?.expectedTaskVersion, blocked.version);
+    await assert.rejects(() => fx.service.recover({ ...input, expectedRunVersion: failed.version + 1 }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT');
+    await assert.rejects(() => fx.service.recover({ ...input, expectedTaskVersion: blocked.version + 1,
+      idempotencyKey: 'p2-recovery-resume-stale-version-01' }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
+
+    const originalHead = fx.plan.baseCommit;
+    writeFileSync(join(fx.repositoryRoot, 'README.md'), 'changed after retry acceptance\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: fx.repositoryRoot, windowsHide: true });
+    execFileSync('git', ['commit', '-qm', 'advance baseline during interrupted retry'], { cwd: fx.repositoryRoot, windowsHide: true });
+    assert.equal((await fx.service.getRecoveryOptions('workspace-a', fx.plan.id)).actions.retryKnownFailure, false,
+      'a changed source baseline fences the continuation');
+    await assert.rejects(() => fx.service.recover(input), error =>
+      (error as { code?: string }).code === 'COLLABORATION_BASE_CHANGED');
+    assert.equal(rows().length, 1, 'base mismatch never clones another child');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', rows()[0]!.id)
+      .filter(item => item.type === 'run.start').length, 0);
+
+    execFileSync('git', ['reset', '--hard', originalHead], { cwd: fx.repositoryRoot, windowsHide: true });
+    const resumedOptions = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(resumedOptions.actions.retryKnownFailure, true, 'restoring the exact checked baseline re-enables the same request');
+    const [resumed, duplicate] = await Promise.all([
+      fx.service.recover(input), fx.service.recover(input),
+    ]);
+    assert.equal([resumed, duplicate].filter(result => result.pending).length, 1);
+    const completed = resumed.pending ? duplicate : resumed;
+    assert.ok(completed.newRunId);
+    assert.equal(completed.newRunId, rows()[0]!.id, 'resume reuses the original queued child Run');
+    assert.equal(rows().length, 1, 'same-key recovery and duplicate request create only one child Run');
+    assert.deepEqual(fx.store.getDatabase().prepare(`SELECT id,workflow_stage_key,attempt,status FROM run_stages
+      WHERE workspace_id = ? AND run_id = ? ORDER BY sequence`).all('workspace-a', childId), originalAttempts,
+    'resume retains the accepted child stage attempts instead of cloning a new attempt');
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, completed.newRunId);
+    assert.equal(fx.store.operationService().listByRun('workspace-a', failed.id).filter(item => item.type === 'run.retry').length, 1);
+    assert.equal(fx.store.operationService().listByRun('workspace-a', completed.newRunId!).filter(item => item.type === 'run.start').length, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM provider_sessions WHERE workspace_id = ? AND run_id = ?')
+      .get('workspace-a', completed.newRunId) as { n: number }).n, 0);
+    assert.equal(dispatchCalls, 0, 'the service fixture disables Runtime dispatch, so no Provider adapter is invoked');
+    const replay = await fx.service.recover(input);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.newRunId, completed.newRunId);
+    assert.equal(rows().length, 1);
+  } finally { await fx.close(); }
+});
+
+test('P2 retry recovery rechecks durable Start evidence inside the Start authorization transaction', async () => {
+  const fx = fixture({ runtimeDispatchEnabled: false });
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-recovery-resume-evidence-fence-01', action: 'retry-known-failure' as const,
+    };
+    const preflight = fx.worktrees.preflight.bind(fx.worktrees);
+    let sourcePreflights = 0;
+    fx.worktrees.preflight = async (root, options) => {
+      const baseCommit = await preflight(root, options);
+      if (root === fx.repositoryRoot && ++sourcePreflights === 2) {
+        const child = (fx.store.getDatabase().prepare('SELECT id FROM runs WHERE workspace_id = ? AND parent_run_id = ?')
+          .get('workspace-a', failed.id) as { id: string }).id;
+        fx.store.operationService().create({ workspaceId: 'workspace-a', runId: child, type: 'run.start' });
+      }
+      return baseCommit;
+    };
+    await assert.rejects(() => fx.service.recover(input), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_REQUIRED');
+    const child = (fx.store.getDatabase().prepare('SELECT id FROM runs WHERE workspace_id = ? AND parent_run_id = ?')
+      .get('workspace-a', failed.id) as { id: string }).id;
+    const recovery = fx.store.getDatabase().prepare('SELECT id FROM p2_collaboration_recoveries WHERE idempotency_key = ?')
+      .get(input.idempotencyKey) as { id: string };
+
+    const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.retryKnownFailure, false);
+    assert.match(options.reason ?? '', /Start/u);
+    await assert.rejects(() => fx.service.recover(input), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_REQUIRED');
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, child,
+      'the queued child is linked, but the Start evidence race keeps it from dispatch');
+    assert.equal(fx.worktrees.listLeases().some(item => item.runId === child && item.status === 'active'), true,
+      'the race occurs after worktree creation, so the same owned lease is retained');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', child).filter(item => item.type === 'run.start').length, 1,
+      'the service does not add a second Start operation after the transactional evidence recheck');
+    assert.equal((fx.store.getDatabase().prepare('SELECT state FROM p2_collaboration_recoveries WHERE id = ?')
+      .get(recovery.id) as { state: string }).state, 'recovery_required');
+    assert.equal(fx.store.runRepository().findById('workspace-a', child)?.status, 'queued');
+  } finally { await fx.close(); }
+});
+
+test('P2 retry recovery rolls back failed Retry acceptance and resumes with the same body-bound key', async () => {
+  const fx = fixture({ runtimeDispatchEnabled: false });
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-recovery-retry-rollback-01', action: 'retry-known-failure' as const,
+    };
+    const taskRuns = (fx.service as unknown as { taskRuns: TaskRunService }).taskRuns;
+    const originalRetry = taskRuns.retryRunOperationForV2.bind(taskRuns);
+    taskRuns.retryRunOperationForV2 = (workspaceId, parentRunId, key, expectedVersion, beforeRetry) =>
+      originalRetry(workspaceId, parentRunId, key, expectedVersion, () => {
+        beforeRetry?.();
+        throw new Error('injected transactional retry rollback');
+      });
+
+    await assert.rejects(() => fx.service.recover(input), /injected transactional retry rollback/u);
+    taskRuns.retryRunOperationForV2 = originalRetry;
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number }).n, 1, 'failed acceptance rolls back its child Run');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', failed.id).filter(item => item.type === 'run.retry').length, 0,
+      'failed acceptance rolls back its Retry operation');
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, failed.id,
+      'failed acceptance does not change the canonical collaboration owner');
+    const recovery = fx.store.getDatabase().prepare(`SELECT checked_base_commit,state FROM p2_collaboration_recoveries
+      WHERE idempotency_key = ?`).get(input.idempotencyKey) as { checked_base_commit: string; state: string };
+    assert.equal(recovery.checked_base_commit, fx.plan.baseCommit);
+    assert.equal(recovery.state, 'recovery_required');
+
+    const resumed = await fx.service.recover(input);
+    assert.ok(resumed.newRunId);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number }).n, 2);
+    assert.equal(fx.store.runRepository().findById('workspace-a', resumed.newRunId!)?.parentRunId, failed.id);
+    assert.equal(fx.store.operationService().listByRun('workspace-a', failed.id).filter(item => item.type === 'run.retry').length, 1);
   } finally { await fx.close(); }
 });
 
