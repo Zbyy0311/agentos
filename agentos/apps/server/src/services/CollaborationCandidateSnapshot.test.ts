@@ -342,9 +342,13 @@ test('F29 enforces injectable inventory, per-file, source-byte, and Git-blob res
       resourceLimits: { maxFileBytes: 4 },
     }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: single file exceeds/u);
 
+    let sourceBudgetFreezeReached = false;
     await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/'], {
       resourceLimits: { maxFileBytes: 100, maxTotalSourceBytes: 8 },
+      afterGitContextFrozen: () => { sourceBudgetFreezeReached = true; },
     }), /COLLABORATION_SNAPSHOT_RESOURCE_LIMIT: source inventory exceeds/u);
+    assert.equal(sourceBudgetFreezeReached, false,
+      'aggregate source-byte budget must reject during metadata preflight before freezing or copying source files');
 
     await writeFile(join(repo.root, 'src', 'tracked.txt'), 'candidate\n');
     let gitPreflightPassed = false;
