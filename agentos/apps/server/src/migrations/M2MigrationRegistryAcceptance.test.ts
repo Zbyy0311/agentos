@@ -20,16 +20,16 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051'] as const;
-// Integrated P1 relevance/owner migrations precede pending accumulation, preview, and recovery migrations.
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052'] as const;
+// Integrated P1 relevance/owner and source-accumulation migrations precede pending preview/recovery migrations.
 const FINAL_P2_INTEGRATION_SEQUENCE = ['049', '050', '051', '052', '053', '054'] as const;
-const PENDING_P2_MIGRATION_IDS = ['052', '053', '054'] as const;
+const PENDING_P2_MIGRATION_IDS = ['053', '054'] as const;
 
 test('P2 Migration Registry contains exactly the registered migrations in contract order', () => {
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);
-  assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);
-  assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);
+  assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, DEFAULT_REGISTRY_MIGRATIONS.length);
   for (const migration of DEFAULT_REGISTRY_MIGRATIONS) {
     assert.match(migration.id, /^\d{3}$/);
     assert.match(migration.checksum, /^[0-9a-f]{16}$/);
@@ -40,11 +40,11 @@ test('P2 Migration Registry contains exactly the registered migrations in contra
 test('P2 Migration Registry preserves the exact padded order when instantiated', () => {
   const registry = new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS].reverse());
   assert.deepEqual(registry.all.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
-  assert.equal(registry.size, EXPECTED_MIGRATION_IDS.length);
+  assert.equal(registry.size, DEFAULT_REGISTRY_MIGRATIONS.length);
   assert.deepEqual(registry.all.map(migration => migration.checksum), DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.checksum));
 });
 
-test('P2 recovery 054 follows registered P1 migrations and pending accumulation/preview migrations', () => {
+test('P2 recovery 054 follows registered P1/source migrations and the pending preview migration', () => {
   assert.equal(migration054.id, '054');
   assert.equal(migration054.name, 'p2-interrupted-failure-recovery');
   assert.match(migration054.checksum, /^[0-9a-f]{16}$/);
@@ -55,11 +55,11 @@ test('P2 recovery 054 follows registered P1 migrations and pending accumulation/
   const integratedRegistry = new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS, ...plannedPredecessors, migration054]);
   assert.deepEqual(integratedRegistry.all.map(migration => migration.id).slice(-6), FINAL_P2_INTEGRATION_SEQUENCE);
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id).slice(-3), ['049', '050', '051']);
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => PENDING_P2_MIGRATION_IDS.includes(migration.id as '052' | '053' | '054')), [],
-    '052–054 remain unregistered until their owning slices are integrated');
+  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id).slice(-4), ['049', '050', '051', '052']);
+  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => PENDING_P2_MIGRATION_IDS.includes(migration.id as '053' | '054')), [],
+    '053–054 remain unregistered until their owning slices are integrated');
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === migration054.id), false,
-    'recovery 054 remains unregistered until 052 and 053 are integrated');
+    'recovery 054 remains unregistered until preview 053 is integrated');
 });
 
 test('P2 recovery 054 DDL applies to the registered base schema and creates both recovery ledgers', () => {

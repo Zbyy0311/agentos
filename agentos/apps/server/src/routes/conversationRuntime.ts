@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { CompactionRepository } from '../store/CompactionRepository.js';
 import { projectConversationCompaction } from '../services/ConversationCompactionInspector.js';
 import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from '../services/MemoryRetrievalRuntime.js';
+import { MemorySourceAccumulationService } from '../services/MemorySourceAccumulationService.js';
 import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import { BoundedGroupError } from '../services/BoundedGroupService.js';
@@ -142,6 +143,16 @@ export function createConversationRuntimeRoutes(
   };
 
   const conversations = () => store.conversationRepository();
+  const sourceAccumulator = new MemorySourceAccumulationService(store);
+  const accumulateWithoutAffectingExecution = (label: string, action: () => unknown) => {
+    try {
+      action();
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error ? String((error as { code?: unknown }).code)
+        : error instanceof Error ? error.message : 'UNKNOWN';
+      console.error(`MEMORY_SOURCE_ACCUMULATION_FAILED source=${label} code=${code}`);
+    }
+  };
 
   /**
    * LITE-09-101: the production Memory selector for chat. Without it the driver
@@ -1099,6 +1110,16 @@ export function createConversationRuntimeRoutes(
           ),
         },
       );
+      if (workspace.memoryEnabled && result.interaction?.status !== 'active'
+        && result.speakers.some(speaker => speaker.status === 'final')) {
+        accumulateWithoutAffectingExecution('group-interaction', () => sourceAccumulator.generateForGroupInteraction({
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          interactionId,
+          sourceMessageId: source.id,
+          createdAt: new Date().toISOString(),
+        }));
+      }
       send('group.done', {
         interactionId,
         endedBy: result.endedBy,
@@ -1212,6 +1233,16 @@ export function createConversationRuntimeRoutes(
         onDelta: (delta, cursor) => send('checkpoint', { messageId: responseMessageId, cursor, delta }),
         createdAt: new Date().toISOString(),
       });
+      if (workspace.memoryEnabled && conversation.kind === 'direct' && result.turn.status === 'final') {
+        accumulateWithoutAffectingExecution('direct-turn', () => sourceAccumulator.generateForDirectTurn({
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          turnId: result.turn.id,
+          sourceMessageId: userMessage.id,
+          responseMessageId: result.message.id,
+          createdAt: new Date().toISOString(),
+        }));
+      }
       if (result.turn.status === 'final') {
         send('turn.final', { turn: result.turn, message: result.message });
       } else {
