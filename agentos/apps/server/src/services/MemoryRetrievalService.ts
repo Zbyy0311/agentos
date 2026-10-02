@@ -5,6 +5,7 @@ import {
   type MemoryRankedResult,
   type MemoryRetrievalContext,
   type MemorySelectionReasonCode,
+  type MemoryExclusionExplanationV1,
 } from '@agentos/shared';
 import type {
   MemorySemanticOperationStatus,
@@ -17,6 +18,8 @@ import {
   type MemoryEntryRecord,
 } from '../store/MemoryEntryRepository.js';
 import { filterPreferenceMemory } from './PreferenceMemoryEligibility.js';
+import { isMemoryTextSafe } from '../store/MemoryContentSafety.js';
+import { MEMORY_RELEVANCE_POLICY, readMemoryLexicalRanks } from './MemoryLexicalIndex.js';
 
 /**
  * MF-3 scope-filtered Memory retrieval.
@@ -51,6 +54,8 @@ export interface RetrieveMemoryInput {
   readonly tagFilter?: readonly string[];
   /** Optional cap on returned results. */
   readonly limit?: number;
+  /** Opt-in for execution; old browsing/retrieval clients retain MF-3 behavior. */
+  readonly selectionPolicy?: typeof MEMORY_RELEVANCE_POLICY;
 }
 
 export interface RetrievedMemoryEntry {
@@ -59,10 +64,13 @@ export interface RetrievedMemoryEntry {
   readonly score: number;
   readonly reasons: readonly MemorySelectionReasonCode[];
   readonly ftsRank: number | null;
+  readonly semanticSimilarity?: number;
 }
 
 export interface RetrieveMemoryResult {
   readonly results: RetrievedMemoryEntry[];
+  readonly exclusions?: readonly (MemoryExclusionExplanationV1 & { readonly memoryVersion: number; readonly rank: number })[];
+  readonly selectionPolicy?: typeof MEMORY_RELEVANCE_POLICY;
   /** Optional sidecar status; absent when semantic retrieval is not configured. */
   readonly semantic?: {
     readonly degraded: boolean;
@@ -81,12 +89,14 @@ export interface RetrieveMemoryResult {
 /** Persist semantic fallback/hybrid provenance in existing strategy-version fields. */
 export function withMemorySemanticStrategyVersion(
   baseVersion: string,
-  result: Pick<RetrieveMemoryResult, 'semantic'>,
+  result: Pick<RetrieveMemoryResult, 'semantic' | 'selectionPolicy'>,
 ): string {
   const semantic = result.semantic;
-  if (semantic === undefined) return baseVersion;
-  if (semantic.degraded) return `${baseVersion}+semantic-fallback:${semantic.reason ?? 'UNKNOWN'}`;
-  return `${baseVersion}+semantic-hybrid`;
+  const version = result.selectionPolicy === MEMORY_RELEVANCE_POLICY
+    ? `${baseVersion}+${MEMORY_RELEVANCE_POLICY}` : baseVersion;
+  if (semantic === undefined) return version;
+  if (semantic.degraded) return `${version}+semantic-fallback:${semantic.reason ?? 'UNKNOWN'}`;
+  return `${version}+semantic-hybrid`;
 }
 
 function nonBlank(value: unknown): value is string {
@@ -119,6 +129,10 @@ function isEligibleAt(entry: MemoryEntryRecord, nowMs: number): boolean {
   return true;
 }
 
+function hasSafeEntryText(entry: MemoryEntryRecord): boolean {
+  return [entry.title, entry.summary, entry.content, ...entry.tags].every(isMemoryTextSafe);
+}
+
 export class MemoryRetrievalService {
   constructor(
     private readonly entries: MemoryEntryRepository,
@@ -137,10 +151,10 @@ export class MemoryRetrievalService {
   retrieveWithStatus(input: RetrieveMemoryInput): RetrieveMemoryResult {
     const baseline = this.retrieveBaseline(input);
     if (!this.semantic || !nonBlank(input.query)) {
-      return { ...baseline, results: this.applyLimit(baseline.results, input.limit) };
+      return this.finishSelection(input, baseline);
     }
     const reranked = this.rerankSemantic(baseline.results, input.query, input.context.workspaceId);
-    return {
+    return this.finishSelection(input, {
       ...baseline,
       degraded: baseline.degraded || reranked.degraded,
       semantic: {
@@ -148,8 +162,8 @@ export class MemoryRetrievalService {
         ...(reranked.reason === undefined ? {} : { reason: reranked.reason }),
         prepared: false,
       },
-      results: this.applyLimit(reranked.results, input.limit),
-    };
+      results: reranked.results,
+    });
   }
 
   /**
@@ -161,7 +175,7 @@ export class MemoryRetrievalService {
   async retrievePrepared(input: RetrieveMemoryInput): Promise<RetrieveMemoryResult> {
     const baseline = this.retrieveBaseline(input);
     if (!this.semantic || !nonBlank(input.query)) {
-      return { ...baseline, results: this.applyLimit(baseline.results, input.limit) };
+      return this.finishSelection(input, baseline);
     }
 
     const prepared: MemorySemanticOperationStatus = await this.semantic.prepare(input.query, baseline.results, input.context.workspaceId)
@@ -170,7 +184,7 @@ export class MemoryRetrievalService {
     // validity after the await before any fallback or budget choice is used.
     const current = this.retrieveBaseline(input);
     if (prepared.degraded) {
-      return {
+      return this.finishSelection(input, {
         ...current,
         degraded: true,
         semantic: {
@@ -179,12 +193,12 @@ export class MemoryRetrievalService {
           prepared: true,
           ...(prepared.preparedEntryCount === undefined ? {} : { preparedEntryCount: prepared.preparedEntryCount }),
         },
-        results: this.applyLimit(current.results, input.limit),
-      };
+        results: current.results,
+      });
     }
     const reranked = this.rerankSemantic(current.results, input.query, input.context.workspaceId);
     if (reranked.degraded) {
-      return {
+      return this.finishSelection(input, {
         ...current,
         degraded: true,
         semantic: {
@@ -193,18 +207,37 @@ export class MemoryRetrievalService {
           prepared: true,
           preparedEntryCount: prepared.preparedEntryCount,
         },
-        results: this.applyLimit(current.results, input.limit),
-      };
+        results: current.results,
+      });
     }
-    return {
+    return this.finishSelection(input, {
       ...current,
       semantic: {
         degraded: false,
         prepared: true,
         ...(prepared.preparedEntryCount === undefined ? {} : { preparedEntryCount: prepared.preparedEntryCount }),
       },
-      results: this.applyLimit(reranked.results, input.limit),
-    };
+      results: reranked.results,
+    });
+  }
+
+  private finishSelection(input: RetrieveMemoryInput, result: RetrieveMemoryResult): RetrieveMemoryResult {
+    if (input.selectionPolicy !== MEMORY_RELEVANCE_POLICY) return { ...result, results: this.applyLimit(result.results, input.limit) };
+    const exclusions = [...(result.exclusions ?? [])];
+    const relevant = result.results.filter(item => {
+      const fixed = this.isFixedDefault(item.entry);
+      // Similarity is a separate proof, not the importance/authority blended score.
+      if (fixed || item.ftsRank !== null || (item.semanticSimilarity !== undefined && item.semanticSimilarity >= 0.75)) return true;
+      exclusions.push({ memoryId: item.entry.id, memoryVersion: item.entry.version, rank: item.rank, reason: 'no-relevance' });
+      return false;
+    }).map(item => ({...item, reasons: this.isFixedDefault(item.entry)
+      ? [...new Set([...item.reasons, 'fixed-default' as const])] : item.reasons}));
+    return { ...result, selectionPolicy: MEMORY_RELEVANCE_POLICY, results: this.applyLimit(relevant, input.limit), exclusions };
+  }
+
+  private isFixedDefault(entry: MemoryEntryRecord): boolean {
+    return entry.pinned || (entry.category === 'preference' && entry.authority === 'user-explicit'
+      && entry.tags.includes('preference') && ['dimension:', 'context:', 'value:'].every(prefix => entry.tags.some(tag => tag.startsWith(prefix))));
   }
 
   private applyLimit(results: RetrievedMemoryEntry[], limit: number | undefined): RetrievedMemoryEntry[] {
@@ -233,6 +266,7 @@ export class MemoryRetrievalService {
     if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1)) {
       throw new MemoryRetrievalError('INPUT_INVALID');
     }
+    if (input.selectionPolicy !== undefined && input.selectionPolicy !== MEMORY_RELEVANCE_POLICY) throw new MemoryRetrievalError('INPUT_INVALID');
     const nowMs = this.clock();
     if (!Number.isFinite(nowMs)) throw new MemoryRetrievalError('INPUT_INVALID');
     const reach = resolveMemoryReach(context);
@@ -253,6 +287,7 @@ export class MemoryRetrievalService {
     const tagFilter = input.tagFilter;
     const filtered = candidates.filter(entry => {
       if (!isEligibleAt(entry, nowMs)) return false;
+      if (input.selectionPolicy === MEMORY_RELEVANCE_POLICY && !hasSafeEntryText(entry)) return false;
       if (categoryFilter !== undefined && categoryFilter.length > 0 && !categoryFilter.includes(entry.category)) {
         return false;
       }
@@ -262,9 +297,33 @@ export class MemoryRetrievalService {
       return true;
     });
 
-    const eligible = filterPreferenceMemory(this.entries.getDatabase(), filtered, context.workspaceId, input.query);
+    const preferenceEligible = filterPreferenceMemory(this.entries.getDatabase(), filtered, context.workspaceId, input.query);
+    const db = this.entries.getDatabase();
+    const exclusions: NonNullable<RetrieveMemoryResult['exclusions']>[number][] = [];
+    let quarantined = new Set<string>();
+    if (input.selectionPolicy === MEMORY_RELEVANCE_POLICY
+      && db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_feedback_actions'").get()) {
+      try {
+        const rows = db.prepare(`SELECT DISTINCT a.entry_id, a.entry_version
+          FROM memory_feedback_actions a
+          INNER JOIN memory_version_feedback f
+            ON f.id = a.feedback_id AND f.workspace_id = a.workspace_id
+          INNER JOIN memory_entries e ON e.id = a.entry_id
+          WHERE a.action = 'correction' AND a.status = 'pending'
+            AND f.kind = 'wrong' AND f.entry_id = a.entry_id AND f.entry_version = a.entry_version
+            AND (a.workspace_id = ? OR e.scope = 'global')`).all(context.workspaceId) as {entry_id: string;entry_version: number}[];
+        quarantined = new Set(rows.map(row => `${row.entry_id}@${row.entry_version}`));
+      } catch { throw new MemoryRetrievalError('RETRIEVAL_FAILED'); }
+    }
+    const eligible = preferenceEligible.filter((entry, index) => {
+      if (!quarantined.has(`${entry.id}@${entry.version}`)) return true;
+      exclusions.push({memoryId: entry.id,memoryVersion: entry.version,rank: index+1,reason: 'feedback-quarantined'});
+      return false;
+    });
     const fts = this.readFtsRanks(context.workspaceId, input.query, eligible.map(entry => entry.id));
-    const ftsRanks = fts.ranks;
+    const lexical = input.selectionPolicy === MEMORY_RELEVANCE_POLICY && nonBlank(input.query)
+      ? readMemoryLexicalRanks(db, eligible, input.query) : undefined;
+    const ftsRanks = lexical?.ranks ?? fts.ranks;
     const rankingCandidates: MemoryRankingCandidate[] = eligible.map(entry => ({
       memoryId: entry.id,
       memoryVersion: entry.version,
@@ -286,12 +345,14 @@ export class MemoryRetrievalService {
       entry: byId.get(result.memoryId) as MemoryEntryRecord,
       rank: result.rank,
       score: result.score,
-      reasons: result.reasons,
+      reasons: lexical?.degraded && ftsRanks.has(result.memoryId)
+        ? [...result.reasons, 'lexical-fallback' as const] : result.reasons,
       ftsRank: ftsRanks.get(result.memoryId) ?? null,
     }));
     return {
-      degraded: fts.degraded,
+      degraded: fts.degraded || (lexical?.degraded ?? false),
       results,
+      ...(input.selectionPolicy === MEMORY_RELEVANCE_POLICY ? { selectionPolicy: MEMORY_RELEVANCE_POLICY, exclusions } : {}),
     };
   }
 

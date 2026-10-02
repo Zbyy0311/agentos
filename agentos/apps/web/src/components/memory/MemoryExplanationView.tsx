@@ -36,6 +36,7 @@ export interface MemoryExplanationSelectionDto {
 
 export interface MemoryExplanationExclusionDto {
   readonly memoryId: string;
+  readonly memoryVersion?: number;
   readonly reason: string;
 }
 
@@ -109,7 +110,7 @@ export function MemoryExplanationView({ snapshot }: { readonly snapshot: MemoryE
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {snapshot.exclusions.map(item => (
               <li key={item.memoryId} data-memory-id={item.memoryId} style={{ color: 'var(--text-tertiary)' }}>
-                {item.memoryId} — {item.reason}
+                {item.memoryId}{item.memoryVersion === undefined ? '' : ` v${item.memoryVersion}`} — {item.reason === 'no-relevance' ? '与当前请求无匹配' : item.reason === 'feedback-quarantined' ? '该版本已报告错误，等待纠正' : item.reason}
               </li>
             ))}
           </ul>

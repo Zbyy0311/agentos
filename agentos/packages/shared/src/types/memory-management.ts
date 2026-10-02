@@ -10,7 +10,7 @@ export interface MemoryUsageContextV1 {
   readonly queryHash:string|null; readonly totalTokens:number; readonly truncated:boolean;
   readonly retrievalStrategyVersion:string; readonly retrievalDegraded?:boolean;
   readonly selected:readonly MemoryVersionSelection[]|null;
-  readonly exclusions:readonly {memoryId:string;reason:string}[]|null;
+  readonly exclusions:readonly {memoryId:string;memoryVersion?:number;reason:string}[]|null;
   readonly createdAt:string;
 }
 export interface MemoryLifecycleRequestV1 {
@@ -25,4 +25,31 @@ export interface MemoryVersionFeedbackRequestV1 {
   readonly expectedVersion:number;readonly memoryId:string;readonly memoryVersion:number;
   readonly contextId:string;readonly contextKind:MemoryContextOwnerKind;
   readonly kind:'helpful'|'wrong'|'outdated';readonly comment?:string;
+}
+export type MemoryFeedbackResolutionKindV1 = 'corrected'|'archived'|'revalidated';
+export interface MemoryFeedbackCorrectionV1 {
+  readonly title:string;readonly summary?:string;readonly content:string;
+}
+export interface MemoryFeedbackResolutionV1 {
+  readonly expectedActionVersion:number;
+  readonly expectedEntryVersion:number;
+  readonly resolvedEntryVersion:number;
+  readonly resolution:MemoryFeedbackResolutionKindV1;
+  readonly conclusion:string;
+  readonly evidence:string;
+  readonly createdAt:string;
+}
+/** A resolution must prove both the action CAS and the Entry version it applies to. */
+export interface MemoryFeedbackActionApplyRequestV1 {
+  readonly expectedActionVersion:number;
+  readonly expectedEntryVersion:number;
+  readonly resolution:MemoryFeedbackResolutionKindV1;
+  readonly conclusion:string;
+  readonly evidence:string;
+  readonly correctedEntry?:MemoryFeedbackCorrectionV1;
+}
+/** Compatibility contract for clients that only reject a pending action. */
+export interface MemoryFeedbackActionRejectRequestV1 {
+  readonly expectedVersion:number;
+  readonly status:'rejected';
 }

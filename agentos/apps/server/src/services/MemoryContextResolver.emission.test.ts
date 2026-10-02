@@ -150,7 +150,7 @@ function addActiveEntry(fx: ReturnType<typeof fixture>, title: string, content: 
     id: MEM, workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'decision',
     authority: 'system-verified', confidence: 0.9, importance: 0.5,
     title, summary: 's', content, tags: [],
-    status: 'active', sources: [{ kind: 'run', id: RUN }], createdAt: NOW, tokenEstimate: 10,
+    status: 'active', pinned: true, sources: [{ kind: 'run', id: RUN }], createdAt: NOW, tokenEstimate: 10,
   } as never);
   return MEM;
 }

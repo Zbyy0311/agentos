@@ -172,8 +172,8 @@ export class MemoryContextSnapshotRepository {
         'INSERT INTO memory_context_snapshot_entries ('
           + 'snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category,'
           + ' authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash'
-          + ') VALUES (?, ?, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
-      ).run(input.id, exclusion.memoryId, JSON.stringify([exclusion.reason]));
+          + ') VALUES (?, ?, ?, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
+      ).run(input.id, exclusion.memoryId, exclusion.memoryVersion ?? 1, JSON.stringify([exclusion.reason]));
     }
     if (input.contextText !== undefined) {
       this.db.prepare(
@@ -322,6 +322,7 @@ export class MemoryContextSnapshotRepository {
       } else {
         exclusions.push({
           memoryId: entry.memory_entry_id,
+          ...(row.retrieval_strategy_version.includes('memory-relevance.v2') ? {memoryVersion: entry.memory_entry_version} : {}),
           reason: (reasons[0] ?? 'status-excluded') as MemoryExclusionExplanationV1['reason'],
         });
       }

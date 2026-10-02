@@ -9,6 +9,7 @@ import {
   memoryAutoAcceptPolicyPath,
   memoryAutoAcceptPolicyPayload,
   memoryFeedbackActionResolutionPayload,
+  memoryFeedbackActionApplyPayload,
   memoryFeedbackActionResolvePath,
   memoryFeedbackActionsPath,
   memoryFeedbackPath,
@@ -147,9 +148,24 @@ test('a feedback POST 404 explains that the current workspace cannot yet use the
   assert.equal(calls, 2);
 });
 
-test('action resolution payload uses the action version as the compare-and-swap version', () => {
-  assert.deepEqual(memoryFeedbackActionResolutionPayload(action, 'resolved'), { expectedVersion: 3, status: 'resolved' });
+test('action rejection payload uses the action version as the compare-and-swap version', () => {
   assert.deepEqual(memoryFeedbackActionResolutionPayload(action, 'rejected'), { expectedVersion: 3, status: 'rejected' });
+});
+
+test('evidenced action apply payload binds the current action and Entry versions', () => {
+  assert.deepEqual(memoryFeedbackActionApplyPayload(action, entry, {
+    resolution: 'corrected',
+    conclusion: 'The entry was corrected after review.',
+    evidence: 'Checked the current operational source.',
+    correctedEntry: { title: 'Updated deployment constraint', content: 'Use the local database.' },
+  }), {
+    expectedActionVersion: 3,
+    expectedEntryVersion: 11,
+    resolution: 'corrected',
+    conclusion: 'The entry was corrected after review.',
+    evidence: 'Checked the current operational source.',
+    correctedEntry: { title: 'Updated deployment constraint', content: 'Use the local database.' },
+  });
 });
 
 test('action views join feedback by feedback ID and tolerate missing feedback', () => {

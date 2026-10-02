@@ -1,11 +1,17 @@
-import type { MemoryVersionFeedbackRequestV1 } from '@agentos/shared';
+import type {
+  MemoryFeedbackActionApplyRequestV1,
+  MemoryFeedbackResolutionKindV1,
+  MemoryFeedbackResolutionV1,
+  MemoryVersionFeedbackRequestV1,
+} from '@agentos/shared';
 import type { MemoryContextKind, MemoryContextRecord, MemoryContextSelection } from './memoryContexts.js';
 import { memoryEntryPath, type MemoryEntryDto } from '@/lib/memoryEntries';
 
 export type MemoryFeedbackKind = MemoryVersionFeedbackRequestV1['kind'];
 export type MemoryFeedbackActionKind = 'correction' | 'revalidation';
 export type MemoryFeedbackActionStatus = 'pending' | 'resolved' | 'rejected';
-export type MemoryFeedbackActionResolution = Exclude<MemoryFeedbackActionStatus, 'pending'>;
+export type MemoryFeedbackResolutionKind = MemoryFeedbackResolutionKindV1;
+export type MemoryFeedbackActionApplyDetails = Omit<MemoryFeedbackActionApplyRequestV1, 'expectedActionVersion' | 'expectedEntryVersion'>;
 
 export interface MemoryFeedbackActionDto {
   readonly id: string;
@@ -17,6 +23,7 @@ export interface MemoryFeedbackActionDto {
   readonly status: MemoryFeedbackActionStatus;
   readonly version: number;
   readonly createdAt: string;
+  readonly resolution?: MemoryFeedbackResolutionV1;
 }
 
 export interface MemoryVersionFeedbackDto {
@@ -36,7 +43,7 @@ export interface MemoryVersionFeedbackDto {
 
 export interface MemoryFeedbackActionResolutionPayload {
   readonly expectedVersion: number;
-  readonly status: MemoryFeedbackActionResolution;
+  readonly status: 'rejected';
 }
 
 export interface MemoryAutoAcceptPolicyDto {
@@ -188,9 +195,21 @@ export async function submitMemoryVersionFeedback(
 
 export function memoryFeedbackActionResolutionPayload(
   action: Pick<MemoryFeedbackActionDto, 'version'>,
-  status: MemoryFeedbackActionResolution,
+  status: 'rejected',
 ): MemoryFeedbackActionResolutionPayload {
   return { expectedVersion: action.version, status };
+}
+
+export function memoryFeedbackActionApplyPayload(
+  action: Pick<MemoryFeedbackActionDto, 'version'>,
+  entry: Pick<MemoryEntryDto, 'version'>,
+  details: MemoryFeedbackActionApplyDetails,
+): MemoryFeedbackActionApplyRequestV1 {
+  return {
+    expectedActionVersion: action.version,
+    expectedEntryVersion: entry.version,
+    ...details,
+  };
 }
 
 export function joinMemoryFeedbackActions(

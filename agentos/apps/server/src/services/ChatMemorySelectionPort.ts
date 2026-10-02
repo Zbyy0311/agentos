@@ -4,6 +4,7 @@ import {
 } from '@agentos/shared';
 import type { MemoryRetrievalService, RetrieveMemoryResult } from './MemoryRetrievalService.js';
 import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import { applyBudget, hashRetrievalQuery, injectedEntryText } from './MemoryContextBudgetSelector.js';
 import type { TurnContextSelection, TurnContextSelectionInput, TurnContextSelectionPort } from './ConversationTurnDriver.js';
 import type { TurnContextMemoryExclusion } from '../store/TurnContextSnapshotRepository.js';
@@ -84,6 +85,7 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
           reasons: [...item.reasons, exclusion?.reason ?? 'status-excluded'],
         };
       });
+    exclusions.push(...(result.exclusions ?? []).map(item => ({...item, reasons: [item.reason]})));
     const retrievalInput = {
       context: {
         workspaceId: input.workspaceId,
@@ -92,6 +94,7 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
       },
       ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
       limit,
+      selectionPolicy: MEMORY_RELEVANCE_POLICY,
     };
     return {
       selectedEntryIds: outcome.selected.map(selected => selected.entry.id),
@@ -129,6 +132,7 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
         },
         ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
         limit,
+        selectionPolicy: MEMORY_RELEVANCE_POLICY,
       });
       return buildSelection(input, result);
     },
@@ -142,6 +146,7 @@ export function createChatMemorySelectionPort(options: ChatMemorySelectionPortOp
         },
         ...(input.retrievalQuery === undefined ? {} : { query: input.retrievalQuery }),
         limit,
+        selectionPolicy: MEMORY_RELEVANCE_POLICY,
       };
       const result = options.retrieval.retrievePrepared === undefined
         ? options.retrieval.retrieveWithStatus(retrievalInput)

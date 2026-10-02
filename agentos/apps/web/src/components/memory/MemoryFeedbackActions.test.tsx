@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { MemoryEntryDto } from '@/lib/memoryEntries';
 import type { MemoryFeedbackActionDto, MemoryFeedbackActionView, MemoryVersionFeedbackDto } from '@/lib/memoryFeedback';
-import { MemoryFeedbackActionRow, MemoryFeedbackActions } from './MemoryFeedbackActions.js';
+import { MemoryFeedbackActionRow, MemoryFeedbackActions, MemoryFeedbackResolutionEditor } from './MemoryFeedbackActions.js';
 
 const action: MemoryFeedbackActionDto = {
   id: 'action-1', feedbackId: 'feedback-1', workspaceId: 'workspace-1', memoryId: 'entry-1',
@@ -30,33 +30,72 @@ const entry: MemoryEntryDto = {
 test('pending feedback action shows current Entry, frozen context, and resolution controls', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
     view={view}
     entry={entry}
     busy={false}
-    onResolve={() => undefined}
+    onReject={() => undefined}
+    onApply={() => undefined}
   />);
   assert.ok(markup.includes('Deployment workflow'));
   assert.ok(markup.includes('当前 v5'));
   assert.ok(markup.includes('run:run-1'));
   assert.ok(markup.includes('Turn · turn-1'));
   assert.ok(markup.includes('context-hash-1'));
-  assert.ok(markup.includes('标记已解决'));
+  assert.ok(markup.includes('处理反馈'));
   assert.ok(markup.includes('拒绝'));
+  assert.ok(!markup.includes('标记已解决'));
+  assert.ok(!markup.includes('应用并解决'), 'evidence and a new version are required before resolution');
 });
 
 test('resolved feedback history retains Entry/context links without pending controls', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
     view={{ ...view, action: { ...action, status: 'resolved', version: 7 } }}
     entry={entry}
     busy={false}
-    onResolve={() => undefined}
+    onReject={() => undefined}
+    onApply={() => undefined}
   />);
   assert.ok(markup.includes('已解决'));
   assert.ok(markup.includes('Deployment workflow'));
   assert.ok(markup.includes('turn-1'));
   assert.ok(!markup.includes('标记已解决'));
   assert.ok(!markup.includes('拒绝'));
+});
+
+test('entry correction editor asks for the new formal text, conclusion, and evidence', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const markup = renderToStaticMarkup(<MemoryFeedbackResolutionEditor
+    entry={entry}
+    busy={false}
+    onCancel={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('修正后的正式记忆（会生成新版本）'));
+  assert.ok(markup.includes('处理结论'));
+  assert.ok(markup.includes('证据与依据'));
+  assert.ok(markup.includes('提交修正版'));
+  assert.ok(markup.includes('归档这条记忆'));
+  assert.ok(markup.includes('重新验证当前版本'));
+  assert.ok(markup.includes('应用并解决'));
+  assert.ok(!markup.includes('标记已解决'));
+});
+
+test('global Entry owned by another workspace can only be rejected from this action row', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
+    view={view}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global' }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('归属工作区处理更正'));
+  assert.ok(markup.includes('拒绝'));
+  assert.ok(!markup.includes('处理反馈'));
 });
 
 test('feedback management embeds the separate auto-accept policy pane', () => {

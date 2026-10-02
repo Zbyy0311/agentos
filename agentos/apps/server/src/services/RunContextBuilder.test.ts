@@ -74,7 +74,7 @@ function fixture() {
       return entries.createEntry({
         id: `canonical-entry-${seq}`, workspaceId: WS, scope: 'workspace', category: 'decision',
         authority: 'user-explicit', confidence: 0.9, importance: 0.8, title: `Canonical ${seq}`,
-        summary: 'summary', content: `canonical text ${seq}`, tags: [], status: 'active', sources: [],
+        summary: 'summary', content: `canonical text ${seq}`, tags: [], status: 'active', pinned: true, sources: [],
         createdAt: NOW, ...overrides,
       });
     },

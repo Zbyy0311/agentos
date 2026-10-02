@@ -3,6 +3,7 @@ import { MemoryRetriever } from './MemoryRetriever.js';
 import type { MemoryRetrievalService } from './MemoryRetrievalService.js';
 import { applyBudget, injectedEntryText, RETRIEVAL_STRATEGY_VERSION_V1 } from './MemoryContextBudgetSelector.js';
 import { withMemorySemanticStrategyVersion } from './MemoryRetrievalService.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import { CHAT_MEMORY_RETRIEVAL_LIMIT, DEFAULT_CHAT_MEMORY_BUDGET } from './ChatMemorySelectionPort.js';
 import { createHash } from 'node:crypto';
 import type { ExecutionMemorySelection } from '../store/MemoryExecutionContextRepository.js';
@@ -30,7 +31,7 @@ export interface RunContextResult {
     queryHash: string;
     retrievalStrategyVersion?: string;
     selected: readonly ExecutionMemorySelection[];
-    exclusions: readonly { memoryId: string; reason: string }[];
+    exclusions: readonly { memoryId: string; memoryVersion?: number; reason: string }[];
     truncated: boolean;
   };
 }
@@ -81,7 +82,7 @@ export class RunContextBuilder {
     let retrievalDegradedReason: string | undefined;
     let retrievalStrategyVersion: string | undefined;
     const selectedRecords: ExecutionMemorySelection[] = [];
-    const excludedRecords: { memoryId: string; reason: string }[] = [];
+    const excludedRecords: { memoryId: string; memoryVersion?: number; reason: string }[] = [];
     let truncated = false;
 
     if (this.entryRetriever) {
@@ -94,23 +95,22 @@ export class RunContextBuilder {
         },
         query: input.query.slice(0, 2000),
         limit: CHAT_MEMORY_RETRIEVAL_LIMIT,
+        selectionPolicy: MEMORY_RELEVANCE_POLICY,
       });
       if (!memoryEnabled()) return disabled();
       retrievalDegraded = retrieval.degraded;
       retrievalDegradedReason = retrieval.semantic?.degraded ? retrieval.semantic.reason : undefined;
-      if (retrieval.semantic !== undefined) {
-        retrievalStrategyVersion = withMemorySemanticStrategyVersion(RETRIEVAL_STRATEGY_VERSION_V1, retrieval);
-      }
+      retrievalStrategyVersion = withMemorySemanticStrategyVersion(RETRIEVAL_STRATEGY_VERSION_V1, retrieval);
       const outcome = applyBudget(retrieval.results, {
         ...DEFAULT_CHAT_MEMORY_BUDGET,
         maxEntries: Math.min(DEFAULT_CHAT_MEMORY_BUDGET.maxEntries, itemLimit),
       });
-      excludedRecords.push(...outcome.exclusions);
+      excludedRecords.push(...(retrieval.exclusions ?? []), ...outcome.exclusions);
       truncated = outcome.truncated;
       for (const selected of outcome.selected) {
         const remaining = remainingCharacters();
         if (sections.length >= itemLimit || remaining <= 0) {
-          excludedRecords.push({ memoryId: selected.entry.id, reason: 'character-budget' });
+          excludedRecords.push({ memoryId: selected.entry.id, memoryVersion: selected.entry.version, reason: 'character-budget' });
           continue;
         }
         const text = injectedEntryText(selected.entry).slice(0, Math.min(MAX_SINGLE_MEMORY_CHARACTERS, remaining));

@@ -16,6 +16,7 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
 import { MemoryLifecycleService } from './MemoryLifecycleService.js';
+import { MemoryFeedbackService } from './MemoryFeedbackService.js';
 import { MemoryContextBudgetSelector } from './MemoryContextBudgetSelector.js';
 import {
   MemoryContextResolver,
@@ -88,7 +89,7 @@ function addEntry(fx: ReturnType<typeof fixture>, overrides: Record<string, unkn
     id, workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'decision',
     authority: 'system-verified', confidence: 0.9, importance: 0.5,
     title: `entry ${seq}`, summary: 's', content: `content ${seq}`, tags: [],
-    status: 'active', sources: [{ kind: 'run', id: RUN }], createdAt: NOW, tokenEstimate: 10,
+    status: 'active', pinned: true, sources: [{ kind: 'run', id: RUN }], createdAt: NOW, tokenEstimate: 10,
     ...overrides,
   } as never);
   return id;
@@ -97,6 +98,35 @@ function addEntry(fx: ReturnType<typeof fixture>, overrides: Record<string, unkn
 function resolveInput(overrides: Record<string, unknown> = {}) {
   return { workspaceId: WS, runId: RUN, taskId: TASK, budget: BUDGET, createdAt: NOW, ...overrides } as never;
 }
+
+test('wrong feedback blocks new canonical scopes while replay preserves the original frozen version', async () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    const id = addEntry(fx, { title: '数据库迁移约定', content: '数据库迁移使用追加脚本' });
+    const original = await fx.resolver.resolvePrepared(resolveInput({ query: '数据库迁移约定' }));
+    assert.equal(original.snapshot.selected[0]?.memoryId, id);
+    const feedback = new MemoryFeedbackService(fx.db as unknown as TransactionDatabase);
+    const reported = feedback.add(WS, {
+      expectedVersion: 1, memoryId: id, memoryVersion: 1,
+      contextKind: 'run', contextId: original.snapshot.id, kind: 'wrong',
+    });
+    const blocked = await fx.resolver.resolvePrepared(resolveInput({ stageId: 'quarantined-stage', query: '数据库迁移约定' }));
+    assert.equal(blocked.contextText, '');
+    assert.deepEqual(blocked.snapshot.selected, []);
+    assert.ok(blocked.snapshot.exclusions.some(item => item.memoryId === id
+      && item.memoryVersion === 1 && item.reason === 'feedback-quarantined'));
+    const replay = await fx.resolver.resolvePrepared(resolveInput({ query: 'changed replay request' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, original.contextText);
+    assert.equal(replay.snapshot.selected[0]?.memoryVersion, 1);
+    feedback.resolveAction(WS, reported.action!.id, 1, 'rejected');
+    const released = await fx.resolver.resolvePrepared(resolveInput({ stageId: 'released-stage', query: '数据库迁移约定' }));
+    assert.equal(released.snapshot.selected[0]?.memoryId, id);
+    assert.equal(released.snapshot.selected[0]?.memoryVersion, 1);
+    assert.equal(fx.snapshots.readContextText(WS, blocked.snapshot.id), '');
+    assert.equal(fx.snapshots.readContextText(WS, original.snapshot.id), original.contextText);
+  } finally { fx.close(); }
+});
 
 test('M2 new canonical stages reflect edits and lifecycle while every previous scope replays its frozen version', () => {
   const fx = fixture(() => Date.parse(NOW));

@@ -12,10 +12,11 @@ import { ConversationRepository } from '../store/ConversationRepository.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
 import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
 import { migration047 } from '../migrations/migrations/047-memory-version-feedback.js';
+import { migration050 } from '../migrations/migrations/050-memory-feedback-resolutions.js';
 import { createMemoryActionRoutes } from './memoryActions.js';
 import { inTransaction } from '../store/Transaction.js';
 
-test('M3 HTTP feedback proves frozen version, queues correction, enforces CAS and workspace policy', async () => {
+test('HTTP feedback requires evidence, commits Entry/event/action atomically, and preserves workspace policy', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-memory-actions-'));
   const now = new Date().toISOString();
   mkdirSync(join(root, 'workspace'));
@@ -26,7 +27,9 @@ test('M3 HTTP feedback proves frozen version, queues correction, enforces CAS an
   const store = new SqliteStore(root);
   const app = express(); app.use(express.json());
   const manager = new WorkspaceManager(store);
-  migration046.apply({ db: store.getDatabase() }); migration047.apply({ db: store.getDatabase() });
+  migration046.apply({ db: store.getDatabase() });
+  migration047.apply({ db: store.getDatabase() });
+  migration050.apply({ db: store.getDatabase() });
   app.use('/api/workspaces/:workspaceId', createMemoryActionRoutes(store, manager));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
@@ -58,10 +61,46 @@ test('M3 HTTP feedback proves frozen version, queues correction, enforces CAS an
     assert.equal((await post('/feedback', { ...input, expectedVersion: 2 })).status, 409);
     assert.equal((await post('/feedback', { ...input, contextId: 'foreign' })).status, 400);
     assert.equal((await post('/feedback', { ...input, comment: 'Authorization: Bearer feedback-secret' })).status, 400);
-    const resolved = await post(`/feedback-actions/${action.id}/resolve`, { expectedVersion: 1, status: 'resolved' });
+    const actionPath = `/feedback-actions/${action.id}/resolve`;
+    const bareResolved = await post(actionPath, { expectedVersion: 1, status: 'resolved' });
+    assert.equal(bareResolved.status, 409);
+    assert.equal(bareResolved.body.error, 'MEMORY_FEEDBACK_RESOLUTION_REQUIRED');
+    const apply = {
+      expectedActionVersion: 1,
+      expectedEntryVersion: 1,
+      resolution: 'corrected',
+      conclusion: 'The reported command was superseded.',
+      evidence: 'Reviewed the active deployment runbook and verified the replacement command.',
+      correctedEntry: { title: 'Updated deployment workflow', content: 'Use the reviewed deployment command.' },
+    };
+    assert.equal((await post(actionPath, { ...apply, expectedActionVersion: 2 })).status, 409);
+    assert.equal((await post(actionPath, { ...apply, expectedEntryVersion: 2 })).status, 409);
+    assert.equal((await post(actionPath, { ...apply, evidence: 'api_key=route-feedback-secret' })).status, 400);
+    assert.equal(entries.findById('ws', 'entry')?.version, 1);
+
+    db.exec(`CREATE TRIGGER fail_memory_feedback_workspace_event BEFORE INSERT ON workspace_events
+      WHEN NEW.type = 'memory.entry_updated'
+      BEGIN SELECT RAISE(ABORT,'injected workspace event failure'); END`);
+    const failedEvent = await post(actionPath, apply);
+    assert.equal(failedEvent.status, 500);
+    assert.equal(entries.findById('ws', 'entry')?.version, 1);
+    assert.equal(entries.findById('ws', 'entry')?.content, 'frozen body');
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_lifecycle_actions').get() as { count: number }).count), 0);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_feedback_action_resolutions').get() as { count: number }).count), 0);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_feedback_action_audit').get() as { count: number }).count), 0);
+    db.exec('DROP TRIGGER fail_memory_feedback_workspace_event');
+
+    const resolved = await post(actionPath, apply);
     assert.equal(resolved.status, 200);
     assert.equal(resolved.body.action.version, 2);
-    assert.equal((await post(`/feedback-actions/${action.id}/resolve`, { expectedVersion: 1, status: 'rejected' })).status, 409);
+    assert.equal(resolved.body.action.resolution.evidence, apply.evidence);
+    assert.equal(resolved.body.entry.version, 2);
+    assert.equal(resolved.body.entry.scope, 'workspace');
+    assert.equal(resolved.body.entry.authority, 'user-explicit');
+    assert.equal(resolved.body.entry.content, apply.correctedEntry.content);
+    assert.equal(Number((db.prepare(`SELECT COUNT(*) AS count FROM workspace_events
+      WHERE workspace_id='ws' AND type='memory.entry_updated'`).get() as { count: number }).count), 1);
+    assert.equal((await post(actionPath, { expectedVersion: 1, status: 'rejected' })).status, 409);
     assert.equal((await post('/auto-accept-policy', { expectedVersion: 0, enabled: false })).status, 200);
     assert.equal((await post('/auto-accept-policy', { expectedVersion: 0, enabled: true })).status, 409);
     assert.deepEqual(await (await fetch(base + '/auto-accept-policy')).json(), { policy: { enabled: false, version: 1 } });

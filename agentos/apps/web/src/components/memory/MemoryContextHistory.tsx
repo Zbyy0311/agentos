@@ -131,7 +131,10 @@ export function MemoryContextDetails({ context, workspaceId }: { readonly contex
           <ul className="space-y-1">
             {context.exclusions.map((item, index) => (
               <li key={`${item.memoryId}:${index}`} className="break-words text-xs leading-5 ui-dim" data-memory-id={item.memoryId}>
-                {item.memoryId} — {item.reason ?? UNRECORDED}
+                {item.memoryId}{item.memoryVersion === undefined ? '' : ` v${item.memoryVersion}`} — {
+                  item.reason === 'feedback-quarantined' ? '该版本已报告错误，等待纠正'
+                    : item.reason === 'no-relevance' ? '与当前请求无匹配'
+                      : item.reason ?? UNRECORDED}
               </li>
             ))}
           </ul>
