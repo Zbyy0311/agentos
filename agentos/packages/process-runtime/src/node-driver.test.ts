@@ -3,13 +3,14 @@ import { execFileSync, spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
+import type { NativeProcessHandle, SurvivorVerification, TreeTerminationResult } from './driver.js';
 import { cleanupVerdictFromVerification } from './driver.js';
 import { NodeProcessDriver } from './node-driver.js';
 import type { ProcessTreeController, ProcessTreeHandle } from './platform-process-tree.js';
 import { STREAM_CHUNK_LIMIT_BYTES } from './streams.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
 import type { NativeIdentity } from './types.js';
+import { isValidNativeBirthIdentity } from './native-birth-identity.js';
 
 const REAL_SPAWN_TIMEOUT_MS = 30_000;
 
@@ -22,6 +23,7 @@ interface AuditRecord {
   readonly trackedAtMs: number;
   readonly origin: string;
   readonly identityAtTrack?: WindowsProcessObservation;
+  readonly nativeBirthIdentityAtTrack?: string;
   readonly identityCaptureError?: string;
 }
 interface WindowsProcessObservation {
@@ -30,6 +32,7 @@ interface WindowsProcessObservation {
   readonly name: string;
   readonly creationTimeUtc: string;
   readonly commandLine: string | null;
+  readonly nativeBirthIdentity?: string | null;
 }
 const auditRecords: AuditRecord[] = [];
 
@@ -54,10 +57,16 @@ function listPowerShellPids(): readonly number[] {
   }
 }
 
-function track(pid: number | undefined, ownership: AuditOwnership = 'driver-owned-job'): number {
+function track(processOrPid: NativeProcessHandle | number | undefined, ownership: AuditOwnership = 'driver-owned-job'): number {
+  const handle = typeof processOrPid === 'object' ? processOrPid : undefined;
+  const pid = handle?.pid ?? processOrPid as number | undefined;
   if (pid === undefined || pid <= 0) throw new Error('expected a positive pid');
   auditPids.push(pid);
-  const identity = describeWindowsProcesses([pid]);
+  const nativeBirthIdentityAtTrack = isValidNativeBirthIdentity(handle?.identity.nativeBirthIdentity)
+    ? handle.identity.nativeBirthIdentity : undefined;
+  // Owned creation captures FILETIME before the provider can execute. A
+  // later CIM query can miss a one-shot process or observe a reused PID.
+  const identity = nativeBirthIdentityAtTrack === undefined ? describeWindowsProcesses([pid]) : [];
   const identityAtTrack = typeof identity === 'string' ? undefined : identity.find(item => item.pid === pid);
   auditRecords.push({
     pid,
@@ -65,6 +74,7 @@ function track(pid: number | undefined, ownership: AuditOwnership = 'driver-owne
     trackedAtMs: Date.now(),
     origin: new Error().stack?.split(/\r?\n/).slice(2, 4).join(' | ') ?? 'unknown',
     identityAtTrack,
+    nativeBirthIdentityAtTrack,
     identityCaptureError: typeof identity === 'string' ? identity : undefined,
   });
   return pid;
@@ -121,12 +131,28 @@ function findTrackedSurvivors(
   return records.filter(record => {
     const current = observedByPid.get(record.pid);
     if (current === undefined) return false;
+    if (record.nativeBirthIdentityAtTrack !== undefined) {
+      // An unreadable native probe never proves absence or PID reuse.
+      if (!isValidNativeBirthIdentity(current.nativeBirthIdentity)) return true;
+      return record.nativeBirthIdentityAtTrack === current.nativeBirthIdentity;
+    }
     const trackedIdentity = record.identityAtTrack;
     // Missing identity evidence is not proof of absence: fail closed if the PID
     // still exists when W12 takes its one process snapshot.
     if (trackedIdentity === undefined || trackedIdentity.creationTimeUtc.length === 0) return true;
     return trackedIdentity.creationTimeUtc === current.creationTimeUtc;
   });
+}
+
+async function probeTrackedBirthIdentities(
+  records: readonly AuditRecord[],
+  observed: readonly WindowsProcessObservation[],
+): Promise<readonly WindowsProcessObservation[]> {
+  const nativePids = new Set(records.filter(record => record.nativeBirthIdentityAtTrack !== undefined).map(record => record.pid));
+  const controller = new WindowsProcessTreeController();
+  return Promise.all(observed.map(async item => nativePids.has(item.pid)
+    ? { ...item, nativeBirthIdentity: await controller.probeNativeBirthIdentity(item.pid) }
+    : item));
 }
 
 function findNewJobHelpers(
@@ -302,13 +328,36 @@ describe('NodeProcessDriver', () => {
     expect(findTrackedSurvivors([record], [observed])).toEqual([record]);
   });
 
+  it('W12 native birth audit excludes PID reuse and retains same-instance or unreadable survivors', () => {
+    const record: AuditRecord = {
+      pid: 73_423,
+      ownership: 'driver-owned-job',
+      trackedAtMs: Date.now(),
+      origin: 'native-owned-spawn-fixture',
+      nativeBirthIdentityAtTrack: 'win32:filetime:134176000000000001',
+    };
+    const observed: WindowsProcessObservation = {
+      pid: record.pid,
+      parentPid: 9_999,
+      name: 'conhost.exe',
+      creationTimeUtc: '2026-09-30T09:00:01.0000000Z',
+      commandLine: 'unrelated-control',
+      nativeBirthIdentity: 'win32:filetime:134176000000000002',
+    };
+    expect(findTrackedSurvivors([record], [observed])).toEqual([]);
+    expect(findTrackedSurvivors([record], [{ ...observed, nativeBirthIdentity: record.nativeBirthIdentityAtTrack }])).toEqual([record]);
+    for (const nativeBirthIdentity of [undefined, null, 'win32:filetime:0']) {
+      expect(findTrackedSurvivors([record], [{ ...observed, nativeBirthIdentity }])).toEqual([record]);
+    }
+  });
+
   it.skipIf(process.platform !== 'win32')(
     'W12 identity audit retains a live member of a real AgentOS Job',
     { timeout: REAL_SPAWN_TIMEOUT_MS },
     async () => {
       const driver = new NodeProcessDriver();
       const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
-      track(handle.pid, 'driver-owned-job');
+      track(handle, 'driver-owned-job');
       const record = auditRecords[auditRecords.length - 1]!;
       try {
         const ownership = await driver.verifySurvivors(handle);
@@ -316,7 +365,7 @@ describe('NodeProcessDriver', () => {
         expect(ownership.knownPids).toContain(handle.pid);
         const current = describeWindowsProcesses([handle.pid]);
         if (typeof current === 'string') throw new Error(current);
-        expect(findTrackedSurvivors([record], current)).toContain(record);
+        expect(findTrackedSurvivors([record], await probeTrackedBirthIdentities([record], current))).toContain(record);
         expect(listAgentOsJobHelpers().some(item => item.parentPid === process.pid)).toBe(true);
       } finally {
         await driver.terminateTree(handle);
@@ -344,7 +393,7 @@ describe('NodeProcessDriver', () => {
         // This controller intentionally is not an owned Windows Job. Hold
         // the control child alive until its birth identity is captured; an
         // immediate exit could leave only a PID that another suite reuses.
-        track(handle.pid, 'test-owned-control');
+        track(handle, 'test-owned-control');
         if (process.platform === 'win32') {
           expect(auditRecords[auditRecords.length - 1]?.identityAtTrack?.creationTimeUtc).toBeTruthy();
         }
@@ -366,7 +415,7 @@ describe('NodeProcessDriver', () => {
   it('spawns a validated launch and observes stdout and exit evidence', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', "process.stdout.write('hello'); process.exit(3);"]));
-    track(handle.pid);
+    track(handle);
     expect(handle.pid).toBeGreaterThan(0);
     let stdout = '';
     for await (const chunk of handle.streams.stdout) stdout += Buffer.from(chunk).toString('utf8');
@@ -379,7 +428,7 @@ describe('NodeProcessDriver', () => {
   it('gracefulStop delivers a signal and the child terminates', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
-    track(handle.pid);
+    track(handle);
     const stop = await driver.gracefulStop(handle);
     expect(stop.delivered).toBe(true);
     const exit = await handle.waitExit();
@@ -390,7 +439,7 @@ describe('NodeProcessDriver', () => {
   it('terminateTree force-terminates and reports complete for a plain root', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
-    track(handle.pid);
+    track(handle);
     const result = await driver.terminateTree(handle);
     expect(['complete', 'unknown']).toContain(result.classification);
     const exit = await handle.waitExit();
@@ -401,7 +450,7 @@ describe('NodeProcessDriver', () => {
   it('verifySurvivors reports live owned members and proves an empty tree after cleanup', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
-    track(handle.pid);
+    track(handle);
     const alive = await driver.verifySurvivors(handle);
     expect(alive.classification).toBe('survivors');
     expect(alive.knownPids).toContain(handle.pid);
@@ -432,7 +481,7 @@ describe('NodeProcessDriver', () => {
           "process.stdout.write('child=' + child.pid + '\\n');",
           "process.exit(0);",
         ].join(' ')]));
-        track(handle.pid);
+        track(handle);
 
         const [rootLine, childLine] = await readLines(handle.streams.stdout, 2);
         // W10: the handle reports the actual provider PID, not a wrapper PID.
@@ -516,7 +565,7 @@ describe('NodeProcessDriver', () => {
       let grandchildPid: number | undefined;
       try {
         rootHandle = await driver.spawn(basicLaunch(process.execPath, ['-e', rootScript, childPidFile, childScript, grandchildPidFile]));
-        track(rootHandle.pid);
+        track(rootHandle);
         childPid = track(Number(await waitForFile(childPidFile)));
         grandchildPid = track(Number(await waitForFile(grandchildPidFile)));
         expect(control.pid).toBeDefined();
@@ -574,7 +623,7 @@ describe('NodeProcessDriver', () => {
           "process.stdout.write('marker\\n');",
           "process.exit(0);",
         ].join(' '), marker]));
-        track(handle.pid);
+        track(handle);
 
         // spawn() resolved, which requires the helper's 'launched' response;
         // 'assigned' is emitted while the provider thread is still suspended.
@@ -614,7 +663,7 @@ describe('NodeProcessDriver', () => {
         "process.exit(7);",
       ].join(' ');
       const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', script, ...extraArgs]));
-      track(handle.pid);
+      track(handle);
       const stdoutAll = await collectChunks(handle.streams.stdout);
       const stderrAll = await collectChunks(handle.streams.stderr);
       const exit = await handle.waitExit();
@@ -631,7 +680,7 @@ describe('NodeProcessDriver', () => {
   it('inspectIdentity matches a live pid and reports missing for ESRCH', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', longRunning()]));
-    track(handle.pid);
+    track(handle);
     const match = await driver.inspectIdentity(handle.identity);
     expect(match.kind).toBe('match');
     await driver.terminateTree(handle);
@@ -702,7 +751,7 @@ describe('NodeProcessDriver', () => {
       const providerScript = "for (let i = 0; i < " + rows + "; i++) process.stdout.write('row-' + i + ':' + 'x'.repeat(64) + ';');";
       const expected = Buffer.from(Array.from({ length: rows }, (_, i) => 'row-' + i + ':' + 'x'.repeat(64) + ';').join(''));
       const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', providerScript]));
-      track(handle.pid);
+      track(handle);
       const pauseDeadline = Date.now() + 10_000;
       while (!transportEvents.includes('data-paused') && Date.now() < pauseDeadline) {
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -738,7 +787,7 @@ describe('NodeProcessDriver', () => {
       const driver = new NodeProcessDriver({ processTreeController: controller });
       const providerScript = "setInterval(() => { process.stdout.write('o'.repeat(8192)); process.stderr.write('e'.repeat(8192)); }, 5);";
       const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', providerScript]));
-      track(handle.pid);
+      track(handle);
       try {
         const pauseDeadline = Date.now() + 10_000;
         while (!transportEvents.includes('data-paused') && Date.now() < pauseDeadline) {
@@ -787,7 +836,7 @@ describe('NodeProcessDriver', () => {
       const driver = new NodeProcessDriver();
       try {
         const handle = await driver.spawn(launch);
-        track(handle.pid);
+        track(handle);
         const observed = JSON.parse((await collectChunks(handle.streams.stdout)).toString('utf8')) as {
           env: Record<string, string>;
           cwd: string;
@@ -859,17 +908,18 @@ describe('NodeProcessDriver', () => {
   );
 
 
-  it.skipIf(process.platform !== 'win32')('W12: no test-owned or helper survivors remain after the suite', () => {
+  it.skipIf(process.platform !== 'win32')('W12: no test-owned or helper survivors remain after the suite', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const helperPids = listPowerShellPids();
     const processSnapshot = describeWindowsProcesses([...new Set([...auditPids, ...helperPids])]);
     if (typeof processSnapshot === 'string') throw new Error('W12 process identity snapshot failed closed: ' + processSnapshot);
-    const alive = findTrackedSurvivors(auditRecords, processSnapshot);
+    const nativeSnapshot = await probeTrackedBirthIdentities(auditRecords, processSnapshot);
+    const alive = findTrackedSurvivors(auditRecords, nativeSnapshot);
     const helperSurvivors = findNewJobHelpers(processSnapshot);
     const diagnostics = alive.length === 0 && helperSurvivors.length === 0 ? '' : JSON.stringify({
       runnerPid: process.pid,
       checkedAtUtc: new Date().toISOString(),
       tracked: alive,
-      processSnapshot,
+      processSnapshot: nativeSnapshot,
       helperSurvivors,
     });
     expect(alive.map(record => record.pid), diagnostics).toEqual([]);
