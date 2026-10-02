@@ -119,7 +119,7 @@ export class WorktreeManager {
       let head: string;
       try {
         head = (await context.sourceMetadata(['rev-parse', 'HEAD'])).toString('utf8').trim();
-        if (head !== initialHead) throw new WorktreeError('workspace_changed', 'workspace_changed: HEAD moved during preflight');
+        if (head !== initialHead) throw new WorktreeError('workspace_changed', 'workspace_changed: HEAD moved before clean preflight snapshot');
         const tree = (await context.sourceMetadata(['ls-tree', '-r', '-z', '--full-tree', head])).toString('utf8');
         const index = (await context.sourceMetadata(['ls-files', '-s', '-z'])).toString('utf8');
         const expected = new Map(tree.split('\0').filter(Boolean).map(row => {
