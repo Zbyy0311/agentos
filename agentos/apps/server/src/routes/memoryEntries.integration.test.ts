@@ -49,7 +49,7 @@ async function write(url: string, body: unknown, method = 'POST') {
 }
 const input = { scope: 'workspace', category: 'decision', title: '端口约束', summary: '显式端口',
   content: '服务必须显式校验端口', confidence: 0.9, importance: 0.8, tags: ['deployment'] };
-const chatInput = { workspaceId: WS, agentId: 'codex', conversationId: 'knowledge-chat', turnId: 'knowledge-turn', createdAt: NOW, contextTokenBudget: null };
+const chatInput = { workspaceId: WS, agentId: 'codex', conversationId: 'knowledge-chat', turnId: 'knowledge-turn', createdAt: NOW, contextTokenBudget: null, retrievalQuery: '端口约束 deployment' };
 const eventCount = (store: SqliteStore) => (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number }).n;
 
 test('project knowledge HTTP save -> list/detail -> chat/Run context; edit refreshes FTS and future contexts, archive preserves frozen replay', async () => {
@@ -71,7 +71,7 @@ test('project knowledge HTTP save -> list/detail -> chat/Run context; edit refre
     assert.equal(chat.select(chatInput).contextText, '### ' + input.title + '\n' + input.content);
     const snapshots = new MemoryContextSnapshotRepository(db);
     const resolver = new MemoryContextResolver({ store, selector: new MemoryContextBudgetSelector(retrieval, snapshots) });
-    const resolveInput = { workspaceId: WS, taskId: 'knowledge-task', runId: 'knowledge-run', createdAt: NOW };
+    const resolveInput = { workspaceId: WS, taskId: 'knowledge-task', runId: 'knowledge-run', createdAt: NOW, query: chatInput.retrievalQuery };
     const frozen = resolver.resolve(resolveInput);
     assert.equal(frozen.contextText, chat.select(chatInput).contextText);
     const updated = await write(url + '/memory/entries/' + entry.id, { expectedVersion: 1,
@@ -111,7 +111,7 @@ test('candidate acceptance appears in project knowledge and the same injected se
     assert.equal(list.entries.length, 1);
     assert.deepEqual(list.entries[0].sources, [{ kind: 'artifact', id: 'review-artifact' }]);
     const chat = createChatMemorySelectionPort({ retrieval: new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())) });
-    assert.ok(chat.select(chatInput).contextText?.includes('Use bounded retry'));
+    assert.ok(chat.select({...chatInput, retrievalQuery: 'bounded retry'}).contextText?.includes('Use bounded retry'));
   });
 });
 
