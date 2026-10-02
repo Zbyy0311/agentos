@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { getWorkflowTemplate } from '@agentos/shared';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MaintenanceBarrier } from './MaintenanceBarrier.js';
@@ -235,6 +235,18 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
     const manifest = await MaintenanceService.readAndVerifyBackup(backup.backupDirectory);
     assert.equal(manifest.files.some(item => item.targetPath.startsWith('.agentos/worktrees/')), false,
       'the disposable Git worktree is intentionally excluded; candidate data must be independently durable');
+    const referencedArtifactPath = `.agentos/artifacts/${fx.workspace.id}/${collaboration.runId}/${collaboration.diffArtifactId}/content`;
+    assert.equal(manifest.files.some(item => item.scope === 'data-root' && item.targetPath === referencedArtifactPath), true,
+      'the frozen candidate diff remains in the durable artifact closure');
+    const omittedArtifactBundle = await cloneBackup(backup.backupDirectory, fx.root);
+    const omittedArtifactManifestPath = join(omittedArtifactBundle, 'manifest.json');
+    const omittedArtifactManifest = JSON.parse(readFileSync(omittedArtifactManifestPath, 'utf8')) as {
+      files: Array<{ scope: string; targetPath: string }>;
+    };
+    omittedArtifactManifest.files = omittedArtifactManifest.files.filter(item => item.targetPath !== referencedArtifactPath);
+    writeFileSync(omittedArtifactManifestPath, JSON.stringify(omittedArtifactManifest));
+    await assert.rejects(MaintenanceService.readAndVerifyBackup(omittedArtifactBundle),
+      (error: { code?: string }) => error.code === 'BACKUP_DATA_REFERENCE_MISSING');
     execFileSync('git', ['worktree', 'remove', '--force', collaboration.sourceWorktree], { cwd: fx.workspaceRoot, stdio: 'pipe', windowsHide: true });
     await new Promise<void>((resolvePromise, rejectPromise) => server.close(error => error ? rejectPromise(error) : resolvePromise()));
 
@@ -547,6 +559,19 @@ test('restore isolates interrupted collaboration apply and preserves verified re
   );
   try {
     const backup = await fx.service.createBackup();
+    const omittedReferenceBundle = await cloneBackup(backup.backupDirectory, fx.root);
+    const omittedManifestPath = join(omittedReferenceBundle, 'manifest.json');
+    const omittedManifest = JSON.parse(readFileSync(omittedManifestPath, 'utf8')) as {
+      files: Array<{ scope: string; targetPath: string }>;
+    };
+    omittedManifest.files = omittedManifest.files.filter(item => item.targetPath !== `.agentos/collaboration-apply-recovery/${controlId}.json`);
+    writeFileSync(omittedManifestPath, JSON.stringify(omittedManifest));
+    const rejectedTarget = join(fx.root, 'recovery-missing-material-target');
+    await assert.rejects(MaintenanceService.restoreBackup(omittedReferenceBundle, rejectedTarget),
+      (error: { code?: string }) => error.code === 'BACKUP_DATA_REFERENCE_MISSING');
+    assert.equal(existsSync(rejectedTarget), false, 'recovery closure is checked before restore staging/switch');
+    assert.equal(readFileSync(recoveryPath, 'utf8'), serialized, 'rejected restore leaves the source recovery material intact');
+
     execFileSync('git', ['worktree', 'remove', '--force', collaboration.sourceWorktree], { cwd: fx.workspaceRoot, stdio: 'pipe', windowsHide: true });
     const restoredRoot = join(fx.root, 'recovery-isolated-data');
     await MaintenanceService.restoreBackup(backup.backupDirectory, restoredRoot);
@@ -586,6 +611,73 @@ test('restore isolates interrupted collaboration apply and preserves verified re
   } finally {
     fx.cleanup();
   }
+});
+
+test('restore requires an exact SQLite-to-manifest workspace reference closure before staging', async () => {
+  const fx = createFixture();
+  try {
+    const backup = await fx.service.createBackup();
+    const references = backup.manifest.files.filter(item => item.scope === 'workspace-root');
+    for (const reference of references) {
+      for (const mutation of ['omit', 'wrong-path'] as const) {
+        const tampered = await cloneBackup(backup.backupDirectory, fx.root);
+        const manifestPath = join(tampered, 'manifest.json');
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          files: Array<{ scope: string; workspaceId?: string; targetPath: string }>;
+        };
+        if (mutation === 'omit') {
+          manifest.files = manifest.files.filter(item => !(item.scope === 'workspace-root' && item.targetPath === reference.targetPath));
+        } else {
+          const entry = manifest.files.find(item => item.scope === 'workspace-root' && item.targetPath === reference.targetPath)!;
+          const separator = reference.targetPath.lastIndexOf('/');
+          entry.targetPath = `${reference.targetPath.slice(0, separator + 1)}wrong-${reference.targetPath.slice(separator + 1)}`;
+        }
+        writeFileSync(manifestPath, JSON.stringify(manifest));
+        const target = join(fx.root, `workspace-reference-${reference.targetPath.startsWith('agent-memory/') ? 'memory' : 'attachment'}-${mutation}-target`);
+        await assert.rejects(MaintenanceService.restoreBackup(tampered, target),
+          (error: { code?: string }) => error.code === 'BACKUP_REFERENCE_SET_MISMATCH');
+        assert.equal(existsSync(target), false);
+        assert.equal(readFileSync(join(fx.workspaceRoot, ...reference.targetPath.split('/'))).byteLength > 0, true,
+          'rejected restore leaves each source reference untouched');
+      }
+    }
+  } finally { fx.cleanup(); }
+});
+
+test('restore rejects a corrupted referenced workspace payload before creating the target', async () => {
+  const fx = createFixture();
+  try {
+    const backup = await fx.service.createBackup();
+    const tampered = await cloneBackup(backup.backupDirectory, fx.root);
+    const manifest = JSON.parse(readFileSync(join(tampered, 'manifest.json'), 'utf8')) as {
+      files: Array<{ scope: string; targetPath: string; payloadPath: string }>;
+    };
+    const memory = manifest.files.find(item => item.scope === 'workspace-root' && item.targetPath.startsWith('agent-memory/records/'))!;
+    writeFileSync(join(tampered, ...memory.payloadPath.split('/')), 'corrupt referenced memory');
+    const target = join(fx.root, 'corrupted-reference-target');
+    await assert.rejects(MaintenanceService.restoreBackup(tampered, target),
+      (error: { code?: string }) => error.code === 'BACKUP_HASH_MISMATCH');
+    assert.equal(existsSync(target), false);
+    assert.equal(readFileSync(join(fx.workspaceRoot, ...memory.targetPath.split('/')), 'utf8').includes('Durable memory evidence'), true);
+  } finally { fx.cleanup(); }
+});
+
+test('restore rejects durable payload files omitted from the manifest inventory', async () => {
+  const fx = createFixture();
+  try {
+    const backup = await fx.service.createBackup();
+    const tampered = await cloneBackup(backup.backupDirectory, fx.root);
+    const manifestPath = join(tampered, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Array<{ scope: string; targetPath: string }>;
+    };
+    manifest.files = manifest.files.filter(item => item.targetPath !== '.agentos/evidence/review_fixture.json');
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const target = join(fx.root, 'incomplete-inventory-target');
+    await assert.rejects(MaintenanceService.restoreBackup(tampered, target),
+      (error: { code?: string }) => error.code === 'BACKUP_PAYLOAD_INVENTORY_MISMATCH');
+    assert.equal(existsSync(target), false);
+  } finally { fx.cleanup(); }
 });
 
 test('restore rejects a modified payload hash and preserves both the source and absent target', async () => {
@@ -734,6 +826,60 @@ test('cleanup CAS rejects stale hashes and refuses candidate or evidence paths',
   } finally {
     fx.cleanup();
   }
+});
+
+test('cleanup CAS detects a byte-identical replacement by file identity before quarantine', async () => {
+  const fx = createFixture();
+  try {
+    const cacheFile = join(fx.dataRoot, '.agentos', 'cache', 'replaced-before-cleanup.json');
+    mkdirSync(join(cacheFile, '..'), { recursive: true });
+    writeFileSync(cacheFile, 'same bytes, different file identity');
+    let previewIdentity = '';
+    let previewModifiedAt = '';
+    const service = new MaintenanceService(
+      fx.dataRoot,
+      fx.store.getDatabase() as any,
+      [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }],
+      () => new Date(),
+      {
+        beforeCleanupQuarantine: ({ sourcePath }) => {
+          unlinkSync(sourcePath);
+          writeFileSync(sourcePath, 'same bytes, different file identity');
+          const modifiedAt = new Date(previewModifiedAt);
+          utimesSync(sourcePath, modifiedAt, modifiedAt);
+          const stat = statSync(sourcePath, { bigint: true });
+          assert.notEqual(`${stat.dev.toString(16)}:${stat.ino.toString(16)}`, previewIdentity);
+        },
+      },
+    );
+    const preview = await service.previewCleanup();
+    previewIdentity = preview.candidates[0]!.fileIdentity;
+    previewModifiedAt = preview.candidates[0]!.modifiedAt;
+    await assert.rejects(service.applyCleanup(preview), (error: { code?: string }) => error.code === 'CLEANUP_PREVIEW_STALE');
+    assert.equal(readFileSync(cacheFile, 'utf8'), 'same bytes, different file identity');
+  } finally { fx.cleanup(); }
+});
+
+test('cleanup quarantines the reviewed file and preserves a replacement created at its original path', async () => {
+  const fx = createFixture();
+  try {
+    const cacheFile = join(fx.dataRoot, '.agentos', 'cache', 'replace-during-cleanup.json');
+    mkdirSync(join(cacheFile, '..'), { recursive: true });
+    writeFileSync(cacheFile, 'reviewed old cache bytes');
+    const replacement = 'concurrent replacement that must survive';
+    const service = new MaintenanceService(
+      fx.dataRoot,
+      fx.store.getDatabase() as any,
+      [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }],
+      () => new Date(),
+      { afterCleanupQuarantine: ({ sourcePath }) => writeFileSync(sourcePath, replacement) },
+    );
+    const preview = await service.previewCleanup();
+    const result = await service.applyCleanup(preview);
+    assert.equal(result.deletedCount, 1);
+    assert.equal(readFileSync(cacheFile, 'utf8'), replacement);
+    assert.deepEqual(readdirSync(join(fx.dataRoot, '.agentos', 'cleanup-quarantine')), []);
+  } finally { fx.cleanup(); }
 });
 
 test('storage diagnostics summarize capacity and backups without reading secrets and omit lease temp files', async () => {

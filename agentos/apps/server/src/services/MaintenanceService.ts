@@ -2,12 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   lstat,
+  link,
   mkdir,
   open,
   readFile,
   readdir,
   realpath,
   rename,
+  rmdir,
   rm,
   statfs,
   unlink,
@@ -46,6 +48,7 @@ const BACKUP_FORMAT = 'agentos-maintenance-backup';
 const BACKUP_FORMAT_VERSION = 2;
 const BUILD_IDENTITY = getAgentOsBuildIdentity();
 const RESERVED_AGENTOS_DIRS = new Set(['backups', 'migration-backups', 'logs', 'cache', 'caches', 'tmp', 'temp', 'worktrees']);
+const CLEANUP_QUARANTINE_RELATIVE = '.agentos/cleanup-quarantine';
 const MAX_WORKSPACE_ID_LENGTH = 160;
 const ROTATED_LOG_PATTERN = /(?:\.log\.\d+(?:\.gz)?|\.log-\d{4}(?:-\d{2}){0,2}(?:\.gz)?)$/i;
 
@@ -116,6 +119,7 @@ export interface CleanupCandidate {
   readonly sizeBytes: number;
   readonly modifiedAt: string;
   readonly modifiedAtMs: number;
+  readonly fileIdentity: string;
   readonly sha256: string;
   readonly reason: string;
 }
@@ -141,6 +145,12 @@ export interface CleanupApplyResult {
   readonly deleted: readonly string[];
 }
 
+/** @internal Deterministic filesystem race seam for cleanup safety tests. */
+interface MaintenanceServiceSeams {
+  readonly beforeCleanupQuarantine?: (input: { readonly sourcePath: string }) => void | Promise<void>;
+  readonly afterCleanupQuarantine?: (input: { readonly sourcePath: string; readonly quarantinedPath: string }) => void | Promise<void>;
+}
+
 export class MaintenanceServiceError extends Error {
   constructor(readonly code: string, message = code) {
     super(message);
@@ -157,6 +167,7 @@ export class MaintenanceService {
     private readonly database: SqliteDatabase,
     private readonly workspaces: readonly WorkspaceRoot[],
     private readonly now: () => Date = () => new Date(),
+    private readonly seams: MaintenanceServiceSeams = {},
   ) {
     this.dataRoot = resolve(dataRoot);
   }
@@ -234,6 +245,7 @@ export class MaintenanceService {
       };
       await writeFile(join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
       throwIfAborted(signal);
+      await MaintenanceService.readAndVerifyBackup(stage);
       await rename(stage, finalPath);
       return { backupDirectory: finalPath, manifest };
     } catch (error) {
@@ -252,6 +264,8 @@ export class MaintenanceService {
     const manifestPath = join(root, 'manifest.json');
     let manifest: MaintenanceBackupManifest;
     try {
+      const manifestInfo = await lstat(manifestPath);
+      if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink()) throw new Error('invalid manifest file');
       const text = await readFile(manifestPath, 'utf8');
       manifest = JSON.parse(text) as MaintenanceBackupManifest;
     } catch {
@@ -259,23 +273,29 @@ export class MaintenanceService {
     }
     validateManifest(manifest);
     const seenPaths = new Set<string>();
+    const seenPayloadPaths = new Set<string>();
     for (const entry of manifest.files) {
       validateEntry(entry, manifest);
-      const key = `${entry.scope}:${entry.workspaceId ?? ''}:${entry.targetPath}`.toLocaleLowerCase('en-US');
+      const targetScope = entry.scope === 'workspace-root' ? `workspace:${entry.workspaceId}` : 'data-root';
+      const key = `${targetScope}:${entry.targetPath}`.toLocaleLowerCase('en-US');
       if (seenPaths.has(key)) throw new MaintenanceServiceError('BACKUP_PATH_DUPLICATE');
       seenPaths.add(key);
-      const payload = resolveInside(root, entry.payloadPath);
-      await assertNoSymlinkComponents(payload);
-      if (!isPathInside(await realpath(root), await realpath(payload))) throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
-      const actual = await hashStable(payload);
-      if (actual.sizeBytes !== entry.sizeBytes || actual.sha256 !== entry.sha256) {
-        throw new MaintenanceServiceError('BACKUP_HASH_MISMATCH');
-      }
+      const payloadKey = entry.payloadPath.toLocaleLowerCase('en-US');
+      if (seenPayloadPaths.has(payloadKey)) throw new MaintenanceServiceError('BACKUP_PAYLOAD_DUPLICATE');
+      seenPayloadPaths.add(payloadKey);
     }
-    const databaseEntry = manifest.files.find(item => item.scope === 'database');
-    if (!databaseEntry) throw new MaintenanceServiceError('BACKUP_DATABASE_MISSING');
+    const databaseEntries = manifest.files.filter(item => item.scope === 'database');
+    if (databaseEntries.length !== 1) throw new MaintenanceServiceError('BACKUP_DATABASE_MISSING');
+    const databaseEntry = databaseEntries[0]!;
     const dbPath = resolveInside(root, databaseEntry.payloadPath);
+    await verifyBackupPayload(root, databaseEntry);
     verifyDatabase(dbPath, manifest);
+    for (const entry of manifest.files) {
+      if (entry.scope === 'database') continue;
+      await verifyBackupPayload(root, entry);
+    }
+    await verifyPayloadInventory(root, manifest);
+    await verifyBackupRecoveryMaterials(root, manifest);
     return manifest;
   }
 
@@ -357,7 +377,7 @@ export class MaintenanceService {
       updateRestoredWorkspaceRoots(stagedDatabase, restoredWorkspaceRoots);
       await rewriteLegacyWorkspaceRoots(staging, restoredWorkspaceRoots);
       await remapRestoredApplyJournals(stagedDatabase, staging, target, manifest, restoredWorkspaceRoots);
-      verifyDatabase(stagedDatabase, manifest, restoredWorkspaceRoots);
+      verifyDatabase(stagedDatabase, manifest, restoredWorkspaceRoots, target);
 
       await rename(staging, target);
       return {
@@ -396,7 +416,7 @@ export class MaintenanceService {
       generatedAt,
       deletionsAvailable: true,
       candidates,
-      protected: ['database', 'workspace metadata', 'memories', 'attachments', 'artifacts', 'candidates', 'evidence', 'recovery records', 'worktrees', 'backups'],
+      protected: ['database', 'workspace metadata', 'memories', 'attachments', 'artifacts', 'candidates', 'evidence', 'recovery records', 'cleanup quarantine', 'worktrees', 'backups'],
     };
   }
 
@@ -426,10 +446,14 @@ export class MaintenanceService {
     let deletedBytes = 0;
     for (const { candidate, absolutePath } of targets) {
       throwIfAborted(signal);
-      await assertNoSymlinkComponents(absolutePath);
-      const latest = await previewRecord(absolutePath, this.dataRoot, candidate.reason);
-      if (!sameCleanupCandidate(candidate, latest)) throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
-      await unlink(absolutePath);
+      await quarantineAndDeleteCleanupFile(
+        absolutePath,
+        this.dataRoot,
+        candidate,
+        this.seams.beforeCleanupQuarantine,
+        this.seams.afterCleanupQuarantine,
+        signal,
+      );
       deleted.push(candidate.path);
       deletedBytes += candidate.sizeBytes;
     }
@@ -514,19 +538,7 @@ async function remapRestoredApplyJournals(
 ): Promise<void> {
   const db = openDatabase(databasePath);
   try {
-    const hasTable = (name: string) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
-    if (!hasTable('collaboration_apply_journals') || !hasTable('collaboration_controls')) return;
-    const rows = db.prepare(`SELECT j.control_id,j.workspace_id,j.collaboration_task_id,j.candidate_id,j.candidate_hash,
-      j.base_commit,j.state,j.recovery_path,j.images_json,c.state AS control_state
-      FROM collaboration_apply_journals j
-      LEFT JOIN collaboration_controls c ON c.workspace_id=j.workspace_id AND c.id=j.control_id
-      WHERE j.state IN ('prepared','written','recovery_required')
-        OR (j.state IN ('committed','recovered') AND c.state IN ('reserved','running','recovery_required'))
-      ORDER BY j.created_at,j.control_id`).all() as Array<{
-        control_id: string; workspace_id: string; collaboration_task_id: string; candidate_id: string;
-        candidate_hash: string; base_commit: string; state: string; recovery_path: string;
-        images_json: string; control_state: string | null;
-      }>;
+    const rows = pendingApplyJournalRows(db);
     if (rows.length === 0) return;
     const updateJournal = db.prepare(`UPDATE collaboration_apply_journals SET state='recovery_required',recovery_path=?,images_json=?,updated_at=?
       WHERE control_id=? AND workspace_id=?`);
@@ -535,55 +547,14 @@ async function remapRestoredApplyJournals(
       recovery_reference=?,updated_at=? WHERE workspace_id=? AND id=? AND state IN ('reserved','running','recovery_required')`);
     for (const row of rows) {
       const targetRoot = workspaceRoots[row.workspace_id];
-      if (!targetRoot || !isSafeControlId(row.control_id) || !isValidWorkspaceId(row.workspace_id)
-        || row.control_state === null || !['reserved', 'running', 'recovery_required'].includes(row.control_state)) {
-        throw new MaintenanceServiceError('RESTORE_RECOVERY_CONTROL_INVALID');
-      }
-      const sourceRecoveryPath = join(manifest.sourceDataRoot, '.agentos', 'collaboration-apply-recovery', `${row.control_id}.json`);
-      if (!samePath(row.recovery_path, sourceRecoveryPath)) throw new MaintenanceServiceError('RESTORE_RECOVERY_PATH_INVALID');
-      const targetPath = `.agentos/collaboration-apply-recovery/${row.control_id}.json`;
-      if (!manifest.files.some(item => item.scope === 'data-root' && item.targetPath === targetPath)) {
-        throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_MISSING');
-      }
+      if (!targetRoot) throw new MaintenanceServiceError('RESTORE_RECOVERY_CONTROL_INVALID');
+      const targetPath = recoveryTargetPath(row.control_id);
       const stagedPath = resolveInside(stagingRoot, targetPath);
       let sourceText: string;
-      let summary: { recoveryHash?: unknown; paths?: unknown };
-      let journal: Record<string, unknown>;
       try {
         sourceText = await readFile(stagedPath, 'utf8');
-        summary = JSON.parse(row.images_json) as typeof summary;
-        journal = JSON.parse(sourceText) as Record<string, unknown>;
       } catch { throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID'); }
-      if (!summary || summary.recoveryHash !== createHash('sha256').update(sourceText).digest('hex')
-        || journal.controlId !== row.control_id || journal.workspaceId !== row.workspace_id
-        || journal.taskId !== row.collaboration_task_id || journal.candidateId !== row.candidate_id
-        || journal.candidateHash !== row.candidate_hash || journal.baseCommit !== row.base_commit
-        || typeof journal.targetRoot !== 'string' || !samePath(journal.targetRoot, manifest.workspaceRoots[row.workspace_id] ?? '')
-        || !Array.isArray(journal.images) || journal.images.length === 0) {
-        throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
-      }
-      const images = journal.images as Array<Record<string, unknown>>;
-      const seen = new Set<string>();
-      for (const image of images) {
-        if (typeof image.path !== 'string' || !isSafeRecoveryImagePath(image.path) || seen.has(image.path)) {
-          throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
-        }
-        seen.add(image.path);
-        for (const side of ['pre', 'post'] as const) {
-          const value = image[side];
-          const mode = image[`${side}Mode`];
-          if ((value !== null && (typeof value !== 'string' || Buffer.from(value, 'base64').toString('base64') !== value))
-            || (value === null ? mode !== null : !Number.isInteger(mode) || (mode as number) < 0 || (mode as number) > 0o777)) {
-            throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
-          }
-        }
-      }
-      const paths = images.map(image => ({
-        path: image.path,
-        pre: recoveryImageDigest(image.pre as string | null),
-        post: recoveryImageDigest(image.post as string | null),
-      }));
-      if (JSON.stringify(summary.paths) !== JSON.stringify(paths)) throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
+      const { journal, paths } = validateRecoveryMaterial(row, sourceText, manifest);
 
       const recoveryPath = join(finalDataRoot, '.agentos', 'collaboration-apply-recovery', `${row.control_id}.json`);
       journal.targetRoot = targetRoot;
@@ -596,6 +567,106 @@ async function remapRestoredApplyJournals(
       const journalUpdate = updateJournal.run(recoveryPath, JSON.stringify({ recoveryHash, paths }), now, row.control_id, row.workspace_id) as { changes?: number };
       const controlUpdate = updateControl.run(recoveryPath, now, row.workspace_id, row.control_id) as { changes?: number };
       if (journalUpdate.changes !== 1 || controlUpdate.changes !== 1) throw new MaintenanceServiceError('RESTORE_RECOVERY_CONTROL_INVALID');
+    }
+  } finally { db.close(); }
+}
+
+interface PendingApplyJournalRow {
+  control_id: string;
+  workspace_id: string;
+  collaboration_task_id: string;
+  candidate_id: string;
+  candidate_hash: string;
+  base_commit: string;
+  state: string;
+  recovery_path: string;
+  images_json: string;
+  control_state: string | null;
+}
+
+function pendingApplyJournalRows(db: DatabaseSyncLike): PendingApplyJournalRow[] {
+  const hasTable = (name: string) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+  if (!hasTable('collaboration_apply_journals') || !hasTable('collaboration_controls')) return [];
+  return db.prepare(`SELECT j.control_id,j.workspace_id,j.collaboration_task_id,j.candidate_id,j.candidate_hash,
+    j.base_commit,j.state,j.recovery_path,j.images_json,c.state AS control_state
+    FROM collaboration_apply_journals j
+    LEFT JOIN collaboration_controls c ON c.workspace_id=j.workspace_id AND c.id=j.control_id
+    WHERE j.state IN ('prepared','written','recovery_required')
+      OR (j.state IN ('committed','recovered') AND c.state IN ('reserved','running','recovery_required'))
+    ORDER BY j.created_at,j.control_id`).all() as PendingApplyJournalRow[];
+}
+
+function recoveryTargetPath(controlId: string): string {
+  if (!isSafeControlId(controlId)) throw new MaintenanceServiceError('RESTORE_RECOVERY_CONTROL_INVALID');
+  return `.agentos/collaboration-apply-recovery/${controlId}.json`;
+}
+
+function validateRecoveryMaterial(
+  row: PendingApplyJournalRow,
+  sourceText: string,
+  manifest: MaintenanceBackupManifest,
+): { journal: Record<string, unknown>; paths: Array<{ path: string; pre: string | null; post: string | null }> } {
+  if (!isValidWorkspaceId(row.workspace_id) || row.control_state === null
+    || !['reserved', 'running', 'recovery_required'].includes(row.control_state)) {
+    throw new MaintenanceServiceError('RESTORE_RECOVERY_CONTROL_INVALID');
+  }
+  const sourceRecoveryPath = join(manifest.sourceDataRoot, recoveryTargetPath(row.control_id).replaceAll('/', sep));
+  if (!samePath(row.recovery_path, sourceRecoveryPath)) throw new MaintenanceServiceError('RESTORE_RECOVERY_PATH_INVALID');
+  const targetPath = recoveryTargetPath(row.control_id);
+  if (!manifest.files.some(item => item.scope === 'data-root' && item.targetPath === targetPath)) {
+    throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_MISSING');
+  }
+  let summary: { recoveryHash?: unknown; paths?: unknown };
+  let journal: Record<string, unknown>;
+  try {
+    summary = JSON.parse(row.images_json) as typeof summary;
+    journal = JSON.parse(sourceText) as Record<string, unknown>;
+  } catch { throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID'); }
+  if (!summary || summary.recoveryHash !== createHash('sha256').update(sourceText).digest('hex')
+    || journal.controlId !== row.control_id || journal.workspaceId !== row.workspace_id
+    || journal.taskId !== row.collaboration_task_id || journal.candidateId !== row.candidate_id
+    || journal.candidateHash !== row.candidate_hash || journal.baseCommit !== row.base_commit
+    || typeof journal.targetRoot !== 'string' || !samePath(journal.targetRoot, manifest.workspaceRoots[row.workspace_id] ?? '')
+    || !Array.isArray(journal.images) || journal.images.length === 0) {
+    throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
+  }
+  const images = journal.images as Array<Record<string, unknown>>;
+  const seen = new Set<string>();
+  for (const image of images) {
+    if (typeof image.path !== 'string' || !isSafeRecoveryImagePath(image.path) || seen.has(image.path)) {
+      throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
+    }
+    seen.add(image.path);
+    for (const side of ['pre', 'post'] as const) {
+      const value = image[side];
+      const mode = image[`${side}Mode`];
+      if ((value !== null && (typeof value !== 'string' || Buffer.from(value, 'base64').toString('base64') !== value))
+        || (value === null ? mode !== null : !Number.isInteger(mode) || (mode as number) < 0 || (mode as number) > 0o777)) {
+        throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
+      }
+    }
+  }
+  const paths = images.map(image => ({
+    path: image.path as string,
+    pre: recoveryImageDigest(image.pre as string | null),
+    post: recoveryImageDigest(image.post as string | null),
+  }));
+  if (JSON.stringify(summary.paths) !== JSON.stringify(paths)) throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID');
+  return { journal, paths };
+}
+
+async function verifyBackupRecoveryMaterials(backupRoot: string, manifest: MaintenanceBackupManifest): Promise<void> {
+  const databaseEntry = manifest.files.find(item => item.scope === 'database');
+  if (!databaseEntry) throw new MaintenanceServiceError('BACKUP_DATABASE_MISSING');
+  const db = openDatabase(resolveInside(backupRoot, databaseEntry.payloadPath));
+  try {
+    for (const row of pendingApplyJournalRows(db)) {
+      const entry = manifest.files.find(item => item.scope === 'data-root' && item.targetPath === recoveryTargetPath(row.control_id));
+      if (!entry) throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_MISSING');
+      let sourceText: string;
+      try { sourceText = await readFile(resolveInside(backupRoot, entry.payloadPath), 'utf8'); }
+      catch { throw new MaintenanceServiceError('RESTORE_RECOVERY_MATERIAL_INVALID'); }
+      validateRecoveryMaterial(row, sourceText, manifest);
     }
   } finally { db.close(); }
 }
@@ -650,6 +721,7 @@ function verifyDatabase(
   path: string,
   manifest: MaintenanceBackupManifest,
   expectedWorkspaceRoots: Readonly<Record<string, string>> = manifest.workspaceRoots,
+  expectedDataRoot: string = manifest.sourceDataRoot,
 ): void {
   const db = openDatabase(path);
   try {
@@ -674,14 +746,148 @@ function verifyDatabase(
       .all() as Array<{ id: string; canonical_root_path: string }>;
     const databaseRoots = Object.fromEntries(workspaceRows.map(row => [row.id, normalizeWorkspaceRoot(row.canonical_root_path)]));
     const manifestRoots = Object.fromEntries(Object.entries(expectedWorkspaceRoots).map(([id, root]) => [id, normalizeWorkspaceRoot(root)]));
-    if (Object.entries(databaseRoots).some(([id, root]) => manifestRoots[id] !== root)) {
+    if (Object.keys(databaseRoots).length !== Object.keys(manifestRoots).length
+      || Object.entries(databaseRoots).some(([id, root]) => manifestRoots[id] !== root)) {
       throw new MaintenanceServiceError('BACKUP_WORKSPACE_ROOT_MISMATCH');
     }
+    verifyReferencedFileClosure(db, manifest, expectedWorkspaceRoots, expectedDataRoot);
   } catch (error) {
     if (error instanceof MaintenanceServiceError) throw error;
     throw new MaintenanceServiceError('BACKUP_DATABASE_INVALID');
   } finally {
     db.close();
+  }
+}
+
+/**
+ * The database snapshot is authoritative: every durable file path it names
+ * must have exactly one corresponding entry in the portable bundle. This is
+ * deliberately run before restore creates its staging directory.
+ */
+function verifyReferencedFileClosure(
+  database: DatabaseSyncLike,
+  manifest: MaintenanceBackupManifest,
+  workspaceRoots: Readonly<Record<string, string>>,
+  dataRoot: string,
+): void {
+  const roots = Object.entries(workspaceRoots).map(([id, rootPath]) => ({ id, rootPath }));
+  const referencedWorkspaceFiles = listWorkspaceReferences(database as SqliteDatabase, roots);
+  const expectedWorkspaceEntries = new Set(referencedWorkspaceFiles.map(item => workspaceReferenceKey(item.workspaceId, item.relativePath)));
+  const actualWorkspaceEntries = manifest.files
+    .filter(item => item.scope === 'workspace-root')
+    .map(item => workspaceReferenceKey(item.workspaceId!, item.targetPath));
+  if (new Set(actualWorkspaceEntries).size !== actualWorkspaceEntries.length
+    || expectedWorkspaceEntries.size !== actualWorkspaceEntries.length
+    || [...expectedWorkspaceEntries].some(key => !actualWorkspaceEntries.includes(key))) {
+    throw new MaintenanceServiceError('BACKUP_REFERENCE_SET_MISMATCH');
+  }
+
+  const actualDataEntries = new Set(manifest.files
+    .filter(item => item.scope === 'data-root')
+    .map(item => item.targetPath.toLocaleLowerCase('en-US')));
+  const requiredDataEntries = new Set<string>();
+  const hasTable = (name: string) => Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+  const addArtifactStorageKeys = (table: string): void => {
+    if (!hasTable(table)) return;
+    const rows = database.prepare(`SELECT storage_key FROM "${table}" WHERE storage_key IS NOT NULL`).all() as Array<{ storage_key: string }>;
+    for (const row of rows) {
+      const key = safeStorageKey(row.storage_key);
+      requiredDataEntries.add(`.agentos/artifacts/${key}`.toLocaleLowerCase('en-US'));
+    }
+  };
+  addArtifactStorageKeys('runtime_artifacts');
+  addArtifactStorageKeys('process_output_references');
+
+  if (hasTable('collaboration_candidates')) {
+    const rows = database.prepare(`SELECT workspace_id,canonical_run_id,diff_artifact_id,manifest_artifact_id,review_artifact_id
+      FROM collaboration_candidates`).all() as Array<{
+        workspace_id: string; canonical_run_id: string; diff_artifact_id: string | null;
+        manifest_artifact_id: string | null; review_artifact_id: string | null;
+      }>;
+    for (const row of rows) {
+      for (const artifactId of [row.diff_artifact_id, row.manifest_artifact_id, row.review_artifact_id]) {
+        if (!artifactId) continue;
+        const key = safeStorageKey(`${row.workspace_id}/${row.canonical_run_id}/${artifactId}/content`);
+        requiredDataEntries.add(`.agentos/artifacts/${key}`.toLocaleLowerCase('en-US'));
+      }
+    }
+  }
+  if (hasTable('collaboration_reviews')) {
+    const rows = database.prepare(`SELECT workspace_id,canonical_run_id,artifact_id
+      FROM collaboration_reviews WHERE artifact_id IS NOT NULL`).all() as Array<{
+        workspace_id: string; canonical_run_id: string; artifact_id: string;
+      }>;
+    for (const row of rows) {
+      const key = safeStorageKey(`${row.workspace_id}/${row.canonical_run_id}/${row.artifact_id}/content`);
+      requiredDataEntries.add(`.agentos/artifacts/${key}`.toLocaleLowerCase('en-US'));
+    }
+  }
+
+  for (const row of pendingApplyJournalRows(database)) {
+    const expectedPath = join(dataRoot, ...recoveryTargetPath(row.control_id).split('/'));
+    if (!samePath(row.recovery_path, expectedPath)) throw new MaintenanceServiceError('RESTORE_RECOVERY_PATH_INVALID');
+    requiredDataEntries.add(recoveryTargetPath(row.control_id).toLocaleLowerCase('en-US'));
+  }
+  for (const path of requiredDataEntries) {
+    if (!actualDataEntries.has(path)) throw new MaintenanceServiceError('BACKUP_DATA_REFERENCE_MISSING');
+  }
+}
+
+function workspaceReferenceKey(workspaceId: string, path: string): string {
+  return `${workspaceId}:${path.replaceAll('\\', '/').toLocaleLowerCase('en-US')}`;
+}
+
+function safeStorageKey(value: string): string {
+  try {
+    validateRelativeManifestPath(value);
+  } catch {
+    throw new MaintenanceServiceError('BACKUP_REFERENCE_PATH_INVALID');
+  }
+  return value;
+}
+
+async function verifyBackupPayload(root: string, entry: BackupFileEntry): Promise<void> {
+  const payload = resolveInside(root, entry.payloadPath);
+  try {
+    await assertNoSymlinkComponents(payload);
+    const rootReal = await realpath(root);
+    const payloadReal = await realpath(payload);
+    if (!isPathInside(rootReal, payloadReal)) throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
+    const info = await lstat(payload);
+    if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+    const actual = await hashStable(payload);
+    if (actual.sizeBytes !== entry.sizeBytes || actual.sha256 !== entry.sha256) {
+      throw new MaintenanceServiceError('BACKUP_HASH_MISMATCH');
+    }
+  } catch (error) {
+    if (error instanceof MaintenanceServiceError) throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new MaintenanceServiceError('BACKUP_PAYLOAD_MISSING');
+    throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
+  }
+}
+
+async function verifyPayloadInventory(root: string, manifest: MaintenanceBackupManifest): Promise<void> {
+  const payloadRoot = join(root, 'payload');
+  let info;
+  try { info = await lstat(payloadRoot); }
+  catch { throw new MaintenanceServiceError('BACKUP_PAYLOAD_INVENTORY_MISMATCH'); }
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_PAYLOAD_INVENTORY_MISMATCH');
+  const expected = new Set(manifest.files.map(item => item.payloadPath.toLocaleLowerCase('en-US')));
+  const actual = new Set<string>();
+  const walk = async (directory: string, relativeDirectory: string): Promise<void> => {
+    for (const child of await readdir(directory, { withFileTypes: true })) {
+      const absolute = join(directory, child.name);
+      const relativePath = [relativeDirectory, child.name].filter(Boolean).join('/');
+      const childInfo = await lstat(absolute);
+      if (childInfo.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_SYMLINK_UNSUPPORTED');
+      if (childInfo.isDirectory()) await walk(absolute, relativePath);
+      else if (childInfo.isFile()) actual.add(relativePath.toLocaleLowerCase('en-US'));
+      else throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+    }
+  };
+  await walk(payloadRoot, 'payload');
+  if (actual.size !== expected.size || [...expected].some(path => !actual.has(path))) {
+    throw new MaintenanceServiceError('BACKUP_PAYLOAD_INVENTORY_MISMATCH');
   }
 }
 
@@ -1064,19 +1270,20 @@ async function appendPreviewFiles(root: string, dataRoot: string, output: Array<
 }
 
 async function previewRecord(path: string, dataRoot: string, reason: string): Promise<CleanupCandidate> {
-  const info = await lstat(path);
+  const info = await lstat(path, { bigint: true });
   if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('CLEANUP_FILE_UNAVAILABLE');
   const hash = await hashStable(path);
-  const after = await lstat(path);
-  if (!after.isFile() || after.isSymbolicLink() || info.size !== after.size
-    || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs) {
+  const after = await lstat(path, { bigint: true });
+  if (!after.isFile() || after.isSymbolicLink() || info.dev !== after.dev || info.ino !== after.ino
+    || info.size !== after.size || info.mtimeNs !== after.mtimeNs || info.ctimeNs !== after.ctimeNs) {
     throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
   }
   const fields = {
     path: relative(dataRoot, path).replaceAll(sep, '/'),
     sizeBytes: hash.sizeBytes,
-    modifiedAt: info.mtime.toISOString(),
-    modifiedAtMs: info.mtimeMs,
+    modifiedAt: new Date(Number(info.mtimeMs)).toISOString(),
+    modifiedAtMs: Number(info.mtimeMs),
+    fileIdentity: cleanupFileIdentity(info),
     sha256: hash.sha256,
     reason,
   };
@@ -1088,6 +1295,7 @@ function cleanupCandidateId(candidate: Omit<CleanupCandidate, 'id'>): string {
     candidate.path,
     candidate.sizeBytes,
     candidate.modifiedAtMs,
+    candidate.fileIdentity,
     candidate.sha256,
     candidate.reason,
   ])).digest('hex');
@@ -1095,14 +1303,112 @@ function cleanupCandidateId(candidate: Omit<CleanupCandidate, 'id'>): string {
 
 function cleanupPreviewVersion(candidates: readonly CleanupCandidate[]): string {
   return createHash('sha256').update(JSON.stringify([
-    candidates.map(candidate => [candidate.id, candidate.path, candidate.sizeBytes, candidate.modifiedAtMs, candidate.sha256, candidate.reason]),
+    candidates.map(candidate => [candidate.id, candidate.path, candidate.sizeBytes, candidate.modifiedAtMs,
+      candidate.fileIdentity, candidate.sha256, candidate.reason]),
   ])).digest('hex');
 }
 
 function sameCleanupCandidate(left: CleanupCandidate, right: CleanupCandidate): boolean {
   return left.id === right.id && left.path === right.path && left.sizeBytes === right.sizeBytes
     && left.modifiedAt === right.modifiedAt && left.modifiedAtMs === right.modifiedAtMs
+    && left.fileIdentity === right.fileIdentity
     && left.sha256 === right.sha256 && left.reason === right.reason;
+}
+
+function cleanupFileIdentity(info: { readonly dev: bigint; readonly ino: bigint }): string {
+  return `${info.dev.toString(16)}:${info.ino.toString(16)}`;
+}
+
+async function quarantineAndDeleteCleanupFile(
+  sourcePath: string,
+  dataRoot: string,
+  candidate: CleanupCandidate,
+  beforeQuarantine?: MaintenanceServiceSeams['beforeCleanupQuarantine'],
+  afterQuarantine?: MaintenanceServiceSeams['afterCleanupQuarantine'],
+  signal?: AbortSignal,
+): Promise<void> {
+  const quarantineRoot = resolveInside(dataRoot, CLEANUP_QUARANTINE_RELATIVE);
+  await mkdir(quarantineRoot, { recursive: true });
+  await assertNoSymlinkComponents(quarantineRoot);
+  if (!isPathInside(await realpath(dataRoot), await realpath(quarantineRoot))) {
+    throw new MaintenanceServiceError('CLEANUP_QUARANTINE_INVALID');
+  }
+
+  const latest = await previewRecord(sourcePath, dataRoot, candidate.reason);
+  if (!sameCleanupCandidate(candidate, latest)) throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
+  await beforeQuarantine?.({ sourcePath });
+  const operationDirectory = join(quarantineRoot, randomUUID());
+  await mkdir(operationDirectory, { recursive: false });
+  const quarantinedPath = join(operationDirectory, 'payload');
+  try {
+    await assertNoSymlinkComponents(sourcePath);
+    await rename(sourcePath, quarantinedPath);
+  } catch (error) {
+    await rmdir(operationDirectory).catch(() => {});
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
+    throw error;
+  }
+
+  let payloadStillQuarantined = true;
+  const preserveOrRestore = async (): Promise<void> => {
+    let isolatedInfo;
+    try { isolatedInfo = await lstat(quarantinedPath); }
+    catch {
+      throw new MaintenanceServiceError('CLEANUP_QUARANTINE_RECOVERY_REQUIRED');
+    }
+    if (!isolatedInfo.isFile() || isolatedInfo.isSymbolicLink()) {
+      throw new MaintenanceServiceError('CLEANUP_QUARANTINE_RECOVERY_REQUIRED');
+    }
+    try {
+      // link() creates the original name only if it is still absent. Unlike
+      // rename(), it cannot replace a concurrent file at the original path.
+      await link(quarantinedPath, sourcePath);
+      await unlink(quarantinedPath);
+      payloadStillQuarantined = false;
+    } catch {
+      // Keep the isolated payload for operator recovery when link is
+      // unsupported or a replacement already occupies the original name.
+      throw new MaintenanceServiceError('CLEANUP_QUARANTINE_RECOVERY_REQUIRED');
+    }
+  };
+
+  try {
+    await afterQuarantine?.({ sourcePath, quarantinedPath });
+    const isolatedInfo = await lstat(quarantinedPath, { bigint: true });
+    if (!isolatedInfo.isFile() || isolatedInfo.isSymbolicLink()) {
+      await preserveOrRestore();
+      throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
+    }
+    const isolatedHash = await hashStable(quarantinedPath);
+    const isolatedAfter = await lstat(quarantinedPath, { bigint: true });
+    if (!isolatedAfter.isFile() || isolatedAfter.isSymbolicLink()
+      || isolatedInfo.dev !== isolatedAfter.dev || isolatedInfo.ino !== isolatedAfter.ino
+      || cleanupFileIdentity(isolatedInfo) !== candidate.fileIdentity
+      || isolatedInfo.size !== isolatedAfter.size || isolatedInfo.mtimeNs !== isolatedAfter.mtimeNs
+      || isolatedHash.sizeBytes !== candidate.sizeBytes || Number(isolatedAfter.mtimeMs) !== candidate.modifiedAtMs
+      || isolatedHash.sha256 !== candidate.sha256) {
+      await preserveOrRestore();
+      throw new MaintenanceServiceError('CLEANUP_PREVIEW_STALE');
+    }
+    if (signal?.aborted) {
+      await preserveOrRestore();
+      throwIfAborted(signal);
+    }
+    // The reviewed file has been moved out of the mutable cache/log path and
+    // re-hashed there. Windows and POSIX expose no portable atomic
+    // compare-and-unlink primitive, so this is a quarantine-then-verify
+    // protocol rather than an OS-level CAS. The source path is never unlinked.
+    await unlink(quarantinedPath);
+    payloadStillQuarantined = false;
+  } catch (error) {
+    if (payloadStillQuarantined && !(error instanceof MaintenanceServiceError
+      && error.code === 'CLEANUP_QUARANTINE_RECOVERY_REQUIRED')) {
+      await preserveOrRestore();
+    }
+    throw error;
+  } finally {
+    if (!payloadStillQuarantined) await rmdir(operationDirectory).catch(() => {});
+  }
 }
 
 function sameCleanupCandidates(left: readonly CleanupCandidate[], right: readonly CleanupCandidate[]): boolean {
@@ -1115,6 +1421,7 @@ function isCleanupCandidate(candidate: CleanupCandidate): boolean {
   return Boolean(candidate && typeof candidate.id === 'string' && /^[a-f0-9]{64}$/u.test(candidate.id)
     && typeof candidate.path === 'string' && Number.isSafeInteger(candidate.sizeBytes) && candidate.sizeBytes >= 0
     && typeof candidate.modifiedAt === 'string' && Number.isFinite(candidate.modifiedAtMs)
+    && typeof candidate.fileIdentity === 'string' && /^[a-f0-9]+:[a-f0-9]+$/u.test(candidate.fileIdentity)
     && typeof candidate.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(candidate.sha256)
     && typeof candidate.reason === 'string');
 }
