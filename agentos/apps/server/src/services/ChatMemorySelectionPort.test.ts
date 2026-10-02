@@ -73,7 +73,7 @@ function addEntry(fx: ReturnType<typeof fixture>, overrides: Record<string, unkn
   fx.entries.createEntry({
     id, workspaceId: WS, scope: 'workspace', category: 'decision', authority: 'system-verified',
     confidence: 0.9, importance: 0.5, title: 'entry ' + seq, summary: 'summary', content: 'content',
-    tags: [], status: 'active', sources: [{ kind: 'run', id: 'run_x' }], createdAt: NOW,
+    tags: [], status: 'active', pinned: true, sources: [{ kind: 'run', id: 'run_x' }], createdAt: NOW,
     ...overrides,
   } as never);
   return id;
@@ -88,7 +88,7 @@ test('LITE-09-101 CM-01 selects reachable entries and assembles the injected tex
     const second = addEntry(fx, { title: '已知失败', content: '上次部署因缺端口校验失败', category: 'failure' });
     const selection = fx.port.select(SELECT_INPUT);
     assert.deepEqual([...selection.selectedEntryIds].sort(), [first, second].sort());
-    assert.equal(selection.retrievalStrategyVersion, CHAT_MEMORY_STRATEGY_VERSION);
+    assert.equal(selection.retrievalStrategyVersion, CHAT_MEMORY_STRATEGY_VERSION+'+memory-relevance.v2');
     assert.equal(selection.truncated, false);
     assert.ok(selection.totalTokens > 0);
     assert.ok(selection.contextText?.includes('### 上线约束\n端口必须显式校验'),

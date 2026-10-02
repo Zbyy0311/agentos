@@ -13,6 +13,7 @@ export interface MemoryContextSelection {
 
 export interface MemoryContextExclusion {
   readonly memoryId: string;
+  readonly memoryVersion?: number;
   readonly reason: string | null;
 }
 
@@ -114,7 +115,10 @@ function parseExclusion(value: unknown, index: number): MemoryContextExclusion {
   } else {
     throw new Error(`Invalid memory context response: exclusions[${index}].reason is invalid.`);
   }
-  return { memoryId: requiredString(value, 'memoryId'), reason };
+  const version = optionalNonNegativeInteger(value.memoryVersion, `exclusions[${index}].memoryVersion`);
+  if (version === 0) throw new Error('Invalid memory context response: exclusion version must be positive.');
+  return { memoryId: requiredString(value, 'memoryId'), reason,
+    ...(version === null ? {} : {memoryVersion: version}) };
 }
 
 function optionalExplanation<T>(

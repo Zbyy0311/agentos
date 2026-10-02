@@ -8,6 +8,7 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryExecutionContextRepository } from '../store/MemoryExecutionContextRepository.js';
 import { ConversationService } from './ConversationService.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { MemoryService } from './MemoryService.js';
 
 const WORKSPACE = 'workspace-a';
 const GROUP = 'group-waiting';
@@ -169,6 +170,52 @@ for (const operation of ['direct', 'group-resume'] as const) {
       if (earlierExecutionId !== undefined) {
         assert.equal(contexts.findForExecution(WORKSPACE, earlierExecutionId)?.contextText, earlierBody);
       }
+    } finally {
+      if (previousMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+      else process.env.AGENTOS_FORCE_MOCK = previousMock;
+      fx?.store.close();
+      if (fx) rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const operation of ['direct', 'group'] as const) {
+  test(`${operation} resume retrieves objective memory for a short user answer and freezes the new selection`, async () => {
+    const previousMock = process.env.AGENTOS_FORCE_MOCK;
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    let fx: ReturnType<typeof fixture> | undefined;
+    try {
+      fx = fixture(AGENT);
+      const { store, entries } = fx;
+      const conversationId = operation === 'direct' ? 'objective-direct' : GROUP;
+      if (operation === 'direct') {
+        store.createConversation({ id: conversationId, workspaceId: WORKSPACE, type: 'direct', title: 'objective',
+          agentId: AGENT, createdAt: NOW, updatedAt: NOW });
+      }
+      store.createMessage({ id: `objective-source-${operation}`, workspaceId: WORKSPACE, conversationId,
+        senderType: 'user', content: 'databasecheckpoint', createdAt: NOW });
+      const run = store.createRun({ id: `objective-run-${operation}`, workspaceId: WORKSPACE, conversationId,
+        sourceMessageId: `objective-source-${operation}`, objective: 'databasecheckpoint', status: 'waiting_user',
+        waitingQuestion: '确认继续？', waitingAgentId: AGENT, createdAt: NOW, updatedAt: NOW });
+      const target = entries.createEntry({ id: `objective-entry-${operation}`, workspaceId: WORKSPACE, scope: 'workspace',
+        category: 'decision', authority: 'user-explicit', title: 'databasecheckpoint', content: 'OBJECTIVE_RETRIEVAL_MARKER',
+        confidence: 1, importance: 1, pinned: false, sources: [], status: 'active', createdAt: NOW });
+      const unrelated = await new MemoryService(store).create({ workspaceId: WORKSPACE, workspaceRoot: fx.root,
+        memoryEnabled: true, type: 'experience', title: 'reply review', summary: 'generic stage words', content: 'UNRELATED_LEGACY_MARKER' });
+      const input = { workspaceId: WORKSPACE, workspaceRoot: fx.root, conversationId, runId: run.id, content: '是' };
+      const service = new ConversationService(store);
+      const execution = operation === 'direct'
+        ? (await service.resumeDirectMessage(input)).execution
+        : (await service.resumeGroupMessage(input)).executions[0];
+      assert.equal(execution.status, 'completed');
+      const frozen = new MemoryExecutionContextRepository(store.getDatabase()).findForExecution(WORKSPACE, execution.id)!;
+      assert.ok(frozen.contextText.includes(target.content));
+      assert.ok(frozen.selected.some(item => item.memoryId === target.id && item.memoryVersion === 1));
+      assert.ok(!frozen.selected.some(item => item.memoryId === unrelated.id));
+      assert.match(frozen.retrievalStrategyVersion, /memory-relevance\.v2/);
+      const prompt = readFileSync(fx.promptPath, 'utf8');
+      assert.ok(prompt.includes(target.content));
+      assert.ok(!prompt.includes('UNRELATED_LEGACY_MARKER'));
     } finally {
       if (previousMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
       else process.env.AGENTOS_FORCE_MOCK = previousMock;
