@@ -544,6 +544,10 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi', memoryGat
   REAL_EXECUTABLE = executable;
   REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : provider === 'opencode' ? 'opencode' : 'kimicode';
   const db = migratedDb();
+  if (memoryGate) {
+    db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
+      .run('Read the M1 memory checkpoint and reply with only its value. Do not use tools.', WS, RUN);
+  }
   seedGraph(db, 5000, memoryGate ? 'Read the M1 memory checkpoint and reply with only its value. Do not use tools.' : REAL_GATE_PROMPT);
   seedAdmission(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
