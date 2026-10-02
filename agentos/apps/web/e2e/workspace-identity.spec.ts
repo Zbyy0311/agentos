@@ -377,6 +377,60 @@ test('task 101 deep link loads directly and pagination preserves the selected ta
   expect(model.failures).toEqual([]);
 });
 
+test('frozen candidate preview loads a frozen candidate page and fetches one text diff on demand', async ({ page }, testInfo) => {
+  // Browser API replies are fixture-mocked here; persisted-candidate behavior is covered by the server workflow integration test.
+  const model = fixture();
+  const baseCommit = 'b'.repeat(40);
+  const diffHash = 'd'.repeat(64);
+  const contentHash = 'e'.repeat(64);
+  const target = { ...task(102), id: 'task-preview', title: 'Frozen Preview Task', status: 'awaiting_application' as const,
+    baseCommit, currentCandidateId: 'candidate-preview' };
+  model.tasks.splice(0, model.tasks.length, target);
+  const candidate = { id: 'candidate-preview', round: 0, diffHash, contentHash, testStatus: 'passed', testExitCode: 0,
+    testCommand: 'pnpm test', reviewConclusion: 'approved', reviewSummary: 'Frozen candidate reviewed' };
+  const frozenPage = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
+    headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2, diffHash, contentHash, offset: 0, totalFiles: 1,
+    totalAdditions: 1, totalDeletions: 1, files: [{ fileIndex: 0, path: 'src/frozen.ts', status: 'modified',
+      additions: 1, deletions: 1, binary: false, withheld: false }], withheldContent: false, withheldReasons: [] };
+  const frozenDiff = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
+    manifestVersion: 2, diffHash, contentHash, fileIndex: 0, path: 'src/frozen.ts',
+    diffText: 'diff --git a/src/frozen.ts b/src/frozen.ts\n@@ -1 +1 @@\n-old\n+new', withheld: false };
+  await install(page, model, async (route, current) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/task-preview/progress')) {
+      await json(route, { progress: { task: target, runs: [], events: [], eventCursor: 0, candidates: [candidate], reviews: [] } });
+      return true;
+    }
+    if (url.pathname.endsWith('/candidates/candidate-preview/preview/files/0')) { await json(route, frozenDiff); return true; }
+    if (url.pathname.endsWith('/candidates/candidate-preview/preview')) {
+      await route.fulfill({ json: frozenPage, headers: { 'Cache-Control': 'no-store' } });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto(`/workspace/${ws}?conversationSource=runtime&conversationId=same-id&collaborationId=task-preview&view=execution`);
+  await expect(page.getByRole('heading', { name: 'Frozen Preview Task' })).toBeVisible();
+  const applyButton = page.getByRole('button', { name: '先查看候选差异' });
+  await expect(applyButton).toBeDisabled();
+  await page.getByRole('button', { name: '查看冻结文件与差异' }).click();
+  await expect(page.getByText('src/frozen.ts', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-candidate-preview] code').filter({ hasText: contentHash })).toBeVisible();
+  await expect(applyButton).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认应用已预览候选' })).toBeEnabled();
+  expect(model.requests.some(item => item.path.includes('/candidates/candidate-preview/preview?')
+    && item.path.includes(`candidateBaseCommit=${baseCommit}`) && item.path.includes(`candidateContentHash=${contentHash}`))).toBe(true);
+  expect(model.requests.some(item => item.path.includes('/preview/files/0'))).toBe(false,
+    'the text body remains lazy until the user expands its file');
+
+  await page.getByRole('button', { name: '按需加载文本差异' }).click();
+  await expect(page.locator('pre')).toContainText('+new');
+  await page.locator('[data-candidate-preview]').screenshot({ path: testInfo.outputPath('candidate-preview.png') });
+  expect(model.requests.some(item => item.path.includes('/preview/files/0')
+    && item.path.includes(`candidateContentHash=${contentHash}`))).toBe(true);
+  expect(model.failures).toEqual([]);
+});
+
 test('scroll restore follows the conversation identity after delayed message loading', async ({ page }) => {
   const model = fixture();
   for (const id of ['private-a', 'private-b']) {

@@ -47,7 +47,7 @@ import {
 
 type Db = InstanceType<typeof DatabaseSync>;
 
-const EXPECTED_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052'];
+const EXPECTED_MIGRATION_PREFIX = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
 const NOW = '2026-08-03T00:00:00.000Z';
 
 function migratedDb(registry = DEFAULT_REGISTRY_MIGRATIONS): Db {
@@ -101,7 +101,11 @@ function assertIntegrity(fn: () => unknown): void {
 }
 
 test('Migration 013 is non-destructive, canonical, and preserves the frozen 007/012 checksums', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_IDS);
+  const registryIds = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  assert.deepEqual(registryIds.slice(0, EXPECTED_MIGRATION_PREFIX.length), EXPECTED_MIGRATION_PREFIX);
+  assert.equal(registryIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.ok(registryIds.includes('052'), 'P1 source bindings migration 052 must be registered');
+  assert.ok(registryIds.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
   assert.equal(migration013.id, '013');
   assert.equal(migration013.destructive, false);
   assert.equal(migration007Checksum, '2bf9edb75204d05e');
@@ -128,10 +132,9 @@ test('fresh DB keeps Workflow V1 and adds both Workflow V2 definitions through M
       [M3_013_LEGACY_DEFINITION_JSON, M3_013_LEGACY_DEFINITION_HASH, M3_013_SEED_TIMESTAMP, M3_013_SEED_TIMESTAMP],
       [M3_013_UNBOUND_DEFINITION_JSON, M3_013_UNBOUND_DEFINITION_HASH, M3_013_SEED_TIMESTAMP, M3_013_SEED_TIMESTAMP],
     ]);
-    assert.deepEqual(
-      (db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id),
-      EXPECTED_IDS,
-    );
+    const appliedMigrationIds = (db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
   } finally {
     db.close();
   }

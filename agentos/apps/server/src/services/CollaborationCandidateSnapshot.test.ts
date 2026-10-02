@@ -10,6 +10,8 @@ import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateS
 interface TestRepositoryOptions {
   readonly autocrlf?: 'false' | 'input' | 'true';
   readonly attributes?: string;
+  readonly baseBinary?: Buffer;
+  readonly additionalBaseBinaries?: readonly { readonly name: string; readonly bytes: Buffer }[];
 }
 
 function sha256(bytes: Buffer): string {
@@ -20,6 +22,8 @@ async function createRepository(options: TestRepositoryOptions = {}): Promise<{ 
   const root = await mkdtemp(join(tmpdir(), 'agentos-candidate-test-'));
   await mkdir(join(root, 'src'), { recursive: true });
   await writeFile(join(root, 'src', 'tracked.txt'), 'original\n');
+  if (options.baseBinary !== undefined) await writeFile(join(root, 'src', 'base.bin'), options.baseBinary);
+  for (const image of options.additionalBaseBinaries ?? []) await writeFile(join(root, 'src', image.name), image.bytes);
   await writeFile(join(root, 'remove.txt'), 'remove me\n');
   if (options.attributes !== undefined) await writeFile(join(root, '.gitattributes'), options.attributes);
   execFileSync('git', ['init', '--quiet'], { cwd: root });
@@ -207,7 +211,90 @@ test('F23 keeps binary bytes unchanged under core.autocrlf=true', async () => {
     assert.match(snapshot.patch, /GIT binary patch/);
     assertGitCleanBlob(repo, snapshot, 'src/new.bin', bytes);
     assert.deepEqual(snapshot.untrackedManifest, [{ path: 'src/new.bin', sizeBytes: bytes.byteLength, sha256: sha256(bytes) }]);
+    const frozenBinary = snapshot.binaryManifest.find(item => item.path === 'src/new.bin');
+    assert.deepEqual(frozenBinary, {
+      path: 'src/new.bin', sizeBytes: bytes.byteLength, sha256: sha256(bytes), binary: true,
+      gitObjectId: execFileSync('git', ['hash-object', '--stdin'], { cwd: repo.root, input: bytes, encoding: 'utf8' }).trim(),
+    });
     assert.deepEqual(await readFile(join(repo.root, 'src', 'new.bin')), bytes);
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('F27 freezes binary blob IDs and sizes for modified and deleted baseline files', async () => {
+  const baseBytes = Buffer.from([0, 1, 2, 3, 0, 255]);
+  const nextBytes = Buffer.from([0, 1, 9, 3, 0, 255, 4]);
+  const repo = await createRepository({ baseBinary: baseBytes });
+  try {
+    await writeFile(join(repo.root, 'src', 'base.bin'), nextBytes);
+    const modified = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    const modifiedImage = modified.binaryManifest.find(item => item.path === 'src/base.bin');
+    assert.equal(modifiedImage?.sizeBytes, nextBytes.byteLength);
+    assert.equal(modifiedImage?.sha256, sha256(nextBytes));
+    assert.equal(modifiedImage?.gitObjectId,
+      execFileSync('git', ['hash-object', '--stdin'], { cwd: repo.root, input: nextBytes, encoding: 'utf8' }).trim());
+    assert.equal(modifiedImage?.baseSizeBytes, baseBytes.byteLength);
+    assert.equal(modifiedImage?.baseSha256, sha256(baseBytes));
+    assert.equal(modifiedImage?.baseObjectId, execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/base.bin`], { cwd: repo.root, encoding: 'utf8' }).trim());
+
+    await unlink(join(repo.root, 'src', 'base.bin'));
+    const deleted = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    const deletedImage = deleted.binaryManifest.find(item => item.path === 'src/base.bin');
+    assert.deepEqual(deletedImage, {
+      path: 'src/base.bin', sizeBytes: baseBytes.byteLength,
+      sha256: sha256(baseBytes),
+      gitObjectId: execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/base.bin`], { cwd: repo.root, encoding: 'utf8' }).trim(),
+      binary: true,
+      deleted: true,
+    });
+
+    await writeFile(join(repo.root, 'src', 'base.bin'), baseBytes);
+    await rename(join(repo.root, 'src', 'base.bin'), join(repo.root, 'src', 'renamed.bin'));
+    const renamed = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    const renamedImage = renamed.binaryManifest.find(item => item.path === 'src/renamed.bin');
+    assert.ok(renamedImage);
+    assert.equal(renamedImage?.sha256, sha256(baseBytes));
+    assert.equal(renamedImage?.baseSha256, sha256(baseBytes));
+    assert.equal(renamedImage?.sizeBytes, baseBytes.byteLength);
+    assert.equal(renamedImage?.baseSizeBytes, baseBytes.byteLength);
+    assert.equal(renamedImage?.binary, true);
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('F27 records an explicit text classification for v2 renames', async () => {
+  const repo = await createRepository();
+  try {
+    await rename(join(repo.root, 'src', 'tracked.txt'), join(repo.root, 'src', 'renamed.txt'));
+    const snapshot = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    const renamed = snapshot.binaryManifest.find(item => item.path === 'src/renamed.txt');
+    assert.deepEqual(renamed, {
+      path: 'src/renamed.txt', sizeBytes: Buffer.byteLength('original\n'),
+      sha256: sha256(Buffer.from('original\n')),
+      gitObjectId: execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/tracked.txt`], { cwd: repo.root, encoding: 'utf8' }).trim(),
+      binary: false,
+    });
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('F27 bounds total frozen blob hashing across many deleted binary files', async () => {
+  const first = Buffer.alloc(17 * 1024 * 1024);
+  const second = Buffer.alloc(16 * 1024 * 1024);
+  first[0] = 1;
+  second[0] = 2;
+  const repo = await createRepository({ additionalBaseBinaries: [
+    { name: 'first.bin', bytes: first },
+    { name: 'second.bin', bytes: second },
+  ] });
+  try {
+    await unlink(join(repo.root, 'src', 'first.bin'));
+    await unlink(join(repo.root, 'src', 'second.bin'));
+    await assert.rejects(captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']),
+      /COLLABORATION_DIFF_TOO_LARGE: frozen blob hashing exceeds the 32 MiB aggregate limit/u);
   } finally {
     await repo.dispose();
   }

@@ -10,7 +10,6 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
 import type { ModelDiscoveryService } from '../services/CliModelDiscovery.js';
-import { migration054 } from '../migrations/migrations/054-p2-recovery.js';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-group-route-'));
@@ -103,7 +102,6 @@ for (let repetition = 1; repetition <= 3; repetition += 1) {
 
 test('P2 group recovery review: running Provider owner blocks recovery; interrupted recovery preserves owner identity', async () => {
   await withServer(async (baseUrl, store) => {
-    migration054.apply({ db: store.getDatabase() as never });
     const { conversationId, messageId } = await seedConversation(baseUrl);
     const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
       budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 }, sourceMessageId: messageId,

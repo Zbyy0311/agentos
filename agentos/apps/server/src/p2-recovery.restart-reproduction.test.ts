@@ -10,7 +10,6 @@ import type { Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { SqliteStore } from './store/SqliteStore.js';
 import { CollaborationRepository } from './store/CollaborationRepository.js';
-import { migration054 } from './migrations/migrations/054-p2-recovery.js';
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = join(SERVER_DIR, 'index.ts');
@@ -96,10 +95,6 @@ async function waitForLineCount(path: string, count: number, timeoutMs = 15_000)
     await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
   }
   throw new Error(`provider receipt did not reach ${count} calls: ${path}`);
-}
-
-function applyP2RecoverySchema(store: SqliteStore): void {
-  migration054.apply({ db: store.getDatabase() });
 }
 
 function findNamedFile(root: string, name: string): string | undefined {
@@ -254,7 +249,6 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
   };
   const seed = new SqliteStore(root);
   try {
-    applyP2RecoverySchema(seed);
     seed.saveWorkspaces([workspace]);
     seed.getDatabase().prepare('UPDATE agent_profiles SET permissions_json = ? WHERE workspace_id = ?')
       .run(JSON.stringify(['read', 'write']), workspace.id);
@@ -427,7 +421,6 @@ test('P2 recovery: a known pre-Provider failure creates exactly one canonical re
   };
   const seed = new SqliteStore(root);
   try {
-    applyP2RecoverySchema(seed);
     seed.saveWorkspaces([workspace]);
     seed.getDatabase().prepare(`UPDATE provider_configurations SET output_mode = 'structured' WHERE workspace_id = ? AND provider_type = 'codex'`)
       .run(workspace.id);
@@ -546,7 +539,6 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
   };
   const seed = new SqliteStore(root);
   try {
-    applyP2RecoverySchema(seed);
     seed.saveWorkspaces([workspace]);
     seed.getDatabase().prepare(`UPDATE provider_configurations SET output_mode = 'structured' WHERE workspace_id = ? AND provider_type = 'codex'`)
       .run(workspace.id);

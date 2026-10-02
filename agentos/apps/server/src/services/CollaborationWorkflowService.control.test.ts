@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { lstat, readdir, rmdir, unlink } from 'node:fs/promises';
@@ -8,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
+import express from 'express';
 import { getWorkflowTemplate, type CollaborationCandidate, type CollaborationTask } from '@agentos/shared';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { CollaborationRepository } from '../store/CollaborationRepository.js';
@@ -15,12 +17,13 @@ import { CollaborationControlRepository } from '../store/CollaborationControlRep
 import { CollaborationApplyJournalService } from './CollaborationApplyJournal.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { isTransactionActive } from '../store/Transaction.js';
-import { CollaborationWorkflowService, type CollaborationWorkflowServiceOptions } from './CollaborationWorkflowService.js';
+import { CollaborationWorkflowError, CollaborationWorkflowService, type CollaborationWorkflowServiceOptions } from './CollaborationWorkflowService.js';
+import { createCollaborationRoutes } from '../routes/collaborations.js';
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
+import { collaborationCandidateContentHash } from './CollaborationCandidateContentHash.js';
 import { WorkspaceAdmissionAuthority } from './WorkspaceAdmissionAuthority.js';
 import { WorkspaceAdmissionStartupReconciler } from './WorkspaceAdmissionStartupReconciler.js';
 import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
-import { migration054 } from '../migrations/migrations/054-p2-recovery.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { TaskRunService } from './TaskRunService.js';
 import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
@@ -146,6 +149,14 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
     assert.equal(store.runRepository().findById('workspace-a', created.run.id)?.status, 'running');
     return { run: store.runRepository().findById('workspace-a', created.run.id)!, collaboration: repository.findById('workspace-a', plan.id)!, operation };
   }
+  function candidateBinding(task: CollaborationTask) {
+    const candidate = task.currentCandidateId ? repository.findCandidate(task.workspaceId, task.currentCandidateId) : undefined;
+    if (!candidate?.contentHash) throw new Error('Fixture candidate content hash is missing');
+    return { candidateId: candidate.id, candidateBaseCommit: candidate.baseCommit, candidateContentHash: candidate.contentHash };
+  }
+  function applicationInput(task: CollaborationTask, idempotencyKey: string, expectedVersion = task.version) {
+    return { workspaceId: task.workspaceId, collaborationId: task.id, expectedVersion, idempotencyKey, ...candidateBinding(task) };
+  }
   async function verifiedReady() {
     const active = runningWithCompletedStart();
     const working = join(root, 'implementation');
@@ -155,7 +166,8 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
     const actualOutput = execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: working, encoding: 'utf8', windowsHide: true });
     const candidate = repository.createCandidate({ id: 'candidate-verified', collaborationTaskId: plan.id, workspaceId: plan.workspaceId,
       canonicalRunId: active.run.id, round: 0, baseCommit, headCommit: baseCommit, snapshotVersion: 2, diffText: snapshot.patch,
-      diffHash: snapshot.patchHash, manifest: [...snapshot.untrackedManifest], testStatus: 'passed', testCommand: plan.acceptanceCommands.join(' && '),
+      diffHash: snapshot.patchHash, manifestVersion: 2,
+      manifest: [...snapshot.untrackedManifest, ...snapshot.binaryManifest], testStatus: 'passed', testCommand: plan.acceptanceCommands.join(' && '),
       testExitCode: 0, testOutput: `$ ${plan.acceptanceCommands[0]}\n${actualOutput}\nexit 0`, status: 'created', createdAt: NOW });
     const reviewing = repository.progress({ workspaceId: plan.workspaceId, id: plan.id, expectedVersion: active.collaboration.version, status: 'reviewing', currentCandidateId: candidate.id });
     const engine = new RunEngine({ runRepository: store.runRepository(), operationService: store.operationService(), lifecycleTransactionService: store.lifecycleTransactionService(),
@@ -178,7 +190,7 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
     repository.reviewCandidate({ workspaceId: plan.workspaceId, candidateId: candidate.id, conclusion: 'approved', summary: 'Verified fixture review', reviewerAgentId: plan.reviewerAgentId });
     return repository.progress({ workspaceId: plan.workspaceId, id: plan.id, expectedVersion: reviewing.version, status: 'awaiting_application' });
   }
-  return { root, dataRoot, store, repository, service, authority, workspaces, worktrees, repositoryRoot, plan, queued, ready, verifiedReady, runningWithCompletedStart, cancelCalls: () => cancelCalls,
+  return { root, dataRoot, store, repository, service, authority, workspaces, worktrees, repositoryRoot, plan, queued, ready, verifiedReady, runningWithCompletedStart, candidateBinding, applicationInput, cancelCalls: () => cancelCalls,
     closeDatabase() { if (!databaseClosed) { store.close(); databaseClosed = true; } },
     async close() {
       if (!databaseClosed) { store.close(); databaseClosed = true; }
@@ -252,8 +264,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
         });
         try {
           const taskA = await fx.verifiedReady();
-          applying = fx.service.apply({ workspaceId: taskA.workspaceId, collaborationId: taskA.id,
-            expectedVersion: taskA.version, idempotencyKey: `cancel-gap-apply-${recovery}-${safe}-${repetition}` }).then(value => ({ value }), error => ({ error }));
+          applying = fx.service.apply(fx.applicationInput(taskA, `cancel-gap-apply-${recovery}-${safe}-${repetition}`)).then(value => ({ value }), error => ({ error }));
           const controlId = await applicationGranted.promise;
           const tasks: CollaborationTask[] = [];
           for (const label of ['B', 'C']) {
@@ -361,7 +372,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
     const fx = fixture();
     try {
       const ready = fx.ready();
-      await assert.rejects(fx.service.apply({ workspaceId: ready.workspaceId, collaborationId: ready.id, expectedVersion: ready.version - 1, idempotencyKey: 'stale-apply' }), conflict);
+      await assert.rejects(fx.service.apply(fx.applicationInput(ready, 'stale-apply', ready.version - 1)), conflict);
       assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
       assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true }), '');
       assert.equal(fx.repository.findById(ready.workspaceId, ready.id)?.status, 'awaiting_application');
@@ -402,7 +413,6 @@ for (let repetition = 1; repetition <= 3; repetition++) {
 test('P2 recovery review: deterministic failure duplicate continue creates one canonical retry Run', async () => {
   const fx = fixture({ runtimeDispatchEnabled: false });
   try {
-    migration054.apply({ db: fx.store.getDatabase() as unknown as MinimalDatabaseSync });
     grantRecoveryFixturePermissions(fx);
     const { run, collaboration } = fx.runningWithCompletedStart();
     const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
@@ -445,7 +455,6 @@ test('P2 recovery review: UNKNOWN effects fail closed and clean linked recovery 
   let dispatchCalls = 0;
   const fx = fixture({ runtimeDispatchEnabled: false, dispatchRun: async () => { dispatchCalls++; } });
   try {
-    migration054.apply({ db: fx.store.getDatabase() as unknown as MinimalDatabaseSync });
     grantRecoveryFixturePermissions(fx);
     const { run, collaboration } = fx.runningWithCompletedStart();
     const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
@@ -519,13 +528,115 @@ test('positive control: queued collaboration cancellation cancels its canonical 
   } finally { await fx.close(); }
 });
 
+test('candidate preview is served from the persisted frozen candidate after the live workspace changes', async () => {
+  const fx = fixture();
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    const task = await fx.verifiedReady();
+    const candidate = fx.repository.findCandidate(task.workspaceId, task.currentCandidateId!)!;
+    assert.ok(candidate.contentHash);
+    const details = fx.service.getDetails(task.workspaceId, task.id);
+    assert.equal(details.candidate?.id, candidate.id);
+    assert.equal(details.candidate?.contentHash, candidate.contentHash);
+    assert.equal(details.candidates[0]?.id, candidate.id);
+    assert.equal(details.candidates[0]?.contentHash, candidate.contentHash);
+    assert.equal('diffText' in details.candidates[0]!, false, 'task details must not eagerly transfer the frozen patch');
+    assert.equal('manifest' in details.candidates[0]!, false, 'file metadata is loaded through the paged preview API');
+    writeFileSync(join(fx.repositoryRoot, 'README.md'), 'live workspace changed after capture\n');
+    const page = fx.service.getCandidatePreview(task.workspaceId, task.id, candidate.id, task.baseCommit, candidate.contentHash!, { offset: 0, limit: 50 });
+    const file = fx.service.getCandidatePreviewFileDiff(task.workspaceId, task.id, candidate.id, task.baseCommit, candidate.contentHash!, 0);
+    assert.equal(page.contentHash, candidate.contentHash);
+    assert.equal(page.files[0]?.path, 'README.md');
+    assert.match(file.diffText, /^\+candidate$/mu);
+    assert.doesNotMatch(file.diffText, /live workspace changed after capture/u);
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createCollaborationRoutes(fx.service, fx.workspaces));
+    server = createServer(app);
+    await new Promise<void>((resolve, reject) => {
+      server!.once('error', reject);
+      server!.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const origin = `http://127.0.0.1:${address.port}/api/workspaces/${task.workspaceId}/collaboration/tasks/${task.id}`;
+    const detailsResponse = await fetch(origin);
+    assert.equal(detailsResponse.status, 200);
+    const httpDetails = await detailsResponse.json() as { candidates: Array<Record<string, unknown>>; candidate?: Record<string, unknown> };
+    assert.equal(httpDetails.candidate?.id, candidate.id);
+    assert.equal(httpDetails.candidate?.contentHash, candidate.contentHash);
+    assert.equal('diffText' in httpDetails.candidates[0]!, false);
+    assert.equal('manifest' in httpDetails.candidates[0]!, false);
+    const identity = new URLSearchParams({ candidateBaseCommit: task.baseCommit, candidateContentHash: candidate.contentHash!, offset: '0', limit: '50' });
+    const pageResponse = await fetch(`${origin}/candidates/${candidate.id}/preview?${identity}`);
+    assert.equal(pageResponse.status, 200);
+    assert.equal(pageResponse.headers.get('cache-control'), 'no-store');
+    const httpPage = await pageResponse.json() as { candidateId: string; contentHash: string; files: Array<{ path: string }> };
+    assert.equal(httpPage.candidateId, candidate.id);
+    assert.equal(httpPage.contentHash, candidate.contentHash);
+    assert.equal(httpPage.files[0]?.path, 'README.md');
+    const diffResponse = await fetch(`${origin}/candidates/${candidate.id}/preview/files/0?${identity}`);
+    assert.equal(diffResponse.status, 200);
+    const rendered = await diffResponse.json() as { diffText: string; contentHash: string };
+    assert.equal(rendered.contentHash, candidate.contentHash);
+    assert.match(rendered.diffText, /^\+candidate$/mu);
+    assert.doesNotMatch(rendered.diffText, /live workspace changed after capture/u);
+    assert.throws(() => fx.service.getCandidatePreview(task.workspaceId, task.id, candidate.id, task.baseCommit, 'f'.repeat(64), { offset: 0, limit: 50 }),
+      (error: unknown) => error instanceof CollaborationWorkflowError && error.code === 'COLLABORATION_CANDIDATE_CHANGED');
+  } finally {
+    if (server?.listening) await new Promise<void>(resolve => server!.close(() => resolve()));
+    await fx.close();
+  }
+});
+
+test('apply rejects a changed canonical content hash before admission, journal creation, or filesystem writes', async () => {
+  const fx = fixture();
+  try {
+    const task = await fx.verifiedReady();
+    await assert.rejects(fx.service.apply({ ...fx.applicationInput(task, 'changed-content-hash'), candidateContentHash: 'f'.repeat(64) }),
+      error => (error as { code?: string }).code === 'COLLABORATION_CANDIDATE_CHANGED');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_controls').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_apply_journals').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE state = 'GRANTED'").get() as { n: number }).n, 0);
+    assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
+  } finally { await fx.close(); }
+});
+
+test('apply rejects a v2 binary candidate without its manifest image before reservation, admission, or writes', async () => {
+  const fx = fixture();
+  try {
+    const task = await fx.verifiedReady();
+    const candidateId = task.currentCandidateId!;
+    const diffText = [
+      'diff --git a/README.md b/README.md', 'deleted file mode 100644',
+      `index ${'1'.repeat(40)}..${'0'.repeat(40)}`, 'GIT binary patch', 'literal 0', '',
+    ].join('\n');
+    const diffHash = createHash('sha256').update(diffText, 'utf8').digest('hex');
+    const contentHash = collaborationCandidateContentHash({
+      diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [],
+    });
+    fx.store.getDatabase().prepare(`UPDATE collaboration_candidates SET
+      diff_hash = ?, diff_text = ?, manifest_json = '[]', manifest_version = 2, content_hash = ?
+      WHERE id = ?`).run(diffHash, diffText, contentHash, candidateId);
+
+    await assert.rejects(fx.service.apply({
+      ...fx.applicationInput(task, 'missing-binary-manifest'), candidateContentHash: contentHash,
+    }), error => (error as { code?: string }).code === 'COLLABORATION_CANDIDATE_CHANGED');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_controls').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_apply_journals').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE state = 'GRANTED'").get() as { n: number }).n, 0);
+    assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
+  } finally { await fx.close(); }
+});
+
 for (const point of ['before_write', 'after_write', 'before_commit'] as const) {
   for (let repetition = 1; repetition <= 3; repetition++) {
     test(`F01 application fault ${point} restores exact owned preimages (${repetition}/3)`, async () => {
       const fx = fixture({ applyFault: observed => { if (point === observed) throw new Error(`injected ${point}`); } });
       try {
         const task = await fx.verifiedReady();
-        await assert.rejects(fx.service.apply({ workspaceId: task.workspaceId, collaborationId: task.id, expectedVersion: task.version, idempotencyKey: `fault-${point}` }), /injected/);
+        await assert.rejects(fx.service.apply(fx.applicationInput(task, `fault-${point}`)), /injected/);
         assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
         assert.equal(fx.repository.findById(task.workspaceId, task.id)?.status, 'awaiting_application');
         assert.equal((fx.store.getDatabase().prepare('SELECT state FROM collaboration_apply_journals').get() as { state: string }).state, 'recovered');
@@ -540,7 +651,7 @@ test('F01 successful application is journal-committed and same-key replay does n
   const fx = fixture();
   try {
     const task = await fx.verifiedReady();
-    const input = { workspaceId: task.workspaceId, collaborationId: task.id, expectedVersion: task.version, idempotencyKey: 'verified-apply' };
+    const input = fx.applicationInput(task, 'verified-apply');
     const applied = await fx.service.apply(input);
     assert.equal(applied.status, 'applied');
     assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'candidate\n');
@@ -559,7 +670,7 @@ test('F01 concurrent user changes are preserved and unknown application holds th
   } } });
   try {
     const task = await fx.verifiedReady();
-    await assert.rejects(fx.service.apply({ workspaceId: task.workspaceId, collaborationId: task.id, expectedVersion: task.version, idempotencyKey: 'concurrent-edit' }), { code: 'COLLABORATION_RECOVERY_REQUIRED' });
+    await assert.rejects(fx.service.apply(fx.applicationInput(task, 'concurrent-edit')), { code: 'COLLABORATION_RECOVERY_REQUIRED' });
     assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'concurrent user change\n');
     assert.equal(fx.service.getDetails(task.workspaceId, task.id).task.pendingControl?.state, 'recovery_required');
     assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE state='GRANTED' AND subject_kind='COLLABORATION_APPLICATION'").get() as { n: number }).n, 1);
@@ -610,7 +721,7 @@ for (const scenario of ['queued', 'running-unknown', 'running-missing', 'waiting
         fx.repository.cancel(fx.plan.workspaceId, fx.plan.id, fx.plan.version, NOW); expected = 'cancelled';
       } else {
         const task = await fx.verifiedReady(); expected = scenario === 'applied' ? 'applied' : scenario === 'completed-valid' ? 'awaiting_application' : 'blocked';
-        if (scenario === 'applied') await fx.service.apply({ workspaceId: task.workspaceId, collaborationId: task.id, expectedVersion: task.version, idempotencyKey: 'before-restart-apply' });
+        if (scenario === 'applied') await fx.service.apply(fx.applicationInput(task, 'before-restart-apply'));
         else if (scenario === 'completed-missing') fx.store.getDatabase().prepare('DELETE FROM collaboration_stage_outputs WHERE workspace_id=?').run(task.workspaceId);
         if (scenario !== 'applied') fx.store.getDatabase().prepare("UPDATE collaboration_tasks SET status='reviewing' WHERE workspace_id=? AND id=?").run(task.workspaceId, task.id);
       }
@@ -644,7 +755,7 @@ for (const crash of ['prepared', 'written', 'mixed', 'recovery_fault', 'corrupt_
       const task = await fx.verifiedReady();
       const candidate = fx.repository.findCandidate(task.workspaceId, task.currentCandidateId!)!;
       const controls = new CollaborationControlRepository(fx.store.getDatabase());
-      const claim = fx.store.runInTransaction(() => controls.reserve({ workspaceId: task.workspaceId, collaborationId: task.id, action: 'apply', expectedVersion: task.version, idempotencyKey: `crash-${crash}` }));
+      const claim = fx.store.runInTransaction(() => controls.reserve({ workspaceId: task.workspaceId, collaborationId: task.id, action: 'apply', expectedVersion: task.version, idempotencyKey: `crash-${crash}`, ...fx.candidateBinding(task) }));
       const authority = new WorkspaceAdmissionAuthority({ store: fx.store });
       assert.ok((await authority.requestCollaborationApplication({ workspaceId: task.workspaceId, controlId: claim.control.id })).grantedAdmission);
       const journals = new CollaborationApplyJournalService(fx.store.getDatabase());
@@ -859,7 +970,7 @@ for (const outcome of ['success', 'rollback', 'before_prepare', 'unknown', 'disa
       });
       try {
         const taskA = await fx.verifiedReady();
-        const applyInput = { workspaceId: taskA.workspaceId, collaborationId: taskA.id, expectedVersion: taskA.version, idempotencyKey: `F24-${outcome}-${repetition}` };
+        const applyInput = fx.applicationInput(taskA, `F24-${outcome}-${repetition}`);
         const applying = fx.service.apply(applyInput);
         const controlId = await applicationGranted.promise;
         const holder = fx.store.getDatabase().prepare(
@@ -985,7 +1096,7 @@ test('F24 resumes the exact GRANTED Run beyond the default 100-task repository p
   });
   try {
     const taskA = await fx.verifiedReady();
-    const applying = fx.service.apply({ workspaceId: taskA.workspaceId, collaborationId: taskA.id, expectedVersion: taskA.version, idempotencyKey: 'F24-over-100-A' });
+    const applying = fx.service.apply(fx.applicationInput(taskA, 'F24-over-100-A'));
     await applicationGranted.promise;
     const planB = createQueuedBehindApplicationPlan(fx, 'over-100-B');
     const taskB = await fx.service.confirm({ workspaceId: 'workspace-a', collaborationId: planB.id, expectedVersion: planB.version, idempotencyKey: 'F24-over-100-confirm-B' });
@@ -1254,7 +1365,7 @@ for (const scenario of ['safe-preimage', 'concurrent-user-edit', 'corrupt-journa
         const candidate = fx.repository.findCandidate(task.workspaceId, task.currentCandidateId!)!;
         const controls = new CollaborationControlRepository(fx.store.getDatabase());
         const claim = fx.store.runInTransaction(() => controls.reserve({ workspaceId: task.workspaceId, collaborationId: task.id,
-          action: 'apply', expectedVersion: task.version, idempotencyKey: `F25-${scenario}-${repetition}` }));
+          action: 'apply', expectedVersion: task.version, idempotencyKey: `F25-${scenario}-${repetition}`, ...fx.candidateBinding(task) }));
         assert.equal((fx.store.getDatabase().prepare('SELECT state FROM collaboration_controls WHERE id = ?').get(claim.control.id) as { state: string }).state, 'reserved');
         assert.ok((await fx.authority.requestCollaborationApplication({ workspaceId: task.workspaceId, controlId: claim.control.id })).grantedAdmission);
         const journals = new CollaborationApplyJournalService(fx.store.getDatabase());
@@ -1390,7 +1501,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
       const candidate = fx.repository.findCandidate(taskA.workspaceId, taskA.currentCandidateId!)!;
       const controls = new CollaborationControlRepository(fx.store.getDatabase());
       const claim = fx.store.runInTransaction(() => controls.reserve({ workspaceId: taskA.workspaceId, collaborationId: taskA.id,
-        action: 'apply', expectedVersion: taskA.version, idempotencyKey: `F25-atomic-startup-${repetition}` }));
+        action: 'apply', expectedVersion: taskA.version, idempotencyKey: `F25-atomic-startup-${repetition}`, ...fx.candidateBinding(taskA) }));
       assert.ok((await fx.authority.requestCollaborationApplication({ workspaceId: taskA.workspaceId, controlId: claim.control.id })).grantedAdmission);
       const journal = await new CollaborationApplyJournalService(fx.store.getDatabase()).prepare(claim.control, claim.task, candidate, fx.repositoryRoot);
       fx.store.runInTransaction(() => controls.bind(claim.control, { candidateId: candidate.id }));
@@ -1503,8 +1614,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
       });
       try {
         const taskA = await fx.verifiedReady();
-        settling = fx.service.apply({ workspaceId: taskA.workspaceId, collaborationId: taskA.id,
-          expectedVersion: taskA.version, idempotencyKey: `F24-release-gap-${safe}-${repetition}` })
+        settling = fx.service.apply(fx.applicationInput(taskA, `F24-release-gap-${safe}-${repetition}`))
           .then(value => ({ value }), error => ({ error }));
         const controlId = await applicationGranted.promise;
         const planB = createQueuedBehindApplicationPlan(fx, `release-gap-${safe}-${repetition}`);
@@ -1576,8 +1686,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
     let dispatches = 0;
     try {
       const ready = await fx.verifiedReady();
-      const applied = await fx.service.apply({ workspaceId: ready.workspaceId, collaborationId: ready.id, expectedVersion: ready.version,
-        idempotencyKey: `F25-release-failure-${repetition}` });
+      const applied = await fx.service.apply(fx.applicationInput(ready, `F25-release-failure-${repetition}`));
       assert.equal(applied.status, 'applied');
       assert.equal(applied.version, ready.version + 1);
       assert.equal(releaseFailures, 1);

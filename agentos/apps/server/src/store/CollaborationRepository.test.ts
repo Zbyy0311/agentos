@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from './SqliteStore.js';
 import { CollaborationRepository, CollaborationRepositoryError } from './CollaborationRepository.js';
+import { collaborationCandidateContentHash } from '../services/CollaborationCandidateContentHash.js';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'agentos-collaboration-repository-'));
@@ -39,10 +40,17 @@ test('collaboration repository persists the plan, candidate, review and version 
 
     const candidate = repository.createCandidate({
       id: 'candidate_1', collaborationTaskId: plan.id, workspaceId: 'workspace-a', canonicalRunId: canonicalRun.id,
-      round: 0, baseCommit: 'base-sha', headCommit: 'head-sha', diffHash: 'diff-hash', diffText: '', manifest: [],
+      round: 0, baseCommit: 'base-sha', headCommit: 'head-sha', diffHash: 'diff-hash', diffText: '', manifest: [
+        { path: 'assets/image.bin', sizeBytes: 5, sha256: 'a'.repeat(64), gitObjectId: 'b'.repeat(40),
+          baseSizeBytes: 4, baseSha256: 'c'.repeat(64), baseObjectId: 'd'.repeat(40), binary: true },
+      ],
       testStatus: 'passed', testCommand: 'pnpm test', testExitCode: 0, testOutput: 'ok', status: 'created', createdAt: '2026-09-20T00:03:00.000Z',
     });
     assert.equal(candidate.status, 'created');
+    assert.equal(candidate.manifestVersion, 2, 'new repository candidates default to the fail-closed manifest schema');
+    assert.match(candidate.contentHash ?? '', /^[a-f0-9]{64}$/u);
+    assert.equal((fx.store.getDatabase().prepare('SELECT content_hash FROM collaboration_candidates WHERE id = ?').get(candidate.id) as { content_hash: string }).content_hash,
+      candidate.contentHash);
     const reviewed = repository.reviewCandidate({ workspaceId: 'workspace-a', candidateId: candidate.id, conclusion: 'approved', summary: 'Evidence is sufficient', reviewerAgentId: 'opencode', artifactId: 'artifact_review' });
     assert.equal(reviewed.status, 'reviewed');
     repository.createReview({ id: 'review_1', collaborationTaskId: plan.id, candidateId: candidate.id, workspaceId: 'workspace-a', canonicalRunId: canonicalRun.id, stageId: 'stage_review', stageAttempt: 1, reviewerAgentId: 'opencode', candidateDiffHash: 'diff-hash', conclusion: 'approved', summary: 'Evidence is sufficient', artifactId: 'artifact_review', createdAt: '2026-09-20T00:04:00.000Z' });
@@ -65,7 +73,6 @@ test('collaboration repository persists the plan, candidate, review and version 
       reviewCandidateId: candidate.id, reviewCandidateHash: 'wrong-hash', reviewConclusion: 'approved',
       createdAt: '2026-09-20T00:06:00.000Z',
     }), (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'CONFLICT');
-
     fx.store.getDatabase().prepare("UPDATE runs SET status = 'failed', version = version + 1 WHERE workspace_id = ? AND id = ?")
       .run('workspace-a', canonicalRun.id);
     const retryRun = fx.store.runRepository().insert({
@@ -81,5 +88,12 @@ test('collaboration repository persists the plan, candidate, review and version 
     }), (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'CONFLICT');
     assert.equal(repository.findStageOutput('workspace-a', canonicalRun.id, 'stage_implement', 2), undefined,
       'a late prior-Run output is fenced after the recovery Run becomes canonical');
+    assert.notEqual(candidate.contentHash, collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: 2, manifestVersion: 1,
+      manifest: [{ ...candidate.manifest[0]!, baseSha256: 'e'.repeat(64) }] }));
+    fx.store.getDatabase().prepare('UPDATE collaboration_candidates SET manifest_json = ? WHERE id = ?').run(
+      JSON.stringify([{ ...candidate.manifest[0], baseSha256: 'e'.repeat(64) }]), candidate.id,
+    );
+    assert.throws(() => repository.findCandidate('workspace-a', candidate.id),
+      (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'INVALID');
   } finally { fx.close(); }
 });

@@ -6,7 +6,9 @@ import { useApi } from '@/lib/useApi';
 import { listRuntimeApprovals, resolveRuntimeApproval, type RuntimeApprovalDecision, type RuntimeApprovalRequest } from '@/lib/runtimeApprovals';
 import type { CollaborationProgressState } from '@/lib/useCollaborationProgress';
 import { collaborationControlBlockReason, collaborationMutationRequest, readPendingCollaborationControl } from '@/lib/collaborationControl';
+import { collaborationCandidatePreviewKey, type CollaborationCandidatePreviewIdentity } from '@/lib/collaborationCandidatePreview';
 import { CollaborationRecoveryPanel } from './CollaborationRecoveryPanel';
+import { CollaborationCandidatePreviewPanel } from './CollaborationCandidatePreviewPanel';
 
 const STATUS_LABELS: Record<CollaborationStatus, string> = {
   awaiting_confirmation: '待用户确认', queued: '已排队', running: '执行中', reviewing: '评审中',
@@ -86,7 +88,14 @@ export function CollaborationTaskDetailsView(props: {
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState('');
+  const [previewTarget, setPreviewTarget] = useState<CollaborationCandidatePreviewIdentity | null>(null);
+  const [previewedCandidateKey, setPreviewedCandidateKey] = useState<string | null>(null);
   const taskTitleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    setPreviewTarget(null);
+    setPreviewedCandidateKey(null);
+  }, [props.workspaceId, progress?.task.id]);
 
   useEffect(() => {
     if (!props.focusTaskId || !progress || props.focusTaskId !== progress.task.id) return;
@@ -135,13 +144,33 @@ export function CollaborationTaskDetailsView(props: {
   const runIds = progress.runs.map(run => run.runId);
   const canCancel = ['queued', 'running', 'reviewing', 'changes_requested'].includes(task.status);
   const pendingControlReason = collaborationControlBlockReason(readPendingCollaborationControl(task));
+  const currentCandidate = task.currentCandidateId
+    ? progress.candidates.find(candidate => candidate.id === task.currentCandidateId)
+    : undefined;
+  const currentCandidateIdentity = currentCandidate ? {
+    workspaceId: props.workspaceId, taskId: task.id, candidateId: currentCandidate.id,
+    baseCommit: task.baseCommit, diffHash: currentCandidate.diffHash, contentHash: currentCandidate.contentHash,
+  } : undefined;
+  const currentCandidateKey = currentCandidateIdentity ? collaborationCandidatePreviewKey(currentCandidateIdentity) : undefined;
+  const currentCandidateWasPreviewed = currentCandidateKey !== undefined && previewedCandidateKey === currentCandidateKey;
+  const activePreviewTarget = previewTarget?.workspaceId === props.workspaceId && previewTarget.taskId === task.id
+    && previewTarget.candidateId === task.currentCandidateId && previewTarget.diffHash === currentCandidate?.diffHash
+    && previewTarget.contentHash === currentCandidate?.contentHash
+    ? previewTarget : null;
   const mutate = async (action: 'confirm' | 'cancel' | 'apply') => {
     if (pendingControlReason) return;
+    if (action === 'apply' && (!currentCandidateIdentity || !currentCandidateWasPreviewed)) {
+      setError('请先加载并检查当前冻结候选的文件差异，再应用该候选');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await request(`/api/workspaces/${encodeURIComponent(props.workspaceId)}/collaboration/tasks/${encodeURIComponent(task.id)}/${action}`, {
-        ...collaborationMutationRequest(task.id, task.version, action),
+        ...collaborationMutationRequest(task.id, task.version, action,
+          action === 'apply' && currentCandidateIdentity
+            ? { id: currentCandidateIdentity.candidateId, baseCommit: currentCandidateIdentity.baseCommit, contentHash: currentCandidateIdentity.contentHash }
+            : undefined),
       });
       props.state.refresh();
     } catch (cause) {
@@ -191,7 +220,13 @@ export function CollaborationTaskDetailsView(props: {
 
     <section className="mt-5"><h2 className="text-sm font-medium ui-text">阶段与交接</h2><ol className="mt-3 grid gap-2">{(currentRun?.stages ?? []).map(stage => <li key={`${stage.runId}:${stage.stageId}`} className="rounded-xl border ui-border p-3"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-medium ui-text">{stageLabel(stage)}</span><span className="text-xs ui-muted">{stageStatusLabel(stage.status)}</span><span className="ml-auto text-[11px] ui-dim">{timeLabel(stage.startedAt ?? stage.completedAt)}</span></div><div className="mt-1 text-xs ui-muted">{stage.agent ? `${stage.agent.name} · ${stage.agent.roleTitle}` : '未绑定 Agent'}</div>{stage.failureMessage && <p className="mt-2 text-xs leading-5 text-[var(--app-danger)]">{stage.failureMessage}</p>}<StagePublicOutput stage={stage} />{stage.evidence.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{stage.evidence.map((item, index) => <span key={`${item.kind}-${item.label}-${index}`} className="rounded-md border ui-border px-2 py-1 text-[11px] ui-muted">{item.kind === 'test' ? `${item.label} · ${testStatusLabel(item.status ?? 'unknown')}` : `${item.label}${item.status ? ` · ${item.status}` : ''}`}</span>)}</div>}</li>)}</ol></section>
 
-    {progress.candidates.length > 0 && <section className="mt-5 rounded-xl border ui-border p-4"><h2 className="text-sm font-medium ui-text">交付证据</h2><div className="mt-3 grid gap-2">{progress.candidates.map(candidate => <div key={candidate.id} className="rounded-lg border ui-border px-3 py-3 text-xs"><div className="flex flex-wrap items-center gap-2 ui-text-soft"><span>候选版本 · 第 {candidate.round + 1} 轮</span><span className="ui-muted">{testStatusLabel(candidate.testStatus)}</span>{candidate.testExitCode !== undefined && <span className="ui-muted">退出码 {candidate.testExitCode}</span>}</div><div className="mt-2 break-all text-[11px] ui-dim">冻结候选 SHA-256：<code title={candidate.diffHash}>{candidate.diffHash}</code></div>{candidate.testCommand && <code className="mt-2 block overflow-x-auto whitespace-pre-wrap text-[11px] ui-muted">{candidate.testCommand}</code>}{candidate.reviewConclusion && <div className="mt-2 ui-muted">评审：{candidate.reviewConclusion === 'approved' ? '通过' : '要求修改'}{candidate.reviewSummary ? ` · ${candidate.reviewSummary}` : ''}</div>}</div>)}</div></section>}
+    {progress.candidates.length > 0 && <section className="mt-5 rounded-xl border ui-border p-4"><h2 className="text-sm font-medium ui-text">交付证据</h2><div className="mt-3 grid gap-2">{progress.candidates.map(candidate => {
+      const isCurrentCandidate = candidate.id === task.currentCandidateId;
+      const identity: CollaborationCandidatePreviewIdentity = { workspaceId: props.workspaceId, taskId: task.id,
+        candidateId: candidate.id, baseCommit: task.baseCommit, diffHash: candidate.diffHash, contentHash: candidate.contentHash };
+      const isOpen = activePreviewTarget?.candidateId === candidate.id && activePreviewTarget.contentHash === candidate.contentHash;
+      return <div key={candidate.id} className="rounded-lg border ui-border px-3 py-3 text-xs"><div className="flex flex-wrap items-center gap-2 ui-text-soft"><span>候选版本 · 第 {candidate.round + 1} 轮</span><span className="ui-muted">{testStatusLabel(candidate.testStatus)}</span>{candidate.testExitCode !== undefined && <span className="ui-muted">退出码 {candidate.testExitCode}</span>}</div><div className="mt-2 break-all text-[11px] ui-dim">冻结候选内容 SHA-256：<code title={candidate.contentHash}>{candidate.contentHash}</code></div>{candidate.testCommand && <code className="mt-2 block overflow-x-auto whitespace-pre-wrap text-[11px] ui-muted">{candidate.testCommand}</code>}{candidate.reviewConclusion && <div className="mt-2 ui-muted">评审：{candidate.reviewConclusion === 'approved' ? '通过' : '要求修改'}{candidate.reviewSummary ? ` · ${candidate.reviewSummary}` : ''}</div>}{isCurrentCandidate && <><button type="button" className="ui-button-secondary mt-3 rounded-lg px-3 py-2 text-xs" onClick={() => setPreviewTarget(isOpen ? null : identity)}>{isOpen ? '收起候选预览' : '查看冻结文件与差异'}</button>{isOpen && <CollaborationCandidatePreviewPanel apiBase={props.apiBase} identity={identity} onLoaded={setPreviewedCandidateKey} />}</>}</div>;
+    })}</div></section>}
 
     {error && <div role="alert" className="ui-error mt-4 rounded-xl border px-3 py-2 text-sm">{error}</div>}
     {(task.status === 'failed' || task.status === 'blocked') && <CollaborationRecoveryPanel
@@ -203,6 +238,6 @@ export function CollaborationTaskDetailsView(props: {
         props.state.refresh();
       }}
     />}
-    <footer className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t ui-border pt-4">{task.status === 'awaiting_confirmation' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('confirm'); }}>{busy ? '启动中…' : '确认并启动'}</button>}{task.status === 'awaiting_application' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('apply'); }}>{busy ? '应用中…' : '确认应用候选版本'}</button>}{canCancel && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-secondary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('cancel'); }}>取消任务</button>}</footer>
+    <footer className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t ui-border pt-4">{task.status === 'awaiting_confirmation' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('confirm'); }}>{busy ? '启动中…' : '确认并启动'}</button>}{task.status === 'awaiting_application' && <button type="button" disabled={busy || Boolean(pendingControlReason) || !currentCandidateWasPreviewed} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('apply'); }}>{busy ? '应用中…' : currentCandidateWasPreviewed ? '确认应用已预览候选' : '先查看候选差异'}</button>}{canCancel && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-secondary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('cancel'); }}>取消任务</button>}</footer>
   </section>;
 }

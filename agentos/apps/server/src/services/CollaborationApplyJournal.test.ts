@@ -367,6 +367,9 @@ async function reserveApply(fx: Fixture, idempotencyKey = 'fixture-apply-reserva
     action: 'apply',
     expectedVersion: fx.task.version,
     idempotencyKey,
+    candidateId: fx.candidate.id,
+    candidateBaseCommit: fx.candidate.baseCommit,
+    candidateContentHash: fx.candidate.contentHash,
   }));
 }
 
@@ -660,7 +663,8 @@ test('F26 an abbreviated v2 stored patch is apply-compatible but rejected withou
     } finally { await context.dispose(); }
     const before = await rawTargetSnapshot(fx);
     await assert.rejects(fx.service.apply({ workspaceId: WORKSPACE_ID, collaborationId: fx.task.id,
-      expectedVersion: fx.task.version, idempotencyKey: 'legacy-abbreviated-apply',
+      expectedVersion: fx.task.version, idempotencyKey: 'legacy-abbreviated-apply', candidateId: fx.candidate.id,
+      candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), error => {
       assert.equal((error as { code: string }).code, 'COLLABORATION_CANDIDATE_INVALID');
       return true;
@@ -802,6 +806,7 @@ test('SQLite commit failure after Git write rolls back only journal-owned paths 
       collaborationId: fx.task.id,
       expectedVersion: fx.task.version,
       idempotencyKey: 'service-apply-db-failure',
+      candidateId: fx.candidate.id, candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), /injected SQLite commit failure/);
     assert.equal(injected, true);
     assert.equal(await readFile(join(fx.targetRoot, 'README.md'), 'utf8'), 'base README\n');
@@ -838,6 +843,7 @@ test('concurrent edit during apply enters recovery_required and never overwrites
       collaborationId: fx.task.id,
       expectedVersion: fx.task.version,
       idempotencyKey: 'service-apply-concurrent-edit',
+      candidateId: fx.candidate.id, candidateBaseCommit: fx.candidate.baseCommit, candidateContentHash: fx.candidate.contentHash,
     }), error => {
       assert.equal((error as { code?: string }).code, 'COLLABORATION_RECOVERY_REQUIRED');
       return true;

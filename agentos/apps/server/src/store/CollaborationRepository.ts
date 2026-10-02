@@ -9,6 +9,7 @@ import type {
 } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 import { createEntityId } from './Identity.js';
+import { collaborationCandidateContentHash } from '../services/CollaborationCandidateContentHash.js';
 
 export class CollaborationRepositoryError extends Error {
   constructor(readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID' | 'STATE') {
@@ -33,8 +34,8 @@ interface CollaborationTaskRow {
 interface CandidateRow {
   id: string; collaboration_task_id: string; workspace_id: string; canonical_run_id: string;
   round: number; base_commit: string; head_commit: string; diff_hash: string; diff_text: string;
-  snapshot_version: number;
-  manifest_json: string; test_status: CollaborationTestStatus; test_command: string | null;
+  snapshot_version: number; manifest_version: number;
+  manifest_json: string; content_hash: string; test_status: CollaborationTestStatus; test_command: string | null;
   test_exit_code: number | null; test_output: string | null; status: CollaborationCandidateStatus;
   review_conclusion: CollaborationReviewConclusion | null; review_summary: string | null;
   review_agent_id: string | null; review_artifact_id: string | null; diff_artifact_id: string | null;
@@ -79,8 +80,26 @@ function parseManifest(raw: string): CollaborationCandidate['manifest'] {
     if (!item || typeof item !== 'object') throw new CollaborationRepositoryError('INVALID');
     const row = item as Record<string, unknown>;
     if (typeof row.path !== 'string' || typeof row.sizeBytes !== 'number' || !Number.isSafeInteger(row.sizeBytes)
-      || row.sizeBytes < 0 || typeof row.sha256 !== 'string') throw new CollaborationRepositoryError('INVALID');
-    return { path: row.path, sizeBytes: row.sizeBytes, sha256: row.sha256 };
+      || row.sizeBytes < 0 || (row.sha256 !== undefined && (typeof row.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(row.sha256)))
+      || (row.gitObjectId !== undefined && (typeof row.gitObjectId !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/iu.test(row.gitObjectId)))
+      || (row.sha256 === undefined && row.gitObjectId === undefined)
+      || (row.baseSizeBytes !== undefined && (typeof row.baseSizeBytes !== 'number' || !Number.isSafeInteger(row.baseSizeBytes) || row.baseSizeBytes < 0))
+      || (row.baseSha256 !== undefined && (typeof row.baseSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(row.baseSha256)))
+      || (row.baseObjectId !== undefined && (typeof row.baseObjectId !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/iu.test(row.baseObjectId)))
+      || (row.binary !== undefined && typeof row.binary !== 'boolean')
+      || (row.baseSizeBytes === undefined && (row.baseSha256 !== undefined || row.baseObjectId !== undefined))
+      || (row.baseSizeBytes !== undefined && row.baseSha256 === undefined && row.baseObjectId === undefined)
+      || (row.deleted !== undefined && typeof row.deleted !== 'boolean')) throw new CollaborationRepositoryError('INVALID');
+    return {
+      path: row.path, sizeBytes: row.sizeBytes,
+      ...(row.sha256 === undefined ? {} : { sha256: row.sha256 as string }),
+      ...(row.gitObjectId === undefined ? {} : { gitObjectId: row.gitObjectId as string }),
+      ...(row.baseSizeBytes === undefined ? {} : { baseSizeBytes: row.baseSizeBytes as number }),
+      ...(row.baseSha256 === undefined ? {} : { baseSha256: row.baseSha256 as string }),
+      ...(row.baseObjectId === undefined ? {} : { baseObjectId: row.baseObjectId as string }),
+      ...(row.binary === undefined ? {} : { binary: row.binary as boolean }),
+      ...(row.deleted === undefined ? {} : { deleted: row.deleted as boolean }),
+    };
   });
 }
 
@@ -111,12 +130,19 @@ function mapTask(row: CollaborationTaskRow): CollaborationTask {
 }
 
 function mapCandidate(row: CandidateRow): CollaborationCandidate {
+  const manifest = parseManifest(row.manifest_json);
+  if (row.manifest_version !== 1 && row.manifest_version !== 2) throw new CollaborationRepositoryError('INVALID');
+  const contentHash = collaborationCandidateContentHash({
+    diffHash: row.diff_hash, snapshotVersion: row.snapshot_version, manifestVersion: row.manifest_version, manifest,
+  });
+  if (row.content_hash !== '' && row.content_hash !== contentHash) throw new CollaborationRepositoryError('INVALID');
   return {
     id: row.id, collaborationTaskId: row.collaboration_task_id, workspaceId: row.workspace_id,
     canonicalRunId: row.canonical_run_id, round: row.round, baseCommit: row.base_commit,
-    headCommit: row.head_commit, diffHash: row.diff_hash, diffText: row.diff_text,
+    headCommit: row.head_commit, diffHash: row.diff_hash, contentHash, diffText: row.diff_text,
     snapshotVersion: row.snapshot_version,
-    manifest: parseManifest(row.manifest_json), testStatus: row.test_status,
+    manifestVersion: row.manifest_version,
+    manifest, testStatus: row.test_status,
     ...(row.test_command === null ? {} : { testCommand: row.test_command }),
     ...(row.test_exit_code === null ? {} : { testExitCode: row.test_exit_code }),
     ...(row.test_output === null ? {} : { testOutput: row.test_output }),
@@ -291,15 +317,20 @@ export class CollaborationRepository {
 
   createCandidate(input: Omit<CollaborationCandidate, 'version' | 'createdAt' | 'updatedAt' | 'reviewConclusion' | 'reviewSummary' | 'reviewAgentId' | 'reviewArtifactId'> & { createdAt: string }): CollaborationCandidate {
     const version = 1;
+    const manifestVersion = input.manifestVersion ?? 2;
+    if (manifestVersion !== 1 && manifestVersion !== 2) throw new CollaborationRepositoryError('INVALID');
+    const contentHash = collaborationCandidateContentHash({
+      diffHash: input.diffHash, snapshotVersion: input.snapshotVersion ?? 1, manifestVersion, manifest: input.manifest,
+    });
     this.db.prepare(`INSERT INTO collaboration_candidates (
       id, collaboration_task_id, workspace_id, canonical_run_id, round, base_commit, head_commit,
-      diff_hash, diff_text, snapshot_version, manifest_json, test_status, test_command, test_exit_code, test_output,
+      diff_hash, diff_text, snapshot_version, manifest_json, manifest_version, content_hash, test_status, test_command, test_exit_code, test_output,
       status, review_conclusion, review_summary, review_agent_id, review_artifact_id,
       diff_artifact_id, manifest_artifact_id, version, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`).run(
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`).run(
       input.id, input.collaborationTaskId, input.workspaceId, input.canonicalRunId, input.round,
       input.baseCommit, input.headCommit, input.diffHash, input.diffText, input.snapshotVersion ?? 1, JSON.stringify(input.manifest),
-      input.testStatus, input.testCommand ?? null, input.testExitCode ?? null, input.testOutput ?? null,
+      manifestVersion, contentHash, input.testStatus, input.testCommand ?? null, input.testExitCode ?? null, input.testOutput ?? null,
       input.status, input.diffArtifactId ?? null, input.manifestArtifactId ?? null, version,
       input.createdAt, input.createdAt,
     );
