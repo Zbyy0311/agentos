@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import type { Server as HttpServer } from 'node:http';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, lstatSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 import { SqliteStore } from './store/SqliteStore.js';
 import { WorkspaceManager } from './managers/WorkspaceManager.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
@@ -65,23 +65,63 @@ import {
 import { TerminalMemoryCandidateReconciler } from './services/TerminalMemoryCandidateReconciler.js';
 import { CollaborationWorkflowService } from './services/CollaborationWorkflowService.js';
 import { createCollaborationRoutes } from './routes/collaborations.js';
+import { createReadinessRoutes } from './routes/readiness.js';
+import { MaintenanceDiagnosticsService } from './services/MaintenanceDiagnosticsService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
+// Match the Windows launcher's DataPath contract and retain the previous override as fallback.
+const DATA_ROOT = resolve(process.env.AGENTOS_PROJECT_ROOT?.trim() || process.env.AGENTOS_DATA_ROOT?.trim() || PROJECT_ROOT);
 
-const serverInstanceId = randomUUID();
+const configuredInstanceId = process.env.AGENTOS_SERVER_INSTANCE_ID?.trim();
+const serverInstanceId = configuredInstanceId && /^[\w.-]{1,80}$/u.test(configuredInstanceId)
+  ? configuredInstanceId
+  : randomUUID();
 process.env.AGENTOS_SERVER_INSTANCE_ID = serverInstanceId;
 
-const DIAG_LOG_DIR = join(PROJECT_ROOT, '.agentos', 'logs', 'diagnostics');
+const DIAG_LOG_DIR = join(DATA_ROOT, '.agentos', 'logs', 'diagnostics');
+const DIAG_LOG_MAX_BYTES = 8 * 1024 * 1024;
+const DIAG_LOG_ROTATIONS = 4;
 process.env.AGENTOS_DIAG_LOG_DIR = DIAG_LOG_DIR;
 function diagLog(entry: string): void {
   const timestamp = new Date().toISOString();
   const line = `${timestamp} [server] ${entry}\n`;
   try {
     mkdirSync(DIAG_LOG_DIR, { recursive: true });
-    appendFileSync(join(DIAG_LOG_DIR, `server-${serverInstanceId}.log`), line, 'utf-8');
+    const logPath = join(DIAG_LOG_DIR, `server-${serverInstanceId}.log`);
+    rotateDiagnosticLog(logPath, Buffer.byteLength(line, 'utf8'));
+    appendFileSync(logPath, line, 'utf-8');
   } catch {
     // Best-effort diagnostics; fail silently.
+  }
+}
+
+function rotateDiagnosticLog(logPath: string, incomingBytes: number): void {
+  const current = lstatOptional(logPath);
+  if (!current) return;
+  if (!current.isFile() || current.isSymbolicLink() || Number(current.size) + incomingBytes <= DIAG_LOG_MAX_BYTES) return;
+  const paths = Array.from({ length: DIAG_LOG_ROTATIONS + 1 }, (_, index) => index === 0 ? logPath : `${logPath}.${index}`);
+  for (const path of paths) {
+    const info = lstatOptional(path);
+    if (info && (!info.isFile() || info.isSymbolicLink())) return;
+  }
+  for (let index = DIAG_LOG_ROTATIONS; index >= 1; index -= 1) {
+    const source = paths[index - 1]!;
+    const destination = paths[index]!;
+    const sourceInfo = lstatOptional(source);
+    if (!sourceInfo) continue;
+    const destinationInfo = lstatOptional(destination);
+    if (destinationInfo) {
+      unlinkSync(destination);
+    }
+    renameSync(source, destination);
+  }
+}
+
+function lstatOptional(path: string): ReturnType<typeof lstatSync> | undefined {
+  try { return lstatSync(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
   }
 }
 
@@ -161,20 +201,20 @@ async function bootstrap(): Promise<void> {
     const security = resolveLocalApiSecurityConfig(process.env);
     const runtimeDispatchEnabled = process.env.AGENTOS_RUNTIME_DISPATCH_ENABLED === 'true';
 
-    // Project-Root ownership must be acquired before any SQLite, recovery,
+    // Data-Root ownership must be acquired before any SQLite, recovery,
     // reconcile, route, or listen side effect.
-    ownership = await acquireServerOwnership(PROJECT_ROOT);
+    ownership = await acquireServerOwnership(DATA_ROOT);
 
     phase = 'store';
-    store = new SqliteStore(PROJECT_ROOT);
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(PROJECT_ROOT, '.agentos', 'worktrees'));
+    store = new SqliteStore(DATA_ROOT);
+    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'));
     const workspaceManager = new WorkspaceManager(store);
     const taskRunService = new TaskRunService(store);
     const collaborationWorktreePaths = new Map<string, string>();
     let collaborationService!: CollaborationWorkflowService;
     const providerExecutionChain = createProviderExecutionChain({
       store,
-      artifactRoot: join(PROJECT_ROOT, '.agentos', 'artifacts'),
+      artifactRoot: join(DATA_ROOT, '.agentos', 'artifacts'),
       workspaceRootFor: workspaceId => {
         const workspace = workspaceManager.get(workspaceId);
         if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND: ' + workspaceId);
@@ -292,11 +332,12 @@ async function bootstrap(): Promise<void> {
         diagLog(`EVENT_SUBSCRIBER_ERROR eventId=${event.eventId} sequence=${event.sequence} error=${error instanceof Error ? error.message : String(error)}`);
       },
     );
-    const artifactService = new RuntimeArtifactService(store, PROJECT_ROOT);
+    const artifactService = new RuntimeArtifactService(store, DATA_ROOT);
     const preferenceService = new PreferenceService(store);
     const retentionService = new RetentionService(store, undefined, error => {
       diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
     });
+    const maintenanceDiagnostics = new MaintenanceDiagnosticsService(store, workspaceManager);
 
     phase = 'routes';
     const app = express();
@@ -341,6 +382,7 @@ async function bootstrap(): Promise<void> {
     app.get('/api/health', (_req, res) => {
       res.json({ ok: true, service: 'agentos-server', time: new Date().toISOString() });
     });
+    app.use('/api', createReadinessRoutes(maintenanceDiagnostics));
 
     app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
     app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService, worktreeManager));
@@ -359,7 +401,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));
-    app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, PROJECT_ROOT, store, artifactService));
+    app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
