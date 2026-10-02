@@ -10,6 +10,7 @@ import { BridgeCompensationFailedError, TaskRunService } from './TaskRunService.
 import {
   LegacyCanonicalExecutionService,
   type LegacyRunnerFactory,
+  type LegacyTerminalCandidateGenerator,
 } from './LegacyCanonicalExecutionService.js';
 import { projectLegacyRuntimeEvent } from './LegacyRuntimeEventAdapter.js';
 
@@ -89,13 +90,18 @@ function events(fixture: Fixture): RuntimeEventRecord[] {
   }).results.map(result => result.event);
 }
 
-function createService(fixture: Fixture, runnerFactory: LegacyRunnerFactory): LegacyCanonicalExecutionService {
+function createService(
+  fixture: Fixture,
+  runnerFactory: LegacyRunnerFactory,
+  terminalCandidateGenerator?: LegacyTerminalCandidateGenerator,
+): LegacyCanonicalExecutionService {
   return new LegacyCanonicalExecutionService(
     fixture.store,
     fixture.taskRunService,
     fixture.store.lifecycleTransactionService(),
     fixture.store.operationService(),
     runnerFactory,
+    terminalCandidateGenerator,
   );
 }
 
@@ -181,6 +187,11 @@ test('C15-C22/T01-T06 executes exact stages, persists text first, and leaves Sta
   const order: AgentStage[] = [];
   let constructions = 0;
   const projected: Array<{ event: string; text?: unknown }> = [];
+  type TerminalInput = Parameters<LegacyTerminalCandidateGenerator['generateForRunTerminal']>[0];
+  const terminalInputs: TerminalInput[] = [];
+  const terminalCandidateGenerator: LegacyTerminalCandidateGenerator = {
+    generateForRunTerminal: input => { terminalInputs.push(input); },
+  };
   const context = projectionContext(fixture);
   const unsubscribe = fixture.store.runStreamService().subscribe({
     workspaceId: fixture.workspaceId,
@@ -216,7 +227,7 @@ test('C15-C22/T01-T06 executes exact stages, persists text first, and leaves Sta
     };
   };
   try {
-    await createService(fixture, runnerFactory).execute({
+    await createService(fixture, runnerFactory, terminalCandidateGenerator).execute({
       workspaceId: fixture.workspaceId,
       legacyTaskId: fixture.legacyTask.id,
       runId: fixture.bridge.run.id,
@@ -234,6 +245,10 @@ test('C15-C22/T01-T06 executes exact stages, persists text first, and leaves Sta
     assert.equal(starts.length, 1);
     assert.equal(starts[0]!.status, 'completed');
     assert.equal(starts[0]!.version, 3);
+    assert.equal(terminalInputs.length, 1, 'a terminal canonical Run triggers the existing candidate generator');
+    assert.equal(terminalInputs[0]?.runId, run.id);
+    assert.equal(terminalInputs[0]?.eventContext?.origin, 'operation');
+    assert.equal(terminalInputs[0]?.eventContext?.operationId, starts[0]!.id);
 
     const persistedStages = fixture.store.runStageRepository().listByRun(fixture.workspaceId, run.id);
     assert.equal(persistedStages[0]!.status, 'completed');

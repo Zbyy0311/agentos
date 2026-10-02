@@ -1024,11 +1024,11 @@ export default function WorkspacePage() {
     if (!workspaceId) return;
     setGeneratingCandidates(true);
     try {
-      const result = await request<{ candidates: unknown[]; outcome: 'created' | 'existing' | 'none'; reason?: 'no_valuable_public_evidence' }>(`/api/workspaces/${workspaceId}/runs/${runId}/memory-candidates/generate`, { method: 'POST' });
-      setShowCandidateQueue(result.candidates.length > 0);
+      const result = await request<{ candidates: unknown[]; outcome: 'created' | 'existing' | 'none'; reason?: 'no_valuable_public_evidence' }>(`/api/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/memory-candidates/accumulate`, { method: 'POST' });
+      setShowMemoryReview(result.candidates.length > 0);
       pushToast('success', result.outcome === 'none'
         ? '本次没有可复用的公开证据，未生成记忆候选'
-        : result.outcome === 'existing' ? '已复用待审核记忆候选' : '记忆候选已生成，请审核');
+        : result.outcome === 'existing' ? '已复用待审核记忆候选' : '规范记忆候选已生成，请审核');
     } catch (generateError) { notifyError(generateError, '生成记忆候选失败'); }
     finally { setGeneratingCandidates(false); }
   }, [notifyError, pushToast, request, workspaceId]);

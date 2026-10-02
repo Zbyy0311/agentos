@@ -77,6 +77,7 @@ try {
 const http = require('node:http');
 const host = process.env.AGENTOS_SERVER_HOST || '127.0.0.1';
 const port = Number(process.env.PORT);
+  process.stderr.write(process.env.AGENTOS_SHORT_TOKEN + '\n');
 const server = http.createServer((req, res) => {
   if (req.url === '/api/health/ready') {
     if (process.env.AGENTOS_FIXTURE_READINESS_503 === 'true') {
@@ -112,7 +113,16 @@ const server = http.createServer((req, res) => {
 server.listen(port, host, () => {
   const line = 'L'.repeat(32768) + '\n';
   for (let index = 0; index < 129; index += 1) process.stdout.write(line);
-  process.stderr.write('authorization: Bearer ' + process.env.AGENTOS_API_TOKEN + '\n');
+  process.stderr.write(process.env.AGENTOS_SHORT_TOKEN + '\n');
+  const diagnosticChunks = [
+    'Authori',
+    'zation: Bearer ' + process.env.AGENTOS_API_TOKEN + '\n',
+    '-----BEGIN RSA ',
+    'PRIVATE KEY-----\nworker-fixture-private-key-',
+    'material\n-----END RSA PRIVATE',
+    ' KEY-----\n',
+  ];
+  diagnosticChunks.forEach((chunk, index) => setTimeout(() => process.stderr.write(chunk), index * 20));
 });
 '@
   $nextScript = @'
@@ -151,7 +161,8 @@ http.createServer((_req, res) => {
   Write-Utf8NoBom (Join-Path $fixtureRoot 'unrelated-listener.cjs') $occupiedScript
   Write-Utf8NoBom (Join-Path $fixtureRoot 'unrelated-sleeper.cjs') $sleeperScript
   $fixtureSecret = '  local launcher fixture = secret  '
-  Write-Utf8NoBom (Join-Path $fixtureRoot '.env') ('AGENTOS_API_TOKEN="' + $fixtureSecret + '"' + [Environment]::NewLine)
+  $shortFixtureSecret = 'x9Q'
+  Write-Utf8NoBom (Join-Path $fixtureRoot '.env') ('AGENTOS_API_TOKEN="' + $fixtureSecret + '"' + [Environment]::NewLine + 'AGENTOS_SHORT_TOKEN=' + $shortFixtureSecret + [Environment]::NewLine)
 
   # Dry-run validates production inputs and configuration without creating runtime state.
   $dryServerPort = Get-FreePort
@@ -218,7 +229,9 @@ http.createServer((_req, res) => {
   $rotatedLog = $stdoutLog + '.1'
   Assert-True ((Test-Path -LiteralPath $rotatedLog) -and (Get-Item -LiteralPath $rotatedLog).Length -le 4MB -and (Get-Item -LiteralPath $stdoutLog).Length -le 4MB) 'Owned server logs did not rotate at the configured size bound.'
   $diagnosticText = Get-Content -LiteralPath $stderrLog -Raw
-  Assert-True (-not $diagnosticText.Contains($fixtureSecret) -and $diagnosticText.Contains('[REDACTED]')) 'Sensitive environment values were not removed from persistent diagnostics.'
+  Assert-True (-not $diagnosticText.Contains($fixtureSecret) -and -not $diagnosticText.Contains($shortFixtureSecret) -and $diagnosticText.Contains('[REDACTED]')) 'Sensitive environment values, including short bare values, were not removed from persistent diagnostics.'
+  Assert-True (-not $diagnosticText.Contains('worker-fixture-private-key-material') -and $diagnosticText.Contains('[REDACTED_PRIVATE_KEY]')) 'Chunk-split private-key material was not removed from persistent diagnostics.'
+  Assert-True (-not $diagnosticText.Contains('authorization: Bearer')) 'A chunk-split authorization header was persisted.'
 
   # Replace one recorded PID with a live unrelated PID. Status and stop must reject the mismatch without killing anything.
   $sleeper = Start-Process -FilePath $nodePath -ArgumentList ('"' + (Join-Path $fixtureRoot 'unrelated-sleeper.cjs') + '"') -WorkingDirectory $fixtureRoot -WindowStyle Hidden -PassThru

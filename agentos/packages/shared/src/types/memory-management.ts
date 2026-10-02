@@ -1,4 +1,28 @@
 /** Additive memory management contracts; runtime ownership stays per aggregate. */
+import type { MemoryScope } from './mf0-memory-contracts.js';
+
+export type MemoryWorkspaceKnowledgePromotionScopeV1 = Extract<MemoryScope, 'task' | 'conversation' | 'run'>;
+
+export interface MemoryWorkspaceKnowledgePromotionRequestV1 {
+  readonly expectedVersion: number;
+}
+
+/** Immutable link between the exact source Entry version and its workspace copy. */
+export interface MemoryEntrySourceBindingV1 {
+  readonly workspaceId: string;
+  readonly sourceEntryId: string;
+  readonly sourceEntryVersion: number;
+  readonly promotedEntryId: string;
+  readonly promotedEntryVersion: number;
+  readonly promotionEventId: string | null;
+  readonly createdAt: string;
+}
+
+export interface MemoryWorkspaceKnowledgePromotionResponseV1<TEntry = unknown> {
+  readonly outcome: 'created' | 'existing';
+  readonly entry: TEntry;
+  readonly sourceBinding: MemoryEntrySourceBindingV1;
+}
 export type MemoryContextOwnerKind = 'run'|'stage'|'turn'|'legacy-execution';
 export interface MemoryVersionSelection {
   readonly memoryId:string; readonly memoryVersion:number|null; readonly rank:number;
