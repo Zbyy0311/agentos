@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import type { AgentProfile, CollaborationProgress, CollaborationTask, Conversation, ConversationMessage, Workspace } from '@agentos/shared';
 
 const workspaceId = 'p4-browser-fixture';
@@ -213,6 +214,12 @@ for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
       version: 7, canonicalRunId: 'failed-run', failureReason: 'Fixture failure' };
     const sibling = { ...task(103), id: 'task-sibling', title: 'Unrelated Task' };
     fixture.tasks = [target, sibling];
+    const consoleErrors: { text: string; url: string }[] = [];
+    const failedRequests: { url: string; error: string }[] = [];
+    page.on('console', message => {
+      if (message.type() === 'error') consoleErrors.push({ text: message.text(), url: message.location().url });
+    });
+    page.on('requestfailed', request => failedRequests.push({ url: request.url(), error: request.failure()?.errorText ?? '' }));
     let recoveryWrites = 0;
     await installDeterministicApi(page, fixture);
     await page.route('**/api/**', async route => {
@@ -250,6 +257,9 @@ for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
       await route.fallback();
     });
     await page.goto(`/workspace/${workspaceId}?conversationSource=runtime&conversationId=same-id&collaborationId=task-recovery&view=execution`);
+    await expect(page).toHaveTitle('AgentOS');
+    await expect(page.locator('[data-signal-workspace]')).toBeVisible();
+    await expect(page.locator('nextjs-portal')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Recovery Target', exact: true })).toBeVisible();
     const panel = page.locator('section[aria-label="协作任务恢复"]');
     await expect(panel).toBeVisible();
@@ -277,6 +287,13 @@ for (const mode of ['known-failure', 'unknown-side-effects'] as const) {
       expectedTaskVersion: 7, expectedRunId: 'failed-run', expectedRunVersion: 3 });
     expect(writes.some(record => /\/respond$|\/confirm$/u.test(record.path))).toBe(false);
     expect(fixture.failures).toEqual([]);
+    expect(consoleErrors.filter(error => !(error.text === 'Failed to load resource: net::ERR_FAILED'
+      && error.url.endsWith('/task-recovery/recover')
+      && failedRequests.some(request => request.url === error.url && request.error === 'net::ERR_FAILED')))).toEqual([]);
+    await expect(page.locator('nextjs-portal')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`collaboration-recovery-${mode}.png`) });
+    await writeFile(testInfo.outputPath('fixture-network-and-console.json'), JSON.stringify({
+      providerExecution: 'none', api: 'deterministic-fixture', requests: fixture.requests, consoleErrors, failedRequests,
+    }, null, 2));
   });
 }
