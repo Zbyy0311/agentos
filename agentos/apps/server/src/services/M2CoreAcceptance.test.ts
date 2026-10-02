@@ -127,7 +127,10 @@ const EXISTING_COVERAGE: readonly CoverageEntry[] = [
       },
       {
         file: 'apps/server/src/migrations/__tests__/integration.test.ts',
-        markers: ['Fresh database applies the complete registered migration set exactly once', 'The complete 001-041 schema passes integrity and foreign-key checks'],
+        markers: [
+          '[M27-P5-T001] Fresh database applies the complete registered migration set exactly once',
+          '[M27-P5-T005] The complete 001-041 schema passes integrity and foreign-key checks',
+        ],
       },
       {
         file: 'apps/server/src/migrations/__tests__/migration.test.ts',
