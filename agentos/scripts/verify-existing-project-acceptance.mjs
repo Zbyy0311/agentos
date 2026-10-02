@@ -377,15 +377,16 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
 }
 
 async function stopServer(server) {
-  if (!server?.child || server.child.exitCode !== null) return;
+  const hasExited = child => child.exitCode !== null || child.signalCode !== null;
+  if (!server?.child || hasExited(server.child)) return;
   const exited = new Promise(resolvePromise => server.child.once('exit', resolvePromise));
   server.child.kill('SIGTERM');
   await Promise.race([exited, delay(10_000)]);
-  if (server.child.exitCode === null) {
-    server.child.kill('SIGTERM');
+  if (!hasExited(server.child)) {
+    server.child.kill('SIGKILL');
     await Promise.race([exited, delay(3000)]);
   }
-  invariant(server.child.exitCode !== null, 'isolated AgentOS server did not stop through its owned child handle');
+  invariant(hasExited(server.child), 'isolated AgentOS server did not stop through its owned child handle');
 }
 
 async function request(baseUrl, route, { method = 'GET', body, headers = {}, timeoutMs = 30_000 } = {}) {
@@ -782,6 +783,10 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
   invariant(Number.isSafeInteger(receipt.runtimeEvidence.serverPid) && receipt.runtimeEvidence.serverPid > 0
     && Number.isInteger(receipt.runtimeEvidence.port) && receipt.runtimeEvidence.port > 0 && receipt.runtimeEvidence.port < 65536
     && typeof receipt.runtimeEvidence.readinessPath === 'string', 'isolated production server identity is incomplete');
+  const serverProcess = receipt.runtimeEvidence.serverProcess;
+  invariant(serverProcess?.pid === receipt.runtimeEvidence.serverPid && serverProcess.stopped === true
+    && (Number.isInteger(serverProcess.exitCode) || typeof serverProcess.signalCode === 'string'),
+  'isolated production server stop is not proven through its owned child process handle');
   if (receipt.mode === 'real-windows-acceptance') {
     invariant(receipt.runtimeEvidence.readinessPath !== '/api/health (legacy liveness fallback; simulated mode only)',
       'real acceptance cannot use liveness as readiness');
@@ -1060,6 +1065,9 @@ async function main() {
     }
     const serverIdentity = { pid: server.child.pid, port: server.port, readinessPath: server.readinessPath };
     await stopServer(server);
+    serverIdentity.exitCode = server.child.exitCode;
+    serverIdentity.signalCode = server.child.signalCode;
+    console.error(`P4_ACCEPTANCE_PROGRESS=server: owned server stopped pid=${serverIdentity.pid} exit=${serverIdentity.exitCode ?? 'signal'} signal=${serverIdentity.signalCode ?? 'none'}`);
     server = undefined;
     const databaseSource = join(serverProjectRoot, '.agentos', 'agentos.sqlite');
     invariant(existsSync(databaseSource), 'isolated AgentOS runtime database was not created');
@@ -1103,7 +1111,15 @@ async function main() {
       },
       model: { provider: options.mode === 'simulated-provider' ? 'fixture-provider' : 'codex', id: model },
       providerEvidence,
-      runtimeEvidence: { database: databaseArtifact, serverPid: serverIdentity.pid, port: serverIdentity.port, readinessPath: serverIdentity.readinessPath, scenarios: runtimeScenarios },
+      runtimeEvidence: {
+        database: databaseArtifact, serverPid: serverIdentity.pid, port: serverIdentity.port,
+        readinessPath: serverIdentity.readinessPath,
+        serverProcess: {
+          pid: serverIdentity.pid, exitCode: serverIdentity.exitCode,
+          signalCode: serverIdentity.signalCode, stopped: true,
+        },
+        scenarios: runtimeScenarios,
+      },
       processExitCode: 0, acceptanceExitCode: 0,
       scenarios: scenarioResults.map(item => item.scenario),
     };
