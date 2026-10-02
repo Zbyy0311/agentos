@@ -882,7 +882,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     candidateContentHash: appliedPreviewIdentity.candidateContentHash,
   };
   const applied = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/apply`, {
-    method: 'POST', body: applyRequestBody, headers: { 'Idempotency-Key': `p4-acceptance-apply-${randomUUID()}` },
+    method: 'POST', timeoutMs: 180_000, body: applyRequestBody, headers: { 'Idempotency-Key': `p4-acceptance-apply-${randomUUID()}` },
   });
   invariant(applied.body.task?.status === 'applied' && applied.body.task.currentCandidateId === finalCandidate.id,
     `${plan.kind} apply API did not apply the reviewed candidate`);
