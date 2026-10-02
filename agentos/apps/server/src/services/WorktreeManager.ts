@@ -19,8 +19,7 @@ export class WorktreeManager {
   constructor(private readonly worktreeRoot: string) { this.leaseFile=join(worktreeRoot,'leases.json'); if(existsSync(this.leaseFile)){try{for(const record of JSON.parse(readFileSync(this.leaseFile,'utf8')) as LeaseRecord[])this.leases.set(record.id,record);}catch{/* corrupted state is reconciled as empty */}} }
 
   async createLease(input: CreateInput): Promise<WorktreeLease> {
-    await this.assertClean(input.workspaceRoot, input);
-    const baseCommit = (await git(input.workspaceRoot, ['rev-parse', 'HEAD'], input.controlledGitContent)).trim();
+    const baseCommit = await this.assertClean(input.workspaceRoot, input);
     const branchName = `agentos/run-${segment(input.runId)}-exec-${segment(input.executionId)}`;
     const absolutePath = resolve(this.worktreeRoot, segment(input.workspaceId), segment(input.runId), segment(input.executionId));
     if (await gitSucceeds(input.workspaceRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`])) {
@@ -61,7 +60,7 @@ export class WorktreeManager {
 
   getLease(id: string): WorktreeLease | undefined { const record = this.leases.get(id); return record && publicLease(record); }
   getRecord(id: string): LeaseRecord | undefined { return this.leases.get(id); }
-  async preflight(workspaceRoot: string, options: PreflightOptions = {}): Promise<void> { await this.assertClean(workspaceRoot, options); }
+  async preflight(workspaceRoot: string, options: PreflightOptions = {}): Promise<string> { return this.assertClean(workspaceRoot, options); }
   markRecoveryBundleVerified(id: string, bundle?: WorktreeRecoveryBundle): void {
     const record = this.leases.get(id);
     if (!record || !bundle) return;
@@ -100,13 +99,14 @@ export class WorktreeManager {
   }
   async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> { const record=this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required','recovery bundle confirmation is required'); if (!record.recoveryBundle) throw new WorktreeError('bundle_required','verified recovery bundle is required'); await git(record.workspaceRoot,['worktree','remove','--force',record.absolutePath]); record.status='cleaned'; record.updatedAt=new Date().toISOString(); this.persist(); return publicLease(record); }
   private persist(): void { try { mkdirSync(this.worktreeRoot,{recursive:true}); writeFileSync(this.leaseFile,JSON.stringify([...this.leases.values()],null,2),'utf8'); } catch {/* best effort; active worktree remains recoverable from git */} }
-  private async assertClean(root: string, options: PreflightOptions = {}): Promise<void> {
+  private async assertClean(root: string, options: PreflightOptions = {}): Promise<string> {
     if (!isAbsolute(root)) throw new WorktreeError('root_not_absolute', 'root_not_absolute: workspace path must be absolute');
     if (isWithin(root, this.worktreeRoot)) throw new WorktreeError('root_inside_workspace', 'root_inside_workspace: worktree root cannot be inside the workspace');
+    let initialHead: string;
     try {
       await git(root, ['rev-parse', '--show-toplevel'], options.controlledGitContent);
       if ((await git(root, ['rev-parse', '--is-bare-repository'], options.controlledGitContent)).trim() === 'true') throw new WorktreeError('bare_repository', 'bare_repository: bare repositories are not supported');
-      await git(root, ['rev-parse', '--verify', 'HEAD'], options.controlledGitContent);
+      initialHead = (await git(root, ['rev-parse', '--verify', 'HEAD'], options.controlledGitContent)).trim();
     } catch (error) {
       if (error instanceof WorktreeError) throw error;
       throw new WorktreeError('not_git', 'not_git: workspace is not a Git repository with a HEAD');
@@ -116,6 +116,7 @@ export class WorktreeManager {
       let head: string;
       try {
         head = (await context.sourceMetadata(['rev-parse', 'HEAD'])).toString('utf8').trim();
+        if (head !== initialHead) throw new WorktreeError('workspace_changed', 'workspace_changed: HEAD moved before clean preflight snapshot');
         const tree = (await context.sourceMetadata(['ls-tree', '-r', '-z', '--full-tree', head])).toString('utf8');
         const index = (await context.sourceMetadata(['ls-files', '-s', '-z'])).toString('utf8');
         const expected = new Map(tree.split('\0').filter(Boolean).map(row => {
@@ -135,6 +136,9 @@ export class WorktreeManager {
     }
     const status = await git(root, ['status', '--porcelain=v1', '-z']);
     if (status.length) throw new WorktreeError('workspace_dirty', 'workspace_dirty: workspace has uncommitted changes');
+    const finalHead = (await git(root, ['rev-parse', '--verify', 'HEAD'], options.controlledGitContent)).trim();
+    if (finalHead !== initialHead) throw new WorktreeError('workspace_changed', 'workspace_changed: HEAD moved during preflight');
+    return initialHead;
   }
 }
 
