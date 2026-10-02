@@ -30,16 +30,26 @@ export function createDiagnosticRedactor(environment = process.env) {
       return '[diagnostic event omitted: size limit]';
     }
 
+    safe = boundDiagnosticLines(redactPrivateKeyLines(
+      safe,
+      () => insidePrivateKey,
+      next => { insidePrivateKey = next; },
+    ));
     for (const value of sensitiveValues) safe = replaceConfiguredValue(safe, value);
-    safe = redactPrivateKeyLines(safe, () => insidePrivateKey, next => { insidePrivateKey = next; })
-      .replace(SENSITIVE_HEADER, '$1$2[REDACTED]')
-      .replace(CREDENTIAL_FIELD, (_match, label, value) => {
+    if (safe.includes(':')) safe = safe.replace(SENSITIVE_HEADER, '$1$2[REDACTED]');
+    if (safe.includes(':') || safe.includes('=')) {
+      safe = safe.replace(CREDENTIAL_FIELD, (_match, label, value) => {
         if (value.startsWith('"') && value.endsWith('"')) return `${label}"[REDACTED]"`;
         if (value.startsWith("'") && value.endsWith("'")) return `${label}'[REDACTED]'`;
         return `${label}[REDACTED]`;
-      })
-      .replace(URL_PASSWORD, '$1[REDACTED]$2');
-    for (const pattern of TOKEN_PATTERNS) safe = safe.replace(pattern, '[REDACTED_TOKEN]');
+      });
+    }
+    if (safe.includes('://')) safe = safe.replace(URL_PASSWORD, '$1[REDACTED]$2');
+    if (/\bbearer\s/i.test(safe)) safe = safe.replace(TOKEN_PATTERNS[0], '[REDACTED_TOKEN]');
+    if (safe.includes('eyJ') && safe.includes('.')) safe = safe.replace(TOKEN_PATTERNS[1], '[REDACTED_TOKEN]');
+    if (/\b(?:sk-|gh[pousr]_|github_pat_|xox[baprs]-)/.test(safe)) {
+      safe = safe.replace(TOKEN_PATTERNS[2], '[REDACTED_TOKEN]');
+    }
 
     const bounded = boundDiagnosticLines(safe);
     return bounded.length <= MAX_DIAGNOSTIC_EVENT_CHARS

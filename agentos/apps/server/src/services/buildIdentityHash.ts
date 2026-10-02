@@ -15,6 +15,7 @@ const BUILD_INPUT_FILES = [
   'packages/agent-core/package.json',
   'packages/process-runtime/package.json',
   'packages/shared/package.json',
+  'scripts/agentos-diagnostic-redaction.mjs',
 ] as const;
 
 /** Hashes the executable workspace output plus dependency lock/manifests, excluding the stamp itself. */
