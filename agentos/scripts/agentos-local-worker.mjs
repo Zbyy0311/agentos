@@ -3,30 +3,11 @@ import { StringDecoder } from 'node:string_decoder';
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createDiagnosticRedactor, MAX_DIAGNOSTIC_LINE_CHARS } from './agentos-diagnostic-redaction.mjs';
 
 const MAX_LOG_BYTES = 4 * 1024 * 1024;
 const ROTATED_LOG_COUNT = 3;
-const MAX_PENDING_LOG_LINE_CHARS = 64 * 1024;
-const SENSITIVE_ENV_NAME = /(secret|token|password|passwd|api[_-]?key|private[_-]?key|credential|authorization|cookie)/i;
-
-function collectSensitiveValues(env) {
-  return [...new Set(Object.entries(env)
-    .filter(([name]) => SENSITIVE_ENV_NAME.test(name))
-    .map(([, value]) => String(value || ''))
-    .filter(value => value.length >= 4 && value.length <= 8192))]
-    .sort((left, right) => right.length - left.length);
-}
-
-function redactDiagnostic(text, sensitiveValues) {
-  let safe = text;
-  for (const value of sensitiveValues) safe = safe.split(value).join('[REDACTED]');
-  safe = safe
-    .replace(/((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|token|cookie)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1[REDACTED]')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
-    .replace(/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/g, '[REDACTED_JWT]')
-    .replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b/g, '[REDACTED_TOKEN]');
-  return safe;
-}
+const MAX_PENDING_LOG_LINE_CHARS = MAX_DIAGNOSTIC_LINE_CHARS;
 
 function parseArgs(argv) {
   const result = { _: [] };
@@ -48,14 +29,14 @@ function writeJsonAtomic(path, value) {
 }
 
 class RotatingLog {
-  constructor(path, sensitiveValues) {
+  constructor(path, redactDiagnostic) {
     this.path = path;
     this.bytes = existsSync(path) ? statSync(path).size : 0;
     this.fd = null;
     this.decoder = new StringDecoder('utf8');
     this.pending = '';
     this.suppressLongLine = false;
-    this.sensitiveValues = sensitiveValues;
+    this.redactDiagnostic = redactDiagnostic;
     if (this.bytes > MAX_LOG_BYTES) this.rotate();
     this.open();
   }
@@ -71,7 +52,7 @@ class RotatingLog {
     this.open();
   }
   writeSafe(text) {
-    const safe = Buffer.from(redactDiagnostic(text, this.sensitiveValues), 'utf8');
+    const safe = Buffer.from(this.redactDiagnostic(text), 'utf8');
     let offset = 0;
     while (offset < safe.length) {
       if (this.bytes >= MAX_LOG_BYTES) this.rotate();
@@ -108,11 +89,11 @@ class RotatingLog {
   }
 }
 
-function startChild(role, command, args, cwd, env, stateDir, sensitiveValues, onClosed) {
-  const stdout = new RotatingLog(join(stateDir, role + '.stdout.log'), sensitiveValues);
+function startChild(role, command, args, cwd, env, stateDir, redactDiagnostic, onClosed) {
+  const stdout = new RotatingLog(join(stateDir, role + '.stdout.log'), redactDiagnostic);
   let stderr;
   try {
-    stderr = new RotatingLog(join(stateDir, role + '.stderr.log'), sensitiveValues);
+    stderr = new RotatingLog(join(stateDir, role + '.stderr.log'), redactDiagnostic);
   } catch (error) {
     stdout.close();
     throw error;
@@ -176,7 +157,7 @@ async function runWorker() {
   const nextEntry = resolve(root, 'apps', 'web', 'node_modules', 'next', 'dist', 'bin', 'next');
   const serverEnv = { ...process.env, PORT: String(serverPort), AGENTOS_SERVER_HOST: serverHost, AGENTOS_PROJECT_ROOT: dataPath };
   const webEnv = { ...process.env, PORT: String(webPort), HOSTNAME: webHost };
-  const sensitiveValues = collectSensitiveValues(process.env);
+  const redactDiagnostic = createDiagnosticRedactor(process.env);
   mkdirSync(stateDir, { recursive: true });
   const entries = [];
   let startupComplete = false;
@@ -209,13 +190,13 @@ async function runWorker() {
   process.once('SIGHUP', () => shutdown(0));
   try {
     if (mode === 'production') {
-      entries.push(startChild('server', process.execPath, ['--disable-warning=ExperimentalWarning', serverEntry], root, serverEnv, stateDir, sensitiveValues, childClosed));
-      entries.push(startChild('web', process.execPath, [nextEntry, 'start', '--hostname', webHost, '--port', String(webPort)], resolve(root, 'apps', 'web'), webEnv, stateDir, sensitiveValues, childClosed));
+      entries.push(startChild('server', process.execPath, ['--disable-warning=ExperimentalWarning', serverEntry], root, serverEnv, stateDir, redactDiagnostic, childClosed));
+      entries.push(startChild('web', process.execPath, [nextEntry, 'start', '--hostname', webHost, '--port', String(webPort)], resolve(root, 'apps', 'web'), webEnv, stateDir, redactDiagnostic, childClosed));
     } else if (mode === 'development') {
       const shell = process.env.ComSpec || join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
       const serverScript = args.stable === 'true' ? 'dev:stable' : 'dev';
-      entries.push(startChild('server', shell, ['/d', '/s', '/c', 'pnpm.cmd --filter @agentos/server run ' + serverScript], root, serverEnv, stateDir, sensitiveValues, childClosed));
-      entries.push(startChild('web', process.execPath, [nextEntry, 'dev', '--hostname', webHost, '--port', String(webPort)], resolve(root, 'apps', 'web'), webEnv, stateDir, sensitiveValues, childClosed));
+      entries.push(startChild('server', shell, ['/d', '/s', '/c', 'pnpm.cmd --filter @agentos/server run ' + serverScript], root, serverEnv, stateDir, redactDiagnostic, childClosed));
+      entries.push(startChild('web', process.execPath, [nextEntry, 'dev', '--hostname', webHost, '--port', String(webPort)], resolve(root, 'apps', 'web'), webEnv, stateDir, redactDiagnostic, childClosed));
     } else { throw new Error('Unsupported lifecycle mode.'); }
 
     await Promise.all(entries.map((entry, index) => waitForSpawn(entry, index === 0 ? 'server' : 'web')));
