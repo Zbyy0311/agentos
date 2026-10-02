@@ -7,6 +7,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
+export function serverTestArguments(files, timeoutMs = 300_000) {
+  if (!Array.isArray(files) || !files.length || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error('Invalid bounded server test command');
+  }
+  // Unresolved tests fail and cancel within a documented bound. The CI job
+  // also bounds processes with leaked resources; never force a passing exit.
+  return ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap',
+    `--test-timeout=${timeoutMs}`, ...files];
+}
+
 export function partitionTests(files, count) {
   if (!Number.isSafeInteger(count) || count < 1 || count > 32) throw new Error('Invalid shard count');
   if (!files.length || new Set(files.map(file => file.path)).size !== files.length) throw new Error('Invalid test inventory');
@@ -64,7 +74,7 @@ async function runShard(plan, index, output) {
   if (!files?.length) throw new Error('Invalid or empty shard');
   const directory = resolve(output, `shard-${index}`);
   mkdirSync(directory, { recursive: true });
-  const argv = ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap', ...files];
+  const argv = serverTestArguments(files);
   const startedAt = new Date().toISOString();
   const child = spawn(process.execPath, argv, { cwd: resolve(root, 'apps/server'), windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
   const stdout = [], stderr = [];
