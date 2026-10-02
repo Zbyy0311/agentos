@@ -149,6 +149,24 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
       eventType: 'group.interrupted', updatedAt: new Date().toISOString(),
     }));
     const interrupted = store.groupInteractionRepository().findInteractionById('workspace-a', priorId)!;
+    const blockedRound = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+      sourceMessageId: messageId,
+    });
+    assert.equal(blockedRound.status, 409);
+    assert.equal((blockedRound.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE',
+      'an unusable interrupted owner still fences ordinary round creation');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.interactions, 'rejected ordinary create leaves no competing interaction');
+    const blockedDiscussion = await postJson(`${baseUrl}/conversations/${conversationId}/discussions`, {
+      content: 'A competing discussion must roll back while the old owner is quarantined.',
+      clientMessageId: 'p2-competing-discussion',
+      budget: { maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1, maxAgentHops: 1 },
+    });
+    assert.equal(blockedDiscussion.status, 409);
+    assert.equal((blockedDiscussion.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.messages, 'the rejected atomic message-plus-interaction command leaves no orphan source message');
     const readyRequest = { ...request, expectedVersion: interrupted.version };
     const linkedResponse = await fetch(recoverUrl, { method: 'POST', headers, body: JSON.stringify(readyRequest) });
     assert.equal(linkedResponse.status, 201);
@@ -170,6 +188,28 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
     assert.equal(link.prior_owner_epoch, claimed.ownerEpoch);
     assert.equal(link.new_interaction_id, linked.interaction.id);
     assert.equal(link.source_message_id, linked.message.id);
+
+    const recoveredOwner = store.boundedGroupService().claimExecution({ workspaceId: 'workspace-a', conversationId,
+      interactionId: linked.interaction.id, sourceMessageId: linked.message.id,
+      participantAgentIds: ['codex'], ownerId: 'p2-recovered-owner', createdAt: new Date().toISOString() });
+    assert.equal(recoveredOwner.status, 'claimed', 'a successful linked recovery can claim its new round');
+    assert.throws(() => store.runInTransaction(() => store.groupInteractionRepository().appendExecutionEventWithinTransaction({
+        workspaceId: 'workspace-a', interactionId: priorId, ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch,
+        eventType: 'group.checkpoint', payload: { stale: true }, updatedAt: new Date().toISOString(),
+      })), (error: unknown) => (error as { code?: string }).code === 'EXECUTION_STALE_OWNER',
+      'the superseded owner cannot append writes after the recovery link is committed');
+    assert.throws(() => store.runInTransaction(() => store.groupInteractionRepository().transitionExecutionWithinTransaction({
+        workspaceId: 'workspace-a', interactionId: priorId, ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch,
+        status: 'running', eventType: 'group.turn.start', updatedAt: new Date().toISOString(),
+      })), (error: unknown) => (error as { code?: string }).code === 'EXECUTION_STALE_OWNER',
+      'the superseded owner cannot revive itself after its recovery link is committed');
+    const competingAfterRecovery = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+      sourceMessageId: linked.message.id,
+    });
+    assert.equal(competingAfterRecovery.status, 409);
+    assert.equal((competingAfterRecovery.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE',
+      'the new round atomically fences another create while linked historical rounds remain quarantined');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
       initialCounts.interactions + 1);
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
@@ -185,6 +225,59 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
     assert.equal(changedBody.status, 409);
     assert.equal((await changedBody.json() as { error: string }).error, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_group_recovery_links').get() as { n: number }).n, 1);
+  });
+});
+
+test('P2 recovery fails closed for a legacy interrupted owner whose current Turn has no persisted process identity', async () => {
+  await withServer(async (baseUrl, store) => {
+    const { conversationId, messageId } = await seedConversation(baseUrl);
+    const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget: { maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1, maxAgentHops: 1 }, sourceMessageId: messageId,
+    });
+    assert.equal(created.status, 201);
+    const interactionId = (created.json as { interaction: { id: string } }).interaction.id;
+    const claimed = store.boundedGroupService().claimExecution({ workspaceId: 'workspace-a', conversationId,
+      interactionId, sourceMessageId: messageId, participantAgentIds: ['codex'], ownerId: 'legacy-owner',
+      createdAt: new Date().toISOString() });
+    store.boundedGroupService().setExecutionCurrentTurn({ workspaceId: 'workspace-a', interactionId,
+      ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch, agentId: 'codex',
+      turnId: 'turn-legacy-unbound', messageId: 'message-legacy-unbound', updatedAt: new Date().toISOString() });
+    store.runInTransaction(() => {
+      store.groupInteractionRepository().transitionExecutionWithinTransaction({
+        workspaceId: 'workspace-a', interactionId, ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch,
+        status: 'interrupted', terminalReason: 'server-restarted-owner-unknown',
+        eventType: 'group.interrupted', updatedAt: new Date().toISOString(),
+      });
+      store.getDatabase().prepare(`UPDATE cr_group_interactions SET integrity_status='unusable',
+        integrity_reason='execution-owner-unknown-after-restart',version=version+1 WHERE workspace_id=? AND id=?`)
+        .run('workspace-a', interactionId);
+    });
+    const quarantined = store.groupInteractionRepository().findInteractionById('workspace-a', interactionId)!;
+    const before = {
+      interactions: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id=?').get('workspace-a') as { n: number }).n,
+      messages: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id=?').get('workspace-a') as { n: number }).n,
+      replies: store.groupInteractionRepository().listReplies(interactionId).length,
+    };
+    const response = await fetch(`${baseUrl}/interactions/${interactionId}/recover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'p2-legacy-process-evidence' },
+      body: JSON.stringify({
+        expectedVersion: quarantined.version, expectedOwnerEpoch: claimed.ownerEpoch,
+        content: 'Continue only after the original Provider process is proven gone.',
+      }),
+    });
+    const responseBody = await response.json() as { error?: string };
+    assert.equal(response.status, 409);
+    assert.equal(responseBody.error, 'GROUP_RECOVERY_PROCESS_UNPROVEN',
+      'legacy owners with an in-flight Turn but no durable native process identity stay quarantined with a reason');
+    assert.equal(store.groupInteractionRepository().findExecutionOwner('workspace-a', interactionId)?.status, 'interrupted');
+    assert.equal(store.groupInteractionRepository().findInteractionById('workspace-a', interactionId)?.integrityStatus, 'unusable');
+    assert.deepEqual({
+      interactions: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id=?').get('workspace-a') as { n: number }).n,
+      messages: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id=?').get('workspace-a') as { n: number }).n,
+      replies: store.groupInteractionRepository().listReplies(interactionId).length,
+    }, before, 'unproven legacy recovery performs no writes');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_group_recovery_links WHERE workspace_id=?').get('workspace-a') as { n: number }).n, 0);
   });
 });
 

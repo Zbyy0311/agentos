@@ -173,6 +173,11 @@ export class NodeProcessDriver implements PlatformProcessDriver {
     }
   }
 
+  /** Release platform ownership after the caller has observed the process exit. */
+  async dispose(handle: NativeProcessHandle): Promise<void> {
+    await this.processTree.dispose(asNodeHandle(handle).tree);
+  }
+
   async inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection> {
     try {
       process.kill(identity.pid, 0);

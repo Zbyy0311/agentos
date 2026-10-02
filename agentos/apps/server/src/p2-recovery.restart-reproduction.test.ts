@@ -204,6 +204,19 @@ function compileFakeCodexExecutable(root: string, structuredOutput = true): stri
   return executablePath;
 }
 
+async function waitForPidsToExit(pids: readonly number[], timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const stillAlive = (): number[] => pids.filter(pid => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+  });
+  while (Date.now() < deadline) {
+    if (stillAlive().length === 0) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.deepEqual(stillAlive(), [], 'server-owned Windows Job must reap the old Provider without a test-side kill');
+}
+
 async function postJson(url: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<{ status: number; json: any }> {
   const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...extraHeaders }, body: JSON.stringify(body) });
   return { status: response.status, json: await response.json() };
@@ -228,7 +241,9 @@ function spawnSyncGit(args: string[], cwd: string): { status: number | null; std
   return { status: result.status, stderr: result.stderr ?? '', stdout: result.stdout ?? '' };
 }
 
-test('P2 reproduction: a real group speaker invocation remains interrupted after server restart without replay', { timeout: 180_000 }, async () => {
+test('P2 reproduction: an active real group Provider is reaped on restart before linked recovery', {
+  timeout: 180_000, skip: process.platform !== 'win32',
+}, async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p2-group-restart-'));
   const workspaceRoot = join(root, 'workspace');
   const receipt = join(root, 'provider-invocations.jsonl');
@@ -236,9 +251,9 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
   const now = new Date().toISOString();
   const speakerScript = [
     "const fs=require('node:fs');",
+    "const prior=fs.existsSync(process.env.AGENTOS_P2_PROVIDER_RECEIPT)?fs.readFileSync(process.env.AGENTOS_P2_PROVIDER_RECEIPT,'utf8').trim().split(/\\r?\\n/).filter(Boolean).length:0;",
     "fs.appendFileSync(process.env.AGENTOS_P2_PROVIDER_RECEIPT,JSON.stringify({pid:process.pid,taskId:process.env.AGENTOS_TASK_ID,cwd:process.cwd()})+'\\n');",
-    "process.stdout.write('speaker invocation started\\n');",
-    'setInterval(()=>{},1000);',
+    "if(prior===0){process.stdout.write('original reply preserved after recovery\\n');}else{process.stdout.write('speaker invocation started\\n');setInterval(()=>{},1000);}",
   ].join('');
   const workspace: Workspace = {
     id: 'workspace-a', name: 'P2 group recovery', rootPath: workspaceRoot, gitEnabled: true, memoryEnabled: false,
@@ -279,7 +294,7 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
       body: JSON.stringify({ sourceMessageId }),
     });
     responseDrain = speakerRequest.then(response => response.text()).catch(() => undefined);
-    try { await waitForFile(receipt); } catch (error) {
+    try { await waitForLineCount(receipt, 2); } catch (error) {
       const debug = new SqliteStore(root);
       let durable: unknown;
       try {
@@ -295,7 +310,7 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
       throw new Error(`${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(durable)}\n${server.output()}`);
     }
     const receiptRows = readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).map(row => JSON.parse(row) as { pid: number; cwd: string });
-    assert.equal(receiptRows.length, 1, 'one native CLI invocation must have been launched');
+    assert.equal(receiptRows.length, 2, 'the first speaker completes and the second real Provider remains active at restart');
     cliPids = receiptRows.map(row => row.pid);
     assert.notEqual(cliPids[0], process.pid, 'the provider receipt must name a child process');
     assert.notEqual(process.env.AGENTOS_FORCE_MOCK, 'true');
@@ -310,12 +325,25 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
     let priorVersion: number;
     let ownerEpoch: number;
     let participants: string[];
+    let originalReplyIds: string[];
     try {
       const owner = store.groupInteractionRepository().findExecutionOwner('workspace-a', interactionId);
       const interaction = store.boundedGroupService().findInteraction('workspace-a', interactionId);
       assert.equal(owner?.status, 'interrupted');
       assert.equal(interaction?.integrityStatus, 'unusable');
       assert.ok(store.agentTurnRepository().listTurnsByConversation('workspace-a', conversationId).length >= 1);
+      const originalReplies = store.groupInteractionRepository().listReplies(interactionId);
+      assert.equal(originalReplies.length, 1, 'the completed first speaker reply remains attached to the interrupted owner');
+      originalReplyIds = originalReplies.map(reply => reply.id);
+      const processEvents = store.groupInteractionRepository().listExecutionEvents('workspace-a', conversationId, interactionId, 0)
+        .filter(event => event.eventType === 'group.provider.started');
+      assert.equal(processEvents.length, 2, 'each real Provider Turn has durable native process evidence');
+      assert.ok(processEvents.every(event => event.ownerEpoch === owner!.ownerEpoch
+        && Number.isSafeInteger(event.payload.pid)
+        && typeof event.payload.nativeBirthIdentity === 'string'
+        && event.payload.nativeBirthIdentity.startsWith('win32:filetime:')));
+      assert.equal(processEvents.at(-1)?.payload.turnId, owner!.currentTurnId,
+        'the active native process identity is bound to the interrupted owner current Turn');
       const sourceMessages = store.conversationRepository().listMessages('workspace-a', conversationId);
       sourceMessageCount = sourceMessages.length;
       priorVersion = interaction!.version;
@@ -324,12 +352,12 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
       const rejectedReplay = await postJson(responseUrl, { sourceMessageId });
       assert.equal(rejectedReplay.status, 409);
       assert.equal(rejectedReplay.json.error, 'GROUP_EXECUTION_INTERRUPTED');
-      assert.equal(readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).length, 1, 'restart and old-request replay must not spawn a second CLI');
+      assert.equal(readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).length, 2, 'restart and old-request replay must not spawn another CLI');
+      assert.deepEqual(store.groupInteractionRepository().listReplies(interactionId).map(reply => reply.id), originalReplyIds,
+        'restart reconciliation retains the prior owner replies');
     } finally { store.close(); }
 
-    for (const pid of cliPids) {
-      try { process.kill(pid, 'SIGKILL'); } catch { /* ended with the old server */ }
-    }
+    await waitForPidsToExit(cliPids);
     const recoveryUrl = `${base}/interactions/${interactionId}/recover`;
     const recoveryBody = {
       expectedVersion: priorVersion!, expectedOwnerEpoch: ownerEpoch!,
@@ -384,11 +412,12 @@ test('P2 reproduction: a real group speaker invocation remains interrupted after
       responseDrain ?? Promise.resolve(),
       nextSpeakerRequest.then(response => response.text()).catch(() => undefined),
     ]);
-    await waitForLineCount(receipt, 2);
+    await waitForLineCount(receipt, 3);
     const recoveryReceipts = readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).map(row => JSON.parse(row) as { pid: number });
-    assert.equal(recoveryReceipts.length, 2, 'only the linked new round may create one additional provider invocation');
+    assert.equal(recoveryReceipts.length, 3, 'only the linked new round may create one additional provider invocation');
     assert.notEqual(recoveryReceipts[0]!.pid, recoveryReceipts[1]!.pid);
-    cliPids.push(recoveryReceipts[1]!.pid);
+    assert.notEqual(recoveryReceipts[1]!.pid, recoveryReceipts[2]!.pid);
+    cliPids.push(recoveryReceipts[2]!.pid);
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\n${server.output()}`);
   } finally {
