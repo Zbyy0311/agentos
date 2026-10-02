@@ -9,6 +9,7 @@ export type MemoryWorkspaceKnowledgePromotionErrorCode =
   | 'INPUT_INVALID'
   | 'ENTRY_NOT_FOUND'
   | 'ENTRY_NOT_PROMOTABLE'
+  | 'ENTRY_QUARANTINED'
   | 'VERSION_CONFLICT'
   | 'SOURCE_INVALID'
   | 'PROMOTION_FAILED';
@@ -75,6 +76,9 @@ export class MemoryWorkspaceKnowledgePromotionService {
         }
         if (source.status !== 'active' || (source.scope !== 'task' && source.scope !== 'conversation')) {
           throw new MemoryWorkspaceKnowledgePromotionError('ENTRY_NOT_PROMOTABLE');
+        }
+        if (this.hasPendingWrongFeedback(input.workspaceId, source.id, source.version)) {
+          throw new MemoryWorkspaceKnowledgePromotionError('ENTRY_QUARANTINED');
         }
         if (!areMemoryTextFieldsSafe([source.title, source.summary, source.content, ...source.tags])
           || source.sensitivity === 'restricted'
@@ -155,6 +159,23 @@ export class MemoryWorkspaceKnowledgePromotionService {
        ORDER BY sequence DESC LIMIT 1`,
     ).get(workspaceId, entryId) as { id: string } | undefined;
     return row?.id;
+  }
+
+  private hasPendingWrongFeedback(workspaceId: string, entryId: string, entryVersion: number): boolean {
+    const table = this.db.prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_feedback_actions'`,
+    ).get();
+    if (table === undefined) return false;
+    return this.exists(
+      `SELECT 1 FROM memory_feedback_actions a
+       INNER JOIN memory_version_feedback f ON f.id = a.feedback_id
+       WHERE a.workspace_id = ? AND a.entry_id = ? AND a.entry_version = ?
+         AND f.workspace_id = a.workspace_id AND f.entry_id = a.entry_id
+         AND f.entry_version = a.entry_version
+         AND a.action = 'correction' AND a.status = 'pending' AND f.kind = 'wrong'
+       LIMIT 1`,
+      workspaceId, entryId, entryVersion,
+    );
   }
 
   private sourceBelongsToEntry(

@@ -19,6 +19,8 @@ import { RunStageRepository } from '../store/RunStageRepository.js';
 import { TaskRepository } from '../store/TaskRepository.js';
 import { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
+import type { MemoryCandidateDraft, MemoryExtractionInput } from './MemoryExtractor.js';
+import { MemoryExtractor } from './MemoryExtractor.js';
 import {
   MemoryCandidateGenerationService,
   MemoryCandidateGenerationError,
@@ -47,6 +49,7 @@ const RUN = 'run_mf2rg';
 function fixture(
   runStatus = 'completed',
   failure: { readonly code?: string; readonly message?: string } = {},
+  extractor?: Pick<MemoryExtractor, 'extract'>,
 ): {
   db: SqliteDb;
   service: MemoryCandidateGenerationService;
@@ -94,6 +97,7 @@ function fixture(
     stages: new RunStageRepository(tdb as never),
     tasks: new TaskRepository(tdb as never),
     candidates,
+    extractor,
   });
   return { db, service, candidates, entries, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
@@ -101,8 +105,8 @@ function fixture(
 function generatedContent(): string {
   return [
     '任务：修复登录页样式',
-    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。`,
-    'Stage 结果：implement: completed (attempt 1, duration 60000ms)',
+    '',
+    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。\nStage 结果：implement: completed (attempt 1, duration 60000ms)`,
   ].join('\n');
 }
 
@@ -116,7 +120,12 @@ test('MF2R-G1 completed Run generates a review-required Candidate with bounded e
     assert.equal(candidate.outcome, 'review-required'); // agent-derived + conservative gate
     assert.equal(candidate.authority, 'agent-derived'); // never promoted by generated confidence
     assert.equal(candidate.scope, 'task');
-    assert.deepEqual(candidate.sources, [{ kind: 'run', id: RUN }]);
+    assert.deepEqual(candidate.sources, [
+      { kind: 'run', id: RUN },
+      { kind: 'stage', id: 'stage_mf2rg' },
+      { kind: 'task', id: TASK },
+    ]);
+    assert.equal(candidate.category, 'knowledge');
     assert.ok(candidate.title.includes('修复登录页样式'));
     assert.ok(candidate.content.includes('implement: completed'));
     assert.ok(!candidate.content.includes('raw-provider')); // bounded bundle only
@@ -136,6 +145,67 @@ test('MF2R-G2 replay converges on the existing Candidate', () => {
   } finally { fx.close(); }
 });
 
+test('canonical Run reuses MemoryExtractor and caps its exact-source review queue at three', () => {
+  const observed: MemoryExtractionInput[] = [];
+  const extractor = {
+    extract(input: MemoryExtractionInput) {
+      observed.push(input);
+      const drafts: MemoryCandidateDraft[] = [
+        { type: 'overview', title: 'Overview', summary: 'Overview summary.', content: 'Overview content.', confidence: 100, operation: 'create' },
+        { type: 'convention', title: 'Convention', summary: 'Convention summary.', content: 'Convention content.', confidence: 100, operation: 'create' },
+        { type: 'decision', title: 'Decision', summary: 'Decision summary.', content: 'Decision content.', confidence: 100, operation: 'create' },
+        { type: 'experience', title: 'Excess', summary: 'Excess summary.', content: 'Excess content.', confidence: 100, operation: 'create' },
+      ];
+      return { drafts, reason: 'explicit_marker' as const };
+    },
+  };
+  const fx = fixture('completed', {}, extractor);
+  try {
+    const result = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(result.outcome, 'created');
+    assert.deepEqual(result.candidates?.map(candidate => candidate.id), [
+      `mcand_terminal_${RUN}`, `mcand_terminal_${RUN}_2`, `mcand_terminal_${RUN}_3`,
+    ]);
+    assert.equal(fx.candidates.listCandidates(WS).length, 3);
+    assert.ok(result.candidates?.every(candidate => candidate.outcome === 'review-required'
+      && candidate.authority === 'agent-derived' && candidate.confidence < 0.9));
+    assert.deepEqual(observed[0]?.fileChanges, []);
+    assert.deepEqual(observed[0]?.visibleReplies, []);
+    assert.equal(observed[0]?.objective, '修复登录页样式');
+    assert.match(observed[0]?.resultSummary ?? '', new RegExp(RUN));
+    assert.match(observed[0]?.resultSummary ?? '', /implement: completed/);
+    assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'run' && source.id === RUN));
+    assert.ok(result.candidates?.[0]?.sources.some(source => source.kind === 'stage' && source.id === 'stage_mf2rg'));
+  } finally { fx.close(); }
+});
+
+test('consecutive canonical Runs at the same timestamp cannot mix Task or Run evidence', () => {
+  const fx = fixture();
+  try {
+    const otherTask = 'task_mf2rg_next';
+    const otherRun = 'run_mf2rg_next';
+    fx.db.prepare(`INSERT INTO tasks
+      (id, workspace_id, title, status, created_by, created_at, updated_at, version)
+      VALUES (?, ?, ?, 'open', 'test', ?, ?, 1)`).run(otherTask, WS, '修复二阶段消息隔离', NOW, NOW);
+    fx.db.prepare(`INSERT INTO runs
+      (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at, version)
+      VALUES (?, ?, ?, ?, 'completed', 'initial', 'v2_api', 'test', ?, ?, 1)`).run(otherRun, WS, otherTask, otherRun, NOW, NOW);
+
+    const first = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW }).candidate!;
+    const second = fx.service.generateForRunTerminal({ workspaceId: WS, runId: otherRun, createdAt: NOW }).candidate!;
+    assert.match(first.content, new RegExp(RUN));
+    assert.match(first.content, /修复登录页样式/);
+    assert.ok(!first.content.includes(`Run ${otherRun} `));
+    assert.doesNotMatch(first.content, /二阶段消息隔离/);
+    assert.match(second.content, new RegExp(otherRun));
+    assert.match(second.content, /二阶段消息隔离/);
+    assert.ok(!second.content.includes(`Run ${RUN} `));
+    assert.doesNotMatch(second.content, /登录页样式/);
+    assert.deepEqual(first.sources.filter(source => source.kind === 'run'), [{ kind: 'run', id: RUN }]);
+    assert.deepEqual(second.sources.filter(source => source.kind === 'run'), [{ kind: 'run', id: otherRun }]);
+  } finally { fx.close(); }
+});
+
 test('MF2R-G3 exact duplicate content converges with no new Candidate', () => {
   const fx = fixture();
   try {
@@ -144,7 +214,7 @@ test('MF2R-G3 exact duplicate content converges with no new Candidate', () => {
       workspaceId: WS,
       scope: 'task',
       ownerTaskId: TASK,
-      category: 'summary',
+      category: 'knowledge',
       authority: 'system-verified',
       confidence: 0.9,
       importance: 0.5,
@@ -170,7 +240,7 @@ test('MF2R-G4 normalized-hash near-duplicate forces review-required', () => {
       workspaceId: WS,
       scope: 'task',
       ownerTaskId: TASK,
-      category: 'summary',
+      category: 'knowledge',
       authority: 'system-verified',
       confidence: 0.9,
       importance: 0.5,
@@ -196,11 +266,11 @@ test('MF2R-G4b FTS-similar near-duplicate forces review-required', () => {
       workspaceId: WS,
       scope: 'task',
       ownerTaskId: TASK,
-      category: 'summary',
+      category: 'knowledge',
       authority: 'system-verified',
       confidence: 0.9,
       importance: 0.5,
-      title: '执行结果：修复登录页样式',
+      title: '执行经验：修复登录页样式',
       content: '完全不同的正文。',
       status: 'active',
       sources: [{ kind: 'run', id: RUN }],
@@ -227,8 +297,8 @@ for (const [label, overrides] of [
         .run('task_other', WS, 'other', 'open', 'test', NOW, NOW);
       fx.entries.createEntry(Object.assign({
         id: 'mem_dedup_boundary', workspaceId: WS, scope: 'task', ownerTaskId: TASK,
-        category: 'summary', authority: 'system-verified', confidence: 0.9,
-        importance: 0.5, title: '执行结果：修复登录页样式', content: generatedContent(), status: 'active',
+        category: 'knowledge', authority: 'system-verified', confidence: 0.9,
+        importance: 0.5, title: '执行经验：修复登录页样式', content: generatedContent(), status: 'active',
         exactContentHash: hashMemoryText(generatedContent()),
         normalizedTextHash: hashMemoryText(normalizeMemoryText(generatedContent())),
         sources: [{ kind: 'run', id: RUN }], createdAt: NOW,
@@ -247,7 +317,7 @@ test('LITE-07-107 exact terminal dedup adds source once without changing accepte
   try {
     const entry = fx.entries.createEntry({
       id: 'mem_dedup_source', workspaceId: WS, scope: 'task', ownerTaskId: TASK,
-      category: 'summary', authority: 'system-verified', confidence: 0.9,
+      category: 'knowledge', authority: 'system-verified', confidence: 0.9,
       importance: 0.5, title: 'accepted', content: generatedContent(), status: 'active',
       exactContentHash: hashMemoryText(generatedContent()),
       sources: [{ kind: 'task', id: TASK }], createdAt: NOW,
@@ -255,7 +325,9 @@ test('LITE-07-107 exact terminal dedup adds source once without changing accepte
     const input = { workspaceId: WS, runId: RUN, createdAt: '2026-09-12T01:00:00.000Z' };
     assert.equal(fx.service.generateForRunTerminal(input).outcome, 'converged');
     const merged = fx.entries.findById(WS, entry.id)!;
-    assert.deepEqual(merged.sources, [{ kind: 'run', id: RUN }, { kind: 'task', id: TASK }]);
+    assert.deepEqual(merged.sources, [
+      { kind: 'run', id: RUN }, { kind: 'stage', id: 'stage_mf2rg' }, { kind: 'task', id: TASK },
+    ]);
     assert.equal(merged.version, 2);
     assert.equal(merged.updatedAt, input.createdAt);
     assert.equal(merged.content, entry.content);
@@ -288,7 +360,11 @@ test('MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per
     assert.equal(candidate.category, 'failure');
     assert.equal(candidate.authority, 'agent-derived');
     assert.equal(candidate.scope, 'task');
-    assert.deepEqual(candidate.sources, [{ kind: 'run', id: RUN }]);
+    assert.deepEqual(candidate.sources, [
+      { kind: 'run', id: RUN },
+      { kind: 'stage', id: 'stage_mf2rg' },
+      { kind: 'task', id: TASK },
+    ]);
     assert.ok(candidate.title.includes('失败'));
     assert.ok(candidate.content.includes('PROVIDER_SESSION_FAILED'));
     assert.ok(candidate.content.includes('provider exited with code 1'));

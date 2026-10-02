@@ -228,7 +228,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     } catch (error) {
       if (error instanceof MemoryWorkspaceKnowledgePromotionError) {
         const status = error.code === 'ENTRY_NOT_FOUND' ? 404
-          : error.code === 'VERSION_CONFLICT' || error.code === 'ENTRY_NOT_PROMOTABLE' ? 409
+          : error.code === 'VERSION_CONFLICT' || error.code === 'ENTRY_NOT_PROMOTABLE' || error.code === 'ENTRY_QUARANTINED' ? 409
             : error.code === 'INPUT_INVALID' ? 400 : error.code === 'SOURCE_INVALID' ? 422 : 500;
         res.status(status).json({ error: error.code });
         return;

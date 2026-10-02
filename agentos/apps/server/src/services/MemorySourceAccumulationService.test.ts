@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { hashMemoryText, normalizeMemoryText } from './MemoryCandidateGenerationService.js';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -399,18 +400,49 @@ test('workspace promotion creates a separate Entry with validated links, CAS, an
     assert.equal(entries.listEntries(WS, { status: 'all' }).length, 1, 'failed Event append rolls back only the new Entry');
     assert.equal(entries.findById(WS, source.id)?.version, 1);
 
+    const db = store.getDatabase();
+    db.prepare(`INSERT INTO memory_version_feedback
+      (id, workspace_id, entry_id, entry_version, current_entry_version, context_kind, context_id, context_hash, kind, comment, created_at)
+      VALUES (?, ?, ?, 1, 1, 'run', ?, ?, 'wrong', ?, ?)`).run(
+      'feedback-promotion-quarantine', WS, source.id, 'run-promotion-quarantine', 'e'.repeat(64), 'This version is wrong.', NOW,
+    );
+    db.prepare(`INSERT INTO memory_feedback_actions
+      (id, feedback_id, workspace_id, entry_id, entry_version, action, status, version, created_at)
+      VALUES (?, ?, ?, ?, 1, 'correction', 'pending', 1, ?)`).run(
+      'action-promotion-quarantine', 'feedback-promotion-quarantine', WS, source.id, NOW,
+    );
+
     const service = new MemoryWorkspaceKnowledgePromotionService(store, { entries });
-    const promoted = service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW });
+    const eventCountBeforeQuarantine = Number((db.prepare('SELECT COUNT(*) AS count FROM workspace_events').get() as { count: number }).count);
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'ENTRY_QUARANTINED');
+    assert.equal(entries.listEntries(WS, { status: 'all' }).length, 1, 'a pending wrong source version cannot be copied to a fresh workspace Entry');
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM workspace_events').get() as { count: number }).count), eventCountBeforeQuarantine,
+      'quarantine rejection does not append an audit Event');
+
+    const correctedContent = '发布策略已校正：先验证本地证据，再决定是否发布。';
+    db.prepare(`UPDATE memory_entries SET summary = ?, content = ?, exact_content_hash = ?, normalized_text_hash = ?,
+      version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = 1`).run(
+      '当前版本已完成纠正。', correctedContent,
+      hashMemoryText(correctedContent), hashMemoryText(normalizeMemoryText(correctedContent)),
+      '2026-10-02T00:01:00.000Z', WS, source.id,
+    );
+    assert.equal(entries.findById(WS, source.id)?.version, 2);
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW }),
+      (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'VERSION_CONFLICT');
+
+    const promoted = service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 2, promotedAt: NOW });
     assert.equal(promoted.outcome, 'created');
     assert.equal(promoted.entry.scope, 'workspace');
+    assert.equal(promoted.entry.content, correctedContent, 'only the corrected active version is promoted');
     assert.deepEqual(promoted.entry.sources, [
       { kind: 'conversation', id: 'promote-conversation' },
       { kind: 'event', id: sourceEvent.id },
       { kind: 'message', id: 'promote-source-message' },
     ]);
     assert.equal(entries.findById(WS, source.id)?.scope, 'conversation', 'promotion preserves the scoped source Entry');
-    assert.equal(service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW }).outcome, 'existing');
-    assert.throws(() => service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 2, promotedAt: NOW }),
+    assert.equal(service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 2, promotedAt: NOW }).outcome, 'existing');
+    assert.throws(() => service.promote({ workspaceId: WS, entryId: source.id, expectedVersion: 1, promotedAt: NOW }),
       (error: unknown) => error instanceof MemoryWorkspaceKnowledgePromotionError && error.code === 'VERSION_CONFLICT');
 
     const taskEntry = entries.createEntry({
