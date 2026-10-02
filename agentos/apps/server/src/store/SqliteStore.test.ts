@@ -474,7 +474,7 @@ test('records the tombstone schema through MigrationRunner and keeps it after re
     const migrations = store.getDatabase().prepare(
       'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
     ).all() as Array<{ migration_id: string }>;
-    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050']);
+    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051']);
     store.deleteWorkspace('workspace-a');
     store.close();
     store = new SqliteStore(root);
