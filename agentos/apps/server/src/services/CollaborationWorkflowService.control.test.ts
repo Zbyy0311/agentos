@@ -591,7 +591,7 @@ test('P2 recovery permits only linked-task recovery while an unresolved Run rema
     assert.equal(options.actions.newLinkedTask, true, 'persisted uncertainty may create a separately confirmed linked task');
     assert.equal(options.actions.retryKnownFailure, false, 'an active Run with unknown effects is never retryable');
     await assert.rejects(() => fx.service.recover({ ...input, idempotencyKey: 'p2-active-unknown-retry-01', action: 'retry-known-failure' }),
-      error => (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
+      error => (error as { code?: string }).code === 'COLLABORATION_RECOVERY_UNRESOLVED');
 
     const linked = await fx.service.recover(input);
     assert.equal(linked.task.status, 'awaiting_confirmation');
