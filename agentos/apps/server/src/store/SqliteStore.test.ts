@@ -10,8 +10,8 @@ import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createEntityId } from './Identity.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
-import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import type { MigrationContext } from '../migrations/types.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
 
@@ -475,11 +475,9 @@ test('records the tombstone schema through MigrationRunner and keeps it after re
     const migrations = store.getDatabase().prepare(
       'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
     ).all() as Array<{ migration_id: string }>;
-    assert.equal(migrations.length, DEFAULT_REGISTRY_MIGRATIONS.length);
-    assert.deepEqual(
-      migrations.map(row => row.migration_id),
-      DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id),
-    );
+    const appliedMigrationIds = migrations.map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
     store.deleteWorkspace('workspace-a');
     store.close();
     store = new SqliteStore(root);

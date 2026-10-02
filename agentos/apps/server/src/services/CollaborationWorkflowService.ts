@@ -5,6 +5,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import type {
   CollaborationCandidate,
+  CollaborationCandidateSummary,
   CollaborationProgress,
   CollaborationProgressAgent,
   CollaborationProgressEvent,
@@ -34,6 +35,13 @@ import type { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from './TaskRunService.js';
 import type { WorktreeManager } from './WorktreeManager.js';
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
+import { collaborationCandidateContentHash } from './CollaborationCandidateContentHash.js';
+import {
+  buildCollaborationCandidatePreview,
+  buildCollaborationCandidatePreviewFileDiff,
+  type CollaborationCandidatePreview,
+  type CollaborationCandidatePreviewFileDiff,
+} from './CollaborationCandidatePreview.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
 import { captureCollaborationPathBoundary } from './CollaborationPathBoundary.js';
 import { assertCollaborationPathsWithinScope, normalizeCollaborationScope, COLLABORATION_SCOPE_POLICY_VERSION } from './CollaborationScopePolicy.js';
@@ -51,6 +59,27 @@ const MAX_SCOPE_ITEMS = 20;
 const MAX_COMMANDS = 5;
 const MAX_COMMAND_BYTES = 1_000;
 const MAX_TEST_OUTPUT_BYTES = 32 * 1024;
+
+function candidateSummary(candidate: CollaborationCandidate): CollaborationCandidateSummary {
+  return {
+    id: candidate.id,
+    round: candidate.round,
+    diffHash: candidate.diffHash,
+    contentHash: candidate.contentHash ?? collaborationCandidateContentHash({
+      diffHash: candidate.diffHash,
+      snapshotVersion: candidate.snapshotVersion ?? 1,
+      manifestVersion: candidate.manifestVersion ?? 1,
+      manifest: candidate.manifest,
+    }),
+    ...(candidate.snapshotVersion === undefined ? {} : { snapshotVersion: candidate.snapshotVersion }),
+    ...(candidate.manifestVersion === undefined ? {} : { manifestVersion: candidate.manifestVersion }),
+    testStatus: candidate.testStatus,
+    ...(candidate.testCommand === undefined ? {} : { testCommand: candidate.testCommand }),
+    ...(candidate.testExitCode === undefined ? {} : { testExitCode: candidate.testExitCode }),
+    ...(candidate.reviewConclusion === undefined ? {} : { reviewConclusion: candidate.reviewConclusion }),
+    ...(candidate.reviewSummary === undefined ? {} : { reviewSummary: candidate.reviewSummary }),
+  };
+}
 
 export class CollaborationWorkflowError extends Error {
   constructor(readonly code: string, message: string) {
@@ -103,6 +132,10 @@ export interface CollaborationMutationInput {
   readonly collaborationId: string;
   readonly expectedVersion: number;
   readonly idempotencyKey?: string;
+  /** Apply requires all three frozen preview identity fields; other actions omit them. */
+  readonly candidateId?: string;
+  readonly candidateBaseCommit?: string;
+  readonly candidateContentHash?: string;
 }
 
 interface CandidateCapture {
@@ -180,7 +213,7 @@ export class CollaborationWorkflowService {
 
   getDetails(workspaceId: string, collaborationId: string): CollaborationTaskDetails {
     const task = this.withPendingControl(this.requireTask(workspaceId, collaborationId));
-    const candidates = this.repository.listCandidates(workspaceId, collaborationId);
+    const candidates = this.repository.listCandidates(workspaceId, collaborationId).map(candidateSummary);
     return {
       task,
       ...(task.currentCandidateId === undefined ? {} : {
@@ -189,6 +222,56 @@ export class CollaborationWorkflowService {
       candidates,
       reviews: this.repository.listReviews(workspaceId, collaborationId),
     };
+  }
+
+  getCandidatePreview(
+    workspaceId: string,
+    collaborationId: string,
+    candidateId: string,
+    candidateBaseCommit: string,
+    candidateContentHash: string,
+    pagination: { readonly offset: number; readonly limit: number },
+  ): CollaborationCandidatePreview {
+    this.requireWorkspace(workspaceId);
+    const task = this.requireTask(workspaceId, collaborationId);
+    const candidate = this.repository.findCandidate(workspaceId, candidateId);
+    if (!candidate || candidate.collaborationTaskId !== task.id) {
+      throw new CollaborationWorkflowError('COLLABORATION_CANDIDATE_NOT_FOUND', 'Candidate snapshot not found');
+    }
+    this.assertPreviewIdentity(task, candidate, candidateId, candidateBaseCommit, candidateContentHash);
+    return buildCollaborationCandidatePreview(task, candidate, pagination);
+  }
+
+  getCandidatePreviewFileDiff(
+    workspaceId: string,
+    collaborationId: string,
+    candidateId: string,
+    candidateBaseCommit: string,
+    candidateContentHash: string,
+    fileIndex: number,
+  ): CollaborationCandidatePreviewFileDiff {
+    this.requireWorkspace(workspaceId);
+    const task = this.requireTask(workspaceId, collaborationId);
+    const candidate = this.repository.findCandidate(workspaceId, candidateId);
+    if (!candidate || candidate.collaborationTaskId !== task.id) {
+      throw new CollaborationWorkflowError('COLLABORATION_CANDIDATE_NOT_FOUND', 'Candidate snapshot not found');
+    }
+    this.assertPreviewIdentity(task, candidate, candidateId, candidateBaseCommit, candidateContentHash);
+    return buildCollaborationCandidatePreviewFileDiff(task, candidate, fileIndex);
+  }
+
+  private assertPreviewIdentity(
+    task: CollaborationTask,
+    candidate: CollaborationCandidate,
+    candidateId: string,
+    candidateBaseCommit: string,
+    candidateContentHash: string,
+  ): void {
+    if (task.currentCandidateId !== candidateId || candidate.id !== candidateId
+      || candidate.baseCommit !== candidateBaseCommit || task.baseCommit !== candidateBaseCommit
+      || candidate.contentHash !== candidateContentHash || !/^[a-f0-9]{64}$/u.test(candidateContentHash)) {
+      throw new CollaborationWorkflowError('COLLABORATION_CANDIDATE_CHANGED', 'The candidate differs from the frozen preview; refresh before loading it');
+    }
   }
 
   list(workspaceId: string, options: { conversationId?: string; limit?: number; offset?: number } = {}): CollaborationTask[] {
@@ -232,15 +315,7 @@ export class CollaborationWorkflowService {
       ...(runChain.warnings.length === 0 ? {} : { warnings: runChain.warnings }),
       events: events.slice(-80),
       eventCursor: progressRuns.reduce((max, run) => Math.max(max, run.highWatermark), 0),
-      candidates: details.candidates.map(candidate => ({
-        id: candidate.id, round: candidate.round, diffHash: candidate.diffHash,
-        ...(candidate.snapshotVersion === undefined ? {} : { snapshotVersion: candidate.snapshotVersion }),
-        testStatus: candidate.testStatus,
-        ...(candidate.testCommand === undefined ? {} : { testCommand: candidate.testCommand }),
-        ...(candidate.testExitCode === undefined ? {} : { testExitCode: candidate.testExitCode }),
-        ...(candidate.reviewConclusion === undefined ? {} : { reviewConclusion: candidate.reviewConclusion }),
-        ...(candidate.reviewSummary === undefined ? {} : { reviewSummary: candidate.reviewSummary }),
-      })),
+      candidates: details.candidates,
       reviews: details.reviews,
     };
   }
@@ -613,6 +688,11 @@ export class CollaborationWorkflowService {
     }
     const candidate = this.repository.findCandidate(input.workspaceId, task.currentCandidateId);
     if (!candidate) throw new CollaborationWorkflowError('COLLABORATION_CANDIDATE_NOT_FOUND', 'Candidate snapshot not found');
+    if ((input.candidateId !== undefined || input.candidateBaseCommit !== undefined || input.candidateContentHash !== undefined)
+      && (input.candidateId !== candidate.id || input.candidateBaseCommit !== candidate.baseCommit
+        || input.candidateBaseCommit !== task.baseCommit || input.candidateContentHash !== candidate.contentHash)) {
+      throw new CollaborationWorkflowError('COLLABORATION_CANDIDATE_CHANGED', 'The candidate differs from the frozen preview; refresh before applying');
+    }
     this.assertApplicationEvidence(task, candidate);
     if (!this.options.requestApplicationAdmission || !this.options.releaseApplicationAdmission) {
       throw new CollaborationWorkflowError('COLLABORATION_ADMISSION_UNAVAILABLE', '应用写入准入尚不可用，未修改文件');
@@ -1120,9 +1200,11 @@ export class CollaborationWorkflowService {
       || afterTests.patchHash !== snapshot.patchHash
       || afterTests.headCommit !== snapshot.headCommit;
     if (sourceChangedDuringTests) output = `COLLABORATION_TEST_MUTATED_CANDIDATE: acceptance command changed candidate files; review is blocked.\n${output}`;
+    const candidateManifest = new Map<string, CollaborationCandidate['manifest'][number]>(snapshot.untrackedManifest.map(item => [item.path, item]));
+    for (const item of snapshot.binaryManifest) candidateManifest.set(item.path, item);
     const capture: CandidateCapture = {
       headCommit: snapshot.headCommit, diffText: snapshot.patch, diffHash: snapshot.patchHash,
-      manifest: [...snapshot.untrackedManifest],
+      manifest: [...candidateManifest.values()].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0),
       testStatus: exitCode === 0 && !sourceChangedDuringTests ? 'passed' : 'failed',
       testCommand: task.acceptanceCommands.join(' && '), testExitCode: exitCode,
       testOutput: safeOutput(output), sourceChangedDuringTests,
@@ -1135,7 +1217,7 @@ export class CollaborationWorkflowService {
       id: createEntityId('artifact'), collaborationTaskId: task.id, workspaceId: task.workspaceId,
       canonicalRunId: runId, round: task.reworkRound, baseCommit: task.baseCommit,
       headCommit: capture.headCommit, diffHash: capture.diffHash, diffText: capture.diffText,
-      snapshotVersion: 2, manifest: capture.manifest, testStatus: capture.testStatus,
+      snapshotVersion: 2, manifestVersion: 2, manifest: capture.manifest, testStatus: capture.testStatus,
       testCommand: capture.testCommand, testExitCode: capture.testExitCode, testOutput: capture.testOutput,
       status: 'created', createdAt,
         });
