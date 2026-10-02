@@ -6,6 +6,8 @@ import type { TransactionDatabase } from '../store/Transaction.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { migration017 } from '../migrations/migrations/017-mf1-memory-entry-persistence.js';
 import { migration048 } from '../migrations/migrations/048-memory-vectors.js';
+import { migration049 } from '../migrations/migrations/049-memory-lexical-index.js';
+import { MEMORY_RELEVANCE_POLICY } from './MemoryLexicalIndex.js';
 import {
   createQualityGatedEmbeddingPort,
   evaluateAndRecordMemorySemanticQualityReceipt,
@@ -72,6 +74,7 @@ function createReceiptDatabase(): SqliteDatabase {
   db.exec('CREATE TABLE memories (id TEXT PRIMARY KEY)');
   migration017.apply({ db: db as unknown as MinimalDatabaseSync });
   migration048.apply({ db: db as unknown as MinimalDatabaseSync });
+  migration049.apply({ db: db as unknown as MinimalDatabaseSync });
   db.prepare('INSERT INTO workspaces (id) VALUES (?)').run('test-semantic-quality');
   return db;
 }
@@ -83,8 +86,8 @@ function insertTestReceipt(db: SqliteDatabase, corpusHash: string): void {
     `INSERT INTO memory_semantic_quality_receipts
       (workspace_id, model_id, model_version, corpus_hash, evaluated_head,
        baseline_recall, hybrid_recall, baseline_paraphrase_recall,
-       hybrid_paraphrase_recall, no_match_false_positives, query_count, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       hybrid_paraphrase_recall, no_match_false_positives, query_count, created_at,selection_policy)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     MEMORY_SEMANTIC_QUALITY_WORKSPACE_ID,
     'test-only-gated-model',
@@ -95,9 +98,10 @@ function insertTestReceipt(db: SqliteDatabase, corpusHash: string): void {
     0.2,
     0.1,
     0.2,
-    16,
+    0,
     96,
     new Date().toISOString(),
+    MEMORY_RELEVANCE_POLICY,
   );
 }
 
@@ -153,6 +157,11 @@ test('receipt lookup binds the current corpus and exact model identity before an
       'test-only-gated-model',
       'test-only-version',
     ), true);
+    db.prepare('UPDATE memory_semantic_quality_receipts SET selection_policy = NULL').run();
+    assert.equal(requireMemorySemanticQualityReceipt(db, 'test-only-gated-model','test-only-version'),false,'old receipts cannot approve a new selection policy');
+    db.prepare('UPDATE memory_semantic_quality_receipts SET selection_policy = ?, no_match_false_positives = 1').run(MEMORY_RELEVANCE_POLICY);
+    assert.equal(requireMemorySemanticQualityReceipt(db, 'test-only-gated-model','test-only-version'),false,'unrelated injection fails the gate');
+    db.prepare('UPDATE memory_semantic_quality_receipts SET no_match_false_positives = 0').run();
     assert.equal(requireMemorySemanticQualityReceipt(
       db as unknown as TransactionDatabase,
       'test-only-gated-model',

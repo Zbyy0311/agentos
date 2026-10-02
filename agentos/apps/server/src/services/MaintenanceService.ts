@@ -162,6 +162,9 @@ export class MaintenanceService {
   }
 
   async createBackup(options: BackupOptions = {}): Promise<BackupResult> {
+    if (BUILD_IDENTITY.source === 'unavailable' || BUILD_IDENTITY.commit === 'unknown') {
+      throw new MaintenanceServiceError('BACKUP_BUILD_ID_UNAVAILABLE');
+    }
     const now = options.now ?? this.now;
     const signal = options.signal;
     const backupRoot = join(this.dataRoot, '.agentos', 'backups');
@@ -271,7 +274,8 @@ export class MaintenanceService {
   }
 
   static assertMatchingBuild(manifest: MaintenanceBackupManifest): void {
-    if (BUILD_IDENTITY.id === 'unknown' || manifest.buildId === 'unknown') {
+    if (BUILD_IDENTITY.source === 'unavailable' || BUILD_IDENTITY.commit === 'unknown'
+      || BUILD_IDENTITY.id === 'unknown' || manifest.buildId === 'unknown') {
       throw new MaintenanceServiceError('RESTORE_BUILD_ID_UNAVAILABLE');
     }
     if (manifest.buildVersion !== BUILD_IDENTITY.version

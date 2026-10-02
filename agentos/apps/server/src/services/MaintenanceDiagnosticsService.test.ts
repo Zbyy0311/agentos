@@ -52,6 +52,8 @@ test('readiness separates database, migration, recovery, Provider state and main
     assert.equal(report.build.version.length > 0, true);
     assert.equal(report.build.commit.length > 0, true);
     assert.equal(report.build.id.length > 0, true);
+    assert.equal(report.build.source, 'source-checkout');
+    assert.equal(report.build.verified, false, 'tsx source mode is explicitly distinguished from a stamped release build');
     assert.equal(JSON.stringify(report).includes('sk-test-secret'), false);
     assert.equal(JSON.stringify(report).includes('private\\secret-cli.exe'), false);
 

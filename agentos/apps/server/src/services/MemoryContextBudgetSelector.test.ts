@@ -336,7 +336,8 @@ test('LITE-07-013 MF4B-14 the snapshot records whether FTS ranking was degraded'
       retrieval: { context: { workspaceId: WS, taskId: TASK, runId: RUN }, query: degradedQuery },
     }));
     assert.equal(persisted.snapshot.retrievalDegraded, true);
-    assert.equal(persisted.snapshot.selected.length, 1, "the structured ranking still produced a selection");
+    assert.equal(persisted.snapshot.selected.length, 0, "invalid query must not inject an unrelated entry");
+    assert.equal(persisted.snapshot.exclusions[0]?.reason, 'no-relevance');
     const reloaded = fx.snapshots.findById(WS, SNAP + "e");
     assert.equal(reloaded?.retrievalDegraded, true, "the flag round-trips through the store");
   } finally { fx.close(); }

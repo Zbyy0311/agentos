@@ -11,6 +11,7 @@ import { MaintenanceBarrier } from './MaintenanceBarrier.js';
 import { MaintenanceCoordinator } from './MaintenanceCoordinator.js';
 import { MaintenanceService } from './MaintenanceService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import express from 'express';
 import { createMaintenanceRoutes } from '../routes/maintenance.js';
@@ -143,7 +144,7 @@ test('online backup drains writes and active executions, then restores SQLite ca
     const originalMemoryBytes = readFileSync(originalMemoryPath);
     const originalMemoryMtime = statSync(originalMemoryPath).mtimeMs;
     const restored = await MaintenanceService.restoreBackup(backupPath, restoredRoot);
-    assert.equal(restored.schemaVersion, '048');
+    assert.equal(restored.schemaVersion, DEFAULT_REGISTRY_MIGRATIONS.at(-1)?.id);
     assert.equal(restored.dataRoot, restoredRoot);
     assert.equal(completed.result.manifest.buildVersion.length > 0, true);
     assert.equal(completed.result.manifest.buildCommit.length > 0, true);

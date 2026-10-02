@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "manifestId": "agentos-existing-project-acceptance-v2",
+  "status": "contract-only",
+  "description": "Version 2 requires separate defect and feature scenarios, per-scenario frozen candidates, review-request/revision/approval history, and hashed retest/preview/apply command artifacts. Receipts remain incomplete until a trusted attestation verifier exists; this manifest is not evidence that acceptance ran.",
+  "modes": {
+    "simulated-provider": {
+      "providerExecution": "simulated",
+      "platform": "any",
+      "credentialBoundary": "none"
+    },
+    "real-windows-acceptance": {
+      "providerExecution": "real",
+      "platform": "win32",
+      "credentialBoundary": "operator-managed-outside-ci"
+    }
+  },
+  "receiptRequirements": {
+    "repositoryCommitSha": "full-40-character-git-sha",
+    "repositoryTreeSha": "full-40-character-git-sha",
+    "actualCheckoutMustMatchExpectedSha": true,
+    "immutableRepositorySnapshot": true,
+    "modelFields": ["provider", "id"],
+    "processExitCode": 0,
+    "acceptanceExitCode": 0,
+    "candidate": {
+      "artifactPath": "tracked-regular-repository-file",
+      "hashAlgorithm": "sha256-file-bytes-matching-git-tree-blob",
+      "hashFormat": "64-character-lowercase-hex"
+    },
+    "evidenceArtifacts": {
+      "artifactPath": "repository-relative-worktree-file",
+      "hashAlgorithm": "sha256-file-bytes",
+      "mustBeCommittedBeforeExecution": false
+    },
+    "scenarios": {
+      "exactKinds": ["defect", "feature"],
+      "exactCount": 2,
+      "requiredIdentityFields": ["projectId", "taskId", "runId", "candidateId"],
+      "uniqueAcrossScenarios": ["taskId", "runId", "candidateId"],
+      "requiredRoles": ["planner", "implementer", "reviewer"],
+      "uniqueRoleIds": true,
+      "uniqueReviewEventIds": true,
+      "status": "passed",
+      "reviewTransitions": ["changes-requested", "revision-submitted", "approved"],
+      "requiredCommandStages": ["retest", "preview", "apply"],
+      "successfulExitCode": 0,
+      "commandArtifactFields": ["schemaVersion", "kind", "scenarioId", "stage", "commandId", "argv", "cwd", "rawExitCode", "expectedExitCode", "frozenCandidateSha256", "stdout", "stderr", "stageResult", "startedAt", "finishedAt"]
+    },
+    "trust": {
+      "receiptSignature": "not-configured",
+      "acceptanceVerdict": "incomplete-until-trusted-attestation"
+    }
+  }
+}
