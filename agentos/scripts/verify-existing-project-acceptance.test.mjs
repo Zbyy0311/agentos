@@ -7,9 +7,15 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
-  acceptanceCodexArguments, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
+  acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
 } from './verify-existing-project-acceptance.mjs';
+
+test('real multistage acceptance has a bounded total and a separate durable-progress timeout', () => {
+  assert.deepEqual(acceptanceWaitBudget('real-windows-acceptance'), { totalMs: 3_600_000, idleMs: 600_000 });
+  assert.deepEqual(acceptanceWaitBudget('simulated-provider'), { totalMs: 240_000, idleMs: 120_000 });
+  assert.throws(() => acceptanceWaitBudget('unknown'), /unsupported acceptance mode/u);
+});
 
 test('real acceptance grants workspace writes only to the implementer role', () => {
   assert.deepEqual(acceptanceCodexArguments('simulated-provider', ['read', 'write']), ['exec']);

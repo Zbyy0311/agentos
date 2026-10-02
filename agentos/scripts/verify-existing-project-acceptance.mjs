@@ -23,6 +23,15 @@ const shaPattern = /^[0-9a-f]{40}$/i;
 const hashPattern = /^[0-9a-f]{64}$/;
 const secretKeyPattern = /(?:API[_-]?KEY|ACCESS[_-]?TOKEN|AUTH(?:ORIZATION)?|PASSWORD|SECRET|CREDENTIAL)/i;
 
+export function acceptanceWaitBudget(mode) {
+  invariant(['simulated-provider', 'real-windows-acceptance'].includes(mode), 'unsupported acceptance mode');
+  // Independent planning, implementation, review and rework calls need a total
+  // bound that still stops a silent stage before it consumes the whole hour.
+  return mode === 'real-windows-acceptance'
+    ? { totalMs: 3_600_000, idleMs: 600_000 }
+    : { totalMs: 240_000, idleMs: 120_000 };
+}
+
 function invariant(ok, message) { if (!ok) throw new Error(message); }
 function sha256(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
 function hashFile(path) { return sha256(readFileSync(path)); }
@@ -645,7 +654,7 @@ async function configureWorkspace(baseUrl, workspaceId, mode, model, executable)
   for (const [agent, role, permissions] of roleConfig) {
     const systemPrompt = mode === 'simulated-provider'
       ? `P4_ACCEPTANCE_SIM_ROLE=${role}\nYou are the ${role}. Stay within the approved plan and report concrete evidence.`
-      : `You are the ${role} in a bounded existing-project acceptance run. Follow the user's concrete plan, keep changes within scope, and report evidence.`;
+      : `You are the ${role} in a bounded existing-project acceptance run. Follow the user's concrete plan, keep changes within scope, and report evidence. Inspect only the approved scope and the frozen candidate/test evidence provided in this call. Do not scan repository documentation, historical receipts, personal memories or other workspaces for task identifiers. Keep planning and review concise. A read-only stage can run git with a per-command safe.directory for the exact current worktree if needed; never change global Git configuration. Do not fabricate findings or review transitions.`;
     await api(baseUrl, `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agent.id)}`, {
       method: 'PATCH', body: { permissions, systemPrompt },
     });
@@ -669,10 +678,18 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const workspaceId = workspace.body.workspace.id;
   recordProgress(evidenceRoot, plan.kind, { event: 'workspace-created', workspaceId });
   const agents = await configureWorkspace(server.baseUrl, workspaceId, mode, model, executable);
+  const conversation = await api(server.baseUrl, `/api/workspaces/${encodeURIComponent(workspaceId)}/runtime/conversations`, {
+    method: 'POST', timeoutMs: 120_000,
+    body: { kind: 'group', title: plan.title, replyMode: 'sequential',
+      memberAgentIds: [agents.planner.id, agents.implementer.id, agents.reviewer.id] },
+  });
+  invariant(conversation.body.conversation?.id, `${plan.kind} canonical group conversation was not created`);
+  const conversationId = conversation.body.conversation.id;
+  recordProgress(evidenceRoot, plan.kind, { event: 'conversation-created', workspaceId, conversationId });
   const base = `/api/workspaces/${encodeURIComponent(workspaceId)}/collaboration/tasks`;
   const created = await api(server.baseUrl, base, {
     method: 'POST', timeoutMs: 120_000, body: {
-      title: plan.title, objective: plan.objective, scope: plan.scope, acceptanceCommands: plan.acceptanceCommands,
+      title: plan.title, objective: plan.objective, scope: plan.scope, acceptanceCommands: plan.acceptanceCommands, conversationId,
       plannerAgentId: agents.planner.id, implementerAgentId: agents.implementer.id, reviewerAgentId: agents.reviewer.id,
       maxReworkRounds: 1,
     },
@@ -705,7 +722,9 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: run confirmed; awaiting review/revision`);
   recordProgress(evidenceRoot, plan.kind, { event: 'run-confirmed', taskId,
     runId: task.canonicalRunId ?? null });
-  const deadline = Date.now() + (mode === 'real-windows-acceptance' ? 900_000 : 240_000);
+  const waitBudget = acceptanceWaitBudget(mode);
+  const deadline = Date.now() + waitBudget.totalMs;
+  let lastProgressAt = Date.now();
   let details;
   let lastObserved;
   let lastProgressSignature;
@@ -728,6 +747,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     };
     const signature = JSON.stringify(lastObserved);
     if (signature !== lastProgressSignature) {
+      lastProgressAt = Date.now();
       console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: ${JSON.stringify(lastObserved)}`);
       recordProgress(evidenceRoot, plan.kind, { event: 'runtime-progress', ...lastObserved });
       lastProgressSignature = signature;
@@ -740,9 +760,11 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
       details = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}`);
       break;
     }
+    invariant(Date.now() - lastProgressAt < waitBudget.idleMs,
+      `${plan.kind} collaboration made no durable progress for ${waitBudget.idleMs / 1000}s; last observed ${signature}`);
     await delay(500);
   }
-  invariant(details, `${plan.kind} collaboration exceeded its ${mode === 'real-windows-acceptance' ? 900 : 240}s bound; last observed ${JSON.stringify(lastObserved ?? { taskStatus: task.status })}`);
+  invariant(details, `${plan.kind} collaboration exceeded its ${waitBudget.totalMs / 1000}s bound; last observed ${JSON.stringify(lastObserved ?? { taskStatus: task.status })}`);
   invariant(task.status === 'awaiting_application', `${plan.kind} task did not reach approved application state: ${task.status}; ${safeText(task.failureReason || '')}`);
   const candidates = loadOwnedFrozenCandidates(server.databasePath, workspaceId, taskId, details.body.candidates);
   const reviews = details.body.reviews.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
