@@ -42,7 +42,7 @@ export class MemoryCandidateService {
     const sourceMessage = this.store.getMessage(input.workspaceId, run.sourceMessageId);
     if (!sourceMessage) throw new Error('Run source message not found');
     const visibleReplies = this.store.listMessages(input.workspaceId, run.conversationId, 1000)
-      .filter(message => message.id !== sourceMessage.id && message.createdAt >= sourceMessage.createdAt && message.senderType !== 'user')
+      .filter(message => message.id !== sourceMessage.id && message.runId === run.id && message.senderType !== 'user')
       .map(message => message.content);
     const extractionInput: MemoryExtractionInput = {
       objective: sourceMessage.content,

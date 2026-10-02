@@ -279,6 +279,8 @@ async function bootstrap(): Promise<void> {
       taskRunService,
       store.lifecycleTransactionService(),
       store.operationService(),
+      undefined,
+      providerExecutionChain.terminalCandidateGeneratorWithFacts,
     );
     const outboxPublisher = store.createOutboxPublisher({
       workerId: `server:${serverInstanceId}`,

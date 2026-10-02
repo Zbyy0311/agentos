@@ -78,6 +78,17 @@ export interface MemoryFactEmissionResult<TRecord> {
   readonly additionalEvents?: readonly { readonly eventId: string; readonly outboxId: string }[];
 }
 
+export interface TerminalMemoryDeduplicationPlan {
+  readonly merge: MergeExactMemorySourcesInput;
+  readonly fallbackCandidate: CreateMemoryCandidateInput;
+}
+
+export interface TerminalMemoryGenerationEmission {
+  readonly candidates: readonly MemoryCandidateRecord[];
+  readonly deduplicatedEntries: readonly MemoryEntryRecord[];
+  readonly eventIds: readonly string[];
+}
+
 interface RunScope {
   readonly runId: string;
   readonly eventContext: AuthorizedRuntimeEventContextV1;
@@ -202,6 +213,126 @@ export class MemoryRuntimeEventEmitter {
         },
       };
     }, scope, afterPersist);
+  }
+
+  /**
+   * Atomically persists the bounded Candidate set for one canonical terminal
+   * Run, including exact-source convergence, Runtime Events, and Outbox rows.
+   * If an exact Entry stops being eligible between lookup and write, its paired
+   * fallback Candidate is created inside the same transaction.
+   */
+  emitTerminalMemoryGeneration(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly eventContext: RuntimeEventContextAuthoritySourceV1;
+    readonly timestamp: string;
+    readonly candidates: readonly CreateMemoryCandidateInput[];
+    readonly deduplications: readonly TerminalMemoryDeduplicationPlan[];
+  }): TerminalMemoryGenerationEmission {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.runId) || !nonBlank(input.timestamp)
+      || !Array.isArray(input.candidates) || !Array.isArray(input.deduplications)
+      || input.candidates.length + input.deduplications.length < 1
+      || input.candidates.length + input.deduplications.length > 3) {
+      throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    }
+    const candidateInputs: CreateMemoryCandidateInput[] = [
+      ...input.candidates,
+      ...input.deduplications.map((plan: TerminalMemoryDeduplicationPlan) => plan.fallbackCandidate),
+    ];
+    const candidateIds = new Set<string>();
+    for (const candidate of candidateInputs) {
+      if (candidate.workspaceId !== input.workspaceId || candidate.scope !== 'task'
+        || !candidate.ownerTaskId || !candidate.sources.some(source => source.kind === 'run' && source.id === input.runId)
+        || candidateIds.has(candidate.id)) {
+        throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+      }
+      candidateIds.add(candidate.id);
+    }
+    for (const plan of input.deduplications as readonly TerminalMemoryDeduplicationPlan[]) {
+      if (plan.merge.workspaceId !== input.workspaceId || plan.merge.scope !== 'task'
+        || plan.merge.ownerTaskId !== plan.fallbackCandidate.ownerTaskId
+        || plan.merge.exactContentHash !== plan.fallbackCandidate.exactContentHash
+        || !plan.merge.sources.some(source => source.kind === 'run' && source.id === input.runId)) {
+        throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+      }
+    }
+    const scope = this.resolveScope(input);
+    try {
+      return inTransaction(this.db, () => {
+        this.assertAuthorityOriginProven(input.workspaceId, scope.runId, scope.eventContext);
+        const run = this.db.prepare(
+          'SELECT task_id, status FROM runs WHERE workspace_id = ? AND id = ?',
+        ).get(input.workspaceId, input.runId) as { task_id: string; status: string } | undefined;
+        if (!run || !['completed', 'failed', 'cancelled'].includes(run.status)
+          || candidateInputs.some(candidate => candidate.ownerTaskId !== run.task_id)) {
+          throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+        }
+        for (const source of candidateInputs.flatMap(candidate => candidate.sources)) {
+          const belongsToRun = source.kind === 'run'
+            ? source.id === input.runId
+            : source.kind === 'task'
+              ? source.id === run.task_id && this.db.prepare(
+                'SELECT 1 FROM tasks WHERE workspace_id = ? AND id = ?',
+              ).get(input.workspaceId, source.id) !== undefined
+            : source.kind === 'stage' && this.db.prepare(
+              'SELECT 1 FROM run_stages WHERE workspace_id = ? AND run_id = ? AND id = ?',
+            ).get(input.workspaceId, input.runId, source.id) !== undefined;
+          if (!belongsToRun) throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+        }
+
+        const records: MemoryCandidateRecord[] = [];
+        const deduplicatedEntries: MemoryEntryRecord[] = [];
+        const facts: Array<{ readonly type: string; readonly payload: Record<string, unknown> }> = [];
+        for (const plan of input.deduplications) {
+          const merged = this.entries.mergeExactSourcesWithinTransaction(plan.merge);
+          if (merged === undefined) {
+            const record = this.candidates.createCandidateWithinTransaction(plan.fallbackCandidate);
+            records.push(record);
+            facts.push({
+              type: 'memory.candidate_created',
+              payload: {
+                candidateId: record.id,
+                scope: record.scope,
+                category: record.category,
+                authority: record.authority,
+                decision: record.decision ?? 'review-required',
+              },
+            });
+            if (record.mergedIntoEntryId !== null) {
+              const entry = this.entries.findById(record.workspaceId, record.mergedIntoEntryId);
+              if (!entry) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+              facts.push({ type: 'memory.entry_created', payload: entryPayload(entry) });
+            }
+          } else {
+            deduplicatedEntries.push(merged.record);
+            if (merged.changed) facts.push({ type: 'memory.entry_deduplicated', payload: entryPayload(merged.record) });
+          }
+        }
+        for (const candidate of input.candidates) {
+          const record = this.candidates.createCandidateWithinTransaction(candidate);
+          records.push(record);
+          facts.push(...candidateEventFacts(record, this.entries));
+        }
+
+        const eventIds: string[] = [];
+        for (const fact of facts) {
+          const emitted = this.writer.appendWithinTransaction({
+            type: fact.type,
+            workspaceId: input.workspaceId,
+            runId: scope.runId,
+            timestamp: scope.timestamp,
+            source: 'memory-engine',
+            eventContext: scope.eventContext,
+            payload: fact.payload,
+          });
+          eventIds.push(emitted.event.id);
+        }
+        return { candidates: records, deduplicatedEntries, eventIds };
+      });
+    } catch (error) {
+      if (error instanceof MemoryRuntimeEventEmissionError) throw error;
+      throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+    }
   }
 
   /** S2: emit only the Candidate bound to this actual canonical completion. */
@@ -507,6 +638,28 @@ function entryPayload(record: MemoryEntryRecord): Record<string, unknown> {
     category: record.category,
     authority: record.authority,
   };
+}
+
+function candidateEventFacts(
+  record: MemoryCandidateRecord,
+  entries: MemoryEntryRepository,
+): Array<{ readonly type: string; readonly payload: Record<string, unknown> }> {
+  const facts: Array<{ readonly type: string; readonly payload: Record<string, unknown> }> = [{
+    type: 'memory.candidate_created',
+    payload: {
+      candidateId: record.id,
+      scope: record.scope,
+      category: record.category,
+      authority: record.authority,
+      decision: record.decision ?? 'review-required',
+    },
+  }];
+  if (record.mergedIntoEntryId !== null) {
+    const entry = entries.findById(record.workspaceId, record.mergedIntoEntryId);
+    if (entry === undefined) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+    facts.push({ type: 'memory.entry_created', payload: entryPayload(entry) });
+  }
+  return facts;
 }
 
 function conflictPayload(record: MemoryConflictRecord): Record<string, unknown> {
