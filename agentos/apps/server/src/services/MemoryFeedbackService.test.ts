@@ -6,6 +6,7 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import { migration047 } from '../migrations/migrations/047-memory-version-feedback.js';
 import { migration050 } from '../migrations/migrations/050-memory-feedback-resolutions.js';
+import { migration051 } from '../migrations/migrations/051-memory-feedback-resolver-actor.js';
 import { ConversationRepository } from '../store/ConversationRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
@@ -47,14 +48,18 @@ const BUDGET = {
   requireDiversity: false,
 };
 
-function fixture(authority: 'user-explicit' | 'system-verified' = 'user-explicit') {
+function fixture(authority: 'user-explicit' | 'system-verified' = 'user-explicit', includeActorMigration = true) {
   const db = new DatabaseSync(':memory:');
   db.prepare('PRAGMA foreign_keys = ON').run();
   const migrationDb = db as unknown as MinimalDatabaseSync;
-  for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: migrationDb });
+  for (const migration of DEFAULT_REGISTRY_MIGRATIONS) {
+    if (migration.id === '051' && !includeActorMigration) continue;
+    migration.apply({ db: migrationDb });
+  }
   migration047.apply({ db: migrationDb });
   migration047.apply({ db: migrationDb });
   migration050.apply({ db: migrationDb });
+  if (includeActorMigration) migration051.apply({ db: migrationDb });
   for (const workspaceId of [WS, OTHER_WS, 'ws_memory_feedback_origin']) {
     db.prepare(`INSERT INTO workspaces (
       id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at
@@ -347,6 +352,81 @@ test('confirmed global Entry selected cross-workspace accepts versioned feedback
   } finally { fx.close(); }
 });
 
+test('global Entry owner resolves consumer correction, archive, and revalidation with actor audit and atomic rollback', () => {
+  const owner = 'ws_memory_feedback_origin';
+  for (const resolution of ['corrected', 'archived', 'revalidated'] as const) {
+    const fx = fixture();
+    try {
+      const globalId = `memory_feedback_global_${resolution}`;
+      addConfirmedGlobalPreference(fx, globalId);
+      freezeRunAndStage(fx, [globalId]);
+      const report = fx.service.add(WS, contextRequest('run', 'feedback_run_context', 'wrong', 1, globalId));
+      assert.ok(report.action);
+      assert.equal(fx.service.list(owner).find(item => item.id === report.id)?.action?.workspaceId, WS);
+
+      const change = resolution === 'corrected' ? {
+        expectedActionVersion: 1,
+        expectedEntryVersion: 1,
+        resolution,
+        conclusion: 'Owner reviewed and corrected the shared preference.',
+        evidence: 'The canonical owner verified the updated operating procedure.',
+        correctedEntry: { title: 'Corrected global preference', content: 'Use the reviewed owner procedure.' },
+      } as const : {
+        expectedActionVersion: 1,
+        expectedEntryVersion: 1,
+        resolution,
+        conclusion: `Owner reviewed and ${resolution} the shared preference.`,
+        evidence: 'The canonical owner checked the cited procedure and its current validity.',
+      } as const;
+      assert.throws(() => fx.service.applyAction(WS, report.action!.id, change, () => undefined),
+        /MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED/);
+      assert.throws(() => fx.service.applyAction(owner, report.action!.id,
+        { ...change, expectedEntryVersion: 2 }, () => undefined), /MEMORY_FEEDBACK_ENTRY_VERSION_CONFLICT/);
+      assert.equal(fx.entries.findById(owner, globalId)?.version, 1);
+      assert.equal(count(fx.db, 'memory_feedback_action_resolutions'), 0);
+
+      assert.throws(() => fx.service.applyAction(owner, report.action!.id, change,
+        () => { throw new Error('injected owner event failure'); }), /injected owner event failure/);
+      assert.equal(fx.entries.findById(owner, globalId)?.version, 1, 'failed owner event rolls back the Entry CAS');
+      assert.equal((fx.db.prepare('SELECT status,version,resolved_by_workspace_id FROM memory_feedback_actions WHERE id=?')
+        .get(report.action!.id) as { status: string; version: number; resolved_by_workspace_id: string | null }).status, 'pending');
+      assert.equal(count(fx.db, 'memory_lifecycle_actions'), 0);
+      assert.equal(count(fx.db, 'memory_feedback_action_resolutions'), 0);
+      assert.equal(count(fx.db, 'memory_feedback_action_audit'), 0);
+
+      const applied = fx.service.applyAction(owner, report.action.id, change, () => undefined);
+      assert.equal(applied.entry.version, 2);
+      assert.equal(applied.entry.workspaceId, owner);
+      assert.equal(applied.action.workspaceId, WS, 'processing never rewrites the reporting workspace');
+      assert.equal(applied.action.resolvedByWorkspaceId, owner);
+      assert.equal(applied.action.resolution?.resolverWorkspaceId, owner);
+      assert.equal(applied.action.resolution?.resolvedEntryVersion, 2);
+      assert.equal(new MemoryContextSnapshotRepository(fx.tx).readContextText(WS, 'feedback_run_context'), BODY_V1);
+      assert.equal(new MemoryContextSnapshotRepository(fx.tx).findById(WS, 'feedback_run_context')?.selected[0]?.memoryVersion, 1);
+
+      const stored = fx.db.prepare(`SELECT a.workspace_id AS reporter, a.resolved_by_workspace_id AS actor,
+          r.workspace_id AS resolution_reporter, r.resolver_workspace_id AS resolver,
+          u.workspace_id AS lifecycle_owner, h.workspace_id AS audit_reporter, h.actor_workspace_id AS audit_actor
+        FROM memory_feedback_actions a
+        JOIN memory_feedback_action_resolutions r ON r.action_id=a.id
+        JOIN memory_lifecycle_actions u ON u.entry_id=a.entry_id AND u.to_version=2
+        JOIN memory_feedback_action_audit h ON h.action_id=a.id
+        WHERE a.id=?`).get(report.action.id) as {
+          reporter: string; actor: string; resolution_reporter: string; resolver: string;
+          lifecycle_owner: string; audit_reporter: string; audit_actor: string;
+        };
+      assert.deepEqual([
+        stored.reporter, stored.actor, stored.resolution_reporter, stored.resolver,
+        stored.lifecycle_owner, stored.audit_reporter, stored.audit_actor,
+      ], [WS, owner, WS, owner, owner, WS, owner]);
+      assert.equal(Number((fx.db.prepare('SELECT COUNT(*) AS count FROM memory_feedback_action_audit WHERE action_id=?')
+        .get(report.action.id) as { count: number }).count), 1, 'the transition has one actor audit row');
+      assert.throws(() => fx.service.applyAction(owner, report.action!.id, change, () => undefined),
+        /MEMORY_FEEDBACK_VERSION_CONFLICT/);
+    } finally { fx.close(); }
+  }
+});
+
 test('memory-relevance.v2 quarantines exact wrong versions across authorized global scopes until every pending action is rejected', () => {
   const fx = fixture();
   try {
@@ -391,9 +471,27 @@ test('memory-relevance.v2 quarantines exact wrong versions across authorized glo
     assert.ok(!selectedIds(OTHER_WS).includes(globalId), 'authorized consumers of a shared global Entry also quarantine v2');
     assert.ok(selectedIds(WS).includes(workspaceId), 'quarantine leaves a different workspace-scoped Entry available');
 
-    fx.service.resolveAction(WS, firstCurrent.action!.id, 1, 'rejected');
+    assert.throws(() => fx.service.resolveAction(WS, firstCurrent.action!.id, 1, 'rejected'),
+      /MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED/);
+    assert.throws(() => fx.service.resolveAction(OTHER_WS, firstCurrent.action!.id, 1, 'rejected'),
+      /MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED/);
+    assert.equal(fx.service.list(OTHER_WS).some(item => item.id === firstCurrent.id), false,
+      'a workspace that does not own the global Entry cannot list another consumer report');
+
+    const owner = 'ws_memory_feedback_origin';
+    const ownerReport = fx.service.list(owner).find(item => item.id === firstCurrent.id);
+    assert.equal(ownerReport?.action?.workspaceId, WS, 'owner list retains the reporter workspace on the action');
+    const rejectedFirst = fx.service.resolveAction(owner, firstCurrent.action!.id, 1, 'rejected');
+    assert.equal(rejectedFirst.workspaceId, WS);
+    assert.equal(rejectedFirst.resolvedByWorkspaceId, owner);
+    const firstAudit = fx.db.prepare(`SELECT workspace_id,actor_workspace_id,to_status
+      FROM memory_feedback_action_audit WHERE action_id=?`).get(firstCurrent.action!.id) as {
+        workspace_id: string; actor_workspace_id: string; to_status: string;
+      };
+    assert.deepEqual([firstAudit.workspace_id, firstAudit.actor_workspace_id, firstAudit.to_status],
+      [WS, owner, 'rejected']);
     assert.ok(!selectedIds(WS).includes(globalId), 'one rejection cannot clear another pending report for the same version');
-    fx.service.resolveAction(WS, secondCurrent.action!.id, 1, 'rejected');
+    fx.service.resolveAction(owner, secondCurrent.action!.id, 1, 'rejected');
     assert.ok(selectedIds(WS).includes(globalId), 'rejecting every current-version report releases v2');
     assert.ok(selectedIds(OTHER_WS).includes(globalId), 'the shared v2 is released for other authorized workspaces too');
     assert.equal(fx.entries.findById(origin, globalId)?.version, 2);
@@ -575,6 +673,41 @@ test('failed Entry-change event rolls back correction, lifecycle, resolution, an
   } finally { fx.close(); }
 });
 
+test('migration 051 preserves unknown actor provenance on historical resolved action and audit rows', () => {
+  const fx = fixture('user-explicit', false);
+  try {
+    const feedbackId = 'legacy_feedback_without_actor';
+    const actionId = 'legacy_action_without_actor';
+    fx.db.prepare(`INSERT INTO memory_version_feedback (
+      id,workspace_id,entry_id,entry_version,current_entry_version,context_kind,context_id,context_hash,
+      kind,comment,created_at
+    ) VALUES (?,?,?,?,?,'run','legacy-context',?,'wrong','',?)`)
+      .run(feedbackId, WS, ENTRY, 1, 1, 'c'.repeat(64), NOW);
+    fx.db.prepare(`INSERT INTO memory_feedback_actions (
+      id,feedback_id,workspace_id,entry_id,entry_version,action,status,version,created_at
+    ) VALUES (?,?,?,?,?,'correction','pending',1,?)`)
+      .run(actionId, feedbackId, WS, ENTRY, 1, NOW);
+    fx.db.prepare(`UPDATE memory_feedback_actions SET status='rejected',version=2 WHERE id=?`).run(actionId);
+    fx.db.prepare(`INSERT INTO memory_feedback_action_audit (
+      id,action_id,feedback_id,workspace_id,entry_id,entry_version,action,from_status,to_status,
+      expected_version,version,occurred_at
+    ) VALUES (?,?,?,?,?,?,'correction','pending','rejected',1,2,?)`)
+      .run('legacy_audit_without_actor', actionId, feedbackId, WS, ENTRY, 1, NOW);
+
+    migration051.apply({ db: fx.db as unknown as MinimalDatabaseSync });
+    migration051.apply({ db: fx.db as unknown as MinimalDatabaseSync });
+    const stored = fx.db.prepare(`SELECT a.resolved_by_workspace_id,audit.actor_workspace_id
+      FROM memory_feedback_actions a
+      JOIN memory_feedback_action_audit audit ON audit.action_id=a.id WHERE a.id=?`).get(actionId) as {
+        resolved_by_workspace_id: string | null; actor_workspace_id: string | null;
+      };
+    assert.deepEqual([stored.resolved_by_workspace_id, stored.actor_workspace_id], [null, null]);
+    const dto = fx.service.list(WS).find(item => item.id === feedbackId)?.action;
+    assert.equal(dto?.resolvedByWorkspaceId, null);
+    assert.equal(dto?.resolution, null);
+  } finally { fx.close(); }
+});
+
 test('migration 050 can be reapplied without duplicating schema or restoring the weaker 047 resolution guard', () => {
   const fx = fixture();
   try {
@@ -582,10 +715,13 @@ test('migration 050 can be reapplied without duplicating schema or restoring the
       WHERE name IN ('memory_feedback_action_resolutions','memory_feedback_actions_quarantine','memory_feedback_action_resolutions_workspace',
         'memory_feedback_actions_transition_guard','memory_feedback_action_audit_validate',
         'memory_feedback_action_resolutions_validate','memory_feedback_action_resolutions_immutable',
-        'memory_feedback_action_resolutions_no_delete')`).get() as { count: number }).count);
+        'memory_feedback_action_resolutions_no_delete','memory_feedback_actions_record_audit',
+        'memory_feedback_actions_insert_guard')`).get() as { count: number }).count);
     const before = countSchemaObjects();
     migration050.apply({ db: fx.db as unknown as MinimalDatabaseSync });
     migration050.apply({ db: fx.db as unknown as MinimalDatabaseSync });
+    migration051.apply({ db: fx.db as unknown as MinimalDatabaseSync });
+    migration051.apply({ db: fx.db as unknown as MinimalDatabaseSync });
     assert.equal(countSchemaObjects(), before);
 
     freezeRunAndStage(fx);

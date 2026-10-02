@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   MemoryContextOwnerKind,
+  MemoryFeedbackActionDtoV1,
   MemoryFeedbackActionApplyRequestV1,
+  MemoryFeedbackResolutionDtoV1,
   MemoryFeedbackResolutionKindV1,
+  MemoryVersionFeedbackDtoV1,
   MemoryVersionFeedbackRequestV1,
 } from '@agentos/shared';
 import { MemoryEntryRepository, type MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
@@ -17,45 +20,10 @@ export type MemoryFeedbackKind = 'helpful' | 'wrong' | 'outdated';
 export type MemoryFeedbackActionKind = 'correction' | 'revalidation';
 export type MemoryFeedbackActionStatus = 'pending' | 'resolved' | 'rejected';
 
-export interface MemoryFeedbackResolutionDto {
-  readonly expectedActionVersion: number;
-  readonly expectedEntryVersion: number;
-  readonly resolvedEntryVersion: number;
-  readonly resolution: MemoryFeedbackResolutionKindV1;
-  readonly conclusion: string;
-  readonly evidence: string;
-  readonly createdAt: string;
-}
-
-/** Public API shape; database snake_case columns never escape the service. */
-export interface MemoryFeedbackActionDto {
-  readonly id: string;
-  readonly feedbackId: string;
-  readonly workspaceId: string;
-  readonly memoryId: string;
-  readonly memoryVersion: number;
-  readonly action: MemoryFeedbackActionKind;
-  readonly status: MemoryFeedbackActionStatus;
-  readonly version: number;
-  readonly createdAt: string;
-  readonly resolution?: MemoryFeedbackResolutionDto;
-}
-
-/** `memoryVersion` is the frozen selected version; currentEntryVersion is the CAS version at submission. */
-export interface MemoryVersionFeedbackDto {
-  readonly id: string;
-  readonly workspaceId: string;
-  readonly memoryId: string;
-  readonly memoryVersion: number;
-  readonly currentEntryVersion: number;
-  readonly contextKind: MemoryContextOwnerKind;
-  readonly contextId: string;
-  readonly contextHash: string;
-  readonly kind: MemoryFeedbackKind;
-  readonly comment: string;
-  readonly createdAt: string;
-  readonly action: MemoryFeedbackActionDto | null;
-}
+/** Public DTO aliases keep server responses aligned with the shared API contract. */
+export type MemoryFeedbackResolutionDto = MemoryFeedbackResolutionDtoV1;
+export type MemoryFeedbackActionDto = MemoryFeedbackActionDtoV1;
+export type MemoryVersionFeedbackDto = MemoryVersionFeedbackDtoV1;
 
 export interface MemoryFeedbackActionApplyResult {
   readonly action: MemoryFeedbackActionDto;
@@ -91,6 +59,7 @@ interface FeedbackRow {
   action_version: number | null;
   action_created_at: string | null;
   resolution_action_id: string | null;
+  resolution_resolver_workspace_id: string | null;
   resolution_expected_action_version: number | null;
   resolution_expected_entry_version: number | null;
   resolution_resolved_entry_version: number | null;
@@ -98,6 +67,7 @@ interface FeedbackRow {
   resolution_conclusion: string | null;
   resolution_evidence: string | null;
   resolution_created_at: string | null;
+  action_resolved_by_workspace_id: string | null;
 }
 
 interface ActionRow {
@@ -110,12 +80,14 @@ interface ActionRow {
   status: MemoryFeedbackActionStatus;
   version: number;
   created_at: string;
+  resolved_by_workspace_id: string | null;
 }
 
 interface ResolutionRow {
   action_id: string;
   feedback_id: string;
   workspace_id: string;
+  resolver_workspace_id: string | null;
   entry_id: string;
   reported_entry_version: number;
   expected_action_version: number;
@@ -241,9 +213,10 @@ function isFrozenSelection(value: unknown): value is FrozenSelection {
 
 function toResolutionDto(row: Pick<ResolutionRow,
   'expected_action_version' | 'expected_entry_version' | 'resolved_entry_version'
-  | 'resolution' | 'conclusion' | 'evidence' | 'created_at'>,
+  | 'resolver_workspace_id' | 'resolution' | 'conclusion' | 'evidence' | 'created_at'>,
 ): MemoryFeedbackResolutionDto {
   return {
+    resolverWorkspaceId: row.resolver_workspace_id,
     expectedActionVersion: row.expected_action_version,
     expectedEntryVersion: row.expected_entry_version,
     resolvedEntryVersion: row.resolved_entry_version,
@@ -264,8 +237,9 @@ function toActionDto(row: ActionRow, resolution?: MemoryFeedbackResolutionDto): 
     action: row.action,
     status: row.status,
     version: row.version,
+    resolvedByWorkspaceId: row.resolved_by_workspace_id,
     createdAt: row.created_at,
-    ...(resolution ? { resolution } : {}),
+    resolution: resolution ?? null,
   };
 }
 
@@ -279,16 +253,18 @@ function toFeedbackDto(row: FeedbackRow): MemoryVersionFeedbackDto {
     action: row.action!,
     status: row.action_status!,
     version: row.action_version!,
+    resolvedByWorkspaceId: row.action_resolved_by_workspace_id,
     createdAt: row.action_created_at!,
-    ...(row.resolution_action_id ? { resolution: toResolutionDto({
+    resolution: row.resolution_action_id ? toResolutionDto({
       expected_action_version: row.resolution_expected_action_version!,
+      resolver_workspace_id: row.resolution_resolver_workspace_id!,
       expected_entry_version: row.resolution_expected_entry_version!,
       resolved_entry_version: row.resolution_resolved_entry_version!,
       resolution: row.resolution!,
       conclusion: row.resolution_conclusion!,
       evidence: row.resolution_evidence!,
       created_at: row.resolution_created_at!,
-    }) } : {}),
+    }) : null,
   } satisfies MemoryFeedbackActionDto;
   return {
     id: row.feedback_id,
@@ -312,7 +288,9 @@ const FEEDBACK_SELECT = `SELECT
     a.id AS action_id, a.feedback_id AS action_feedback_id, a.workspace_id AS action_workspace_id,
     a.entry_id AS action_entry_id, a.entry_version AS action_entry_version, a.action,
     a.status AS action_status, a.version AS action_version, a.created_at AS action_created_at,
+    a.resolved_by_workspace_id AS action_resolved_by_workspace_id,
     r.action_id AS resolution_action_id, r.expected_action_version AS resolution_expected_action_version,
+    r.resolver_workspace_id AS resolution_resolver_workspace_id,
     r.expected_entry_version AS resolution_expected_entry_version,
     r.resolved_entry_version AS resolution_resolved_entry_version,
     r.resolution AS resolution, r.conclusion AS resolution_conclusion,
@@ -327,7 +305,10 @@ export class MemoryFeedbackService {
   list(workspaceId: string): MemoryVersionFeedbackDto[] {
     if (!isIdentifier(workspaceId)) throw new Error('MEMORY_FEEDBACK_INPUT_INVALID');
     const rows = this.db.prepare(`${FEEDBACK_SELECT}
-      WHERE f.workspace_id = ? ORDER BY f.created_at DESC, f.id LIMIT 200`).all(workspaceId) as FeedbackRow[];
+      WHERE f.workspace_id = ? OR EXISTS (
+        SELECT 1 FROM memory_entries owned_global
+        WHERE owned_global.id = f.entry_id AND owned_global.workspace_id = ? AND owned_global.scope = 'global'
+      ) ORDER BY f.created_at DESC, f.id LIMIT 200`).all(workspaceId, workspaceId) as FeedbackRow[];
     return rows.map(toFeedbackDto);
   }
 
@@ -406,9 +387,7 @@ export class MemoryFeedbackService {
       throw new Error('MEMORY_FEEDBACK_RESOLUTION_REQUIRED');
     }
     return inTransaction(this.db, () => {
-      const row = this.db.prepare(`SELECT * FROM memory_feedback_actions
-        WHERE workspace_id = ? AND id = ?`).get(workspaceId, actionId) as ActionRow | undefined;
-      if (!row) throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
+      const row = this.requireActionActor(workspaceId, actionId);
       if (row.status !== 'pending' || row.version !== expectedVersion) {
         throw new Error('MEMORY_FEEDBACK_VERSION_CONFLICT');
       }
@@ -449,17 +428,15 @@ export class MemoryFeedbackService {
           workspaceId, entryId: row.entry_id, expectedVersion: input.expectedEntryVersion, updatedAt: timestamp,
           title: correction.title, summary: correction.summary, content: correction.content,
         }, 'user-correction');
-        this.insertEntryVersionAudit(row.workspace_id, current, entry, 'corrected', timestamp);
-        this.insertResolution(row, input, entry.version, timestamp);
+        this.insertEntryVersionAudit(current.workspaceId, current, entry, 'corrected', timestamp);
+        this.insertResolution(row, workspaceId, input, entry.version, timestamp);
         const action = this.transitionAction(row, workspaceId, input.expectedActionVersion, 'resolved');
         onEntryChange(entry, action, input, timestamp);
         return { action, entry };
       });
     }
 
-    const preview = this.db.prepare(`SELECT * FROM memory_feedback_actions
-      WHERE workspace_id = ? AND id = ?`).get(workspaceId, actionId) as ActionRow | undefined;
-    if (!preview) throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
+    const preview = this.requireActionActor(workspaceId, actionId);
     if (preview.status !== 'pending' || preview.version !== input.expectedActionVersion) {
       throw new Error('MEMORY_FEEDBACK_VERSION_CONFLICT');
     }
@@ -479,7 +456,7 @@ export class MemoryFeedbackService {
       action: input.resolution === 'archived' ? 'archive' : 'revalidate',
     }, (updatedEntry, timestamp) => {
       const row = this.requirePendingAction(workspaceId, actionId, input.expectedActionVersion);
-      this.insertResolution(row, input, updatedEntry.version, timestamp);
+      this.insertResolution(row, workspaceId, input, updatedEntry.version, timestamp);
       const action = this.transitionAction(row, workspaceId, input.expectedActionVersion, 'resolved');
       onEntryChange(updatedEntry, action, input, timestamp);
       result = { action, entry: updatedEntry };
@@ -489,11 +466,23 @@ export class MemoryFeedbackService {
   }
 
   private requirePendingAction(workspaceId: string, actionId: string, expectedVersion: number): ActionRow {
-    const row = this.db.prepare(`SELECT * FROM memory_feedback_actions
-      WHERE workspace_id = ? AND id = ?`).get(workspaceId, actionId) as ActionRow | undefined;
-    if (!row) throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
+    const row = this.requireActionActor(workspaceId, actionId);
     if (row.status !== 'pending' || row.version !== expectedVersion) {
       throw new Error('MEMORY_FEEDBACK_VERSION_CONFLICT');
+    }
+    return row;
+  }
+
+  private requireActionActor(workspaceId: string, actionId: string): ActionRow {
+    const row = this.db.prepare(`SELECT * FROM memory_feedback_actions WHERE id = ?`).get(actionId) as ActionRow | undefined;
+    if (!row) throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
+    const entry = this.db.prepare('SELECT workspace_id,scope FROM memory_entries WHERE id = ?')
+      .get(row.entry_id) as { workspace_id: string; scope: string } | undefined;
+    if (!entry) throw new Error('MEMORY_FEEDBACK_ENTRY_NOT_FOUND');
+    if (entry.scope === 'global') {
+      if (entry.workspace_id !== workspaceId) throw new Error('MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
+    } else if (entry.workspace_id !== workspaceId || row.workspace_id !== workspaceId) {
+      throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
     }
     return row;
   }
@@ -509,28 +498,22 @@ export class MemoryFeedbackService {
     expectedVersion: number,
     status: 'resolved' | 'rejected',
   ): MemoryFeedbackActionDto {
-    const timestamp = new Date().toISOString();
     const changed = this.db.prepare(`UPDATE memory_feedback_actions
-      SET status = ?, version = version + 1
-      WHERE workspace_id = ? AND id = ? AND status = 'pending' AND version = ?`)
-      .run(status, workspaceId, row.id, expectedVersion) as { changes?: number | bigint };
+      SET status = ?, resolved_by_workspace_id = ?, version = version + 1
+      WHERE workspace_id = ? AND id = ? AND status = 'pending' AND version = ?
+        AND resolved_by_workspace_id IS NULL`)
+      .run(status, workspaceId, row.workspace_id, row.id, expectedVersion) as { changes?: number | bigint };
     if (Number(changed.changes) !== 1) throw new Error('MEMORY_FEEDBACK_VERSION_CONFLICT');
 
-    this.db.prepare(`INSERT INTO memory_feedback_action_audit (
-      id, action_id, feedback_id, workspace_id, entry_id, entry_version, action,
-      from_status, to_status, expected_version, version, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`)
-      .run(randomUUID(), row.id, row.feedback_id, workspaceId, row.entry_id, row.entry_version,
-        row.action, status, expectedVersion, expectedVersion + 1, timestamp);
-
     const updated = this.db.prepare(`SELECT * FROM memory_feedback_actions
-      WHERE workspace_id = ? AND id = ?`).get(workspaceId, row.id) as ActionRow | undefined;
+      WHERE workspace_id = ? AND id = ?`).get(row.workspace_id, row.id) as ActionRow | undefined;
     if (!updated) throw new Error('MEMORY_FEEDBACK_ACTION_NOT_FOUND');
-    return toActionDto(updated, this.readResolution(workspaceId, row.id));
+    return toActionDto(updated, this.readResolution(row.id));
   }
 
   private insertResolution(
     action: ActionRow,
+    resolverWorkspaceId: string,
     resolution: MemoryFeedbackActionApplyRequestV1,
     resolvedEntryVersion: number,
     timestamp: string,
@@ -538,11 +521,11 @@ export class MemoryFeedbackService {
     this.db.prepare(`INSERT INTO memory_feedback_action_resolutions (
       action_id, feedback_id, workspace_id, entry_id, reported_entry_version,
       expected_action_version, expected_entry_version, resolved_entry_version,
-      resolution, conclusion, evidence, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      resolution, conclusion, evidence, created_at, resolver_workspace_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(action.id, action.feedback_id, action.workspace_id, action.entry_id, action.entry_version,
         resolution.expectedActionVersion, resolution.expectedEntryVersion, resolvedEntryVersion,
-        resolution.resolution, resolution.conclusion, resolution.evidence, timestamp);
+        resolution.resolution, resolution.conclusion, resolution.evidence, timestamp, resolverWorkspaceId);
   }
 
   private insertEntryVersionAudit(
@@ -559,13 +542,13 @@ export class MemoryFeedbackService {
         JSON.stringify(before), JSON.stringify(after), timestamp);
   }
 
-  private readResolution(workspaceId: string, actionId: string): MemoryFeedbackResolutionDto | undefined {
+  private readResolution(actionId: string): MemoryFeedbackResolutionDto | undefined {
     const row = this.db.prepare(`SELECT expected_action_version, expected_entry_version,
-        resolved_entry_version, resolution, conclusion, evidence, created_at
-      FROM memory_feedback_action_resolutions WHERE workspace_id = ? AND action_id = ?`)
-      .get(workspaceId, actionId) as Pick<ResolutionRow,
+        resolved_entry_version, resolver_workspace_id, resolution, conclusion, evidence, created_at
+      FROM memory_feedback_action_resolutions WHERE action_id = ?`)
+      .get(actionId) as Pick<ResolutionRow,
         'expected_action_version' | 'expected_entry_version' | 'resolved_entry_version'
-        | 'resolution' | 'conclusion' | 'evidence' | 'created_at'> | undefined;
+        | 'resolver_workspace_id' | 'resolution' | 'conclusion' | 'evidence' | 'created_at'> | undefined;
     return row ? toResolutionDto(row) : undefined;
   }
 

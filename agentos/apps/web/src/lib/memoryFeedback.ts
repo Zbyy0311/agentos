@@ -1,7 +1,9 @@
 import type {
+  MemoryFeedbackActionDtoV1,
   MemoryFeedbackActionApplyRequestV1,
   MemoryFeedbackResolutionKindV1,
-  MemoryFeedbackResolutionV1,
+  MemoryFeedbackResolutionDtoV1,
+  MemoryVersionFeedbackDtoV1,
   MemoryVersionFeedbackRequestV1,
 } from '@agentos/shared';
 import type { MemoryContextKind, MemoryContextRecord, MemoryContextSelection } from './memoryContexts.js';
@@ -12,33 +14,110 @@ export type MemoryFeedbackActionKind = 'correction' | 'revalidation';
 export type MemoryFeedbackActionStatus = 'pending' | 'resolved' | 'rejected';
 export type MemoryFeedbackResolutionKind = MemoryFeedbackResolutionKindV1;
 export type MemoryFeedbackActionApplyDetails = Omit<MemoryFeedbackActionApplyRequestV1, 'expectedActionVersion' | 'expectedEntryVersion'>;
+export type MemoryFeedbackActionDto = MemoryFeedbackActionDtoV1;
+export type MemoryFeedbackResolutionDto = MemoryFeedbackResolutionDtoV1;
+export type MemoryVersionFeedbackDto = MemoryVersionFeedbackDtoV1;
 
-export interface MemoryFeedbackActionDto {
-  readonly id: string;
-  readonly feedbackId: string;
-  readonly workspaceId: string;
-  readonly memoryId: string;
-  readonly memoryVersion: number;
-  readonly action: MemoryFeedbackActionKind;
-  readonly status: MemoryFeedbackActionStatus;
-  readonly version: number;
-  readonly createdAt: string;
-  readonly resolution?: MemoryFeedbackResolutionV1;
+const ACTION_DTO_KEYS = ['id', 'feedbackId', 'workspaceId', 'memoryId', 'memoryVersion', 'action', 'status',
+  'version', 'resolvedByWorkspaceId', 'createdAt', 'resolution'] as const;
+const RESOLUTION_DTO_KEYS = ['resolverWorkspaceId', 'expectedActionVersion', 'expectedEntryVersion',
+  'resolvedEntryVersion', 'resolution', 'conclusion', 'evidence', 'createdAt'] as const;
+const FEEDBACK_DTO_KEYS = ['id', 'workspaceId', 'memoryId', 'memoryVersion', 'currentEntryVersion',
+  'contextKind', 'contextId', 'contextHash', 'kind', 'comment', 'createdAt', 'action'] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
-export interface MemoryVersionFeedbackDto {
-  readonly id: string;
-  readonly workspaceId: string;
-  readonly memoryId: string;
-  readonly memoryVersion: number;
-  readonly currentEntryVersion: number;
-  readonly contextKind: MemoryContextKind;
-  readonly contextId: string;
-  readonly contextHash: string;
-  readonly kind: MemoryFeedbackKind;
-  readonly comment: string;
-  readonly createdAt: string;
-  readonly action: MemoryFeedbackActionDto | null;
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const ownKeys = Object.keys(value);
+  return ownKeys.length === keys.length && ownKeys.every(key => keys.includes(key));
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function positiveVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+
+function isMemoryFeedbackResolutionDto(value: unknown): value is MemoryFeedbackResolutionDto {
+  if (!isRecord(value) || !hasExactKeys(value, RESOLUTION_DTO_KEYS)) return false;
+  return (value.resolverWorkspaceId === null || nonEmptyString(value.resolverWorkspaceId))
+    && positiveVersion(value.expectedActionVersion)
+    && positiveVersion(value.expectedEntryVersion)
+    && positiveVersion(value.resolvedEntryVersion)
+    && value.resolvedEntryVersion === value.expectedEntryVersion + 1
+    && ['corrected', 'archived', 'revalidated'].includes(String(value.resolution))
+    && nonEmptyString(value.conclusion) && nonEmptyString(value.evidence) && nonEmptyString(value.createdAt);
+}
+
+export function isMemoryFeedbackActionDto(value: unknown): value is MemoryFeedbackActionDto {
+  if (!isRecord(value) || !hasExactKeys(value, ACTION_DTO_KEYS)) return false;
+  if (!nonEmptyString(value.id) || !nonEmptyString(value.feedbackId) || !nonEmptyString(value.workspaceId)
+    || !nonEmptyString(value.memoryId) || !positiveVersion(value.memoryVersion)
+    || !['correction', 'revalidation'].includes(String(value.action))
+    || !['pending', 'resolved', 'rejected'].includes(String(value.status))
+    || !positiveVersion(value.version)
+    || !(value.resolvedByWorkspaceId === null || nonEmptyString(value.resolvedByWorkspaceId))
+    || !nonEmptyString(value.createdAt)
+    || !(value.resolution === null || isMemoryFeedbackResolutionDto(value.resolution))) return false;
+  if (value.status === 'pending') return value.resolvedByWorkspaceId === null && value.resolution === null;
+  if (value.status === 'rejected') return value.resolution === null;
+  if (value.resolvedByWorkspaceId === null
+    && (value.resolution === null || value.resolution.resolverWorkspaceId === null)) return true;
+  return value.resolvedByWorkspaceId !== null && value.resolution !== null
+    && value.resolution.resolverWorkspaceId === value.resolvedByWorkspaceId
+    && value.resolution.expectedActionVersion + 1 === value.version;
+}
+
+export function isMemoryVersionFeedbackDto(value: unknown): value is MemoryVersionFeedbackDto {
+  if (!isRecord(value) || !hasExactKeys(value, FEEDBACK_DTO_KEYS)) return false;
+  if (!nonEmptyString(value.id) || !nonEmptyString(value.workspaceId) || !nonEmptyString(value.memoryId)
+    || !positiveVersion(value.memoryVersion) || !positiveVersion(value.currentEntryVersion)
+    || !['run', 'stage', 'turn', 'legacy-execution'].includes(String(value.contextKind))
+    || !nonEmptyString(value.contextId) || !/^[0-9a-f]{64}$/i.test(String(value.contextHash))
+    || !['helpful', 'wrong', 'outdated'].includes(String(value.kind))
+    || typeof value.comment !== 'string' || !nonEmptyString(value.createdAt)
+    || !(value.action === null || isMemoryFeedbackActionDto(value.action))) return false;
+  if (value.action !== null) {
+    return value.action.feedbackId === value.id && value.action.workspaceId === value.workspaceId
+      && value.action.memoryId === value.memoryId && value.action.memoryVersion === value.memoryVersion;
+  }
+  return true;
+}
+
+export function parseMemoryFeedbackActionsResponse(value: unknown): readonly MemoryFeedbackActionDto[] | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['actions']) || !Array.isArray(value.actions)
+    || !value.actions.every(isMemoryFeedbackActionDto)) return undefined;
+  return value.actions;
+}
+
+export function parseMemoryVersionFeedbackResponse(value: unknown): MemoryVersionFeedbackDto | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['feedback']) || !isMemoryVersionFeedbackDto(value.feedback)) return undefined;
+  return value.feedback;
+}
+
+export function parseMemoryVersionFeedbackListResponse(value: unknown): readonly MemoryVersionFeedbackDto[] | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['feedback']) || !Array.isArray(value.feedback)
+    || !value.feedback.every(isMemoryVersionFeedbackDto)) return undefined;
+  return value.feedback;
+}
+
+export function parseMemoryFeedbackActionResult(value: unknown): {
+  readonly action: MemoryFeedbackActionDto;
+  readonly entry?: MemoryEntryDto;
+} | undefined {
+  if (!isRecord(value) || !isMemoryFeedbackActionDto(value.action)
+    || !(Object.keys(value).length === 1 && Object.hasOwn(value, 'action')
+      || Object.keys(value).length === 2 && Object.hasOwn(value, 'action') && Object.hasOwn(value, 'entry'))
+    || (Object.hasOwn(value, 'entry') && (!isRecord(value.entry)
+      || !nonEmptyString(value.entry.id) || !nonEmptyString(value.entry.workspaceId)
+      || !positiveVersion(value.entry.version)))) return undefined;
+  return { action: value.action, ...(Object.hasOwn(value, 'entry') ? { entry: value.entry as unknown as MemoryEntryDto } : {}) };
 }
 
 export interface MemoryFeedbackActionResolutionPayload {
@@ -180,9 +259,9 @@ export async function submitMemoryVersionFeedback(
     throw new Error('正式记忆响应与当前工作区或历史选择不匹配');
   }
   const payload = buildMemoryVersionFeedbackPayload(entry, context, selection, kind, comment);
-  let result: { feedback: MemoryVersionFeedbackDto };
+  let response: unknown;
   try {
-    result = await request<{ feedback: MemoryVersionFeedbackDto }>(memoryFeedbackPath(workspaceId), {
+    response = await request<unknown>(memoryFeedbackPath(workspaceId), {
       method: 'POST',
       body: payload,
     });
@@ -190,7 +269,9 @@ export async function submitMemoryVersionFeedback(
     if (isEntryNotFound(error)) throw entryNotFoundGuidance();
     throw error;
   }
-  return result.feedback;
+  const feedback = parseMemoryVersionFeedbackResponse(response);
+  if (!feedback) throw new Error('记忆反馈接口响应格式无效');
+  return feedback;
 }
 
 export function memoryFeedbackActionResolutionPayload(
@@ -210,6 +291,21 @@ export function memoryFeedbackActionApplyPayload(
     expectedEntryVersion: entry.version,
     ...details,
   };
+}
+
+/** The route workspace is the acting owner; action.workspaceId remains the reporter workspace. */
+export function memoryFeedbackActionResponseMatchesRequest(
+  requestedAction: Pick<MemoryFeedbackActionDto, 'id' | 'workspaceId'>,
+  returnedAction: Pick<MemoryFeedbackActionDto, 'id' | 'workspaceId' | 'status' | 'resolvedByWorkspaceId' | 'resolution'> | null | undefined,
+  actorWorkspaceId: string,
+): boolean {
+  return returnedAction !== null && returnedAction !== undefined
+    && returnedAction.id === requestedAction.id
+    && returnedAction.workspaceId === requestedAction.workspaceId
+    && returnedAction.status !== 'pending'
+    && returnedAction.resolvedByWorkspaceId === actorWorkspaceId
+    && (returnedAction.status !== 'resolved'
+      || returnedAction.resolution?.resolverWorkspaceId === actorWorkspaceId);
 }
 
 export function joinMemoryFeedbackActions(

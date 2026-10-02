@@ -39,6 +39,25 @@ export interface MemoryFeedbackResolutionV1 {
   readonly evidence:string;
   readonly createdAt:string;
 }
+/** Persisted resolution details; null resolver preserves legacy rows without actor provenance. */
+export interface MemoryFeedbackResolutionDtoV1 extends MemoryFeedbackResolutionV1 {
+  readonly resolverWorkspaceId:string|null;
+}
+/** Action identity remains the reporting workspace even when its global Entry owner resolves it. */
+export interface MemoryFeedbackActionDtoV1 {
+  readonly id:string; readonly feedbackId:string; readonly workspaceId:string; readonly memoryId:string;
+  readonly memoryVersion:number; readonly action:'correction'|'revalidation';
+  readonly status:'pending'|'resolved'|'rejected'; readonly version:number;
+  readonly resolvedByWorkspaceId:string|null; readonly createdAt:string;
+  readonly resolution:MemoryFeedbackResolutionDtoV1|null;
+}
+export interface MemoryVersionFeedbackDtoV1 {
+  readonly id:string; readonly workspaceId:string; readonly memoryId:string;
+  readonly memoryVersion:number; readonly currentEntryVersion:number;
+  readonly contextKind:MemoryContextOwnerKind; readonly contextId:string; readonly contextHash:string;
+  readonly kind:'helpful'|'wrong'|'outdated'; readonly comment:string; readonly createdAt:string;
+  readonly action:MemoryFeedbackActionDtoV1|null;
+}
 /** A resolution must prove both the action CAS and the Entry version it applies to. */
 export interface MemoryFeedbackActionApplyRequestV1 {
   readonly expectedActionVersion:number;

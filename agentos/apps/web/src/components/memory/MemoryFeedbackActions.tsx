@@ -6,6 +6,10 @@ import {
   joinMemoryFeedbackActions,
   memoryFeedbackActionApplyPayload,
   memoryFeedbackActionResolvePath,
+  memoryFeedbackActionResponseMatchesRequest,
+  parseMemoryFeedbackActionResult,
+  parseMemoryFeedbackActionsResponse,
+  parseMemoryVersionFeedbackListResponse,
   memoryFeedbackActionResolutionPayload,
   memoryFeedbackActionsPath,
   memoryFeedbackPath,
@@ -154,6 +158,10 @@ export function MemoryFeedbackActionRow({ workspaceId, view, entry, entryError, 
         <div>
           <h4 className="font-medium ui-text">{ACTION_LABELS[action.action]} · {FEEDBACK_LABELS[feedback?.kind ?? (action.action === 'correction' ? 'wrong' : 'outdated')]}</h4>
           <p className="mt-1 break-all text-xs ui-dim">记忆 {action.memoryId} · 冻结版本 v{action.memoryVersion}</p>
+          <p className="mt-1 break-all text-xs ui-dim">报告工作区：{action.workspaceId}</p>
+          {action.resolvedByWorkspaceId
+            ? <p className="mt-1 break-all text-xs ui-dim">处理工作区：{action.resolvedByWorkspaceId}</p>
+            : action.status !== 'pending' && <p className="mt-1 break-all text-xs ui-dim">处理工作区：历史记录未留存</p>}
         </div>
         <span className="rounded-full border ui-border px-2 py-1 text-[11px] ui-accent">{STATUS_LABELS[action.status]}</span>
       </div>
@@ -167,7 +175,7 @@ export function MemoryFeedbackActionRow({ workspaceId, view, entry, entryError, 
             <span>类别：{entry.category}</span>
             <span>来源：{entry.sources.length ? entry.sources.map(source => `${source.kind}:${source.id}`).join('、') : '未记录'}</span>
           </div>
-          {globalOwnedElsewhere && action.status === 'pending' && <p role="status" className="mt-2 text-xs ui-dim">此全局记忆由其他工作区拥有。请在归属工作区处理更正；当前工作区可拒绝自己的报告。该版本仍受其他待处理错误报告约束。</p>}
+          {globalOwnedElsewhere && action.status === 'pending' && <p role="status" className="mt-2 text-xs ui-dim">此全局记忆由其他工作区拥有。请在归属工作区处理报告；待处理报告继续约束该版本。</p>}
         </> : entryError ? <p role="status" className="mt-1 break-words text-xs ui-dim">无法加载正式记忆详情：{entryError}</p> : <p role="status" className="mt-1 text-xs ui-dim">未找到关联正式记忆。</p>}
       </section>
 
@@ -189,8 +197,10 @@ export function MemoryFeedbackActionRow({ workspaceId, view, entry, entryError, 
 
       {action.status === 'pending' && <>
         <div className="mt-3 flex justify-end gap-2">
-          <button type="button" disabled={busy} onClick={() => onReject(action)} className="ui-button-ghost rounded-lg border ui-border px-3 py-2 text-xs disabled:opacity-50">拒绝</button>
-          {!globalOwnedElsewhere && <button type="button" disabled={busy || !entry} onClick={() => setEditing(value => !value)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50">{editing ? '收起处理表单' : '处理反馈'}</button>}
+          {!globalOwnedElsewhere && <>
+            <button type="button" disabled={busy} onClick={() => onReject(action)} className="ui-button-ghost rounded-lg border ui-border px-3 py-2 text-xs disabled:opacity-50">拒绝</button>
+            <button type="button" disabled={busy || !entry} onClick={() => setEditing(value => !value)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50">{editing ? '收起处理表单' : '处理反馈'}</button>
+          </>}
         </div>
         {editing && entry && <MemoryFeedbackResolutionEditor
           key={`${entry.id}:${entry.version}`}
@@ -231,13 +241,15 @@ export function MemoryFeedbackActions({ workspaceId, onOpenContext }: MemoryFeed
     setBusyId(undefined);
 
     void Promise.all([
-      request<{ actions: MemoryFeedbackActionDto[] }>(memoryFeedbackActionsPath(workspaceId)),
-      request<{ feedback: MemoryVersionFeedbackDto[] }>(memoryFeedbackPath(workspaceId)),
-    ]).then(async ([actionResult, feedbackResult]) => {
-      if (!Array.isArray(actionResult.actions) || !Array.isArray(feedbackResult.feedback)) {
+      request<unknown>(memoryFeedbackActionsPath(workspaceId)),
+      request<unknown>(memoryFeedbackPath(workspaceId)),
+    ]).then(async ([actionValue, feedbackValue]) => {
+      const actions = parseMemoryFeedbackActionsResponse(actionValue);
+      const feedback = parseMemoryVersionFeedbackListResponse(feedbackValue);
+      if (!actions || !feedback) {
         throw new Error('记忆反馈接口响应格式无效');
       }
-      const views = joinMemoryFeedbackActions(actionResult.actions, feedbackResult.feedback);
+      const views = joinMemoryFeedbackActions(actions, feedback);
       const memoryIds = [...new Set(views.map(view => view.action.memoryId))];
       const entryResults: Array<readonly [string, { readonly entry?: MemoryEntryDto; readonly entryError?: string }]> = await Promise.all(memoryIds.map(async memoryId => {
         try {
@@ -289,13 +301,15 @@ export function MemoryFeedbackActions({ workspaceId, onOpenContext }: MemoryFeed
     setNotice('');
     try {
       if (!isCurrent()) return;
-      const result = await request<{ action: MemoryFeedbackActionDto; entry?: MemoryEntryDto }>(
+      const response = await request<unknown>(
         memoryFeedbackActionResolvePath(workspaceId, action.id),
         { method: 'POST', body },
       );
       if (!isCurrent()) return;
-      if (!result.action || result.action.id !== action.id || result.action.workspaceId !== workspaceId) {
-        throw new Error('反馈操作响应与当前工作区不匹配');
+      const result = parseMemoryFeedbackActionResult(response);
+      if (!result) throw new Error('反馈操作接口响应格式无效');
+      if (!memoryFeedbackActionResponseMatchesRequest(action, result.action, workspaceId)) {
+        throw new Error('反馈操作响应与原报告身份不匹配');
       }
       if (expectedEntry && (!result.entry || result.entry.id !== expectedEntry.id
         || result.entry.workspaceId !== expectedEntry.workspaceId || result.entry.version !== expectedEntry.version + 1)) {

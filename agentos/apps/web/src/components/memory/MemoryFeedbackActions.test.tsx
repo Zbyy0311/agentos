@@ -9,6 +9,7 @@ import { MemoryFeedbackActionRow, MemoryFeedbackActions, MemoryFeedbackResolutio
 const action: MemoryFeedbackActionDto = {
   id: 'action-1', feedbackId: 'feedback-1', workspaceId: 'workspace-1', memoryId: 'entry-1',
   memoryVersion: 2, action: 'correction', status: 'pending', version: 6,
+  resolvedByWorkspaceId: null, resolution: null,
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 const feedback: MemoryVersionFeedbackDto = {
@@ -83,7 +84,7 @@ test('entry correction editor asks for the new formal text, conclusion, and evid
   assert.ok(!markup.includes('标记已解决'));
 });
 
-test('global Entry owned by another workspace can only be rejected from this action row', () => {
+test('global Entry owned by another workspace is read-only in the reporter workspace', () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
     workspaceId="workspace-1"
@@ -93,9 +94,70 @@ test('global Entry owned by another workspace can only be rejected from this act
     onReject={() => undefined}
     onApply={() => undefined}
   />);
-  assert.ok(markup.includes('归属工作区处理更正'));
-  assert.ok(markup.includes('拒绝'));
+  assert.ok(markup.includes('归属工作区处理报告'));
+  assert.ok(!markup.includes('拒绝'));
   assert.ok(!markup.includes('处理反馈'));
+});
+
+test('global Entry owner can edit a consumer report while the row retains the reporter workspace', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const consumerAction = { ...action, workspaceId: 'consumer-workspace' };
+  const consumerFeedback = { ...feedback, workspaceId: 'consumer-workspace', action: consumerAction };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="owner-workspace"
+    view={{ action: consumerAction, feedback: consumerFeedback }}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global' }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('报告工作区：consumer-workspace'));
+  assert.ok(markup.includes('处理反馈'));
+  assert.ok(!markup.includes('其他工作区拥有'));
+});
+
+test('resolved consumer feedback displays the distinct owner resolver identity', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const resolvedAction = {
+    ...action,
+    workspaceId: 'consumer-workspace',
+    status: 'resolved' as const,
+    resolvedByWorkspaceId: 'owner-workspace',
+    resolution: {
+      expectedActionVersion: 1,
+      expectedEntryVersion: 1,
+      resolvedEntryVersion: 2,
+      resolverWorkspaceId: 'owner-workspace',
+      resolution: 'corrected' as const,
+      conclusion: 'Owner reviewed the report.',
+      evidence: 'Checked the canonical procedure.',
+      createdAt: '2026-10-01T00:00:00.000Z',
+    },
+  };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="owner-workspace"
+    view={{ action: resolvedAction, feedback: { ...feedback, workspaceId: 'consumer-workspace', action: resolvedAction } }}
+    entry={{ ...entry, workspaceId: 'owner-workspace', scope: 'global', version: 2 }}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('报告工作区：consumer-workspace'));
+  assert.ok(markup.includes('处理工作区：owner-workspace'));
+});
+
+test('legacy resolved feedback with missing actor is shown as historically unknown', () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const legacyAction = { ...action, status: 'rejected' as const, resolvedByWorkspaceId: null };
+  const markup = renderToStaticMarkup(<MemoryFeedbackActionRow
+    workspaceId="workspace-1"
+    view={{ action: legacyAction, feedback: { ...feedback, action: legacyAction } }}
+    entry={entry}
+    busy={false}
+    onReject={() => undefined}
+    onApply={() => undefined}
+  />);
+  assert.ok(markup.includes('处理工作区：历史记录未留存'));
 });
 
 test('feedback management embeds the separate auto-accept policy pane', () => {

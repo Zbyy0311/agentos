@@ -13,6 +13,7 @@ import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepos
 import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
 import { migration047 } from '../migrations/migrations/047-memory-version-feedback.js';
 import { migration050 } from '../migrations/migrations/050-memory-feedback-resolutions.js';
+import { migration051 } from '../migrations/migrations/051-memory-feedback-resolver-actor.js';
 import { createMemoryActionRoutes } from './memoryActions.js';
 import { inTransaction } from '../store/Transaction.js';
 
@@ -30,6 +31,7 @@ test('HTTP feedback requires evidence, commits Entry/event/action atomically, an
   migration046.apply({ db: store.getDatabase() });
   migration047.apply({ db: store.getDatabase() });
   migration050.apply({ db: store.getDatabase() });
+  migration051.apply({ db: store.getDatabase() });
   app.use('/api/workspaces/:workspaceId', createMemoryActionRoutes(store, manager));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
@@ -107,6 +109,127 @@ test('HTTP feedback requires evidence, commits Entry/event/action atomically, an
     const foreign = await fetch(base.replace('/ws/', '/foreign/') + '/feedback');
     assert.equal(foreign.status, 404);
     assert.equal(new TurnContextSnapshotRepository(db).readPayload('ws', 'ctx')?.contextText, 'frozen body');
+  } finally {
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close(); rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('global Entry owner lists consumer reports and is the only workspace recorded as resolver', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-global-feedback-owner-'));
+  const now = new Date().toISOString();
+  const workspaces = ['consumer', 'owner', 'outsider'].map(id => {
+    const rootPath = join(root, id);
+    mkdirSync(rootPath, { recursive: true });
+    return {
+      id, name: id, rootPath, memoryEnabled: true, gitEnabled: false, agents: [],
+      createdAt: now, updatedAt: now, lastOpenedAt: now,
+    };
+  });
+  mkdirSync(join(root, 'workspace'));
+  writeFileSync(join(root, 'workspace/workspaces.json'), JSON.stringify({ workspaces }));
+  const store = new SqliteStore(root);
+  const app = express(); app.use(express.json());
+  const manager = new WorkspaceManager(store);
+  const db = store.getDatabase();
+  migration046.apply({ db });
+  migration047.apply({ db });
+  migration050.apply({ db });
+  migration051.apply({ db });
+  app.use('/api/workspaces/:workspaceId', createMemoryActionRoutes(store, manager));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>(resolve => server.once('listening', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/workspaces`;
+  const post = async (workspaceId: string, actionId: string, body: unknown) => {
+    const response = await fetch(`${origin}/${workspaceId}/memory/feedback-actions/${actionId}/resolve`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() as any };
+  };
+  try {
+    const entries = new MemoryEntryRepository(db);
+    entries.createEntry({ id: 'shared-global', workspaceId: 'owner', scope: 'global', category: 'preference',
+      authority: 'user-explicit', confidence: 1, importance: 1, status: 'active', title: 'Shared preference',
+      content: 'Original shared instruction', pinned: true, sources: [], createdAt: now });
+    db.prepare(`INSERT INTO preference_confirmations (
+      id,projection_id,profile_id,projection_scope,projection_workspace_id,workspace_id,status,version,
+      preferred_value,dimension,context_kind,scope,confidence,evidence_count,evidence_json,
+      entry_id,entry_workspace_id,entry_version,created_at,updated_at
+    ) VALUES ('confirmed-shared','projection-shared','default','global',NULL,'owner','confirmed',2,
+      'value','dimension','conversation','global',100,1,'[]','shared-global','owner',1,?,?)`).run(now, now);
+    new ConversationRepository(db).createConversation({ id: 'consumer-conversation', workspaceId: 'consumer',
+      kind: 'direct', title: 'consumer report', createdAt: now });
+    inTransaction(db, () => new TurnContextSnapshotRepository(db).insertWithinTransaction({
+      id: 'consumer-turn', workspaceId: 'consumer', conversationId: 'consumer-conversation', agentId: 'codex', budgetJson: '{}',
+      selectedEntryIdsJson: '["shared-global"]', totalTokens: 8, truncated: false,
+      retrievalStrategyVersion: 'test', queryHash: 'b'.repeat(64), createdAt: now,
+      memoryPayload: { contextText: 'Original shared instruction', selected: [{ memoryId: 'shared-global', memoryVersion: 1,
+        rank: 1, score: 1, scope: 'global', category: 'preference', authority: 'user-explicit', confidence: 1,
+        importance: 1, tokenCost: 8, reasons: ['scope-match'], sourceRefs: [] }], exclusions: [], retrievalDegraded: false },
+    }));
+
+    const feedbackPath = `${origin}/consumer/memory/feedback`;
+    const feedbackInput = { expectedVersion: 1, memoryId: 'shared-global', memoryVersion: 1,
+      contextKind: 'turn', contextId: 'consumer-turn', kind: 'wrong' };
+    const createReport = async () => {
+      const response = await fetch(feedbackPath, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(feedbackInput) });
+      return { status: response.status, body: await response.json() as any };
+    };
+    const [first, second] = await Promise.all([createReport(), createReport()]);
+    assert.deepEqual([first.status, second.status], [201, 201]);
+    const ownerFeedbackResponse = await fetch(`${origin}/owner/memory/feedback`);
+    const ownerFeedback = (await ownerFeedbackResponse.json() as { feedback: Array<{ workspaceId: string }> }).feedback;
+    assert.equal(ownerFeedback.length, 2);
+    assert.ok(ownerFeedback.every(item => item.workspaceId === 'consumer'), 'owner reads reports without rewriting reporters');
+    const actionsResponse = await fetch(`${origin}/owner/memory/feedback-actions`);
+    const ownerActions = (await actionsResponse.json() as { actions: Array<{ id: string; workspaceId: string }> }).actions;
+    assert.equal(ownerActions.length, 2);
+    assert.ok(ownerActions.every(action => action.workspaceId === 'consumer'), 'owner listing keeps each consumer as reporter');
+    const [rejectAction, correctAction] = ownerActions;
+    assert.ok(rejectAction && correctAction);
+
+    const reporterAttempt = await post('consumer', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
+    assert.equal(reporterAttempt.status, 409);
+    assert.equal(reporterAttempt.body.error, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
+    const outsiderAttempt = await post('outsider', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
+    assert.equal(outsiderAttempt.status, 409);
+    assert.equal(outsiderAttempt.body.error, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
+
+    const rejected = await post('owner', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.action.workspaceId, 'consumer');
+    assert.equal(rejected.body.action.resolvedByWorkspaceId, 'owner');
+    const corrected = await post('owner', correctAction.id, {
+      expectedActionVersion: 1, expectedEntryVersion: 1, resolution: 'corrected',
+      conclusion: 'Owner verified and corrected the shared instruction.',
+      evidence: 'The owner reviewed the authoritative procedure.',
+      correctedEntry: { title: 'Corrected shared preference', content: 'Use the reviewed shared instruction.' },
+    });
+    assert.equal(corrected.status, 200);
+    assert.equal(corrected.body.action.workspaceId, 'consumer');
+    assert.equal(corrected.body.action.resolvedByWorkspaceId, 'owner');
+    assert.equal(corrected.body.action.resolution.resolverWorkspaceId, 'owner');
+    assert.equal(corrected.body.entry.workspaceId, 'owner');
+    assert.equal(corrected.body.entry.version, 2);
+
+    const rejectedAudit = db.prepare(`SELECT workspace_id,actor_workspace_id,to_status
+      FROM memory_feedback_action_audit WHERE action_id=?`).get(rejectAction.id) as {
+        workspace_id: string; actor_workspace_id: string; to_status: string;
+      };
+    assert.deepEqual([rejectedAudit.workspace_id, rejectedAudit.actor_workspace_id, rejectedAudit.to_status],
+      ['consumer', 'owner', 'rejected']);
+    const resolutionAudit = db.prepare(`SELECT workspace_id,resolver_workspace_id
+      FROM memory_feedback_action_resolutions WHERE action_id=?`).get(correctAction.id) as {
+        workspace_id: string; resolver_workspace_id: string;
+      };
+    assert.deepEqual([resolutionAudit.workspace_id, resolutionAudit.resolver_workspace_id], ['consumer', 'owner']);
+    for (const actionId of [rejectAction.id, correctAction.id]) {
+      assert.equal(Number((db.prepare('SELECT COUNT(*) AS count FROM memory_feedback_action_audit WHERE action_id=?')
+        .get(actionId) as { count: number }).count), 1, 'each HTTP transition writes exactly one audit row');
+    }
+    assert.equal(Number((db.prepare(`SELECT COUNT(*) AS count FROM workspace_events
+      WHERE workspace_id='owner' AND type='memory.entry_updated'`).get() as { count: number }).count), 1);
   } finally {
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
     store.close(); rmSync(root, { recursive: true, force: true });
