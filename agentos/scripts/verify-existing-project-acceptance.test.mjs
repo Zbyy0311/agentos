@@ -7,9 +7,20 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
-  changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
+  acceptanceCodexArguments, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
 } from './verify-existing-project-acceptance.mjs';
+
+test('real acceptance grants workspace writes only to the implementer role', () => {
+  assert.deepEqual(acceptanceCodexArguments('simulated-provider', ['read', 'write']), ['exec']);
+  for (const permissions of [['read'], ['read', 'review']]) {
+    assert.deepEqual(acceptanceCodexArguments('real-windows-acceptance', permissions),
+      ['exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only']);
+  }
+  assert.deepEqual(acceptanceCodexArguments('real-windows-acceptance', ['read', 'write']),
+    ['exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'workspace-write']);
+  assert.throws(() => acceptanceCodexArguments('unknown', ['write']), /unsupported/u);
+});
 
 test('terminal candidate capture reads exact owned bytes while the HTTP response remains a summary', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-candidate-capture-'));

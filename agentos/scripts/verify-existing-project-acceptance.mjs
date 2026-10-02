@@ -629,7 +629,7 @@ async function configureWorkspace(baseUrl, workspaceId, mode, model, executable)
   // the profile endpoint validates its existing model against the selected adapter.
   const providers = await api(baseUrl, `/api/workspaces/${encodeURIComponent(workspaceId)}/provider-configs`);
   const configs = new Map(providers.body.providerConfigs.map(config => [config.id, config]));
-  for (const agent of Object.values(agents)) {
+  for (const [agent, , permissions] of roleConfig) {
     const config = configs.get(agent.providerConfigId);
     invariant(config, `provider configuration missing for ${agent.id}`);
     await api(baseUrl, `/api/workspaces/${encodeURIComponent(workspaceId)}/provider-configs/${encodeURIComponent(config.id)}`, {
@@ -637,7 +637,7 @@ async function configureWorkspace(baseUrl, workspaceId, mode, model, executable)
       body: {
         expectedVersion: config.version,
         providerType: 'codex', adapterId: 'builtin.codex', runtimeMode: 'cli', executable,
-        argsTemplate: mode === 'simulated-provider' ? ['exec'] : ['exec', '--ephemeral', '--skip-git-repo-check'],
+        argsTemplate: acceptanceCodexArguments(mode, permissions),
         model, workingDirectoryMode: 'worktree', outputMode: 'structured', enabled: true,
       },
     });
@@ -651,6 +651,13 @@ async function configureWorkspace(baseUrl, workspaceId, mode, model, executable)
     });
   }
   return agents;
+}
+
+export function acceptanceCodexArguments(mode, permissions) {
+  if (mode === 'simulated-provider') return ['exec'];
+  invariant(mode === 'real-windows-acceptance', 'unsupported Provider acceptance mode');
+  return ['exec', '--ephemeral', '--skip-git-repo-check', '--sandbox',
+    permissions.includes('write') ? 'workspace-write' : 'read-only'];
 }
 
 async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidence, mode, model, executable, evidenceRoot) {
