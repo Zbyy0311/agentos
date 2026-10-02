@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "agentos-existing-project-acceptance-v1",
+  "status": "contract-only",
+  "description": "Evidence requirements for a future existing-project acceptance run. This file is not evidence that such a run has occurred.",
+  "modes": {
+    "simulated-provider": {
+      "providerExecution": "simulated",
+      "platform": "any",
+      "credentialBoundary": "none"
+    },
+    "real-windows-acceptance": {
+      "providerExecution": "real",
+      "platform": "win32",
+      "credentialBoundary": "operator-managed-outside-ci"
+    }
+  },
+  "receiptRequirements": {
+    "repositoryCommitSha": "full-40-character-git-sha",
+    "repositoryTreeSha": "full-40-character-git-sha",
+    "immutableRepositorySnapshot": true,
+    "modelFields": ["provider", "id"],
+    "requiredIds": ["projectId", "taskId", "runId", "candidateId"],
+    "commands": {
+      "minimum": 1,
+      "requiredFields": ["id", "argv", "cwd", "rawExitCode", "expectedExitCode"],
+      "successfulExpectedExitCode": 0
+    },
+    "processExitCode": 0,
+    "acceptanceExitCode": 0,
+    "candidate": {
+      "artifactPath": "repository-relative-file",
+      "hashAlgorithm": "sha256-file-bytes",
+      "hashFormat": "64-character-lowercase-hex"
+    },
+    "scenarioRoles": {
+      "required": ["planner", "implementer", "reviewer"],
+      "uniqueAgentIdsPerScenario": true,
+      "minimumScenarios": 1,
+      "successStatus": "passed"
+    }
+  }
+}
