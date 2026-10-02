@@ -50,6 +50,32 @@ function isPathInside(directory, target) {
     && !relativePath.startsWith(`..${sep}`));
 }
 
+export function changedPathsFromPatch(patchText) {
+  invariant(typeof patchText === 'string' && patchText.trim().length > 0,
+    'candidate patch does not identify a unique changed-path set');
+  const result = spawnSync('git', ['apply', '--numstat', '-'], {
+    cwd: repoRoot, input: patchText, encoding: 'utf8', windowsHide: true, shell: false,
+    timeout: 10_000, maxBuffer: 1024 * 1024,
+  });
+  invariant(!result.error && result.status === 0,
+    `candidate patch path inventory could not be parsed: ${safeText(result.error?.message || result.stderr || '')}`);
+  const paths = result.stdout.split(/\r?\n/u).filter(Boolean).map(line => {
+    const fields = line.split('\t');
+    invariant(fields.length === 3 && fields[2].length > 0 && !fields[2].includes('\n'),
+      'candidate patch contains an unsupported path entry');
+    return fields[2].replaceAll('\\', '/');
+  });
+  invariant(paths.length > 0 && new Set(paths).size === paths.length,
+    'candidate patch does not identify a unique changed-path set');
+  return paths;
+}
+
+function assertCandidateChangesStayInScope(plan, paths) {
+  const scopes = plan.scope.map(value => value.replaceAll('\\', '/').replace(/\/$/u, ''));
+  invariant(paths.every(path => scopes.some(scope => path === scope || path.startsWith(`${scope}/`))),
+    `${plan.kind} candidate patch contains a path outside the approved scenario scope`);
+}
+
 export function selectOwnedPendingApprovals(requests, context) {
   const pending = requests.filter(request => request.workspaceId === context.workspaceId
     && request.runId === context.runId && request.status === 'pending');
@@ -709,7 +735,8 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const scenarioId = `${plan.kind}-${taskId}`;
   reviewRequest.evidence = writeReviewEvidence(evidenceRoot, plan.kind, scenarioId, reviewRequest.id, reviewRequest);
   history.push(reviewRequest);
-  const changedPaths = candidates[1].manifest.map(item => item.path);
+  const changedPaths = changedPathsFromPatch(candidates[1].diffText);
+  assertCandidateChangesStayInScope(plan, changedPaths);
   const revision = {
     id: candidates[1].id, transition: 'revision-submitted', actorRole: 'implementer', actorId: agents.implementer.id,
     timestamp: candidates[1].createdAt, fromCandidateSha256: candidates[0].diffHash,
@@ -897,6 +924,9 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       invariant(revisionEvent.fromCandidateSha256 === candidates[0].diff_hash && revisionEvent.toCandidateSha256 === candidates[1].diff_hash
         && revisionEvent.addressedReviewEventId === reviews[0].id && revisionEvent.actorId === task.implementer_agent_id,
       `${scenario.kind} revision receipt does not address the actual requested review`);
+      const persistedChangedPaths = changedPathsFromPatch(candidates[1].diff_text);
+      invariant(JSON.stringify(revisionEvent.changedPaths) === JSON.stringify(persistedChangedPaths),
+        `${scenario.kind} revision changed paths do not match the persisted frozen candidate patch`);
       invariant(approvalEvent.id === reviews[1].id && approvalEvent.candidateSha256 === candidates[1].diff_hash
         && approvalEvent.actorId === reviews[1].reviewer_agent_id && approvalEvent.decision === reviews[1].conclusion,
       `${scenario.kind} approval receipt differs from the persisted independent review`);
@@ -1185,4 +1215,7 @@ if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
   });
 }
 
-export { verifyRuntimeDatabaseEvidence, validatePlan, validateRealPlanPaths, simulationPlan, createSimulationExecutable };
+export {
+  verifyRuntimeDatabaseEvidence, validatePlan, validateRealPlanPaths, simulationPlan,
+  createSimulationExecutable,
+};

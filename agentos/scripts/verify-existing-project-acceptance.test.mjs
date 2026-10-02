@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
-  createSimulationExecutable, selectOwnedPendingApprovals, simulationPlan, validateRealPlanPaths,
+  changedPathsFromPatch, createSimulationExecutable, selectOwnedPendingApprovals,
+  simulationPlan, validateRealPlanPaths,
 } from './verify-existing-project-acceptance.mjs';
 
 function realPlans(root) {
@@ -107,4 +108,19 @@ test('one-time provider approval is restricted to the exact isolated Run, implem
       }),
     }], context), /outside the isolated AgentOS worktree root/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('revision changed paths come from the frozen Git patch bytes rather than the untracked-only manifest', () => {
+  const patch = [
+    'diff --git a/agentos/apps/server/src/health.ts b/agentos/apps/server/src/health.ts',
+    'index 1111111..2222222 100644',
+    '--- a/agentos/apps/server/src/health.ts',
+    '+++ b/agentos/apps/server/src/health.ts',
+    '@@ -1 +1 @@',
+    '-export const healthy = false;',
+    '+export const healthy = true;',
+    '',
+  ].join('\n');
+  assert.deepEqual(changedPathsFromPatch(patch), ['agentos/apps/server/src/health.ts']);
+  assert.throws(() => changedPathsFromPatch(''), /does not identify a unique changed-path set/u);
 });
