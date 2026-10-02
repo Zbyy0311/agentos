@@ -133,7 +133,7 @@ export function frozenCandidateContentHash(candidate) {
     snapshotVersion: candidate.snapshot_version, manifestVersion: candidate.manifest_version, manifest }));
 }
 
-async function observeOwnedProviderProcesses(server, workspaceId, runId, evidenceRoot, kind) {
+export async function observeOwnedProviderProcesses(server, workspaceId, runId, evidenceRoot, kind) {
   if (process.platform !== 'win32') return;
   server.nativeObservations ??= new Map();
   server.nativeVerifier ??= (await import('../packages/process-runtime/dist/index.js')).createProductionRecoveredProcessVerifier();
@@ -142,14 +142,17 @@ async function observeOwnedProviderProcesses(server, workspaceId, runId, evidenc
   try {
     rows = db.prepare(`SELECT id,provider_session_id,native_pid,native_birth_identity,executable_resolved
       FROM runtime_processes WHERE workspace_id=? AND run_id=? AND process_type='provider'
+      AND status IN ('starting','running','waiting','stopping')
       AND native_pid IS NOT NULL AND native_birth_identity IS NOT NULL`).all(workspaceId, runId);
   } finally { db.close(); }
   for (const row of rows) {
     if (server.nativeObservations.has(row.id)) continue;
     const observed = await server.nativeVerifier.verify(row.native_pid);
     if (observed.kind !== 'alive') continue;
-    invariant(observed.identity.nativeBirthIdentity === row.native_birth_identity,
-      'Provider PID no longer belongs to the persisted native process birth identity');
+    // The process can exit after the query and its PID can be reused before
+    // OpenProcess. Such a probe proves nothing about the old process. The final
+    // real-mode verifier still requires a matching observation for every call.
+    if (observed.identity.nativeBirthIdentity !== row.native_birth_identity) continue;
     const observation = { processId: row.id, providerSessionId: row.provider_session_id,
       pid: row.native_pid, nativeBirthIdentity: observed.identity.nativeBirthIdentity,
       observedAt: new Date().toISOString(), source: 'windows-openprocess-getprocesstimes' };
@@ -972,20 +975,22 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
 }
 
 function tableRows(db, sql, ...args) { return db.prepare(sql).all(...args); }
-function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { requireCapturedExit = false } = {}) {
-  if (requireCapturedExit) {
-    const outcome = JSON.parse(readFileSync(join(evidenceRoot, 'runner-outcome.json'), 'utf8'));
-    invariant(outcome.schemaVersion === 1 && outcome.source === 'parent-child-process-close'
-      && outcome.commitSha === receipt.repository.commitSha
-      && outcome.result?.exitCode === 0 && outcome.result.signal === null && outcome.result.spawnError === null
-      && outcome.receiptSha256 === hashFile(join(evidenceRoot, 'receipt.json')),
-    'runner success is not bound to an externally captured zero process exit and exact receipt bytes');
-    for (const stream of ['stdout', 'stderr']) {
-      invariant(outcome.logs?.[stream]?.artifactPath === `runner-${stream}.log`
-        && outcome.logs[stream].sha256 === hashFile(join(evidenceRoot, `runner-${stream}.log`)),
-      'externally captured runner output hash changed');
-    }
+export function verifyCapturedRunnerOutcome(evidenceRoot, receiptPath, commitSha) {
+  const outcome = JSON.parse(readFileSync(join(evidenceRoot, 'runner-outcome.json'), 'utf8'));
+  invariant(outcome.schemaVersion === 1 && outcome.source === 'parent-child-process-close'
+    && outcome.commitSha === commitSha
+    && outcome.result?.exitCode === 0 && outcome.result.signal === null && outcome.result.spawnError === null
+    && outcome.receiptSha256 === hashFile(receiptPath),
+  'runner success is not bound to an externally captured zero process exit and exact receipt bytes');
+  for (const stream of ['stdout', 'stderr']) {
+    invariant(outcome.logs?.[stream]?.artifactPath === `runner-${stream}.log`
+      && outcome.logs[stream].sha256 === hashFile(join(evidenceRoot, `runner-${stream}.log`)),
+    'externally captured runner output hash changed');
   }
+}
+
+function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptPath } = {}) {
+  if (capturedReceiptPath) verifyCapturedRunnerOutcome(evidenceRoot, capturedReceiptPath, receipt.repository.commitSha);
   const databaseRef = receipt.runtimeEvidence?.database;
   invariant(databaseRef && typeof databaseRef.artifactPath === 'string' && hashPattern.test(databaseRef.sha256), 'runtime database evidence reference is required');
   const databasePath = resolve(evidenceRoot, databaseRef.artifactPath);
@@ -1243,7 +1248,7 @@ async function main() {
     const structure = validateReceipt(manifest, receipt, {
       expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot: options.evidenceDir,
     });
-    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, { requireCapturedExit: true });
+    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, { capturedReceiptPath: options.receiptPath });
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: receipt.providerEvidence.invocationCount, receiptPath: options.receiptPath };
     console.log(JSON.stringify(report, null, 2));
     return;

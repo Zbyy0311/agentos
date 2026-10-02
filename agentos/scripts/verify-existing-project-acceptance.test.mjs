@@ -10,7 +10,59 @@ import {
   acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
   verifyCandidateReviewSequence, frozenCandidateContentHash,
+  observeOwnedProviderProcesses, verifyCapturedRunnerOutcome,
 } from './verify-existing-project-acceptance.mjs';
+
+test('captured exit binds the receipt actually passed for verification', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-external-exit-'));
+  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+  try {
+    const receiptPath = join(root, 'receipt.json');
+    const alternativePath = join(root, 'alternative.json');
+    writeFileSync(receiptPath, '{"commit":"original"}');
+    writeFileSync(alternativePath, '{"commit":"modified"}');
+    const logs = {};
+    for (const stream of ['stdout', 'stderr']) {
+      const artifactPath = `runner-${stream}.log`;
+      writeFileSync(join(root, artifactPath), stream);
+      logs[stream] = { artifactPath, sha256: sha256(stream) };
+    }
+    writeFileSync(join(root, 'runner-outcome.json'), JSON.stringify({
+      schemaVersion: 1, source: 'parent-child-process-close', commitSha: 'a'.repeat(40),
+      result: { exitCode: 0, signal: null, spawnError: null },
+      receiptSha256: sha256('{"commit":"original"}'), logs,
+    }));
+    assert.doesNotThrow(() => verifyCapturedRunnerOutcome(root, receiptPath, 'a'.repeat(40)));
+    assert.throws(() => verifyCapturedRunnerOutcome(root, alternativePath, 'a'.repeat(40)), /exact receipt bytes/u);
+    writeFileSync(join(root, 'runner-stdout.log'), 'changed');
+    assert.throws(() => verifyCapturedRunnerOutcome(root, receiptPath, 'a'.repeat(40)), /output hash changed/u);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('native observation ignores exited reused PIDs and never certifies a mismatched live birth', { skip: process.platform !== 'win32' }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-native-observation-'));
+  const databasePath = join(root, 'runtime.sqlite');
+  const db = new DatabaseSync(databasePath);
+  try {
+    db.exec(`CREATE TABLE runtime_processes (id TEXT, workspace_id TEXT, run_id TEXT, process_type TEXT,
+      provider_session_id TEXT, native_pid INTEGER, native_birth_identity TEXT, executable_resolved TEXT, status TEXT)`);
+    const insert = db.prepare('INSERT INTO runtime_processes VALUES (?,?,?,?,?,?,?,?,?)');
+    insert.run('exited', 'owned', 'run', 'provider', 'session-exited', 10, 'win32:filetime:10', 'codex.exe', 'exited');
+    insert.run('matching', 'owned', 'run', 'provider', 'session-matching', 11, 'win32:filetime:11', 'codex.exe', 'running');
+    insert.run('race', 'owned', 'run', 'provider', 'session-race', 12, 'win32:filetime:12', 'codex.exe', 'running');
+    insert.run('other-workspace', 'other', 'run', 'provider', 'session-other', 13, 'win32:filetime:13', 'codex.exe', 'running');
+    const probed = [];
+    const server = { databasePath, nativeVerifier: { async verify(pid) {
+      probed.push(pid);
+      return { kind: 'alive', identity: { nativeBirthIdentity: `win32:filetime:${pid === 12 ? 99 : pid}` } };
+    } } };
+    await observeOwnedProviderProcesses(server, 'owned', 'run', root, 'defect');
+    assert.deepEqual(probed, [11, 12]);
+    assert.deepEqual([...server.nativeObservations.keys()], ['matching']);
+    assert.equal(server.nativeObservations.get('matching').nativeBirthIdentity, 'win32:filetime:11');
+    assert.equal(server.nativeObservations.has('race'), false);
+  } finally { db.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 test('an independent direct approval is preserved without inventing a revision', () => {
   const candidate = { id: 'candidate-1', round: 0, diffHash: 'a'.repeat(64), canonicalRunId: 'run-1' };
