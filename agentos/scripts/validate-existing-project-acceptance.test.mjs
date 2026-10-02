@@ -48,6 +48,7 @@ function fixture(mode = 'simulated-provider') {
     const requestedChanges = [`${kind}: address the review finding with a concrete change`];
     const changedPaths = [`src/${kind}-change.ts`];
     const acceptanceCommands = [`pnpm acceptance:existing-project --scenario ${kind}`];
+    const baselineCommands = [`node --test agentos/apps/server/src/${kind}.baseline-probe.test.mjs`];
     const requestId = `${kind}-review-request`;
     const revisionId = `${kind}-revision`;
     const approvalId = `${kind}-approval`;
@@ -145,6 +146,7 @@ function fixture(mode = 'simulated-provider') {
         candidateId: `candidate-${kind}`,
       },
       roles,
+      baselineCommands,
       acceptanceCommands,
       frozenCandidate: candidate,
       priorCandidate,
@@ -169,7 +171,7 @@ function fixture(mode = 'simulated-provider') {
       : 'baseline lacks slug normalization';
     const stdout = addArtifact(`evidence/${scenario.kind}/baseline.stdout.txt`, `not ok 1 - ${expectedFailurePattern}\n`);
     const stderr = addArtifact(`evidence/${scenario.kind}/baseline.stderr.txt`, '');
-    const command = scenario.acceptanceCommands[0];
+    const command = scenario.baselineCommands[0];
     const commandId = `${scenario.kind}-baseline-command`;
     const baselineRecord = {
       schemaVersion: 1, kind: 'baseline-command', scenarioKind: scenario.kind, commandId, command,
@@ -245,6 +247,26 @@ test('requires both scenario kinds; arbitrary labels and duplicate kinds cannot 
 test('requires distinct per-scenario task, run, and candidate identities', () => withFixture(item => {
   item.receipt.scenarios[1].ids.taskId = item.receipt.scenarios[0].ids.taskId;
   assert.throws(() => validate(item), /taskId must be unique across scenarios/);
+}));
+
+test('baseline probes are separately declared and their artifacts cannot be relabeled after execution', () => withFixture(item => {
+  const scenario = item.receipt.scenarios[0];
+  assert.notDeepEqual(scenario.baselineCommands, scenario.acceptanceCommands);
+  scenario.baselineCommands[0] = 'node -e "console.log(0)"';
+  assert.throws(() => validate(item), /baseline command identity or exit code is incomplete/);
+}));
+
+test('a zero-exit output containing the expected marker is not a reproduced baseline failure', () => withFixture(item => {
+  const scenario = item.receipt.scenarios[0];
+  const command = scenario.baselineReproduction.commands[0];
+  command.rawExitCode = 0;
+  const artifactPath = resolve(item.root, command.artifact.artifactPath);
+  const record = JSON.parse(readFileSync(artifactPath, 'utf8'));
+  record.rawExitCode = 0;
+  const bytes = Buffer.from(JSON.stringify(record));
+  writeFileSync(artifactPath, bytes);
+  command.artifact.sha256 = hash(bytes);
+  assert.throws(() => validate(item), /must capture its expected baseline failure with a nonzero exit/);
 }));
 
 test('rejects a self-reported commit/tree that does not match the actual frozen checkout', () => withFixture(item => {

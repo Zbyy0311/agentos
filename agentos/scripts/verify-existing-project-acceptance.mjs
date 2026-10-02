@@ -224,7 +224,7 @@ function simulationPlan(kind) {
   return {
     kind, title: `Existing-project ${kind} acceptance fixture`, objective,
     expectedBaselineFailure: kind === 'defect' ? 'baseline exposes the whitespace defect' : 'baseline lacks slug normalization',
-    scope: [`${dir}/${kind}.mjs`, `${dir}/${kind}.test.mjs`], acceptanceCommands: commands,
+    scope: [`${dir}/${kind}.mjs`, `${dir}/${kind}.test.mjs`], baselineCommands: commands, acceptanceCommands: commands,
   };
 }
 
@@ -240,6 +240,7 @@ function validatePlan(value) {
     invariant(typeof scenario.expectedBaselineFailure === 'string' && scenario.expectedBaselineFailure.trim().length >= 12,
       `${kind} expectedBaselineFailure must name a concrete failing assertion or output marker`);
     invariant(Array.isArray(scenario.scope) && scenario.scope.length > 0 && scenario.scope.every(item => typeof item === 'string' && item.length > 0), `${kind} scope is required`);
+    invariant(Array.isArray(scenario.baselineCommands) && scenario.baselineCommands.length > 0 && scenario.baselineCommands.every(item => typeof item === 'string' && item.trim()), `${kind} baseline commands are required`);
     invariant(Array.isArray(scenario.acceptanceCommands) && scenario.acceptanceCommands.length > 0 && scenario.acceptanceCommands.every(item => typeof item === 'string' && item.trim()), `${kind} acceptance commands are required`);
   }
   return ['defect', 'feature'].map(kind => byKind.get(kind));
@@ -268,6 +269,10 @@ function validateRealPlanPaths(plans, repositoryRoot) {
       existing.push(scopedPath);
     }
     invariant(existing.length > 0, `${plan.kind} real plan must anchor its scope to at least one existing frozen AgentOS source path`);
+    invariant(JSON.stringify(plan.baselineCommands) !== JSON.stringify(plan.acceptanceCommands),
+      `${plan.kind} real plan must separate frozen-baseline reproduction commands from candidate acceptance commands`);
+    invariant(plan.baselineCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
+      `${plan.kind} real baseline commands cannot execute the deterministic runner fixture`);
     invariant(plan.acceptanceCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
       `${plan.kind} real acceptance commands cannot execute the deterministic runner fixture`);
   }
@@ -511,7 +516,7 @@ function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePa
 }
 
 function captureBaselineReproduction(evidenceRoot, plan, workspace) {
-  const commands = plan.acceptanceCommands.map((command, index) => {
+  const commands = plan.baselineCommands.map((command, index) => {
     const observedAt = new Date().toISOString();
     const result = spawnSync(command, {
       cwd: workspace.root, encoding: 'utf8', shell: true, windowsHide: true,
@@ -785,6 +790,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const scenario = {
     id: `${plan.kind}-${taskId}`, kind: plan.kind, status: 'passed',
     ids: { projectId: workspaceId, taskId, runId: candidates[1].canonicalRunId, candidateId: candidates[1].id },
+    baselineCommands: plan.baselineCommands,
     acceptanceCommands: plan.acceptanceCommands,
     baselineReproduction: baselineEvidence,
     roles: { planner: agents.planner.id, implementer: agents.implementer.id, reviewer: agents.reviewer.id },
@@ -860,6 +866,10 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       const acceptanceCommands = JSON.parse(task.acceptance_commands_json);
       invariant(JSON.stringify(acceptanceCommands) === JSON.stringify(scenario.acceptanceCommands),
         `${scenario.kind} acceptance commands differ from the persisted task plan`);
+      invariant(Array.isArray(scenario.baselineCommands) && scenario.baselineCommands.length > 0
+        && scenario.baselineReproduction?.commands?.length === scenario.baselineCommands.length
+        && scenario.baselineReproduction.commands.every((command, index) => command.command === scenario.baselineCommands[index]),
+      `${scenario.kind} baseline command artifacts differ from the declared frozen-baseline probes`);
       invariant(JSON.stringify(scenario.commands[0].argv) === JSON.stringify(acceptanceCommands),
         `${scenario.kind} retest artifact does not identify the exact acceptance command`);
       const workspace = db.prepare('SELECT root_path FROM workspaces WHERE id=?').get(task.workspace_id);
@@ -903,8 +913,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
         const combinedOutput = `${readFileSync(stdoutPath, 'utf8')}\n${readFileSync(stderrPath, 'utf8')}`;
         if (record.rawExitCode !== 0 && combinedOutput.includes(scenario.baselineReproduction.expectedFailurePattern)) baselineFailures.push(record);
       }
-      invariant(baselineFailures.length > 0 && scenario.baselineReproduction.commands.length === acceptanceCommands.length,
-        `${scenario.kind} did not reproduce the declared baseline failure using every acceptance command`);
+      invariant(baselineFailures.length > 0,
+        `${scenario.kind} did not reproduce the declared baseline failure using its frozen-baseline probes`);
 
       const reviews = tableRows(db, `SELECT id,candidate_id,canonical_run_id,stage_id,stage_attempt,reviewer_agent_id,candidate_diff_hash,conclusion,summary,created_at
         FROM collaboration_reviews WHERE collaboration_task_id=? AND workspace_id=? ORDER BY created_at ASC,id ASC`, task.id, task.workspace_id);

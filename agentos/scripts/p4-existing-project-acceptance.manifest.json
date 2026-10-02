@@ -36,7 +36,7 @@
     "scenarios": {
       "exactKinds": ["defect", "feature"],
       "exactCount": 2,
-      "baselineReproduction": "capture-all-acceptance-commands-and-a-matching-nonzero-expected-failure-on-the-frozen-base",
+      "baselineReproduction": "capture-declared-baseline-probes-separately-from-acceptance-commands-and-require-a-matching-nonzero-failure-on-the-frozen-base",
       "requiredIdentityFields": ["projectId", "taskId", "runId", "candidateId"],
       "uniqueAcrossScenarios": ["taskId", "runId", "candidateId"],
       "requiredRoles": ["planner", "implementer", "reviewer"],

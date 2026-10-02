@@ -168,7 +168,7 @@ export function validateManifest(manifest) {
   const scenarios = requirements.scenarios;
   requireCondition(sameArray(scenarios?.exactKinds, scenarioKinds) && scenarios?.exactCount === scenarioKinds.length,
     'exactly one defect and one feature scenario are required');
-  requireCondition(scenarios?.baselineReproduction === 'capture-all-acceptance-commands-and-a-matching-nonzero-expected-failure-on-the-frozen-base',
+  requireCondition(scenarios?.baselineReproduction === 'capture-declared-baseline-probes-separately-from-acceptance-commands-and-require-a-matching-nonzero-failure-on-the-frozen-base',
     'each scenario must reproduce its declared defect or feature gap on the frozen base');
   requireCondition(sameArray(scenarios?.requiredIdentityFields, identityFields), 'every scenario requires project, task, run, and candidate identities');
   requireCondition(sameArray(scenarios?.uniqueAcrossScenarios, ['taskId', 'runId', 'candidateId']),
@@ -346,15 +346,16 @@ function validateBaselineReproduction(root, scenario, frozenSourceSha, usedPaths
     && baseline.sourceCommitSha?.toLowerCase() === frozenSourceSha.toLowerCase()
     && baseline.baseParentCommitSha?.toLowerCase() === frozenSourceSha.toLowerCase(),
   `scenario ${scenario.kind} requires a baseline failure on a workspace based on the frozen source commit`);
-  requireCondition(Array.isArray(scenario.acceptanceCommands) && scenario.acceptanceCommands.length > 0
-    && scenario.acceptanceCommands.every(nonEmpty) && Array.isArray(baseline.commands)
-    && baseline.commands.length === scenario.acceptanceCommands.length,
-  `scenario ${scenario.kind} baseline must run every declared acceptance command`);
+  requireCondition(Array.isArray(scenario.baselineCommands) && scenario.baselineCommands.length > 0
+    && scenario.baselineCommands.every(nonEmpty) && Array.isArray(scenario.acceptanceCommands)
+    && scenario.acceptanceCommands.length > 0 && scenario.acceptanceCommands.every(nonEmpty)
+    && Array.isArray(baseline.commands) && baseline.commands.length === scenario.baselineCommands.length,
+  `scenario ${scenario.kind} baseline must run every separately declared baseline probe`);
   requireCondition(JSON.stringify(scenario.commands?.[0]?.argv) === JSON.stringify(scenario.acceptanceCommands),
     `scenario ${scenario.kind} retest must execute the exact declared acceptance commands`);
   let matchingFailure = false;
   for (const [index, command] of baseline.commands.entries()) {
-    requireCondition(command.command === scenario.acceptanceCommands[index] && nonEmpty(command.id)
+    requireCondition(command.command === scenario.baselineCommands[index] && nonEmpty(command.id)
       && Number.isInteger(command.rawExitCode),
     `scenario ${scenario.kind} baseline command identity or exit code is incomplete`);
     const record = readEvidenceJson(root, command.artifact, `scenario ${scenario.kind} baseline command`, usedPaths);
@@ -441,6 +442,10 @@ export function validateReceipt(manifest, receipt, options = {}) {
     const finalCandidateSha = sha256(candidateBytes);
 
     validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths);
+    if (receipt.mode === 'real-windows-acceptance') {
+      requireCondition(JSON.stringify(scenario.baselineCommands) !== JSON.stringify(scenario.acceptanceCommands),
+        `scenario ${scenario.kind} real acceptance must separate baseline reproduction from candidate acceptance`);
+    }
 
     const priorCandidate = scenario.priorCandidate;
     requireCondition(priorCandidate && typeof priorCandidate === 'object'

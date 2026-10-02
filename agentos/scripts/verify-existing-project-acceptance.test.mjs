@@ -6,8 +6,15 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   changedPathsFromPatch, createSimulationExecutable, selectOwnedPendingApprovals,
-  simulationPlan, validateRealPlanPaths,
+  simulationPlan, validatePlan, validateRealPlanPaths,
 } from './verify-existing-project-acceptance.mjs';
+
+test('each acceptance scenario requires explicit baseline probes and candidate acceptance commands', () => {
+  const plan = { scenarios: ['defect', 'feature'].map(simulationPlan) };
+  assert.equal(validatePlan(plan).length, 2);
+  delete plan.scenarios[1].baselineCommands;
+  assert.throws(() => validatePlan(plan), /feature baseline commands are required/u);
+});
 
 function realPlans(root) {
   const source = join(root, 'agentos', 'apps', 'server', 'src', 'routes', 'collaborations.ts');
@@ -16,6 +23,7 @@ function realPlans(root) {
   return ['defect', 'feature'].map(kind => ({
     ...simulationPlan(kind),
     scope: ['agentos/apps/server/src/routes/collaborations.ts'],
+    baselineCommands: ['node --input-type=module -e "throw new Error(\'baseline behavior reproduces the reported defect\')"'],
     acceptanceCommands: ['node --test agentos/apps/server/src/routes/collaborations.test.ts'],
   }));
 }
@@ -25,6 +33,15 @@ test('real plan accepts existing AgentOS production paths with exact repository-
   try {
     const plans = realPlans(root);
     assert.equal(validateRealPlanPaths(plans, root), plans);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('real plan rejects using candidate acceptance tests as the baseline probe', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-real-plan-'));
+  try {
+    const plans = realPlans(root);
+    plans[0].baselineCommands = plans[0].acceptanceCommands;
+    assert.throws(() => validateRealPlanPaths(plans, root), /separate frozen-baseline reproduction commands/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
