@@ -82,6 +82,7 @@ test('one-file diff requests remain bound to the current candidate and requested
   const diff: CollaborationCandidatePreviewFileDiff = {
     workspaceId: 'ws/one', collaborationTaskId: 'task one', candidateId: 'cand/one',
     baseCommit: 'b'.repeat(40), diffHash: 'a'.repeat(64), contentHash: 'e'.repeat(64), fileIndex: 12, path: 'src/one.ts',
+    manifestVersion: 2,
     diffText: '+frozen line\n', withheld: false,
   };
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
