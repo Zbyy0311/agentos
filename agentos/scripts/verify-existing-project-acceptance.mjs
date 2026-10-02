@@ -788,7 +788,9 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   invariant(applied.body.task?.status === 'applied' && applied.body.task.currentCandidateId === candidates[1].id,
     `${plan.kind} apply API did not apply the reviewed candidate`);
   const afterApply = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}`);
-  invariant(afterApply.body.task.status === 'applied' && afterApply.body.candidate.status === 'applied', `${plan.kind} persisted apply state is missing`);
+  invariant(afterApply.body.task.status === 'applied' && afterApply.body.task.currentCandidateId === candidates[1].id
+    && afterApply.body.candidate?.id === candidates[1].id && afterApply.body.candidate.diffHash === finalRef.sha256,
+  `${plan.kind} persisted apply state or frozen candidate identity is missing`);
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: retest exit=0; preview verified; apply persisted`);
   recordProgress(evidenceRoot, plan.kind, { event: 'candidate-applied-and-persisted', candidateId: candidates[1].id,
     candidateSha256: finalRef.sha256, applyStatus: afterApply.body.task.status });
