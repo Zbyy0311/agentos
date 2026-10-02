@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   changedPathsFromPatch, createSimulationExecutable, selectOwnedPendingApprovals,
-  simulationPlan, validatePlan, validateRealPlanPaths,
+  simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
 } from './verify-existing-project-acceptance.mjs';
 
 test('each acceptance scenario requires explicit baseline probes and candidate acceptance commands', () => {
@@ -14,6 +14,19 @@ test('each acceptance scenario requires explicit baseline probes and candidate a
   assert.equal(validatePlan(plan).length, 2);
   delete plan.scenarios[1].baselineCommands;
   assert.throws(() => validatePlan(plan), /feature baseline commands are required/u);
+});
+
+test('flattened P2 preview response binds the exact workspace, candidate, base, content hash, and patch hash', () => {
+  const preview = {
+    workspaceId: 'workspace-1', collaborationTaskId: 'task-1', candidateId: 'candidate-1',
+    baseCommit: 'a'.repeat(40), contentHash: 'b'.repeat(64), diffHash: 'c'.repeat(64),
+  };
+  assert.deepEqual(verifyFrozenCandidatePreview(preview, preview), {
+    candidateId: 'candidate-1', candidateBaseCommit: 'a'.repeat(40),
+    candidateContentHash: 'b'.repeat(64), candidateDiffHash: 'c'.repeat(64),
+  });
+  assert.throws(() => verifyFrozenCandidatePreview({ candidate: preview }, preview), /exact frozen candidate identity/u);
+  assert.throws(() => verifyFrozenCandidatePreview({ ...preview, contentHash: 'd'.repeat(64) }, preview), /exact frozen candidate identity/u);
 });
 
 function realPlans(root) {

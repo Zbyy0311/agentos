@@ -70,6 +70,22 @@ export function changedPathsFromPatch(patchText) {
   return paths;
 }
 
+export function verifyFrozenCandidatePreview(response, expected) {
+  invariant(response?.workspaceId === expected.workspaceId
+    && response.collaborationTaskId === expected.collaborationTaskId
+    && response.candidateId === expected.candidateId
+    && response.baseCommit === expected.baseCommit
+    && response.contentHash === expected.contentHash
+    && response.diffHash === expected.diffHash,
+  'candidate preview response does not match the exact frozen candidate identity');
+  return {
+    candidateId: response.candidateId,
+    candidateBaseCommit: response.baseCommit,
+    candidateContentHash: response.contentHash,
+    candidateDiffHash: response.diffHash,
+  };
+}
+
 function assertCandidateChangesStayInScope(plan, paths) {
   const scopes = plan.scope.map(value => value.replaceAll('\\', '/').replace(/\/$/u, ''));
   invariant(paths.every(path => scopes.some(scope => path === scope || path.startsWith(`${scope}/`))),
@@ -708,20 +724,36 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const finalRef = writeArtifact(evidenceRoot, `scenarios/${plan.kind}/final.patch`, finalPatch);
   invariant(priorRef.sha256 === candidates[0].diffHash && finalRef.sha256 === candidates[1].diffHash, `${plan.kind} candidate patch bytes differ from stored hashes`);
 
-  // The task-details endpoint is the current read-only candidate preview surface:
-  // it returns the frozen patch, its hash, test result, and review in one response.
-  const previewRoute = mode === 'real-windows-acceptance'
-    ? `${base}/${encodeURIComponent(taskId)}/preview`
-    : `${base}/${encodeURIComponent(taskId)}`;
+  const approvedTask = details.body.task;
+  const candidateSummary = details.body.candidate;
+  const candidateBaseCommit = approvedTask.baseCommit;
+  invariant(candidateSummary?.id === candidates[1].id && candidateSummary.diffHash === finalRef.sha256
+    && hashPattern.test(candidateSummary.contentHash ?? '') && shaPattern.test(candidateBaseCommit ?? ''),
+  `${plan.kind} approved task details lack the frozen candidate preview identity`);
+  const previewIdentity = {
+    workspaceId, collaborationTaskId: taskId, candidateId: candidateSummary.id,
+    baseCommit: candidateBaseCommit, contentHash: candidateSummary.contentHash, diffHash: candidateSummary.diffHash,
+  };
+  const previewQuery = new URLSearchParams({
+    candidateBaseCommit: previewIdentity.baseCommit,
+    candidateContentHash: previewIdentity.contentHash,
+  });
+  const previewRoute = `${base}/${encodeURIComponent(taskId)}/candidates/${encodeURIComponent(candidates[1].id)}/preview?${previewQuery}`;
   const preview = await api(server.baseUrl, previewRoute);
-  invariant(preview.body.candidate?.id === candidates[1].id && preview.body.candidate.diffHash === finalRef.sha256,
-    `${plan.kind} preview response is not bound to the approved frozen candidate`);
+  const appliedPreviewIdentity = verifyFrozenCandidatePreview(preview.body, previewIdentity);
   const previewBytes = Buffer.from(JSON.stringify(preview.body, null, 2) + '\n');
   recordProgress(evidenceRoot, plan.kind, { event: 'candidate-preview-verified', candidateId: candidates[1].id,
-    candidateSha256: finalRef.sha256, previewPath: previewRoute });
+    candidateSha256: finalRef.sha256, candidateContentHash: previewIdentity.contentHash, previewPath: previewRoute });
 
+  const applyRoute = `${base}/${encodeURIComponent(taskId)}/apply`;
+  const applyRequestBody = {
+    expectedVersion: approvedTask.version,
+    candidateId: appliedPreviewIdentity.candidateId,
+    candidateBaseCommit: appliedPreviewIdentity.candidateBaseCommit,
+    candidateContentHash: appliedPreviewIdentity.candidateContentHash,
+  };
   const applied = await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/apply`, {
-    method: 'POST', body: { expectedVersion: task.version }, headers: { 'Idempotency-Key': `p4-acceptance-apply-${randomUUID()}` },
+    method: 'POST', body: applyRequestBody, headers: { 'Idempotency-Key': `p4-acceptance-apply-${randomUUID()}` },
   });
   invariant(applied.body.task?.status === 'applied' && applied.body.task.currentCandidateId === candidates[1].id,
     `${plan.kind} apply API did not apply the reviewed candidate`);
@@ -757,7 +789,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   history.push(approval);
 
   const commands = [];
-  const makeCommand = (stage, argv, rawOutput, result, pathFragment) => {
+  const makeCommand = (stage, argv, rawOutput, result, pathFragment, requestBody = null) => {
     const commandId = `${plan.kind}-${stage}-${randomUUID()}`;
     const outputText = Buffer.isBuffer(rawOutput) ? rawOutput.toString('utf8') : String(rawOutput ?? '');
     const sanitizedOutput = safeText(outputText);
@@ -771,7 +803,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     const artifact = writeJsonArtifact(evidenceRoot, `scenarios/${plan.kind}/commands/${commandId}.json`, {
       schemaVersion: 1, kind: 'acceptance-command', scenarioId, stage, commandId, argv,
       cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: candidates[1].diffHash,
-      stdout, stderr, stageResult: result, observedAt, apiPath: pathFragment,
+      stdout, stderr, stageResult: result, observedAt, apiPath: pathFragment, requestBody,
     });
     commands.push({ id: commandId, stage, argv, cwd, rawExitCode: result.rawExitCode, expectedExitCode: 0, frozenCandidateSha256: candidates[1].diffHash, artifact });
   };
@@ -781,9 +813,9 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   makeCommand('preview', ['GET', previewRoute], previewBytes, {
     status: 'ready', previewId: candidates[1].id, candidateSha256: candidates[1].diffHash, rawExitCode: 0,
   }, previewRoute);
-  makeCommand('apply', ['POST', `${base}/${encodeURIComponent(taskId)}/apply`], JSON.stringify(applied.body), {
+  makeCommand('apply', ['POST', applyRoute], JSON.stringify(applied.body), {
     status: 'applied', applicationId: applied.body.task.applyIdempotencyKey ?? taskId, candidateSha256: candidates[1].diffHash, rawExitCode: 0,
-  }, `${base}/${encodeURIComponent(taskId)}/apply`);
+  }, applyRoute, applyRequestBody);
 
   const progress = (await api(server.baseUrl, `${base}/${encodeURIComponent(taskId)}/progress`)).body.progress;
   const runIds = progress.runs.map(run => run.runId);
@@ -792,6 +824,10 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
     ids: { projectId: workspaceId, taskId, runId: candidates[1].canonicalRunId, candidateId: candidates[1].id },
     baselineCommands: plan.baselineCommands,
     acceptanceCommands: plan.acceptanceCommands,
+    previewIdentity: {
+      candidateId: previewIdentity.candidateId, baseCommit: previewIdentity.baseCommit,
+      contentHash: previewIdentity.contentHash, diffHash: previewIdentity.diffHash,
+    },
     baselineReproduction: baselineEvidence,
     roles: { planner: agents.planner.id, implementer: agents.implementer.id, reviewer: agents.reviewer.id },
     frozenCandidate: { ...finalRef, commitSha: server.sourceSnapshot.commitSha, treeSha: server.sourceSnapshot.treeSha },
@@ -876,7 +912,7 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       invariant(workspace && resolve(workspace.root_path).toLowerCase() === resolve(scenario.commands[0].cwd).toLowerCase(),
         `${scenario.kind} command working directory differs from the persisted workspace`);
 
-      const candidates = tableRows(db, `SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,diff_text,test_status,test_command,test_exit_code,test_output,status,review_conclusion,review_summary,created_at,manifest_json
+      const candidates = tableRows(db, `SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,content_hash,diff_text,test_status,test_command,test_exit_code,test_output,status,review_conclusion,review_summary,created_at,manifest_json
         FROM collaboration_candidates WHERE collaboration_task_id=? AND workspace_id=? ORDER BY round ASC`, task.id, task.workspace_id);
       invariant(candidates.length === 2 && candidates[0].round === 0 && candidates[1].round === 1,
         `${scenario.kind} database must contain the initial and revised candidates`);
@@ -1004,10 +1040,25 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt) {
       `${scenario.kind} retest artifact does not match the persisted acceptance command result`);
       const preview = readCommand(scenario, 'preview');
       const previewResponse = JSON.parse(preview.outputRecord.output);
-      invariant(previewResponse.candidate?.id === candidates[1].id && previewResponse.candidate.diffHash === candidates[1].diff_hash
-        && previewResponse.task.status === 'awaiting_application', `${scenario.kind} captured preview did not show the approved, unapplied candidate`);
+      const previewIdentity = scenario.previewIdentity;
+      invariant(previewIdentity?.candidateId === candidates[1].id && previewIdentity.baseCommit === task.base_commit
+        && previewIdentity.contentHash === candidates[1].content_hash && previewIdentity.diffHash === candidates[1].diff_hash,
+      `${scenario.kind} preview identity differs from the persisted candidate row`);
+      invariant(previewResponse.workspaceId === task.workspace_id && previewResponse.collaborationTaskId === task.id
+        && previewResponse.candidateId === candidates[1].id && previewResponse.baseCommit === task.base_commit
+        && previewResponse.contentHash === candidates[1].content_hash && previewResponse.diffHash === candidates[1].diff_hash,
+      `${scenario.kind} captured preview response does not match the persisted frozen candidate`);
+      const previewUrl = new URL(preview.command.argv[1], 'http://agentos.local');
+      invariant(preview.command.argv[0] === 'GET'
+        && previewUrl.searchParams.get('candidateBaseCommit') === previewResponse.baseCommit
+        && previewUrl.searchParams.get('candidateContentHash') === previewResponse.contentHash,
+      `${scenario.kind} preview request did not address the exact frozen candidate hashes`);
       const apply = readCommand(scenario, 'apply');
       const applyResponse = JSON.parse(apply.outputRecord.output);
+      invariant(apply.record.requestBody?.candidateId === previewResponse.candidateId
+        && apply.record.requestBody?.candidateBaseCommit === previewResponse.baseCommit
+        && apply.record.requestBody?.candidateContentHash === previewResponse.contentHash,
+      `${scenario.kind} apply request is not bound to the exact displayed candidate preview`);
       invariant(applyResponse.task?.status === 'applied' && applyResponse.task?.currentCandidateId === candidates[1].id,
         `${scenario.kind} captured apply response does not identify the applied candidate`);
       totalProviderCalls += sessions.length;
@@ -1068,11 +1119,11 @@ async function main() {
       requireP2Ready: options.mode === 'real-windows-acceptance',
       worktreeRoot: join(runRoot, 'runtime-worktrees'),
     });
+    const collaborationRoutesSource = readFileSync(join(scriptRoot, 'apps/server/src/routes/collaborations.ts'), 'utf8');
+    invariant(/router\.get\(['"`]\/collaboration\/tasks\/:collaborationId\/candidates\/:candidateId\/preview['"`]/u.test(collaborationRoutesSource),
+      'P2 frozen candidate preview route is not integrated; no acceptance task was started');
     if (options.mode === 'real-windows-acceptance') {
       invariant(server.readinessPath !== '/api/health (legacy liveness fallback; simulated mode only)', 'P2 readiness is required before real acceptance');
-      const collabSource = readFileSync(join(scriptRoot, 'apps/server/src/routes/collaborations.ts'), 'utf8');
-      invariant(/router\.(?:get|post)\(['"`]\/collaboration\/tasks\/:collaborationId\/preview['"`]/u.test(collabSource),
-        'P2 collaboration preview route is not integrated; no real provider task was started');
     }
     const model = options.mode === 'simulated-provider' ? 'agentos-p4-deterministic-fixture-v1' : (options.model || process.env.AGENTOS_CODEX_MODEL);
     let executable;
