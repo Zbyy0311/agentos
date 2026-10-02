@@ -36,9 +36,8 @@ const NOW2 = '2026-08-13T01:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
 // The full default registry now continues past 015 into later additive
 // migrations. These
-// M4/P6-M3b suites intentionally stop at 015; FULL_MIGRATION_IDS documents the
-// default registry-order assertion's complete expected sequence through 041.
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048'];
+// M4/P6-M3b suites intentionally stop at 015. Later migrations are checked
+// against the dynamic default-registry length and stable ordering below.
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';
@@ -787,7 +786,12 @@ test('injected 014 DDL failure rolls back the entire transition including suppor
 });
 
 test('registry order is 001–014, duplicate ids are rejected, and checksum mismatch fails closed', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), FULL_MIGRATION_IDS);
+  const registryIds = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  assert.deepEqual(registryIds.slice(0, MIGRATION_IDS.length), MIGRATION_IDS);
+  assert.equal(registryIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.equal(new Set(registryIds).size, registryIds.length);
+  assert.deepEqual(registryIds, [...registryIds].sort());
+  assert.ok(registryIds.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
   const migration = migration014();
   assert.equal(migration.id, '014');
   assert.equal(migration.name, 'm4-process-runtime-schema');

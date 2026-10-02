@@ -37,10 +37,13 @@ export function collaborationMutationRequest(
   taskId: string,
   expectedVersion: number,
   action: 'confirm' | 'cancel' | 'apply',
-): { readonly method: 'POST'; readonly body: { readonly expectedVersion: number }; readonly headers: { readonly 'Idempotency-Key': string } } {
+  candidate?: { readonly id: string; readonly baseCommit: string; readonly contentHash: string },
+): { readonly method: 'POST'; readonly body: { readonly expectedVersion: number; readonly candidateId?: string; readonly candidateBaseCommit?: string; readonly candidateContentHash?: string }; readonly headers: { readonly 'Idempotency-Key': string } } {
   return {
     method: 'POST',
-    body: { expectedVersion },
+    body: { expectedVersion, ...(candidate === undefined ? {} : {
+      candidateId: candidate.id, candidateBaseCommit: candidate.baseCommit, candidateContentHash: candidate.contentHash,
+    }) },
     headers: { 'Idempotency-Key': `workspace-ui-${action}-${taskId}-${expectedVersion}` },
   };
 }

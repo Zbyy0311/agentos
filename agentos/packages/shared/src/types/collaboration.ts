@@ -80,10 +80,12 @@ export interface CollaborationCandidate {
   baseCommit: string;
   headCommit: string;
   diffHash: string;
+  /** Canonical hash of the frozen patch digest and all persisted file metadata. */
+  contentHash?: string;
   diffText: string;
   /** Version 2 snapshots include tracked and untracked content in diffText. */
   snapshotVersion?: number;
-  manifest: Array<{ path: string; sizeBytes: number; sha256: string }>;
+  manifest: CollaborationCandidateManifestEntry[];
   testStatus: CollaborationTestStatus;
   testCommand?: string;
   testExitCode?: number;
@@ -98,6 +100,37 @@ export interface CollaborationCandidate {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Metadata returned before the user explicitly loads a frozen file diff. */
+export interface CollaborationCandidateSummary {
+  id: string;
+  round: number;
+  diffHash: string;
+  contentHash: string;
+  snapshotVersion?: number;
+  testStatus: CollaborationTestStatus;
+  testCommand?: string;
+  testExitCode?: number;
+  reviewConclusion?: CollaborationReviewConclusion;
+  reviewSummary?: string;
+}
+
+export interface CollaborationCandidateManifestEntry {
+  path: string;
+  sizeBytes: number;
+  /** True when the frozen file image is binary, including unchanged binary renames. */
+  binary?: boolean;
+  /** SHA-256 of the candidate-side file image when available. */
+  sha256?: string;
+  /** Git blob object id, always tied to diffText by the frozen diff hash. */
+  gitObjectId?: string;
+  /** Binary baseline metadata for modified or renamed files. */
+  baseSizeBytes?: number;
+  baseSha256?: string;
+  baseObjectId?: string;
+  /** True when sizeBytes and hashes describe the removed baseline image. */
+  deleted?: boolean;
 }
 
 export interface CollaborationReview {
@@ -119,8 +152,8 @@ export interface CollaborationReview {
 
 export interface CollaborationTaskDetails {
   task: CollaborationTask;
-  candidate?: CollaborationCandidate;
-  candidates: CollaborationCandidate[];
+  candidate?: CollaborationCandidateSummary;
+  candidates: CollaborationCandidateSummary[];
   reviews: CollaborationReview[];
 }
 
@@ -210,6 +243,7 @@ export interface CollaborationProgressCandidate {
   id: string;
   round: number;
   diffHash: string;
+  contentHash: string;
   snapshotVersion?: number;
   testStatus: CollaborationTestStatus;
   testCommand?: string;

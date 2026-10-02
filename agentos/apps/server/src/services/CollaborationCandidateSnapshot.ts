@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
+import type { CollaborationCandidateManifestEntry } from '@agentos/shared';
 import { lstat, open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
@@ -7,6 +8,7 @@ import {
   captureCollaborationPathBoundary,
 } from './CollaborationPathBoundary.js';
 import type { NormalizedCollaborationScope } from './CollaborationScopePolicy.js';
+import { parseCollaborationCandidateDiff } from './CollaborationCandidatePreview.js';
 import {
   assertCollaborationPathsWithinScope,
   COLLABORATION_SCOPE_POLICY_VERSION,
@@ -15,6 +17,7 @@ import {
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
 
 const MAX_PATCH_BYTES = 8 * 1024 * 1024;
+const MAX_FROZEN_BLOB_HASH_BYTES = 32 * 1024 * 1024;
 
 export interface CollaborationCandidateSnapshot {
   readonly baseCommit: string;
@@ -26,6 +29,8 @@ export interface CollaborationCandidateSnapshot {
   /** Includes both source and destination paths for detected renames. */
   readonly changedPaths: readonly string[];
   readonly untrackedManifest: readonly { path: string; sizeBytes: number; sha256: string }[];
+  /** Metadata-only images for binary paths; bytes remain solely in diffText. */
+  readonly binaryManifest: readonly CollaborationCandidateManifestEntry[];
 }
 
 interface GitTreeEntry {
@@ -300,6 +305,7 @@ export async function captureCollaborationCandidateSnapshot(
       await assertFrozenState();
       throw new Error('COLLABORATION_CANDIDATE_EMPTY: implementation produced no changes');
     }
+    const diffRecords = parseCollaborationCandidateDiff(patch);
     // Validate the exact emitted patch against base objects in the same owned
     // context. Neither this check nor the preceding diff accesses live content.
     await context.run(['read-tree', baseCommit]);
@@ -311,9 +317,58 @@ export async function captureCollaborationCandidateSnapshot(
       if (!image) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: added source was not frozen');
       return { path, sizeBytes: image.sizeBytes, sha256: image.sha256 };
     }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    const blobImages = new Map<string, { sizeBytes: number; sha256: string; binary: boolean }>();
+    let frozenBlobHashBytes = 0;
+    const blobImage = async (entry: GitTreeEntry | undefined): Promise<{ sizeBytes: number; sha256: string; binary: boolean } | undefined> => {
+      if (!entry) return undefined;
+      const cached = blobImages.get(entry.objectId);
+      if (cached) return cached;
+      const sizeBytes = Number((await context.run(['cat-file', '-s', entry.objectId])).toString('utf8').trim());
+      if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary blob size is invalid');
+      if (frozenBlobHashBytes + sizeBytes > MAX_FROZEN_BLOB_HASH_BYTES) {
+        throw new Error('COLLABORATION_DIFF_TOO_LARGE: frozen blob hashing exceeds the 32 MiB aggregate limit');
+      }
+      frozenBlobHashBytes += sizeBytes;
+      const frozenBlob = await context.run(['cat-file', 'blob', entry.objectId]);
+      if (frozenBlob.byteLength !== sizeBytes) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: frozen binary blob size changed');
+      const image = { sizeBytes, sha256: sha256(frozenBlob), binary: frozenBlob.subarray(0, 8000).includes(0) };
+      blobImages.set(entry.objectId, image);
+      return image;
+    };
+    const binaryManifest: CollaborationCandidateManifestEntry[] = [];
+    for (const record of diffRecords.filter(item => item.binary || item.status === 'renamed')) {
+      const sourcePath = record.newPath ?? record.oldPath;
+      if (!sourcePath) throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary patch path is missing');
+      const targetEntry = record.newPath === null ? undefined : stagedEntries.get(record.newPath);
+      const baseEntry = record.oldPath === null ? undefined : baseEntries.get(record.oldPath);
+      const baseImage = await blobImage(baseEntry);
+      const candidateImage = await blobImage(targetEntry);
+      if (!record.binary && !baseImage?.binary && !candidateImage?.binary) continue;
+      const baselineImage = baseImage;
+      const sizeBytes = targetEntry === undefined ? baselineImage?.sizeBytes : candidateImage?.sizeBytes;
+      const gitObjectId = targetEntry?.objectId ?? baseEntry?.objectId;
+      const imageSha256 = targetEntry === undefined ? baselineImage?.sha256 : candidateImage?.sha256;
+      if (sizeBytes === undefined || imageSha256 === undefined || gitObjectId === undefined) {
+        throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: binary image was not frozen (${JSON.stringify(sourcePath)})`);
+      }
+      const deleted = targetEntry === undefined;
+      binaryManifest.push({
+        path: sourcePath,
+        sizeBytes,
+        sha256: imageSha256,
+        gitObjectId,
+        binary: true,
+        ...(targetEntry && baseEntry && baselineImage ? {
+          baseSizeBytes: baselineImage.sizeBytes,
+          baseSha256: baselineImage.sha256,
+          baseObjectId: baseEntry.objectId,
+        } : {}),
+        ...(deleted ? { deleted: true } : {}),
+      });
+    }
     return {
       baseCommit, headCommit: headAtStart, patch, patchHash: sha256(patch),
-      scopePolicyVersion: scope.policyVersion, scope: scope.paths, changedPaths, untrackedManifest,
+      scopePolicyVersion: scope.policyVersion, scope: scope.paths, changedPaths, untrackedManifest, binaryManifest,
     };
   } finally {
     await context.dispose();

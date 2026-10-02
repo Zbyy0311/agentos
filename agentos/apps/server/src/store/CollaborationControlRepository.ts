@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import type { CollaborationCandidateManifestEntry } from '@agentos/shared';
 import type { CollaborationTask } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 import { createEntityId } from './Identity.js';
 import { CollaborationRepository } from './CollaborationRepository.js';
+import { collaborationCandidateContentHash } from '../services/CollaborationCandidateContentHash.js';
 
 export type CollaborationControlAction = 'confirm' | 'cancel' | 'apply' | 'rework';
 export type CollaborationControlState = 'reserved' | 'running' | 'completed' | 'failed' | 'recovery_required';
@@ -59,17 +61,53 @@ export class CollaborationControlRepository {
   }
 
   /** Caller owns one short transaction. No external operation may precede this claim. */
-  reserve(input: { workspaceId: string; collaborationId: string; action: CollaborationControlAction; expectedVersion: number; idempotencyKey?: string }): { control: CollaborationControl; task: CollaborationTask; replay: boolean } {
+  reserve(input: {
+    workspaceId: string; collaborationId: string; action: CollaborationControlAction; expectedVersion: number; idempotencyKey?: string;
+    candidateId?: string; candidateBaseCommit?: string; candidateContentHash?: string;
+  }): { control: CollaborationControl; task: CollaborationTask; replay: boolean } {
     if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) throw new CollaborationControlError('COLLABORATION_INVALID', 'expectedVersion must be a positive integer');
     if (!input.idempotencyKey || input.idempotencyKey.trim() !== input.idempotencyKey || input.idempotencyKey.length > 200) {
       throw new CollaborationControlError('COLLABORATION_IDEMPOTENCY_REQUIRED', 'Idempotency-Key is required');
     }
-    const requestHash = createHash('sha256').update(JSON.stringify({ workspaceId: input.workspaceId, collaborationId: input.collaborationId, action: input.action, expectedVersion: input.expectedVersion })).digest('hex');
+    const requestFingerprint = { workspaceId: input.workspaceId, collaborationId: input.collaborationId, action: input.action, expectedVersion: input.expectedVersion };
+    const requestHash = input.candidateId === undefined || input.candidateBaseCommit === undefined || input.candidateContentHash === undefined
+      ? createHash('sha256').update(JSON.stringify(requestFingerprint)).digest('hex')
+      : createHash('sha256').update(JSON.stringify({ ...requestFingerprint, candidateId: input.candidateId,
+        candidateBaseCommit: input.candidateBaseCommit, candidateContentHash: input.candidateContentHash })).digest('hex');
     const existingRow = this.db.prepare('SELECT * FROM collaboration_controls WHERE workspace_id = ? AND idempotency_key = ?').get(input.workspaceId, input.idempotencyKey) as Row | undefined;
     const task = this.tasks.findById(input.workspaceId, input.collaborationId);
     if (!task) throw new CollaborationControlError('COLLABORATION_NOT_FOUND', 'Collaboration task not found');
+    const hasCandidateBinding = input.candidateId !== undefined || input.candidateBaseCommit !== undefined || input.candidateContentHash !== undefined;
+    if (hasCandidateBinding && (input.candidateId === undefined || input.candidateBaseCommit === undefined || input.candidateContentHash === undefined)) {
+      throw new CollaborationControlError('COLLABORATION_INVALID', 'candidateId, candidateBaseCommit, and candidateContentHash must be provided together');
+    }
+    if (input.action === 'apply' && !hasCandidateBinding) {
+      throw new CollaborationControlError('COLLABORATION_CANDIDATE_CHANGED', 'Load the current frozen candidate preview before applying');
+    }
+    if (input.candidateId !== undefined && input.candidateBaseCommit !== undefined && input.candidateContentHash !== undefined) {
+      const candidate = this.db.prepare(`SELECT base_commit,diff_hash,snapshot_version,manifest_json,content_hash FROM collaboration_candidates
+        WHERE workspace_id = ? AND collaboration_task_id = ? AND id = ?`).get(
+        input.workspaceId, input.collaborationId, input.candidateId,
+      ) as { base_commit: string; diff_hash: string; snapshot_version: number; manifest_json: string; content_hash: string } | undefined;
+      let computedContentHash: string | undefined;
+      if (candidate) {
+        try {
+          const manifest = JSON.parse(candidate.manifest_json) as CollaborationCandidateManifestEntry[];
+          if (Array.isArray(manifest)) computedContentHash = collaborationCandidateContentHash({
+            diffHash: candidate.diff_hash, snapshotVersion: candidate.snapshot_version, manifest,
+          });
+        } catch { computedContentHash = undefined; }
+      }
+      if (input.candidateId !== task.currentCandidateId || !candidate || candidate.base_commit !== input.candidateBaseCommit
+        || task.baseCommit !== input.candidateBaseCommit || candidate.content_hash !== input.candidateContentHash
+        || computedContentHash !== input.candidateContentHash || !/^[a-f0-9]{64}$/u.test(input.candidateContentHash)) {
+        throw new CollaborationControlError('COLLABORATION_CANDIDATE_CHANGED', 'The candidate differs from the frozen preview; refresh before applying');
+      }
+    }
     if (existingRow) {
-      if (existingRow.request_hash !== requestHash || existingRow.collaboration_task_id !== input.collaborationId) throw new CollaborationControlError('COLLABORATION_CONFLICT', 'Idempotency key was already used with another request');
+      if (existingRow.request_hash !== requestHash || existingRow.collaboration_task_id !== input.collaborationId) {
+        throw new CollaborationControlError('COLLABORATION_CONFLICT', 'Idempotency key was already used with another request');
+      }
       return { control: map(existingRow), task, replay: true };
     }
     if (task.version !== input.expectedVersion || !ALLOWED[input.action].includes(task.status) || this.pending(input.workspaceId, input.collaborationId)) {
