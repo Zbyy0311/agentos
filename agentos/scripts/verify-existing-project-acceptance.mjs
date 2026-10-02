@@ -138,6 +138,7 @@ export async function observeOwnedProviderProcesses(server, workspaceId, runId, 
   server.nativeObservations ??= new Map();
   server.nativeVerifier ??= (await import('../packages/process-runtime/dist/index.js')).createProductionRecoveredProcessVerifier();
   const db = new DatabaseSync(server.databasePath, { readOnly: true });
+  db.exec('PRAGMA busy_timeout = 5000');
   let rows;
   try {
     rows = db.prepare(`SELECT id,provider_session_id,native_pid,native_birth_identity,executable_resolved
@@ -165,6 +166,7 @@ export async function observeOwnedProviderProcesses(server, workspaceId, runId, 
  * The public task response intentionally contains summaries, never raw patches. */
 export function loadOwnedFrozenCandidates(databasePath, workspaceId, taskId, summaries) {
   const db = new DatabaseSync(databasePath, { readOnly: true });
+  db.exec('PRAGMA busy_timeout = 5000');
   try {
     const rows = db.prepare(`SELECT id,canonical_run_id,round,base_commit,head_commit,diff_hash,content_hash,
       diff_text,test_status,test_command,test_exit_code,test_output,created_at
@@ -1033,6 +1035,7 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
   };
 
   const db = new DatabaseSync(databasePath, { readOnly: true });
+  db.exec('PRAGMA busy_timeout = 5000');
   try {
     const provenScenarios = [];
     let totalProviderCalls = 0;
@@ -1346,6 +1349,7 @@ async function main() {
     };
     const runtimeScenarios = [];
     const db = new DatabaseSync(databaseDestination, { readOnly: true });
+    db.exec('PRAGMA busy_timeout = 5000');
     try {
       for (const result of scenarioResults) {
         const { scenario } = result;
