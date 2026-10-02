@@ -111,6 +111,22 @@ async function cloneBackup(source: string, root: string): Promise<string> {
   return cloned;
 }
 
+test('backup includes references from workspaces created after the service starts', async () => {
+  const fx = createFixture();
+  // Production constructs the maintenance service once, before later API workspaces.
+  const service = new MaintenanceService(fx.dataRoot, fx.store.getDatabase() as any, []);
+  try {
+    const result = await service.createBackup();
+    const normalize = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
+    assert.equal(normalize(result.manifest.workspaceRoots[fx.workspace.id]!), normalize(fx.workspaceRoot));
+    assert.equal(result.manifest.files.filter(item => item.scope === 'workspace-root').length, 2);
+    const restoredRoot = join(fx.root, 'later-workspace-restored');
+    await MaintenanceService.restoreBackup(result.backupDirectory, restoredRoot);
+    assert.equal(readFileSync(join(restoredRoot, 'workspace-roots', fx.workspace.id,
+      'agent-memory', 'records', 'knowledge', 'memory_fixture.md'), 'utf8').includes('Durable memory evidence'), true);
+  } finally { fx.cleanup(); }
+});
+
 test('online backup drains writes and active executions, then restores SQLite candidates, memory, attachments and evidence', async () => {
   const fx = createFixture();
   const barrier = new MaintenanceBarrier();
@@ -482,7 +498,12 @@ function seedMemoryFeedbackProof(fx: Fixture): { readonly id: string; readonly a
     kind: 'wrong', comment: 'Preserve this reviewed correction and its evidence.',
   });
   assert.ok(item.action);
-  service.resolveAction(fx.workspace.id, item.action.id, 1, 'resolved');
+  service.applyAction(fx.workspace.id, item.action.id, {
+    expectedActionVersion: 1, expectedEntryVersion: 1, resolution: 'corrected',
+    conclusion: 'Replaced the reported version with the reviewed correction.',
+    evidence: 'The correction remains bound to the frozen backup feedback context.',
+    correctedEntry: { title: 'Feedback proof memory', content: 'The reviewed corrected fact for later turns.' },
+  }, () => {});
   return { id: item.id, actionId: item.action.id, frozenContext };
 }
 

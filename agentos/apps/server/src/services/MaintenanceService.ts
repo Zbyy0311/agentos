@@ -183,14 +183,21 @@ export class MaintenanceService {
       await createSqliteSnapshot(this.database, databasePath, signal);
       const snapshotDb = openDatabase(databasePath);
       let migrations: Array<{ id: string; name: string; checksum: string }>;
-      try { migrations = readMigrationRows(snapshotDb); } finally { snapshotDb.close(); }
+      let workspaceRoots: Record<string, string>;
+      let workspaceSnapshot: WorkspaceRoot[];
+      let externalFiles: ReturnType<typeof listWorkspaceReferences>;
+      try {
+        migrations = readMigrationRows(snapshotDb);
+        workspaceRoots = readWorkspaceRoots(snapshotDb, []);
+        workspaceSnapshot = Object.entries(workspaceRoots).map(([id, rootPath]) => ({ id, rootPath }));
+        externalFiles = listWorkspaceReferences(snapshotDb, workspaceSnapshot);
+      } finally { snapshotDb.close(); }
       const schemaVersion = migrations.at(-1)?.id ?? '000';
-      const workspaceRoots = readWorkspaceRoots(this.database, this.workspaces);
       const files: BackupFileEntry[] = [await makeEntry('database', '.agentos/agentos.sqlite', 'payload/000000.sqlite', databasePath)];
       let index = 1;
 
       const dataFiles = await listManagedDataFiles(join(this.dataRoot, '.agentos'), '.agentos');
-      dataFiles.push(...await listKnownWorkspaceMetadata(this.dataRoot, this.workspaces));
+      dataFiles.push(...await listKnownWorkspaceMetadata(this.dataRoot, workspaceSnapshot));
       for (const source of uniqueByTarget(dataFiles, item => item.targetPath)) {
         throwIfAborted(signal);
         const payloadPath = `payload/${String(index).padStart(6, '0')}.bin`;
@@ -200,7 +207,6 @@ export class MaintenanceService {
         index += 1;
       }
 
-      const externalFiles = listWorkspaceReferences(this.database, this.workspaces);
       for (const source of externalFiles) {
         throwIfAborted(signal);
         const workspaceRoot = workspaceRoots[source.workspaceId];
