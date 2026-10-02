@@ -660,6 +660,9 @@ export class CollaborationWorkflowService {
   async getRecoveryOptions(workspaceId: string, collaborationId: string): Promise<CollaborationRecoveryOptions> {
     const task = this.requireTask(workspaceId, collaborationId);
     const run = task.canonicalRunId ? this.options.store.runRepository().findById(workspaceId, task.canonicalRunId) : undefined;
+    const unresolvedSideEffect = Boolean(run && (run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
+      || run.failureCode === 'RUN_PROCESS_UNKNOWN' || run.failureCode?.includes('RECOVERY')));
+    const interruptedRecoveryRun = Boolean(run && ['starting', 'running'].includes(run.status) && unresolvedSideEffect);
     const unavailable = (reason: string): CollaborationRecoveryOptions => ({
       taskId: task.id, taskVersion: task.version,
       ...(run === undefined || run === null ? {} : {
@@ -669,7 +672,8 @@ export class CollaborationWorkflowService {
       }),
       actions: { retryKnownFailure: false, newLinkedTask: false }, reason,
     });
-    if (!run || !['failed', 'blocked'].includes(task.status) || run.status !== 'failed') {
+    if (!run || !['failed', 'blocked'].includes(task.status)
+      || (run.status !== 'failed' && !interruptedRecoveryRun)) {
       return unavailable('当前任务与 Run 尚不处于可恢复的终态');
     }
     if (this.controls.pending(workspaceId, task.id)) return unavailable('协作控制操作仍在处理中');
@@ -704,8 +708,6 @@ export class CollaborationWorkflowService {
       return unavailable('当前源工作区不是干净且可检查的基线');
     }
 
-    const unresolvedSideEffect = run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
-      || run.failureCode === 'RUN_PROCESS_UNKNOWN' || Boolean(run.failureCode?.includes('RECOVERY'));
     let retryKnownFailure = false;
     if (!unresolvedSideEffect && checkedBaseCommit === task.baseCommit) {
       try { this.assertKnownFailureRetryEligible(task, run); retryKnownFailure = true; } catch { /* The mutation route remains authoritative. */ }
@@ -938,13 +940,15 @@ export class CollaborationWorkflowService {
 
     const task = this.requireTask(input.workspaceId, input.collaborationId);
     const run = task.canonicalRunId && this.options.store.runRepository().findById(input.workspaceId, task.canonicalRunId);
+    const unresolvedSideEffect = Boolean(run && (run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
+      || run.failureCode === 'RUN_PROCESS_UNKNOWN' || run.failureCode?.includes('RECOVERY')));
+    const interruptedRecoveryRun = Boolean(run && ['starting', 'running'].includes(run.status) && unresolvedSideEffect);
     if (task.version !== input.expectedTaskVersion || task.canonicalRunId !== input.expectedRunId
       || !run || run.version !== input.expectedRunVersion || !['failed', 'blocked'].includes(task.status)
-      || run.status !== 'failed' || this.controls.pending(input.workspaceId, task.id)) {
+      || (run.status !== 'failed' && !interruptedRecoveryRun) || this.controls.pending(input.workspaceId, task.id)) {
       throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Current task, Run or action changed; refresh before recovering');
     }
-    if (!run.recoveryRequired && run.failureCode !== 'RUN_PROCESS_MISSING' && run.failureCode !== 'RUN_PROCESS_UNKNOWN'
-      && !run.failureCode?.includes('RECOVERY')) {
+    if (!unresolvedSideEffect) {
       throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_NOT_REQUIRED', 'A new linked task is reserved for unresolved Provider side effects');
     }
 

@@ -568,6 +568,45 @@ test('P2 recovery review: UNKNOWN effects fail closed and clean linked recovery 
   } finally { await fx.close(); }
 });
 
+test('P2 recovery permits only linked-task recovery while an unresolved Run remains active', async () => {
+  let dispatchCalls = 0;
+  const fx = fixture({ runtimeDispatchEnabled: false, dispatchRun: async () => { dispatchCalls++; } });
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const unresolved = fx.store.runInTransaction(() => fx.store.runRepository().markRecoveryRequiredWithinTransaction({
+      workspaceId: 'workspace-a', runId: run.id, expectedStatus: 'running', expectedVersion: run.version, timestamp: NOW,
+    }));
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: unresolved.id, expectedRunVersion: unresolved.version,
+      idempotencyKey: 'p2-active-unknown-linked-01', action: 'new-linked-task' as const,
+    };
+    const runCountBefore = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number }).n;
+
+    const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.newLinkedTask, true, 'persisted uncertainty may create a separately confirmed linked task');
+    assert.equal(options.actions.retryKnownFailure, false, 'an active Run with unknown effects is never retryable');
+    await assert.rejects(() => fx.service.recover({ ...input, idempotencyKey: 'p2-active-unknown-retry-01', action: 'retry-known-failure' }),
+      error => (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
+
+    const linked = await fx.service.recover(input);
+    assert.equal(linked.task.status, 'awaiting_confirmation');
+    assert.equal(linked.task.canonicalRunId, undefined);
+    assert.equal(linked.task.baseCommit, linked.checkedBaseCommit);
+    const runCountAfter = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number }).n;
+    assert.equal(runCountAfter, runCountBefore, 'unknown effects never create or replay a Run');
+    const priorRun = fx.store.runRepository().findById('workspace-a', run.id)!;
+    assert.equal(priorRun.status, 'running');
+    assert.equal(priorRun.recoveryRequired, true, 'linked recovery does not claim the old Provider process resolved');
+    assert.equal(dispatchCalls, 0);
+  } finally { await fx.close(); }
+});
+
 test('P2 linked recovery binds its new task to the exact SHA returned by preflight', async () => {
   const fx = fixture();
   try {
