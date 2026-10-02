@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeBuildArtifactHash } from './buildIdentityHash.js';
+import { computeBuildIdentityStampSha256 } from './BuildIdentityStamp.js';
 
 export interface AgentOsBuildIdentity {
   readonly version: string;
@@ -15,17 +16,18 @@ export interface AgentOsBuildIdentity {
 
 export interface AgentOsBuildIdentityStamp {
   readonly format: 'agentos-build-identity';
-  readonly formatVersion: 1;
+  readonly formatVersion: 2;
   readonly version: string;
   readonly commit: string;
   readonly id: string;
-  readonly artifactSha256: string;
+  readonly runtimeArtifactSha256: string;
+  readonly stampSha256: string;
 }
 
 export interface ResolveBuildIdentityInput {
   readonly compiled: boolean;
   readonly stamp?: unknown;
-  readonly artifactSha256?: string;
+  readonly runtimeArtifactSha256?: string;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly packageVersion?: unknown;
   readonly gitCommit?: string;
@@ -45,7 +47,8 @@ export function getAgentOsBuildIdentity(): AgentOsBuildIdentity {
 export function resolveBuildIdentity(input: ResolveBuildIdentityInput): AgentOsBuildIdentity {
   if (input.compiled) {
     const stamp = parseBuildStamp(input.stamp);
-    if (!stamp || input.artifactSha256 !== stamp.artifactSha256) return unavailableIdentity();
+    if (!stamp || input.runtimeArtifactSha256 !== stamp.runtimeArtifactSha256
+      || computeBuildIdentityStampSha256(stamp) !== stamp.stampSha256) return unavailableIdentity();
     return Object.freeze({
       version: stamp.version,
       commit: stamp.commit,
@@ -74,8 +77,8 @@ function discoverBuildIdentity(): AgentOsBuildIdentity {
   if (COMPILED_RUNTIME) {
     try {
       const stamp = JSON.parse(readFileSync(join(SERVER_ROOT, 'dist', 'build-identity.json'), 'utf8')) as unknown;
-      const artifactSha256 = computeBuildArtifactHash(PROJECT_ROOT);
-      return resolveBuildIdentity({ compiled: true, stamp, artifactSha256 });
+      const runtimeArtifactSha256 = computeBuildArtifactHash(PROJECT_ROOT);
+      return resolveBuildIdentity({ compiled: true, stamp, runtimeArtifactSha256 });
     } catch {
       // A compiled binary never borrows the current checkout's Git HEAD.
       return unavailableIdentity();
@@ -100,9 +103,13 @@ function discoverBuildIdentity(): AgentOsBuildIdentity {
 function parseBuildStamp(value: unknown): AgentOsBuildIdentityStamp | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const stamp = value as Record<string, unknown>;
-  if (stamp.format !== 'agentos-build-identity' || stamp.formatVersion !== 1
+  const expectedKeys = ['commit', 'format', 'formatVersion', 'id', 'runtimeArtifactSha256', 'stampSha256', 'version'];
+  const actualKeys = Object.keys(stamp).sort();
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])
+    || stamp.format !== 'agentos-build-identity' || stamp.formatVersion !== 2
     || !validBuildLabel(stamp.version) || !isCommit(stamp.commit)
-    || !validBuildLabel(stamp.id) || !isSha256(stamp.artifactSha256)) return undefined;
+    || !validBuildLabel(stamp.id) || !isSha256(stamp.runtimeArtifactSha256)
+    || !isSha256(stamp.stampSha256)) return undefined;
   return stamp as unknown as AgentOsBuildIdentityStamp;
 }
 

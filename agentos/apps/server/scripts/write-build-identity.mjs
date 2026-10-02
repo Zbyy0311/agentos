@@ -12,19 +12,23 @@ const configuredCommit = process.env.AGENTOS_BUILD_COMMIT?.trim().toLowerCase();
 const commit = configuredCommit && isCommit(configuredCommit) ? configuredCommit : discoverCommit();
 if (!version || !commit) throw new Error('BUILD_IDENTITY_INPUT_INVALID: set AGENTOS_BUILD_VERSION/AGENTOS_BUILD_COMMIT at build time when package or Git metadata is unavailable');
 
-const { computeBuildArtifactHash } = await import(pathToFileURL(join(distRoot, 'services', 'buildIdentityHash.js')).href);
-const artifactSha256 = computeBuildArtifactHash(projectRoot);
+const [hashModule, stampModule] = await Promise.all([
+  import(pathToFileURL(join(distRoot, 'services', 'buildIdentityHash.js')).href),
+  import(pathToFileURL(join(distRoot, 'services', 'BuildIdentityStamp.js')).href),
+]);
+const runtimeArtifactSha256 = hashModule.computeBuildArtifactHash(projectRoot);
 const configuredId = process.env.AGENTOS_BUILD_ID?.trim();
 if (configuredId && !validBuildLabel(configuredId)) throw new Error('BUILD_IDENTITY_INPUT_INVALID: AGENTOS_BUILD_ID is not a safe label');
-const id = `${configuredId ? `${configuredId}-` : 'sha256-'}${artifactSha256}`;
-const stamp = {
+const id = `${configuredId ? `${configuredId}-` : 'sha256-'}${runtimeArtifactSha256}`;
+const stampPayload = {
   format: 'agentos-build-identity',
-  formatVersion: 1,
+  formatVersion: 2,
   version,
   commit,
   id,
-  artifactSha256,
+  runtimeArtifactSha256,
 };
+const stamp = { ...stampPayload, stampSha256: stampModule.computeBuildIdentityStampSha256(stampPayload) };
 const output = join(distRoot, 'build-identity.json');
 const temporary = `${output}.tmp-${process.pid}`;
 writeFileSync(temporary, `${JSON.stringify(stamp, null, 2)}\n`, { flag: 'wx' });
