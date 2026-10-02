@@ -4,6 +4,7 @@ import type { CollaborationCandidateManifestEntry } from '@agentos/shared';
 export function collaborationCandidateContentHash(input: {
   readonly diffHash: string;
   readonly snapshotVersion: number;
+  readonly manifestVersion: number;
   readonly manifest: readonly CollaborationCandidateManifestEntry[];
 }): string {
   const manifest = input.manifest.map(item => [
@@ -21,6 +22,7 @@ export function collaborationCandidateContentHash(input: {
     schemaVersion: 1,
     diffHash: input.diffHash.toLowerCase(),
     snapshotVersion: input.snapshotVersion,
+    manifestVersion: input.manifestVersion,
     manifest,
   })).digest('hex');
 }

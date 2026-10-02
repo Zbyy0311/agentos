@@ -27,6 +27,7 @@ export interface CollaborationCandidatePreview {
   readonly baseCommit: string;
   readonly headCommit: string;
   readonly snapshotVersion: number;
+  readonly manifestVersion: number;
   readonly diffHash: string;
   readonly contentHash: string;
   readonly offset: number;
@@ -44,6 +45,7 @@ export interface CollaborationCandidatePreviewFileDiff {
   readonly collaborationTaskId: string;
   readonly candidateId: string;
   readonly baseCommit: string;
+  readonly manifestVersion: number;
   readonly diffHash: string;
   readonly contentHash: string;
   readonly fileIndex: number;

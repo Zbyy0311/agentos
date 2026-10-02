@@ -47,6 +47,7 @@ test('collaboration repository persists the plan, candidate, review and version 
       testStatus: 'passed', testCommand: 'pnpm test', testExitCode: 0, testOutput: 'ok', status: 'created', createdAt: '2026-09-20T00:03:00.000Z',
     });
     assert.equal(candidate.status, 'created');
+    assert.equal(candidate.manifestVersion, 2, 'new repository candidates default to the fail-closed manifest schema');
     assert.match(candidate.contentHash ?? '', /^[a-f0-9]{64}$/u);
     assert.equal((fx.store.getDatabase().prepare('SELECT content_hash FROM collaboration_candidates WHERE id = ?').get(candidate.id) as { content_hash: string }).content_hash,
       candidate.contentHash);
@@ -72,7 +73,7 @@ test('collaboration repository persists the plan, candidate, review and version 
       reviewCandidateId: candidate.id, reviewCandidateHash: 'wrong-hash', reviewConclusion: 'approved',
       createdAt: '2026-09-20T00:06:00.000Z',
     }), (error: unknown) => error instanceof CollaborationRepositoryError && error.code === 'CONFLICT');
-    assert.notEqual(candidate.contentHash, collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: 2,
+    assert.notEqual(candidate.contentHash, collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: 2, manifestVersion: 1,
       manifest: [{ ...candidate.manifest[0]!, baseSha256: 'e'.repeat(64) }] }));
     fx.store.getDatabase().prepare('UPDATE collaboration_candidates SET manifest_json = ? WHERE id = ?').run(
       JSON.stringify([{ ...candidate.manifest[0], baseSha256: 'e'.repeat(64) }]), candidate.id,

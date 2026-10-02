@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { CollaborationCandidateManifestEntry } from '@agentos/shared';
-import type { CollaborationTask } from '@agentos/shared';
+import type { CollaborationCandidate, CollaborationTask } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 import { createEntityId } from './Identity.js';
 import { CollaborationRepository } from './CollaborationRepository.js';
-import { collaborationCandidateContentHash } from '../services/CollaborationCandidateContentHash.js';
+import { assertCollaborationCandidatePreviewValid } from '../services/CollaborationCandidatePreview.js';
 
 export type CollaborationControlAction = 'confirm' | 'cancel' | 'apply' | 'rework';
 export type CollaborationControlState = 'reserved' | 'running' | 'completed' | 'failed' | 'recovery_required';
@@ -85,22 +84,30 @@ export class CollaborationControlRepository {
       throw new CollaborationControlError('COLLABORATION_CANDIDATE_CHANGED', 'Load the current frozen candidate preview before applying');
     }
     if (input.candidateId !== undefined && input.candidateBaseCommit !== undefined && input.candidateContentHash !== undefined) {
-      const candidate = this.db.prepare(`SELECT base_commit,diff_hash,snapshot_version,manifest_json,content_hash FROM collaboration_candidates
+      const candidate = this.db.prepare(`SELECT base_commit,head_commit,diff_hash,diff_text,snapshot_version,manifest_version,manifest_json,content_hash FROM collaboration_candidates
         WHERE workspace_id = ? AND collaboration_task_id = ? AND id = ?`).get(
         input.workspaceId, input.collaborationId, input.candidateId,
-      ) as { base_commit: string; diff_hash: string; snapshot_version: number; manifest_json: string; content_hash: string } | undefined;
-      let computedContentHash: string | undefined;
+      ) as { base_commit: string; head_commit: string; diff_hash: string; diff_text: string; snapshot_version: number;
+        manifest_version: number; manifest_json: string; content_hash: string } | undefined;
+      let frozenPreviewValid = false;
       if (candidate) {
         try {
-          const manifest = JSON.parse(candidate.manifest_json) as CollaborationCandidateManifestEntry[];
-          if (Array.isArray(manifest)) computedContentHash = collaborationCandidateContentHash({
-            diffHash: candidate.diff_hash, snapshotVersion: candidate.snapshot_version, manifest,
-          });
-        } catch { computedContentHash = undefined; }
+          const manifest: unknown = JSON.parse(candidate.manifest_json);
+          if (Array.isArray(manifest)) {
+            assertCollaborationCandidatePreviewValid(task, {
+              id: input.candidateId, workspaceId: input.workspaceId, collaborationTaskId: input.collaborationId,
+              baseCommit: candidate.base_commit, headCommit: candidate.head_commit,
+              snapshotVersion: candidate.snapshot_version, manifestVersion: candidate.manifest_version,
+              diffHash: candidate.diff_hash, diffText: candidate.diff_text, contentHash: candidate.content_hash,
+              manifest: manifest as CollaborationCandidate['manifest'],
+            });
+            frozenPreviewValid = true;
+          }
+        } catch { frozenPreviewValid = false; }
       }
       if (input.candidateId !== task.currentCandidateId || !candidate || candidate.base_commit !== input.candidateBaseCommit
         || task.baseCommit !== input.candidateBaseCommit || candidate.content_hash !== input.candidateContentHash
-        || computedContentHash !== input.candidateContentHash || !/^[a-f0-9]{64}$/u.test(input.candidateContentHash)) {
+        || !frozenPreviewValid || !/^[a-f0-9]{64}$/u.test(input.candidateContentHash)) {
         throw new CollaborationControlError('COLLABORATION_CANDIDATE_CHANGED', 'The candidate differs from the frozen preview; refresh before applying');
       }
     }

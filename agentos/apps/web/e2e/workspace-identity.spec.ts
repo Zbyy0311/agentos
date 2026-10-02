@@ -389,11 +389,11 @@ test('frozen candidate preview loads a frozen candidate page and fetches one tex
   const candidate = { id: 'candidate-preview', round: 0, diffHash, contentHash, testStatus: 'passed', testExitCode: 0,
     testCommand: 'pnpm test', reviewConclusion: 'approved', reviewSummary: 'Frozen candidate reviewed' };
   const frozenPage = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
-    headCommit: 'c'.repeat(40), snapshotVersion: 2, diffHash, contentHash, offset: 0, totalFiles: 1,
+    headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2, diffHash, contentHash, offset: 0, totalFiles: 1,
     totalAdditions: 1, totalDeletions: 1, files: [{ fileIndex: 0, path: 'src/frozen.ts', status: 'modified',
       additions: 1, deletions: 1, binary: false, withheld: false }], withheldContent: false, withheldReasons: [] };
   const frozenDiff = { workspaceId: ws, collaborationTaskId: target.id, candidateId: candidate.id, baseCommit,
-    diffHash, contentHash, fileIndex: 0, path: 'src/frozen.ts',
+    manifestVersion: 2, diffHash, contentHash, fileIndex: 0, path: 'src/frozen.ts',
     diffText: 'diff --git a/src/frozen.ts b/src/frozen.ts\n@@ -1 +1 @@\n-old\n+new', withheld: false };
   await install(page, model, async (route, current) => {
     const url = new URL(route.request().url());

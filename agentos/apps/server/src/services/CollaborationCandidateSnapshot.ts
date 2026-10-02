@@ -29,7 +29,7 @@ export interface CollaborationCandidateSnapshot {
   /** Includes both source and destination paths for detected renames. */
   readonly changedPaths: readonly string[];
   readonly untrackedManifest: readonly { path: string; sizeBytes: number; sha256: string }[];
-  /** Metadata-only images for binary paths; bytes remain solely in diffText. */
+  /** Manifest metadata for binary paths and explicit text/binary rename classification; bytes stay in diffText. */
   readonly binaryManifest: readonly CollaborationCandidateManifestEntry[];
 }
 
@@ -343,7 +343,18 @@ export async function captureCollaborationCandidateSnapshot(
       const baseEntry = record.oldPath === null ? undefined : baseEntries.get(record.oldPath);
       const baseImage = await blobImage(baseEntry);
       const candidateImage = await blobImage(targetEntry);
-      if (!record.binary && !baseImage?.binary && !candidateImage?.binary) continue;
+      if (!record.binary && !baseImage?.binary && !candidateImage?.binary) {
+        if (record.status === 'renamed') {
+          if (!targetEntry || !candidateImage) {
+            throw new Error(`COLLABORATION_SNAPSHOT_SOURCE_CHANGED: renamed image was not frozen (${JSON.stringify(sourcePath)})`);
+          }
+          binaryManifest.push({
+            path: sourcePath, sizeBytes: candidateImage.sizeBytes, sha256: candidateImage.sha256,
+            gitObjectId: targetEntry.objectId, binary: false,
+          });
+        }
+        continue;
+      }
       const baselineImage = baseImage;
       const sizeBytes = targetEntry === undefined ? baselineImage?.sizeBytes : candidateImage?.sizeBytes;
       const gitObjectId = targetEntry?.objectId ?? baseEntry?.objectId;

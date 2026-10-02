@@ -34,7 +34,7 @@ interface CollaborationTaskRow {
 interface CandidateRow {
   id: string; collaboration_task_id: string; workspace_id: string; canonical_run_id: string;
   round: number; base_commit: string; head_commit: string; diff_hash: string; diff_text: string;
-  snapshot_version: number;
+  snapshot_version: number; manifest_version: number;
   manifest_json: string; content_hash: string; test_status: CollaborationTestStatus; test_command: string | null;
   test_exit_code: number | null; test_output: string | null; status: CollaborationCandidateStatus;
   review_conclusion: CollaborationReviewConclusion | null; review_summary: string | null;
@@ -131,13 +131,17 @@ function mapTask(row: CollaborationTaskRow): CollaborationTask {
 
 function mapCandidate(row: CandidateRow): CollaborationCandidate {
   const manifest = parseManifest(row.manifest_json);
-  const contentHash = collaborationCandidateContentHash({ diffHash: row.diff_hash, snapshotVersion: row.snapshot_version, manifest });
+  if (row.manifest_version !== 1 && row.manifest_version !== 2) throw new CollaborationRepositoryError('INVALID');
+  const contentHash = collaborationCandidateContentHash({
+    diffHash: row.diff_hash, snapshotVersion: row.snapshot_version, manifestVersion: row.manifest_version, manifest,
+  });
   if (row.content_hash !== '' && row.content_hash !== contentHash) throw new CollaborationRepositoryError('INVALID');
   return {
     id: row.id, collaborationTaskId: row.collaboration_task_id, workspaceId: row.workspace_id,
     canonicalRunId: row.canonical_run_id, round: row.round, baseCommit: row.base_commit,
     headCommit: row.head_commit, diffHash: row.diff_hash, contentHash, diffText: row.diff_text,
     snapshotVersion: row.snapshot_version,
+    manifestVersion: row.manifest_version,
     manifest, testStatus: row.test_status,
     ...(row.test_command === null ? {} : { testCommand: row.test_command }),
     ...(row.test_exit_code === null ? {} : { testExitCode: row.test_exit_code }),
@@ -313,16 +317,20 @@ export class CollaborationRepository {
 
   createCandidate(input: Omit<CollaborationCandidate, 'version' | 'createdAt' | 'updatedAt' | 'reviewConclusion' | 'reviewSummary' | 'reviewAgentId' | 'reviewArtifactId'> & { createdAt: string }): CollaborationCandidate {
     const version = 1;
-    const contentHash = collaborationCandidateContentHash({ diffHash: input.diffHash, snapshotVersion: input.snapshotVersion ?? 1, manifest: input.manifest });
+    const manifestVersion = input.manifestVersion ?? 2;
+    if (manifestVersion !== 1 && manifestVersion !== 2) throw new CollaborationRepositoryError('INVALID');
+    const contentHash = collaborationCandidateContentHash({
+      diffHash: input.diffHash, snapshotVersion: input.snapshotVersion ?? 1, manifestVersion, manifest: input.manifest,
+    });
     this.db.prepare(`INSERT INTO collaboration_candidates (
       id, collaboration_task_id, workspace_id, canonical_run_id, round, base_commit, head_commit,
-      diff_hash, diff_text, snapshot_version, manifest_json, content_hash, test_status, test_command, test_exit_code, test_output,
+      diff_hash, diff_text, snapshot_version, manifest_json, manifest_version, content_hash, test_status, test_command, test_exit_code, test_output,
       status, review_conclusion, review_summary, review_agent_id, review_artifact_id,
       diff_artifact_id, manifest_artifact_id, version, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`).run(
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`).run(
       input.id, input.collaborationTaskId, input.workspaceId, input.canonicalRunId, input.round,
       input.baseCommit, input.headCommit, input.diffHash, input.diffText, input.snapshotVersion ?? 1, JSON.stringify(input.manifest),
-      contentHash, input.testStatus, input.testCommand ?? null, input.testExitCode ?? null, input.testOutput ?? null,
+      manifestVersion, contentHash, input.testStatus, input.testCommand ?? null, input.testExitCode ?? null, input.testOutput ?? null,
       input.status, input.diffArtifactId ?? null, input.manifestArtifactId ?? null, version,
       input.createdAt, input.createdAt,
     );

@@ -85,6 +85,8 @@ export interface CollaborationCandidate {
   diffText: string;
   /** Version 2 snapshots include tracked and untracked content in diffText. */
   snapshotVersion?: number;
+  /** Manifest v1 predates strict binary metadata completeness; new captures use v2. */
+  manifestVersion?: number;
   manifest: CollaborationCandidateManifestEntry[];
   testStatus: CollaborationTestStatus;
   testCommand?: string;
@@ -109,6 +111,7 @@ export interface CollaborationCandidateSummary {
   diffHash: string;
   contentHash: string;
   snapshotVersion?: number;
+  manifestVersion?: number;
   testStatus: CollaborationTestStatus;
   testCommand?: string;
   testExitCode?: number;
@@ -119,7 +122,7 @@ export interface CollaborationCandidateSummary {
 export interface CollaborationCandidateManifestEntry {
   path: string;
   sizeBytes: number;
-  /** True when the frozen file image is binary, including unchanged binary renames. */
+  /** Explicit binary/text classification for new manifests, including unchanged renames. */
   binary?: boolean;
   /** SHA-256 of the candidate-side file image when available. */
   sha256?: string;

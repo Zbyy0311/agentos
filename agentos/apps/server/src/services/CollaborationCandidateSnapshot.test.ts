@@ -264,6 +264,23 @@ test('F27 freezes binary blob IDs and sizes for modified and deleted baseline fi
   }
 });
 
+test('F27 records an explicit text classification for v2 renames', async () => {
+  const repo = await createRepository();
+  try {
+    await rename(join(repo.root, 'src', 'tracked.txt'), join(repo.root, 'src', 'renamed.txt'));
+    const snapshot = await captureCollaborationCandidateSnapshot(repo.root, repo.baseCommit, ['src/']);
+    const renamed = snapshot.binaryManifest.find(item => item.path === 'src/renamed.txt');
+    assert.deepEqual(renamed, {
+      path: 'src/renamed.txt', sizeBytes: Buffer.byteLength('original\n'),
+      sha256: sha256(Buffer.from('original\n')),
+      gitObjectId: execFileSync('git', ['rev-parse', `${repo.baseCommit}:src/tracked.txt`], { cwd: repo.root, encoding: 'utf8' }).trim(),
+      binary: false,
+    });
+  } finally {
+    await repo.dispose();
+  }
+});
+
 test('F27 bounds total frozen blob hashing across many deleted binary files', async () => {
   const first = Buffer.alloc(17 * 1024 * 1024);
   const second = Buffer.alloc(16 * 1024 * 1024);

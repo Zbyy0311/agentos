@@ -20,6 +20,7 @@ import { isTransactionActive } from '../store/Transaction.js';
 import { CollaborationWorkflowError, CollaborationWorkflowService, type CollaborationWorkflowServiceOptions } from './CollaborationWorkflowService.js';
 import { createCollaborationRoutes } from '../routes/collaborations.js';
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
+import { collaborationCandidateContentHash } from './CollaborationCandidateContentHash.js';
 import { WorkspaceAdmissionAuthority } from './WorkspaceAdmissionAuthority.js';
 import { WorkspaceAdmissionStartupReconciler } from './WorkspaceAdmissionStartupReconciler.js';
 import { migration046 } from '../migrations/migrations/046-memory-verified-facts.js';
@@ -165,7 +166,8 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
     const actualOutput = execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: working, encoding: 'utf8', windowsHide: true });
     const candidate = repository.createCandidate({ id: 'candidate-verified', collaborationTaskId: plan.id, workspaceId: plan.workspaceId,
       canonicalRunId: active.run.id, round: 0, baseCommit, headCommit: baseCommit, snapshotVersion: 2, diffText: snapshot.patch,
-      diffHash: snapshot.patchHash, manifest: [...snapshot.untrackedManifest], testStatus: 'passed', testCommand: plan.acceptanceCommands.join(' && '),
+      diffHash: snapshot.patchHash, manifestVersion: 2,
+      manifest: [...snapshot.untrackedManifest, ...snapshot.binaryManifest], testStatus: 'passed', testCommand: plan.acceptanceCommands.join(' && '),
       testExitCode: 0, testOutput: `$ ${plan.acceptanceCommands[0]}\n${actualOutput}\nexit 0`, status: 'created', createdAt: NOW });
     const reviewing = repository.progress({ workspaceId: plan.workspaceId, id: plan.id, expectedVersion: active.collaboration.version, status: 'reviewing', currentCandidateId: candidate.id });
     const engine = new RunEngine({ runRepository: store.runRepository(), operationService: store.operationService(), lifecycleTransactionService: store.lifecycleTransactionService(),
@@ -477,6 +479,33 @@ test('apply rejects a changed canonical content hash before admission, journal c
     const task = await fx.verifiedReady();
     await assert.rejects(fx.service.apply({ ...fx.applicationInput(task, 'changed-content-hash'), candidateContentHash: 'f'.repeat(64) }),
       error => (error as { code?: string }).code === 'COLLABORATION_CANDIDATE_CHANGED');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_controls').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_apply_journals').get() as { n: number }).n, 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE state = 'GRANTED'").get() as { n: number }).n, 0);
+    assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
+  } finally { await fx.close(); }
+});
+
+test('apply rejects a v2 binary candidate without its manifest image before reservation, admission, or writes', async () => {
+  const fx = fixture();
+  try {
+    const task = await fx.verifiedReady();
+    const candidateId = task.currentCandidateId!;
+    const diffText = [
+      'diff --git a/README.md b/README.md', 'deleted file mode 100644',
+      `index ${'1'.repeat(40)}..${'0'.repeat(40)}`, 'GIT binary patch', 'literal 0', '',
+    ].join('\n');
+    const diffHash = createHash('sha256').update(diffText, 'utf8').digest('hex');
+    const contentHash = collaborationCandidateContentHash({
+      diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [],
+    });
+    fx.store.getDatabase().prepare(`UPDATE collaboration_candidates SET
+      diff_hash = ?, diff_text = ?, manifest_json = '[]', manifest_version = 2, content_hash = ?
+      WHERE id = ?`).run(diffHash, diffText, contentHash, candidateId);
+
+    await assert.rejects(fx.service.apply({
+      ...fx.applicationInput(task, 'missing-binary-manifest'), candidateContentHash: contentHash,
+    }), error => (error as { code?: string }).code === 'COLLABORATION_CANDIDATE_CHANGED');
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_controls').get() as { n: number }).n, 0);
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM collaboration_apply_journals').get() as { n: number }).n, 0);
     assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE state = 'GRANTED'").get() as { n: number }).n, 0);

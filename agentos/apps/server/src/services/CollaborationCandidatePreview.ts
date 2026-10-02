@@ -61,6 +61,7 @@ export interface CollaborationCandidatePreview {
   readonly baseCommit: string;
   readonly headCommit: string;
   readonly snapshotVersion: number;
+  readonly manifestVersion: number;
   readonly diffHash: string;
   readonly contentHash: string;
   readonly offset: number;
@@ -78,6 +79,7 @@ export interface CollaborationCandidatePreviewFileDiff {
   readonly collaborationTaskId: string;
   readonly candidateId: string;
   readonly baseCommit: string;
+  readonly manifestVersion: number;
   readonly diffHash: string;
   readonly contentHash: string;
   readonly fileIndex: number;
@@ -87,6 +89,10 @@ export interface CollaborationCandidatePreviewFileDiff {
   readonly withheld: boolean;
   readonly withheldReason?: 'binary' | 'sensitive_path' | 'secret_value';
 }
+
+export type CollaborationCandidatePreviewSource = Pick<CollaborationCandidate,
+  'id' | 'workspaceId' | 'collaborationTaskId' | 'baseCommit' | 'headCommit' | 'snapshotVersion'
+  | 'manifestVersion' | 'diffHash' | 'diffText' | 'contentHash' | 'manifest'>;
 
 export class CollaborationCandidatePreviewError extends Error {
   constructor(readonly code: 'COLLABORATION_CANDIDATE_INVALID' | 'COLLABORATION_DIFF_TOO_LARGE', message: string) {
@@ -287,7 +293,13 @@ export function parseCollaborationCandidateDiff(diffText: string): ParsedCollabo
   return starts.map((start, index) => parseFileSection(lines.slice(start, starts[index + 1] ?? lines.length)));
 }
 
-function validManifest(candidate: CollaborationCandidate, files: readonly ParsedCollaborationDiffFile[], task: CollaborationTask) {
+function validManifest(
+  candidate: Pick<CollaborationCandidate, 'manifest' | 'manifestVersion'>,
+  files: readonly ParsedCollaborationDiffFile[],
+  task: CollaborationTask,
+) {
+  const manifestVersion = candidate.manifestVersion ?? 1;
+  if (manifestVersion !== 1 && manifestVersion !== 2) invalid('frozen file manifest version is invalid');
   if (!Array.isArray(candidate.manifest) || candidate.manifest.length > MAX_COLLABORATION_PREVIEW_FILES) invalid('frozen file manifest is incomplete');
   const scope = normalizeCollaborationScope(task.scope);
   const changedPaths = files.flatMap(file => [file.oldPath, file.newPath]).filter((path): path is string => path !== null);
@@ -320,11 +332,20 @@ function validManifest(candidate: CollaborationCandidate, files: readonly Parsed
   for (const file of files) {
     const metadataPath = file.status === 'deleted' ? file.oldPath : file.newPath;
     const item = metadataPath ? manifest.get(metadataPath) : undefined;
+    if (manifestVersion === 2 && file.status === 'renamed' && (!item || typeof item.binary !== 'boolean')) {
+      invalid('new frozen rename is missing its explicit binary classification');
+    }
+    if (manifestVersion === 2 && file.binary && item?.binary !== true) {
+      invalid('new binary file is missing its frozen manifest image');
+    }
+    if (manifestVersion === 2 && file.status === 'deleted' && file.binary && item?.deleted !== true) {
+      invalid('new deleted binary file is missing its frozen baseline marker');
+    }
     if (!file.binary && item?.binary !== true) continue;
     // Candidates frozen before this manifest field was introduced may not have
     // binary hashes. Their stored contentHash still protects the exact legacy
     // manifest, so render them with an explicit "unavailable" label.
-    if (item?.binary === true && (item.sha256 === undefined || item.gitObjectId === undefined)) {
+    if (manifestVersion === 2 && item?.binary === true && (item.sha256 === undefined || item.gitObjectId === undefined)) {
       invalid('new binary file metadata is missing its frozen SHA-256 or Git blob ID');
     }
     if (file.status === 'deleted' && item?.deleted !== undefined && item.deleted !== true) invalid('deleted binary file metadata is incomplete');
@@ -434,7 +455,7 @@ function renderDiffFile(file: ParsedCollaborationDiffFile, metadata: Collaborati
 
 function validatedPreviewFiles(
   task: CollaborationTask,
-  candidate: CollaborationCandidate,
+  candidate: CollaborationCandidatePreviewSource,
 ): { readonly parsedFiles: readonly ParsedCollaborationDiffFile[]; readonly manifest: ReadonlyMap<string, CollaborationCandidate['manifest'][number]> } {
   if (candidate.workspaceId !== task.workspaceId || candidate.collaborationTaskId !== task.id) invalid('candidate does not belong to this task and workspace');
   if (task.currentCandidateId !== candidate.id) {
@@ -449,9 +470,20 @@ function validatedPreviewFiles(
 
   const parsedFiles = parseCollaborationCandidateDiff(candidate.diffText);
   const manifest = validManifest(candidate, parsedFiles, task);
-  const contentHash = collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion, manifest: candidate.manifest });
+  const contentHash = collaborationCandidateContentHash({
+    diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion,
+    manifestVersion: candidate.manifestVersion ?? 1, manifest: candidate.manifest,
+  });
   if (candidate.contentHash !== contentHash) invalid('candidate manifest does not match its frozen content hash');
   return { parsedFiles, manifest };
+}
+
+/** Validates the frozen diff and manifest without consulting the mutable worktree. */
+export function assertCollaborationCandidatePreviewValid(
+  task: CollaborationTask,
+  candidate: CollaborationCandidatePreviewSource,
+): void {
+  validatedPreviewFiles(task, candidate);
 }
 
 function previewFile(
@@ -519,7 +551,11 @@ export function buildCollaborationCandidatePreview(
     headCommit: candidate.headCommit,
     snapshotVersion: candidate.snapshotVersion!,
     diffHash: candidate.diffHash,
-    contentHash: collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion!, manifest: candidate.manifest }),
+    manifestVersion: candidate.manifestVersion ?? 1,
+    contentHash: collaborationCandidateContentHash({
+      diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion!,
+      manifestVersion: candidate.manifestVersion ?? 1, manifest: candidate.manifest,
+    }),
     offset,
     ...(nextOffset < parsedFiles.length ? { nextOffset } : {}),
     totalFiles: parsedFiles.length,
@@ -550,8 +586,12 @@ export function buildCollaborationCandidatePreviewFileDiff(
     collaborationTaskId: task.id,
     candidateId: candidate.id,
     baseCommit: candidate.baseCommit,
+    manifestVersion: candidate.manifestVersion ?? 1,
     diffHash: candidate.diffHash,
-    contentHash: collaborationCandidateContentHash({ diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion!, manifest: candidate.manifest }),
+    contentHash: collaborationCandidateContentHash({
+      diffHash: candidate.diffHash, snapshotVersion: candidate.snapshotVersion!,
+      manifestVersion: candidate.manifestVersion ?? 1, manifest: candidate.manifest,
+    }),
     fileIndex,
     path: result.file.path,
     diffText: rendered.text,

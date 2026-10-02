@@ -170,7 +170,7 @@ export function CollaborationCandidatePreviewPanel(props: {
     <header className="flex flex-wrap items-start justify-between gap-2 border-b ui-border pb-3">
       <div className="min-w-0">
         <h3 className="text-xs font-semibold ui-text">冻结候选预览</h3>
-        <div className="mt-1 break-all text-[10px] ui-dim">Candidate {preview.candidateId} · snapshot v{preview.snapshotVersion}</div>
+        <div className="mt-1 break-all text-[10px] ui-dim">Candidate {preview.candidateId} · snapshot v{preview.snapshotVersion} · manifest v{preview.manifestVersion}</div>
         <div className="mt-1 break-all text-[10px] ui-dim">内容 SHA-256 <code>{preview.contentHash}</code></div>
       </div>
       <div className="shrink-0 text-right text-[10px] ui-muted">基线 {preview.baseCommit.slice(0, 10)}<br />头提交 {preview.headCommit.slice(0, 10)}</div>

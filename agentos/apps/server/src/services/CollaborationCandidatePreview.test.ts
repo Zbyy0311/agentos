@@ -30,11 +30,13 @@ function candidate(diffText: string, overrides: Partial<CollaborationCandidate> 
     id: CANDIDATE_ID, collaborationTaskId: TASK_ID, workspaceId: 'workspace-preview-fixture', canonicalRunId: 'run-preview-fixture',
     round: 0, baseCommit: BASE, headCommit: HEAD,
     diffHash: createHash('sha256').update(diffText, 'utf8').digest('hex'), diffText, snapshotVersion: 2,
+    manifestVersion: 2,
     manifest: [], testStatus: 'passed', testCommand: 'pnpm test', testExitCode: 0, testOutput: 'exit 0',
     status: 'reviewed', version: 1, createdAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z', ...overrides,
   };
   return { ...result, contentHash: result.contentHash ?? collaborationCandidateContentHash({
-    diffHash: result.diffHash, snapshotVersion: result.snapshotVersion ?? 1, manifest: result.manifest,
+    diffHash: result.diffHash, snapshotVersion: result.snapshotVersion ?? 1,
+    manifestVersion: result.manifestVersion ?? 1, manifest: result.manifest,
   }) };
 }
 
@@ -163,7 +165,32 @@ test('preview classifies an unchanged binary rename from its frozen manifest and
     'diff --git a/assets/old.bin b/assets/old.bin', 'deleted file mode 100644',
     `index ${'1'.repeat(40)}..${'0'.repeat(40)}`, 'GIT binary patch', 'literal 0', '',
   ].join('\n');
-  const legacy = buildCollaborationCandidatePreview(task(), candidate(legacyPatch));
+  const legacy = buildCollaborationCandidatePreview(task(), candidate(legacyPatch, { manifestVersion: 1 }));
+  assert.equal(legacy.files[0]?.binarySha256Available, false);
+  assert.equal(legacy.files[0]?.binarySizeBytes, undefined);
+});
+
+test('manifest v2 fails closed for binary payloads and renames without metadata while v1 stays explicitly unknown', () => {
+  const binaryPatch = [
+    'diff --git a/assets/removed.bin b/assets/removed.bin', 'deleted file mode 100644',
+    `index ${'1'.repeat(40)}..${'0'.repeat(40)}`, 'GIT binary patch', 'literal 0', '',
+  ].join('\n');
+  assertPreviewError(() => buildCollaborationCandidatePreview(task(), candidate(binaryPatch)), 'COLLABORATION_CANDIDATE_INVALID');
+
+  const renamePatch = [
+    'diff --git a/assets/old.bin b/assets/new.bin', 'similarity index 100%',
+    'rename from assets/old.bin', 'rename to assets/new.bin', '',
+  ].join('\n');
+  assertPreviewError(() => buildCollaborationCandidatePreview(task(), candidate(renamePatch)), 'COLLABORATION_CANDIDATE_INVALID');
+
+  const classifiedTextRename = buildCollaborationCandidatePreview(task(), candidate(renamePatch, { manifest: [{
+    path: 'assets/new.bin', sizeBytes: 7, sha256: 'a'.repeat(64), gitObjectId: '2'.repeat(40), binary: false,
+  }] }));
+  assert.equal(classifiedTextRename.files[0]?.binary, false);
+  assert.equal(classifiedTextRename.files[0]?.binarySha256Available, undefined);
+
+  const legacy = buildCollaborationCandidatePreview(task(), candidate(binaryPatch, { manifestVersion: 1 }));
+  assert.equal(legacy.manifestVersion, 1);
   assert.equal(legacy.files[0]?.binarySha256Available, false);
   assert.equal(legacy.files[0]?.binarySizeBytes, undefined);
 });

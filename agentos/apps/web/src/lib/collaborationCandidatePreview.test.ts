@@ -16,7 +16,7 @@ import {
 const identity = { workspaceId: 'ws/one', taskId: 'task one', candidateId: 'cand/one', baseCommit: 'b'.repeat(40), diffHash: 'a'.repeat(64), contentHash: 'e'.repeat(64) };
 const preview: CollaborationCandidatePreview = {
   workspaceId: 'ws/one', collaborationTaskId: 'task one', candidateId: 'cand/one',
-  baseCommit: 'b'.repeat(40), headCommit: 'c'.repeat(40), snapshotVersion: 2,
+  baseCommit: 'b'.repeat(40), headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2,
   diffHash: 'a'.repeat(64), contentHash: 'e'.repeat(64), offset: 0, totalFiles: 1, totalAdditions: 1, totalDeletions: 0,
   files: [{ fileIndex: 0, path: 'src/a.ts', status: 'modified', additions: 1, deletions: 0, binary: false, withheld: false }],
   withheldContent: false, withheldReasons: [],

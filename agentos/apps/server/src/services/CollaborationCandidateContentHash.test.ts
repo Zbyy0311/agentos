@@ -9,11 +9,12 @@ const entry = {
 };
 
 test('canonical candidate content hash binds patch digest and every candidate and baseline manifest field', () => {
-  const original = collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifest: [entry] });
-  assert.equal(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifest: [{ ...entry }] }), original);
-  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifest: [{ ...entry, baseSha256: 'd'.repeat(64) }] }), original);
-  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifest: [{ ...entry, sha256: 'e'.repeat(64) }] }), original);
-  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifest: [{ ...entry, binary: false }] }), original);
-  assert.notEqual(collaborationCandidateContentHash({ diffHash: 'f'.repeat(64), snapshotVersion: 2, manifest: [entry] }), original);
-  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 1, manifest: [entry] }), original);
+  const original = collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [entry] });
+  assert.equal(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [{ ...entry }] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [{ ...entry, baseSha256: 'd'.repeat(64) }] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [{ ...entry, sha256: 'e'.repeat(64) }] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 2, manifest: [{ ...entry, binary: false }] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash: 'f'.repeat(64), snapshotVersion: 2, manifestVersion: 2, manifest: [entry] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 1, manifestVersion: 2, manifest: [entry] }), original);
+  assert.notEqual(collaborationCandidateContentHash({ diffHash, snapshotVersion: 2, manifestVersion: 1, manifest: [entry] }), original);
 });

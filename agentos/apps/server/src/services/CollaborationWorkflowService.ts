@@ -68,9 +68,11 @@ function candidateSummary(candidate: CollaborationCandidate): CollaborationCandi
     contentHash: candidate.contentHash ?? collaborationCandidateContentHash({
       diffHash: candidate.diffHash,
       snapshotVersion: candidate.snapshotVersion ?? 1,
+      manifestVersion: candidate.manifestVersion ?? 1,
       manifest: candidate.manifest,
     }),
     ...(candidate.snapshotVersion === undefined ? {} : { snapshotVersion: candidate.snapshotVersion }),
+    ...(candidate.manifestVersion === undefined ? {} : { manifestVersion: candidate.manifestVersion }),
     testStatus: candidate.testStatus,
     ...(candidate.testCommand === undefined ? {} : { testCommand: candidate.testCommand }),
     ...(candidate.testExitCode === undefined ? {} : { testExitCode: candidate.testExitCode }),
@@ -1215,7 +1217,7 @@ export class CollaborationWorkflowService {
       id: createEntityId('artifact'), collaborationTaskId: task.id, workspaceId: task.workspaceId,
       canonicalRunId: runId, round: task.reworkRound, baseCommit: task.baseCommit,
       headCommit: capture.headCommit, diffHash: capture.diffHash, diffText: capture.diffText,
-      snapshotVersion: 2, manifest: capture.manifest, testStatus: capture.testStatus,
+      snapshotVersion: 2, manifestVersion: 2, manifest: capture.manifest, testStatus: capture.testStatus,
       testCommand: capture.testCommand, testExitCode: capture.testExitCode, testOutput: capture.testOutput,
       status: 'created', createdAt,
         });

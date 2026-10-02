@@ -123,7 +123,7 @@ test('apply forwards all preview identity fields unchanged to the workflow servi
 test('candidate preview page GET is scoped, paginated, bound to the full candidate identity, and not cached', async () => {
   const preview = {
     workspaceId: WORKSPACE_ID, collaborationTaskId: COLLABORATION_ID, candidateId: candidateBinding.candidateId,
-    baseCommit: candidateBinding.candidateBaseCommit, headCommit: 'c'.repeat(40), snapshotVersion: 2,
+    baseCommit: candidateBinding.candidateBaseCommit, headCommit: 'c'.repeat(40), snapshotVersion: 2, manifestVersion: 2,
     diffHash: 'd'.repeat(64), contentHash: candidateBinding.candidateContentHash, offset: 50, nextOffset: 100, totalFiles: 120,
     totalAdditions: 1, totalDeletions: 0, files: [], withheldContent: false, withheldReasons: [],
   };
@@ -145,7 +145,7 @@ test('candidate preview page GET is scoped, paginated, bound to the full candida
 test('candidate file diff GET is separately on-demand and validates the same frozen identity', async () => {
   const fileDiff = {
     workspaceId: WORKSPACE_ID, collaborationTaskId: COLLABORATION_ID, candidateId: candidateBinding.candidateId,
-    baseCommit: candidateBinding.candidateBaseCommit, diffHash: 'd'.repeat(64), contentHash: candidateBinding.candidateContentHash,
+    baseCommit: candidateBinding.candidateBaseCommit, manifestVersion: 2, diffHash: 'd'.repeat(64), contentHash: candidateBinding.candidateContentHash,
     fileIndex: 7, path: 'src/file-7.ts', diffText: '+frozen only\n', withheld: false,
   };
   let received: unknown[] = [];
