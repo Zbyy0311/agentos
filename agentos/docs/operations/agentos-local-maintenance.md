@@ -19,6 +19,10 @@ node apps/server/dist/commands/maintenance.js backup
 
 `backup` calls the local loopback server. The server fences new API writes and runtime dispatch, pauses background writers, waits for admitted writes and active executions to drain, then creates a SQLite online snapshot (or `VACUUM INTO` fallback). It hashes each payload and writes a manifest containing the package version, source commit/build ID, schema version, migration checksums, and referenced files. AgentOS durable state, app-owned configuration, task metadata, candidate/evidence files, referenced memory files, and conversation attachments are included. User project trees, worktree checkouts, diagnostic logs, derived caches, and migration backup copies are not copied. Treat the backup as private because it can contain local provider configuration and user memory/evidence.
 
+Before publication, the SQLite snapshot, copied payloads, and manifest are explicitly synchronized through their file handles. A failed file sync rejects the backup with `BACKUP_SYNC_FAILED` and never returns success. The backup response reports `durability.fileContents: "synced"`. On Windows it also reports `durability.directoryEntries: "not-guaranteed"`: portable Node APIs do not provide a directory-entry persistence guarantee for the final rename, so an immediate power loss can still lose the published directory. On supported POSIX filesystems, the payload/staging directories and publication parent are synchronized; a directory sync failure also rejects success. Keep a verified second copy for power-loss protection, and verify the bundle after an abnormal shutdown. This response describes this backup operation, not older bundles.
+
+If synchronization fails after the final directory rename on POSIX, the complete-looking bundle is retained and the operation still reports failure. Inspect `.agentos/backups` and run offline verification on that bundle before deciding whether to retry; a retained directory alone is not proof that publication was durable.
+
 Verify the entire bundle and build identity offline before restore:
 
 ```powershell

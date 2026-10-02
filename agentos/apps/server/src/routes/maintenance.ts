@@ -43,6 +43,7 @@ export function createMaintenanceRoutes(input: {
         createdAt: result.result.manifest.createdAt,
         schemaVersion: result.result.manifest.schemaVersion,
         fileCount: result.result.manifest.files.length,
+        durability: result.result.durability,
       });
     } catch (error) {
       return respondMaintenanceError(req, res, error);

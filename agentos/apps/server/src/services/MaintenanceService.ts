@@ -87,6 +87,10 @@ export interface MaintenanceBackupManifest {
 export interface BackupResult {
   readonly backupDirectory: string;
   readonly manifest: MaintenanceBackupManifest;
+  readonly durability: {
+    readonly fileContents: 'synced';
+    readonly directoryEntries: 'synced' | 'not-guaranteed';
+  };
 }
 
 export interface RestoreResult {
@@ -155,6 +159,8 @@ interface MaintenanceServiceSeams {
   readonly afterCleanupQuarantine?: (input: { readonly sourcePath: string; readonly quarantinedPath: string }) => void | Promise<void>;
   /** @internal Deterministic source replacement seam for stable-copy tests. */
   readonly beforeStableCopyOpen?: (input: { readonly sourcePath: string }) => void | Promise<void>;
+  /** @internal Inject an I/O failure at a publication barrier. */
+  readonly beforeBackupFileSync?: (input: { readonly path: string; readonly kind: 'database' | 'manifest' }) => void | Promise<void>;
 }
 
 export class MaintenanceServiceError extends Error {
@@ -197,7 +203,8 @@ export class MaintenanceService {
     try {
       throwIfAborted(signal);
       const databasePath = join(stage, 'payload', '000000.sqlite');
-      await createSqliteSnapshot(this.database, databasePath, signal);
+      await createSqliteSnapshot(this.database, databasePath, signal, () =>
+        this.seams.beforeBackupFileSync?.({ path: databasePath, kind: 'database' }));
       const snapshotDb = openDatabase(databasePath);
       let migrations: Array<{ id: string; name: string; checksum: string }>;
       let workspaceRoots: Record<string, string>;
@@ -251,11 +258,28 @@ export class MaintenanceService {
         workspaceRoots,
         files,
       };
-      await writeFile(join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+      const manifestPath = join(stage, 'manifest.json');
+      const manifestFile = await open(manifestPath, 'wx');
+      try {
+        await manifestFile.writeFile(`${JSON.stringify(manifest, null, 2)}\n`);
+        try {
+          await this.seams.beforeBackupFileSync?.({ path: manifestPath, kind: 'manifest' });
+          await manifestFile.sync();
+        } catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+      } finally { await manifestFile.close(); }
       throwIfAborted(signal);
       await MaintenanceService.readAndVerifyBackup(stage);
+      await syncBackupDirectory(join(stage, 'payload'));
+      await syncBackupDirectory(stage);
+      throwIfAborted(signal);
       await rename(stage, finalPath);
-      return { backupDirectory: finalPath, manifest };
+      await syncBackupDirectory(backupRoot);
+      await syncBackupDirectory(dirname(backupRoot));
+      return {
+        backupDirectory: finalPath,
+        manifest,
+        durability: { fileContents: 'synced', directoryEntries: process.platform === 'win32' ? 'not-guaranteed' : 'synced' },
+      };
     } catch (error) {
       await rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {});
       if (error instanceof MaintenanceServiceError) throw error;
@@ -692,7 +716,12 @@ function isSafeControlId(value: string): boolean {
   return value.length > 0 && value.length <= 160 && /^[\w.-]+$/u.test(value) && value !== '.' && value !== '..';
 }
 
-export async function createSqliteSnapshot(database: SqliteDatabase, target: string, signal?: AbortSignal): Promise<void> {
+export async function createSqliteSnapshot(
+  database: SqliteDatabase,
+  target: string,
+  signal?: AbortSignal,
+  beforeSync?: () => void | Promise<void>,
+): Promise<void> {
   const existing = await inspectOptionalFile(target);
   if (existing) throw new MaintenanceServiceError('BACKUP_TARGET_EXISTS');
   if (typeof sqlite.backup === 'function') {
@@ -702,11 +731,30 @@ export async function createSqliteSnapshot(database: SqliteDatabase, target: str
         if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
       },
     });
-    return;
+  } else {
+    if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
+    const sqlPath = target.replaceAll("'", "''");
+    database.exec(`VACUUM INTO '${sqlPath}'`);
   }
-  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
-  const sqlPath = target.replaceAll("'", "''");
-  database.exec(`VACUUM INTO '${sqlPath}'`);
+  throwIfAborted(signal);
+  const file = await open(target, 'r+');
+  try {
+    try {
+      await beforeSync?.();
+      await file.sync();
+    } catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+  } finally { await file.close(); }
+}
+
+async function syncBackupDirectory(path: string): Promise<void> {
+  // Node's portable directory handles cannot guarantee Windows directory-entry
+  // persistence. The API reports that limit instead of claiming power-loss safety.
+  if (process.platform === 'win32') return;
+  const directory = await open(path, 'r');
+  try {
+    try { await directory.sync(); }
+    catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+  } finally { await directory.close(); }
 }
 
 function readMigrationRows(database: DatabaseSyncLike): Array<{ id: string; name: string; checksum: string }> {

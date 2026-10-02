@@ -111,6 +111,36 @@ async function cloneBackup(source: string, root: string): Promise<string> {
   return cloned;
 }
 
+for (const kind of ['database', 'manifest'] as const) {
+  test(`backup refuses publication when the ${kind} synchronization barrier fails`, async () => {
+    const fx = createFixture();
+    const originalEvidence = readFileSync(join(fx.dataRoot, '.agentos', 'evidence', 'review_fixture.json'));
+    let injected = false;
+    const service = new MaintenanceService(
+      fx.dataRoot, fx.store.getDatabase() as any,
+      [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }], () => new Date(),
+      { beforeBackupFileSync: input => {
+        if (input.kind !== kind) return;
+        injected = true;
+        assert.equal(existsSync(input.path), true);
+        throw Object.assign(new Error('injected disk synchronization failure'), { code: 'EIO' });
+      } },
+    );
+    try {
+      await assert.rejects(service.createBackup(), { code: 'BACKUP_SYNC_FAILED' });
+      assert.equal(injected, true, 'the actual snapshot/manifest must reach its durability barrier');
+      assert.deepEqual(readdirSync(join(fx.dataRoot, '.agentos', 'backups')), [],
+        'neither a published backup nor a partial staging bundle survives');
+      assert.deepEqual(readFileSync(join(fx.dataRoot, '.agentos', 'evidence', 'review_fixture.json')), originalEvidence);
+      const retry = await fx.service.createBackup();
+      await MaintenanceService.readAndVerifyBackup(retry.backupDirectory);
+      assert.deepEqual(retry.durability, {
+        fileContents: 'synced', directoryEntries: process.platform === 'win32' ? 'not-guaranteed' : 'synced',
+      });
+    } finally { fx.cleanup(); }
+  });
+}
+
 test('backup includes references from workspaces created after the service starts', async () => {
   const fx = createFixture();
   // Production constructs the maintenance service once, before later API workspaces.
