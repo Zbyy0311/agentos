@@ -282,7 +282,7 @@ function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence
   });
 }
 
-async function makeUnoccupiedR39Root(label: string): Promise<{
+async function makeUnoccupiedOwnershipRoot(label: string): Promise<{
   root: string;
   candidatePorts: number[];
 }> {
@@ -577,7 +577,7 @@ test('R37 unknown port occupants fail closed without jumping to the next candida
 });
 
 test('R38 loopback ownership is released automatically after a subprocess crash', { timeout: 120_000 }, async () => {
-  const root = makeRoot('r38');
+  const { root } = await makeUnoccupiedOwnershipRoot('r38');
   const spawned = spawnLoopbackChild(root);
   let ownership: ServerOwnership | undefined;
   try {
@@ -603,7 +603,7 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   const ROUNDS = 5;
   const CHILDREN = 3;
   for (let round = 0; round < ROUNDS; round += 1) {
-    const { root, candidatePorts } = await makeUnoccupiedR39Root(`r39-${round}`);
+    const { root, candidatePorts } = await makeUnoccupiedOwnershipRoot(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
     const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
     const parentProbeAttempts: R39CandidateEvidence[] = [];
