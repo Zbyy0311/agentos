@@ -519,6 +519,9 @@ function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePa
   mkdirSync(dirname(target), { recursive: true });
   const clone = spawnSync('git', ['clone', '--shared', '--no-checkout', sourceRoot, target], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
   invariant(clone.status === 0, `could not make isolated ${kind} repository: ${safeText(clone.stderr)}`);
+  // Configure only the disposable clone before materializing the frozen source.
+  // Git for Windows can otherwise leave deep tracked cache paths absent.
+  if (process.platform === 'win32') git(target, ['config', 'core.longpaths', 'true']);
   git(target, ['checkout', '--detach', sourceSha]);
   // A tracked .claude/worktrees gitlink is local worktree metadata, not an
   // application source file. The production snapshot service correctly rejects
