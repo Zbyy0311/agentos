@@ -303,21 +303,51 @@ function isRegularBlob(entry: GitTreeEntry | undefined): boolean {
   return entry === undefined || entry.mode === '100644' || entry.mode === '100755';
 }
 
+interface SnapshotCaptureHooks {
+  readonly afterGitContextFrozen?: () => void | Promise<void>;
+  readonly beforeGitAdd?: () => void | Promise<void>;
+  readonly beforeFrozenNormalization?: () => void | Promise<void>;
+  readonly beforePatch?: () => void | Promise<void>;
+  readonly resourceLimits?: Partial<CollaborationCandidateSnapshotResourceLimits>;
+}
+
 /** Freeze source bytes, effective attributes and normalization config before
  * any clean operation. Only an owned shadow worktree/index produces blobs and
  * patch bytes; the original worktree is used for metadata/stability checks. */
-export async function captureCollaborationCandidateSnapshot(
+export function captureCollaborationCandidateSnapshot(
   worktreePath: string,
   baseCommit: string,
   approvedScope: readonly string[] | NormalizedCollaborationScope,
   /** @internal Deterministic capture barriers; beforeGitAdd retains the original regression seam. */
-  testHooks?: {
-    readonly afterGitContextFrozen?: () => void | Promise<void>;
-    readonly beforeGitAdd?: () => void | Promise<void>;
-    readonly beforeFrozenNormalization?: () => void | Promise<void>;
-    readonly beforePatch?: () => void | Promise<void>;
-    readonly resourceLimits?: Partial<CollaborationCandidateSnapshotResourceLimits>;
-  },
+  testHooks?: SnapshotCaptureHooks,
+): Promise<CollaborationCandidateSnapshot> {
+  return captureSnapshot(worktreePath, baseCommit, approvedScope, testHooks, false);
+}
+
+/** Internal clean preflight. Normalization uses only owned frozen bytes;
+ * the final full-content check still validates every live source file. */
+export async function isCollaborationWorkspaceClean(
+  worktreePath: string,
+  baseCommit: string,
+  /** @internal Deterministic race regression barriers. */
+  testHooks?: SnapshotCaptureHooks,
+): Promise<boolean> {
+  try {
+    await captureSnapshot(worktreePath, baseCommit, ['./'], testHooks, true);
+    return false;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('COLLABORATION_CANDIDATE_EMPTY:')) return true;
+    if (error instanceof Error && error.message.startsWith('COLLABORATION_WORKSPACE_DIRTY:')) return false;
+    throw error;
+  }
+}
+
+async function captureSnapshot(
+  worktreePath: string,
+  baseCommit: string,
+  approvedScope: readonly string[] | NormalizedCollaborationScope,
+  testHooks: SnapshotCaptureHooks | undefined,
+  cleanPreflight: boolean,
 ): Promise<CollaborationCandidateSnapshot> {
   const resourceLimits = resolveResourceLimits(testHooks?.resourceLimits);
   const scope = resolveCollaborationScopePolicy(approvedScope);
@@ -332,7 +362,23 @@ export async function captureCollaborationCandidateSnapshot(
       context.sourceMetadata(['ls-files', '--others', '--exclude-standard', '-z']),
     ]);
     const headAtStart = head.toString('utf8').trim();
+    if (cleanPreflight && headAtStart !== baseCommit) {
+      throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: HEAD moved before clean preflight');
+    }
     const baseEntries = parseTreeEntries(baseTree.toString('utf8'));
+    if (cleanPreflight) {
+      // This context must prove the live index equals the baseline itself.
+      // A caller's earlier index check cannot cover the gap between contexts.
+      const rows = splitNul(realIndex.toString('utf8'));
+      const indexFacts = new Map(rows.map(row => {
+        const tab = row.indexOf('\t');
+        return [row.slice(tab + 1), row.slice(0, tab)];
+      }));
+      if (rows.length !== baseEntries.size || [...baseEntries].some(([path, entry]) =>
+        indexFacts.get(path) !== `${entry.mode} ${entry.objectId} 0`)) {
+        throw new Error('COLLABORATION_WORKSPACE_DIRTY: source index differs from HEAD');
+      }
+    }
     const realIndexEntries = parseIndexEntries(realIndex.toString('utf8'));
     const inventoryPaths = [...new Set([...baseEntries.keys(), ...realIndexEntries.keys(), ...splitNul(untracked.toString('utf8'))])].sort();
     if (inventoryPaths.length > resourceLimits.maxInventoryPaths) {
@@ -370,7 +416,7 @@ export async function captureCollaborationCandidateSnapshot(
     }
     await assertCollaborationPathBoundaryUnchanged(worktreeRoot, inventoryWitness);
 
-    const assertFrozenState = async (): Promise<void> => {
+    const assertFrozenState = async (checkSourceBytes = true): Promise<void> => {
       const [currentHead, currentIndex, currentUntracked] = await Promise.all([
         context.sourceMetadata(['rev-parse', 'HEAD']),
         context.sourceMetadata(['ls-files', '-s', '-z']),
@@ -379,13 +425,17 @@ export async function captureCollaborationCandidateSnapshot(
       if (!head.equals(currentHead) || !realIndex.equals(currentIndex) || !untracked.equals(currentUntracked)) {
         throw new Error('COLLABORATION_SNAPSHOT_SOURCE_CHANGED: HEAD, index, or candidate path inventory changed during capture');
       }
-      await assertSourceImagesUnchanged(worktreeRoot, inventoryWitness, sourceImages);
+      if (checkSourceBytes) await assertSourceImagesUnchanged(worktreeRoot, inventoryWitness, sourceImages);
+      else await assertCollaborationPathBoundaryUnchanged(worktreeRoot, inventoryWitness);
       await context.assertSourceContextUnchanged();
       await assertCollaborationPathBoundaryUnchanged(worktreeRoot, attributeWitness);
     };
 
     await testHooks?.beforeGitAdd?.();
-    await assertFrozenState();
+    // Clean preflight need not reread all live bytes before normalizing the
+    // private shadow. Its final check below validates them in full. General
+    // candidate capture keeps its existing checks and regression barriers.
+    await assertFrozenState(!cleanPreflight);
     await testHooks?.beforeFrozenNormalization?.();
     await context.run(['read-tree', baseCommit]);
     // The shadow contains only the validated, frozen inventory. Force retains
