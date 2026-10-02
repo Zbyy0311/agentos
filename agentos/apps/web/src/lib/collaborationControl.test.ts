@@ -20,3 +20,9 @@ test('confirm, cancel and apply mutations all carry expectedVersion and an idemp
     assert.ok(request.headers?.['Idempotency-Key']);
   }
 });
+
+test('apply can bind its write request to the exact candidate and canonical content hash shown in preview', () => {
+  const request = collaborationMutationRequest('task-1', 9, 'apply', { id: 'candidate-1', baseCommit: 'b'.repeat(40), contentHash: 'a'.repeat(64) });
+  assert.deepEqual(request.body, { expectedVersion: 9, candidateId: 'candidate-1', candidateBaseCommit: 'b'.repeat(40), candidateContentHash: 'a'.repeat(64) });
+  assert.ok(request.headers['Idempotency-Key']);
+});
