@@ -34,7 +34,8 @@ import { readCollaborationApplicationFacts, collaborationApplicationTerminalReas
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from './TaskRunService.js';
 import { IdempotencyService } from './IdempotencyService.js';
-import type { WorktreeManager } from './WorktreeManager.js';
+import { hashIdempotencyRequest, hashNormalizedIdempotencyKey } from '../idempotency/fingerprint.js';
+import { WorktreeError, type WorktreeManager } from './WorktreeManager.js';
 import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
 import { collaborationCandidateContentHash } from './CollaborationCandidateContentHash.js';
 import {
@@ -158,8 +159,30 @@ export interface CollaborationRecoveryOptions {
   readonly failureCode?: string;
   readonly recoveryRequired?: boolean;
   readonly checkedBaseCommit?: string;
+  readonly resumeRequest?: {
+    readonly idempotencyKey: string;
+    readonly expectedTaskVersion: number;
+    readonly expectedRunId: string;
+    readonly expectedRunVersion: number;
+  };
   readonly actions: { readonly retryKnownFailure: boolean; readonly newLinkedTask: boolean };
   readonly reason?: string;
+}
+
+interface CollaborationRecoveryRow {
+  readonly id: string;
+  readonly workspace_id: string;
+  readonly collaboration_task_id: string;
+  readonly prior_run_id: string;
+  readonly action: string;
+  readonly expected_task_version: number;
+  readonly expected_run_version: number;
+  readonly idempotency_key: string;
+  readonly request_hash: string;
+  readonly state: string;
+  readonly new_run_id: string | null;
+  readonly checked_base_commit: string | null;
+  readonly result_json: string | null;
 }
 
 interface CandidateCapture {
@@ -660,6 +683,50 @@ export class CollaborationWorkflowService {
   async getRecoveryOptions(workspaceId: string, collaborationId: string): Promise<CollaborationRecoveryOptions> {
     const task = this.requireTask(workspaceId, collaborationId);
     const run = task.canonicalRunId ? this.options.store.runRepository().findById(workspaceId, task.canonicalRunId) : undefined;
+    const db = this.options.store.getDatabase();
+    const schema = db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_collaboration_recoveries'").get();
+    if (schema) {
+      const retryRecovery = db.prepare(`SELECT * FROM p2_collaboration_recoveries
+        WHERE workspace_id = ? AND collaboration_task_id = ? AND action = 'retry-known-failure'
+          AND state = 'recovery_required' ORDER BY updated_at DESC,created_at DESC LIMIT 1`)
+        .get(workspaceId, task.id) as CollaborationRecoveryRow | undefined;
+      if (retryRecovery) {
+        const proof = this.inspectRetryRecoveryResume(task, retryRecovery);
+        const priorRun = this.options.store.runRepository().findById(workspaceId, retryRecovery.prior_run_id);
+        const unavailableRetry = (reason: string): CollaborationRecoveryOptions => ({
+          taskId: task.id, taskVersion: task.version,
+          ...(run === undefined ? {} : { runId: run.id, runVersion: run.version }),
+          ...(priorRun?.failureCode === undefined ? {} : { failureCode: priorRun.failureCode }),
+          recoveryRequired: true, actions: { retryKnownFailure: false, newLinkedTask: false }, reason,
+        });
+        if (!proof.safe || !priorRun) return unavailableRetry(proof.reason ?? '恢复记录无法与原失败 Run 对应；操作保持封锁');
+        let checkedBaseCommit: string;
+        try {
+          const workspace = this.requireWorkspace(workspaceId);
+          checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+        } catch {
+          return unavailableRetry('原重试已被接受但尚未授权启动；请先恢复干净、可检查的源基线');
+        }
+        if (checkedBaseCommit !== task.baseCommit
+          || (retryRecovery.checked_base_commit !== null && checkedBaseCommit !== retryRecovery.checked_base_commit)) {
+          return unavailableRetry('原重试绑定的干净基线已变化；不会在新基线上启动。恢复该基线后可用同一请求安全续办');
+        }
+        return {
+          taskId: task.id, taskVersion: retryRecovery.expected_task_version,
+          runId: retryRecovery.prior_run_id, runVersion: retryRecovery.expected_run_version,
+          ...(priorRun.failureCode === undefined ? {} : { failureCode: priorRun.failureCode }),
+          recoveryRequired: false, checkedBaseCommit,
+          resumeRequest: {
+            idempotencyKey: retryRecovery.idempotency_key,
+            expectedTaskVersion: retryRecovery.expected_task_version,
+            expectedRunId: retryRecovery.prior_run_id,
+            expectedRunVersion: retryRecovery.expected_run_version,
+          },
+          actions: { retryKnownFailure: true, newLinkedTask: false },
+          reason: '此重试 Run 已持久化但尚无 Start/Provider 证据；将复用同一 Run 与 attempt，不会创建第二个子 Run',
+        };
+      }
+    }
     const unresolvedSideEffect = Boolean(run && (run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
       || run.failureCode === 'RUN_PROCESS_UNKNOWN' || run.failureCode?.includes('RECOVERY')));
     const interruptedRecoveryRun = Boolean(run && ['starting', 'running'].includes(run.status) && unresolvedSideEffect);
@@ -677,8 +744,6 @@ export class CollaborationWorkflowService {
       return unavailable('当前任务与 Run 尚不处于可恢复的终态');
     }
     if (this.controls.pending(workspaceId, task.id)) return unavailable('协作控制操作仍在处理中');
-    const db = this.options.store.getDatabase();
-    const schema = db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_collaboration_recoveries'").get();
     if (!schema) return unavailable('恢复记录迁移尚未安装');
     const priorRecovery = db.prepare(`SELECT state,action,new_collaboration_task_id,new_run_id,result_json
       FROM p2_collaboration_recoveries
@@ -722,6 +787,105 @@ export class CollaborationWorkflowService {
     };
   }
 
+  private inspectRetryRecoveryResume(
+    task: CollaborationTask,
+    recovery: CollaborationRecoveryRow,
+  ): { readonly safe: boolean; readonly reason?: string } {
+    const reject = (reason: string) => ({ safe: false as const, reason });
+    if (recovery.workspace_id !== task.workspaceId || recovery.collaboration_task_id !== task.id
+      || recovery.action !== 'retry-known-failure' || recovery.state !== 'recovery_required') {
+      return reject('恢复记录与当前工作区/任务不匹配；操作保持封锁');
+    }
+    const parentRun = this.options.store.runRepository().findById(task.workspaceId, recovery.prior_run_id);
+    if (!parentRun || parentRun.version !== recovery.expected_run_version || parentRun.status !== 'failed'
+      || parentRun.recoveryRequired || !parentRun.failureCode
+      || !new Set(['PROVIDER_CONFIG_INVALID', 'PROVIDER_CAPABILITY_UNAVAILABLE', 'PROVIDER_VERSION_UNSUPPORTED',
+        'RUN_CONFIGURATION_INVALID', 'WORKSPACE_ADMISSION_DENIED']).has(parentRun.failureCode)) {
+      return reject('原失败 Run 不再满足无副作用重试条件；不会继续启动');
+    }
+    if (this.controls.pending(task.workspaceId, task.id)) return reject('协作控制操作仍在处理中；重试保持封锁');
+
+    const db = this.options.store.getDatabase();
+    const retryKey = `p2-retry-${hash(recovery.idempotency_key).slice(0, 48)}`;
+    let childRunId: string | undefined;
+    try {
+      const record = this.options.store.idempotencyRepository().findVerifiedByScope(
+        task.workspaceId, 'run.retry', hashNormalizedIdempotencyKey(retryKey),
+      );
+      if (record) {
+        const expectedHash = hashIdempotencyRequest({
+          operation: 'run.retry', workspaceId: task.workspaceId,
+          pathParams: { runId: parentRun.id }, domainInput: {}, expectedVersion: parentRun.version,
+        });
+        if (record.requestHash !== expectedHash || record.envelope.operation !== 'run.retry') {
+          return reject('子 Run 的幂等收据与原恢复请求不匹配；操作保持封锁');
+        }
+        childRunId = record.envelope.body.run.id;
+      }
+    } catch {
+      return reject('子 Run 幂等收据无法验证；操作保持封锁');
+    }
+
+    const children = db.prepare(`SELECT id,status,recovery_required FROM runs
+      WHERE workspace_id = ? AND task_id = ? AND parent_run_id = ? ORDER BY created_at,id`)
+      .all(task.workspaceId, parentRun.taskId, parentRun.id) as Array<{ id: string; status: string; recovery_required: number | null }>;
+    if (children.length > 1 || (childRunId !== undefined && (children.length !== 1 || children[0]!.id !== childRunId))
+      || (recovery.new_run_id !== null && (childRunId !== recovery.new_run_id || children[0]?.id !== recovery.new_run_id))) {
+      return reject('原重试对应的子 Run 数量或身份不唯一；操作保持封锁');
+    }
+    if (children.length === 0) {
+      if (childRunId !== undefined || recovery.new_run_id !== null) return reject('恢复记录指向的子 Run 缺失；操作保持封锁');
+      const retryOperations = db.prepare(`SELECT COUNT(*) AS count FROM operations
+        WHERE workspace_id = ? AND run_id = ? AND type = 'run.retry'`).get(task.workspaceId, parentRun.id) as { count: number | bigint };
+      if (Number(retryOperations.count) !== 0) return reject('已有未能绑定的 Run retry 操作；操作保持封锁');
+    } else {
+      const child = children[0]!;
+      if (child.status !== 'queued' || child.recovery_required === 1) return reject('子 Run 已离开 queued 状态或带有恢复标记；不会重放');
+      const retryOperations = db.prepare(`SELECT COUNT(*) AS count FROM operations
+        WHERE workspace_id = ? AND run_id = ? AND type = 'run.retry' AND status = 'completed'`)
+        .get(task.workspaceId, parentRun.id) as { count: number | bigint };
+      if (Number(retryOperations.count) !== 1) return reject('子 Run 缺少唯一、已完成的原 retry 授权记录');
+      childRunId = child.id;
+      const sideEffect = this.retryChildSideEffectEvidence(task.workspaceId, task.id, child.id);
+      if (sideEffect) return reject(`已存在${sideEffect}证据；恢复保持封锁，不会重放副作用`);
+    }
+
+    const expectedTaskVersion = recovery.expected_task_version;
+    const stillOnParent = task.canonicalRunId === parentRun.id && task.version === expectedTaskVersion
+      && ['failed', 'blocked'].includes(task.status);
+    const linkedButNotStarted = childRunId !== undefined && task.canonicalRunId === childRunId
+      && task.version === expectedTaskVersion + 1 && task.status === 'queued';
+    if (!stillOnParent && !linkedButNotStarted) return reject('任务版本或 canonical Run 已变化；请刷新恢复状态');
+    if (task.baseCommit.length === 0) return reject('原任务缺少基线绑定；操作保持封锁');
+    const processCount = db.prepare('SELECT COUNT(*) AS count FROM runtime_processes WHERE workspace_id = ? AND run_id = ?')
+      .get(task.workspaceId, parentRun.id) as { count: number | bigint };
+    const outputCount = db.prepare(`SELECT COUNT(*) AS count FROM collaboration_stage_outputs
+      WHERE workspace_id = ? AND collaboration_task_id = ? AND canonical_run_id = ?`)
+      .get(task.workspaceId, task.id, parentRun.id) as { count: number | bigint };
+    if (Number(processCount.count) !== 0 || Number(outputCount.count) !== 0) {
+      return reject('原 Run 出现 Provider 进程或阶段输出；不会继续重试');
+    }
+    return { safe: true };
+  }
+
+  private retryChildSideEffectEvidence(workspaceId: string, collaborationTaskId: string, runId: string): string | undefined {
+    const db = this.options.store.getDatabase();
+    const checks: Array<[string, string, unknown[]]> = [
+      ['Start 授权', "SELECT COUNT(*) AS count FROM operations WHERE workspace_id = ? AND run_id = ? AND type = 'run.start'", [workspaceId, runId]],
+      ['Provider session', 'SELECT COUNT(*) AS count FROM provider_sessions WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
+      ['运行进程', 'SELECT COUNT(*) AS count FROM runtime_processes WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
+      ['阶段输出', 'SELECT COUNT(*) AS count FROM collaboration_stage_outputs WHERE workspace_id = ? AND collaboration_task_id = ? AND canonical_run_id = ?', [workspaceId, collaborationTaskId, runId]],
+      ['运行准入', 'SELECT COUNT(*) AS count FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?', [workspaceId, runId]],
+      ['运行阶段事件', `SELECT COUNT(*) AS count FROM runtime_events WHERE workspace_id = ? AND run_id = ?
+        AND type NOT IN ('run.created','stage.created')`, [workspaceId, runId]],
+    ];
+    for (const [label, sql, params] of checks) {
+      const row = db.prepare(sql).get(...params) as { count: number | bigint };
+      if (Number(row.count) !== 0) return label;
+    }
+    return undefined;
+  }
+
   async recover(input: CollaborationRecoveryInput): Promise<{
     readonly action: CollaborationRecoveryInput['action'];
     readonly task: CollaborationTask;
@@ -746,9 +910,7 @@ export class CollaborationWorkflowService {
 
     const claim = this.options.store.runInTransaction(() => {
       const existing = db.prepare('SELECT * FROM p2_collaboration_recoveries WHERE workspace_id = ? AND idempotency_key = ?')
-        .get(input.workspaceId, input.idempotencyKey) as {
-          request_hash: string; action: string; state: string; result_json: string | null;
-        } | undefined;
+        .get(input.workspaceId, input.idempotencyKey) as CollaborationRecoveryRow | undefined;
       if (existing) {
         if (existing.request_hash !== requestHash || existing.action !== input.action) {
           throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT', 'Idempotency key was used for different recovery intent');
@@ -760,6 +922,25 @@ export class CollaborationWorkflowService {
           } };
         }
         if (existing.state === 'reserved' || existing.state === 'dispatching') return { kind: 'pending' as const };
+        if (existing.state === 'recovery_required' && existing.action === 'retry-known-failure') {
+          const task = this.requireTask(input.workspaceId, input.collaborationId);
+          const proof = this.inspectRetryRecoveryResume(task, existing);
+          const run = this.options.store.runRepository().findById(input.workspaceId, existing.prior_run_id);
+          if (!proof.safe || !run || existing.collaboration_task_id !== input.collaborationId
+            || existing.expected_task_version !== input.expectedTaskVersion
+            || existing.prior_run_id !== input.expectedRunId || existing.expected_run_version !== input.expectedRunVersion) {
+            throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', proof.reason
+              ?? 'Interrupted retry cannot be resumed safely; inspect the recovery evidence before taking another action');
+          }
+          const resumed = db.prepare(`UPDATE p2_collaboration_recoveries SET state = 'reserved',error_code = NULL,updated_at = ?
+            WHERE id = ? AND state = 'recovery_required' AND request_hash = ?`)
+            .run(new Date().toISOString(), existing.id, requestHash) as { changes?: number | bigint };
+          if (Number(resumed.changes ?? 0) !== 1) {
+            throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Interrupted retry claim changed before it could resume');
+          }
+          return { kind: 'reserved' as const, recoveryId: existing.id, task, run,
+            expectedBaseCommit: existing.checked_base_commit ?? undefined };
+        }
         throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Prior recovery did not reach a proven terminal state; create a clean linked task after checking the baseline');
       }
       const task = this.requireTask(input.workspaceId, input.collaborationId);
@@ -795,7 +976,7 @@ export class CollaborationWorkflowService {
         }
         throw error;
       }
-      return { kind: 'reserved' as const, recoveryId, task, run };
+      return { kind: 'reserved' as const, recoveryId, task, run, expectedBaseCommit: undefined };
     });
     if (claim.kind === 'replay') return { ...claim.result, replayed: true };
     if (claim.kind === 'pending') {
@@ -806,10 +987,17 @@ export class CollaborationWorkflowService {
     try {
       const task = claim.task;
       const workspace = this.requireWorkspace(input.workspaceId);
-      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-      const checkedBaseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
-      if (checkedBaseCommit !== task.baseCommit) {
+      const checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      if (checkedBaseCommit !== task.baseCommit || (claim.expectedBaseCommit !== undefined
+        && checkedBaseCommit !== claim.expectedBaseCommit)) {
         throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The checked source baseline changed; no retry Run was started');
+      }
+      const boundBaseline = this.options.store.runInTransaction(() => db.prepare(`UPDATE p2_collaboration_recoveries
+        SET checked_base_commit = COALESCE(checked_base_commit,?),updated_at = ?
+        WHERE id = ? AND state = 'reserved' AND (checked_base_commit IS NULL OR checked_base_commit = ?)`)
+        .run(checkedBaseCommit, new Date().toISOString(), claim.recoveryId, checkedBaseCommit) as { changes?: number | bigint });
+      if (Number(boundBaseline.changes ?? 0) !== 1) {
+        throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'Recovery is bound to a different checked source baseline');
       }
       const retryKey = `p2-retry-${hash(input.idempotencyKey).slice(0, 48)}`;
       const retry = this.taskRuns.retryRunOperationForV2(input.workspaceId, claim.run.id, retryKey, claim.run.version, () => {
@@ -823,22 +1011,39 @@ export class CollaborationWorkflowService {
           throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task, Run or recovery claim changed before canonical retry acceptance');
         }
         this.assertKnownFailureRetryEligible(currentTask, currentRun);
-        const changed = db.prepare(`UPDATE p2_collaboration_recoveries SET state = 'dispatching',updated_at = ?
-          WHERE id = ? AND state = 'reserved'`).run(new Date().toISOString(), claim.recoveryId) as { changes?: number | bigint };
+        const changed = db.prepare(`UPDATE p2_collaboration_recoveries SET state = 'dispatching',checked_base_commit = ?,updated_at = ?
+          WHERE id = ? AND state = 'reserved' AND checked_base_commit = ?`)
+          .run(checkedBaseCommit, new Date().toISOString(), claim.recoveryId, checkedBaseCommit) as { changes?: number | bigint };
         if (Number(changed.changes ?? 0) !== 1) {
           throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Recovery claim was no longer reserved');
         }
       });
       const newRunId = retry.body.run.id;
+      const bindRetry = this.options.store.runInTransaction(() => db.prepare(`UPDATE p2_collaboration_recoveries
+        SET state = 'dispatching',new_run_id = ?,checked_base_commit = ?,updated_at = ?
+        WHERE id = ? AND state IN ('reserved','dispatching') AND (new_run_id IS NULL OR new_run_id = ?)
+          AND checked_base_commit = ?`)
+        .run(newRunId, checkedBaseCommit, new Date().toISOString(), claim.recoveryId, newRunId, checkedBaseCommit) as { changes?: number | bigint });
+      if (Number(bindRetry.changes ?? 0) !== 1) {
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'The accepted retry Run could not be bound uniquely to its recovery record');
+      }
       const implementer = workspace.agents.find(agent => agent.id === task.implementerAgentId);
       if (!implementer) throw new CollaborationWorkflowError('COLLABORATION_AGENT_UNAVAILABLE', 'Implementer is unavailable');
       let lease = this.options.worktrees.listLeases().find(item => item.workspaceId === workspace.id
         && item.runId === newRunId && item.executionId === `collaboration-${task.id}` && item.status === 'active');
       if (!lease) {
-        lease = await this.options.worktrees.createLease({
-          workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: newRunId,
-          executionId: `collaboration-${task.id}`, agentId: implementer.id, controlledGitContent: true,
-        });
+        try {
+          lease = await this.options.worktrees.createLease({
+            workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: newRunId,
+            executionId: `collaboration-${task.id}`, agentId: implementer.id, controlledGitContent: true,
+            expectedBaseCommit: checkedBaseCommit,
+          });
+        } catch (error) {
+          if (error instanceof WorktreeError && error.code === 'workspace_changed') {
+            throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The clean source baseline changed while the recovery worktree was being created; no Provider call was started');
+          }
+          throw error;
+        }
       }
       const leaseRecord = this.options.worktrees.getRecord(lease.id);
       if (!leaseRecord || leaseRecord.status !== 'active') throw new CollaborationWorkflowError('COLLABORATION_WORKTREE_MISSING', 'Fresh checked worktree is unavailable');
@@ -860,19 +1065,36 @@ export class CollaborationWorkflowService {
             reworkRound: task.reworkRound + 1, expectedRunId: claim.run.id,
             expectedControlEpoch: task.controlEpoch ?? 0 });
         });
+      } else if (currentTask.version !== input.expectedTaskVersion + 1 || currentTask.status !== 'queued') {
+        throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'The retry task link changed; refresh recovery state before Start authorization');
       }
       const currentRun = this.options.store.runRepository().findById(workspace.id, newRunId);
       if (!currentRun || currentRun.status !== 'queued' || currentRun.recoveryRequired) {
         throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'New Run is not safely startable');
       }
+      const [sourceBaseCommit, leaseBaseCommit] = await Promise.all([
+        this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true }),
+        this.options.worktrees.preflight(leaseRecord.absolutePath, { controlledGitContent: true }),
+      ]);
+      if (sourceBaseCommit !== checkedBaseCommit || leaseBaseCommit !== checkedBaseCommit) {
+        throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The clean source or retry worktree changed before Start authorization');
+      }
       const startKey = `p2-start-${hash(input.idempotencyKey).slice(0, 48)}`;
       const start = this.taskRuns.startRunOperationForV2(workspace.id, newRunId, startKey, currentRun.version, 'MODIFYING', () => {
         const latestTask = this.requireTask(input.workspaceId, task.id);
         const latestRun = this.options.store.runRepository().findById(workspace.id, newRunId);
+        const recovery = db.prepare(`SELECT state,new_run_id,checked_base_commit FROM p2_collaboration_recoveries WHERE id = ?`)
+          .get(claim.recoveryId) as { state: string; new_run_id: string | null; checked_base_commit: string | null } | undefined;
         if (latestTask.version !== currentTask.version || latestTask.canonicalRunId !== newRunId
           || latestTask.controlEpoch !== task.controlEpoch || this.controls.pending(input.workspaceId, task.id)
-          || latestRun?.version !== currentRun.version || latestRun.status !== 'queued' || latestRun.recoveryRequired) {
+          || latestRun?.version !== currentRun.version || latestRun.status !== 'queued' || latestRun.recoveryRequired
+          || recovery?.state !== 'dispatching' || recovery.new_run_id !== newRunId
+          || recovery.checked_base_commit !== checkedBaseCommit) {
           throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task action or canonical Run changed before Start acceptance');
+        }
+        const sideEffect = this.retryChildSideEffectEvidence(input.workspaceId, task.id, newRunId);
+        if (sideEffect) {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', `Retry Start is fenced by existing ${sideEffect} evidence`);
         }
       });
       if (start.replayed) throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Start authorization already exists; the Provider call will not be replayed');
