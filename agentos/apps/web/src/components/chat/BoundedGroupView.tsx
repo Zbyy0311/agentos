@@ -31,7 +31,7 @@ export interface GroupReplyDto {
 
 export interface GroupInteractionDto {
   readonly id: string;
-  readonly status: 'active' | 'stopped' | 'exhausted' | 'completed';
+  readonly status: 'active' | 'stopped' | 'exhausted' | 'completed' | 'interrupted';
   readonly stopReason: string | null;
   readonly loopGuardSignal: string | null;
 }

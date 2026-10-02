@@ -183,7 +183,7 @@ function mapStageOutput(row: StageOutputRow): CollaborationStageOutput {
 }
 
 export interface CreateCollaborationTaskInput {
-  workspaceId: string; conversationId?: string; sourceMessageId?: string; title: string; objective: string;
+  id?: string; workspaceId: string; conversationId?: string; sourceMessageId?: string; title: string; objective: string;
   scope: string[]; acceptanceCommands: string[]; plannerAgentId: string; implementerAgentId: string;
   reviewerAgentId: string; planHash: string; baseCommit: string; maxReworkRounds: number; createdAt: string;
   scopePolicyVersion?: number;
@@ -205,7 +205,7 @@ export class CollaborationRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
   create(input: CreateCollaborationTaskInput): CollaborationTask {
-    const id = createEntityId('task').replace(/^task_/, 'collab_');
+    const id = input.id ?? createEntityId('task').replace(/^task_/, 'collab_');
     this.db.prepare(`INSERT INTO collaboration_tasks (
       id, workspace_id, conversation_id, source_message_id, title, objective, scope_json,
       acceptance_commands_json, planner_agent_id, implementer_agent_id, reviewer_agent_id,
@@ -269,7 +269,7 @@ export class CollaborationRepository {
       running: ['running', 'reviewing', 'failed', 'blocked', 'cancelled'],
       reviewing: ['reviewing', 'awaiting_application', 'changes_requested', 'failed', 'blocked', 'cancelled'],
       changes_requested: ['running', 'queued', 'failed', 'blocked', 'cancelled'],
-      awaiting_application: ['blocked'], applied: [], cancelled: [], failed: [], blocked: [],
+      awaiting_application: ['blocked'], applied: [], cancelled: [], failed: ['queued'], blocked: ['queued'],
     };
     if (!current || current.version !== input.expectedVersion || !allowed[current.status].includes(input.status)
       || (input.expectedRunId !== undefined && current.canonicalRunId !== input.expectedRunId)
@@ -399,11 +399,12 @@ export class CollaborationRepository {
   }
 
   recordStageOutput(input: CollaborationStageOutput): CollaborationStageOutput {
-    this.db.prepare(`INSERT INTO collaboration_stage_outputs (
+    const write = this.db.prepare(`INSERT INTO collaboration_stage_outputs (
       workspace_id, collaboration_task_id, canonical_run_id, stage_id, stage_attempt,
       agent_id, role, output_status, public_output, output_hash, missing_reason,
       review_candidate_id, review_candidate_hash, review_conclusion, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM collaboration_tasks WHERE workspace_id = ? AND id = ? AND canonical_run_id = ?)
     ON CONFLICT(workspace_id, canonical_run_id, stage_id, stage_attempt) DO UPDATE SET
       agent_id = excluded.agent_id, role = excluded.role, output_status = excluded.output_status,
       public_output = excluded.public_output, output_hash = excluded.output_hash,
@@ -416,7 +417,8 @@ export class CollaborationRepository {
       .run(input.workspaceId, input.collaborationTaskId, input.runId, input.stageId, input.stageAttempt,
         input.agentId, input.role, input.status, input.publicOutput ?? null, input.outputHash ?? null,
         input.reason ?? null, input.reviewCandidateId ?? null, input.reviewCandidateHash ?? null,
-        input.reviewConclusion ?? null, input.createdAt);
+        input.reviewConclusion ?? null, input.createdAt, input.workspaceId, input.collaborationTaskId, input.runId) as { changes?: number | bigint };
+    if (Number(write.changes ?? 0) === 0) throw new CollaborationRepositoryError('CONFLICT');
     const row = this.db.prepare(`SELECT * FROM collaboration_stage_outputs WHERE workspace_id = ?
       AND canonical_run_id = ? AND stage_id = ? AND stage_attempt = ?`)
       .get(input.workspaceId, input.runId, input.stageId, input.stageAttempt) as StageOutputRow | undefined;

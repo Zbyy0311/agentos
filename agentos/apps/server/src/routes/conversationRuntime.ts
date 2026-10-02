@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 
+import { createHash } from 'node:crypto';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
@@ -59,6 +60,7 @@ interface ErrorMapping { readonly status: number; readonly code: string }
 
 function mapError(error: unknown): ErrorMapping {
   const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
+  if (/GROUP_RECOVERY_/.test(code)) return { status: 409, code };
   if (/GROUP_VERSION_CONFLICT|GROUP_REPLY_ASSOCIATION_INVALID|GROUP_REPLY_FINALIZATION_REQUIRED|GROUP_EXECUTION_ALREADY_OWNED|GROUP_EXECUTION_INTERRUPTED|GROUP_SOURCE_MISMATCH|GROUP_CONVERSATION_NOT_ACTIVE/.test(code)) {
     return { status: 409, code };
   }
@@ -73,6 +75,10 @@ function mapError(error: unknown): ErrorMapping {
 function fail(res: Response, error: unknown): void {
   const mapped = mapError(error);
   res.status(mapped.status).json({ error: mapped.code });
+}
+
+function hasP2GroupRecoverySchema(store: SqliteStore): boolean {
+  return store.getDatabase().prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_group_recovery_links'").get() !== undefined;
 }
 
 function isConversationReplyMode(value: unknown): value is ConversationReplyMode {
@@ -624,7 +630,9 @@ export function createConversationRuntimeRoutes(
         const existing = store.groupInteractionRepository().findInteractionBySourceMessage(workspace.id, conversation.id, sourceMessage.id);
         if (existing) return { message: sourceMessage, interaction: existing, idempotent: true };
         const active = store.groupInteractionRepository().listInteractions(workspace.id, conversation.id)
-          .find(item => item.status === 'active');
+          .find(item => item.status === 'active' && (!hasP2GroupRecoverySchema(store) || store.getDatabase().prepare(
+            'SELECT 1 AS linked FROM p2_group_recovery_links WHERE workspace_id = ? AND prior_interaction_id = ?',
+          ).get(workspace.id, item.id) === undefined));
         if (active) {
           const error = new Error('GROUP_DISCUSSION_ACTIVE');
           (error as { code?: string }).code = 'GROUP_DISCUSSION_ACTIVE';
@@ -749,11 +757,124 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
     if (!interaction) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    const recovery = hasP2GroupRecoverySchema(store)
+      ? store.getDatabase().prepare(`SELECT prior_interaction_id AS priorInteractionId,
+          new_interaction_id AS newInteractionId,source_message_id AS sourceMessageId,created_at AS createdAt
+          FROM p2_group_recovery_links WHERE workspace_id = ? AND (prior_interaction_id = ? OR new_interaction_id = ?)`).get(
+        workspace.id, interaction.id, interaction.id,
+      ) ?? null
+      : null;
     res.json({
       interaction,
       replies: store.groupInteractionRepository().listReplies(interaction.id),
       budget: store.boundedGroupService().budgetStatus(interaction),
+      executionOwner: (() => {
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+        return owner ? { status: owner.status, ownerEpoch: owner.ownerEpoch } : null;
+      })(),
+      recovery,
     });
+  });
+
+  router.post('/interactions/:interactionId/recover', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!hasP2GroupRecoverySchema(store)) { res.status(409).json({ error: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const expectedVersion = body.expectedVersion;
+    const expectedOwnerEpoch = body.expectedOwnerEpoch;
+    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    const idempotencyKey = req.header('Idempotency-Key')?.trim();
+    if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 1
+      || !Number.isSafeInteger(expectedOwnerEpoch) || (expectedOwnerEpoch as number) < 1
+      || content.length === 0 || content.length > 16_000 || !idempotencyKey
+      || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u.test(idempotencyKey)) {
+      res.status(400).json({ error: 'GROUP_RECOVERY_INPUT_INVALID' });
+      return;
+    }
+    const interactionId = req.params.interactionId;
+    const requestHash = createHash('sha256').update(JSON.stringify({
+      workspaceId: workspace.id, interactionId, expectedVersion, expectedOwnerEpoch, content,
+    })).digest('hex');
+    const db = store.getDatabase();
+    try {
+      const result = inTransaction(db, () => {
+        const priorLink = db.prepare(`SELECT * FROM p2_group_recovery_links
+          WHERE workspace_id = ? AND prior_interaction_id = ?`).get(workspace.id, interactionId) as {
+            id: string; request_hash: string; new_interaction_id: string; source_message_id: string;
+          } | undefined;
+        const keyed = db.prepare('SELECT * FROM p2_group_recovery_links WHERE workspace_id = ? AND idempotency_key = ?')
+          .get(workspace.id, idempotencyKey) as typeof priorLink | undefined;
+        if (keyed) {
+          if (keyed.request_hash !== requestHash || keyed.id !== priorLink?.id) {
+            throw Object.assign(new Error('GROUP_RECOVERY_IDEMPOTENCY_CONFLICT'), { code: 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT' });
+          }
+          const priorOwner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+          return {
+            interaction: store.groupInteractionRepository().findInteractionById(workspace.id, keyed.new_interaction_id),
+            message: conversations().findMessageById(workspace.id, keyed.source_message_id), replayed: true,
+            participantAgentIds: priorOwner?.participantAgentIds ?? [],
+          };
+        }
+        if (priorLink) throw Object.assign(new Error('GROUP_RECOVERY_ALREADY_LINKED'), { code: 'GROUP_RECOVERY_ALREADY_LINKED' });
+        const prior = store.groupInteractionRepository().findInteractionById(workspace.id, interactionId);
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+        if (!prior || prior.status !== 'active' || prior.integrityStatus !== 'unusable'
+          || prior.version !== expectedVersion || !owner || owner.status !== 'interrupted'
+          || owner.ownerEpoch !== expectedOwnerEpoch || owner.conversationId !== prior.conversationId
+          || !owner.sourceMessageId) {
+          throw Object.assign(new Error('GROUP_RECOVERY_STALE'), { code: 'GROUP_RECOVERY_STALE' });
+        }
+        const conversation = conversations().findConversationById(workspace.id, prior.conversationId);
+        const source = conversations().findMessageById(workspace.id, owner.sourceMessageId);
+        if (!conversation || conversation.kind !== 'group' || conversation.status !== 'active'
+          || !source || source.workspaceId !== workspace.id || source.conversationId !== conversation.id
+          || source.senderType !== 'user' || source.status !== 'final') {
+          throw Object.assign(new Error('GROUP_RECOVERY_SOURCE_INVALID'), { code: 'GROUP_RECOVERY_SOURCE_INVALID' });
+        }
+        const activeOther = store.groupInteractionRepository().listInteractions(workspace.id, conversation.id)
+          .some(item => item.id !== prior.id && item.status === 'active' && item.integrityStatus === 'valid');
+        if (activeOther) throw Object.assign(new Error('GROUP_RECOVERY_ACTIVE_ROUND'), { code: 'GROUP_RECOVERY_ACTIVE_ROUND' });
+        const budget = {
+          maxAgentsPerTurn: Number(owner.budget.maxAgentsPerTurn),
+          maxRepliesPerAgent: Number(owner.budget.maxRepliesPerAgent),
+          maxTotalReplies: Number(owner.budget.maxTotalReplies),
+          maxAgentHops: Number(owner.budget.maxAgentHops),
+          ...(owner.budget.timeoutMs == null ? {} : { timeoutMs: Number(owner.budget.timeoutMs) }),
+          ...(owner.budget.contextTokenBudget == null ? {} : { contextTokenBudget: Number(owner.budget.contextTokenBudget) }),
+        };
+        const now = new Date().toISOString();
+        const newInteractionId = createEntityId('conversation');
+        const sourceMessageId = createEntityId('message');
+        const recoveryId = createEntityId('operation');
+        const message = conversations().appendMessageWithinTransaction({
+          id: sourceMessageId, conversationId: conversation.id, workspaceId: workspace.id,
+          senderType: 'user', kind: 'text', status: 'final', content,
+          clientMessageId: `p2-recovery-${createHash('sha256').update(`${workspace.id}:${idempotencyKey}`).digest('hex').slice(0, 40)}`,
+          createdAt: now,
+        });
+        const interaction = store.groupInteractionRepository().createInteractionWithinTransaction({
+          id: newInteractionId, workspaceId: workspace.id, conversationId: conversation.id,
+          budget, sourceMessageId, createdAt: now,
+        });
+        db.prepare(`INSERT INTO p2_group_recovery_links (
+          id,workspace_id,conversation_id,prior_interaction_id,prior_owner_id,prior_owner_epoch,
+          prior_interaction_version,new_interaction_id,source_message_id,idempotency_key,request_hash,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          recoveryId, workspace.id, conversation.id, prior.id, owner.ownerId, owner.ownerEpoch,
+          prior.version, interaction.id, message.id, idempotencyKey, requestHash, now,
+        );
+        store.groupInteractionRepository().transitionExecutionWithinTransaction({
+          workspaceId: workspace.id, interactionId: prior.id, ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch,
+          status: 'abandoned', terminalReason: `superseded-by:${interaction.id}`,
+          eventType: 'group.recovery.linked', payload: { newInteractionId: interaction.id, sourceMessageId: message.id }, updatedAt: now,
+        });
+        return { interaction, message, replayed: false, participantAgentIds: owner.participantAgentIds };
+      });
+      if (!result.interaction || !result.message) throw Object.assign(new Error('GROUP_RECOVERY_RESULT_MISSING'), { code: 'GROUP_RECOVERY_RESULT_MISSING' });
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
   });
 
   /** Read-only, cursor-based observation. Closing this response detaches only the observer. */

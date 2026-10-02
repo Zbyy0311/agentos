@@ -51,6 +51,7 @@ import { migration050 } from './migrations/050-memory-feedback-resolutions.js';
 import { migration051 } from './migrations/051-memory-feedback-resolver-actor.js';
 import { migration052 } from './migrations/052-memory-entry-source-bindings.js';
 import { migration053 } from './migrations/053-collaboration-candidate-content-hash.js';
+import { migration054 } from './migrations/054-p2-recovery.js';
 import type { Migration } from './types.js';
 
 /**
@@ -153,4 +154,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration051,
   migration052,
   migration053,
+  migration054,
 ];

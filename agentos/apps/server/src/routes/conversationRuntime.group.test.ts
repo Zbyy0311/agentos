@@ -100,6 +100,94 @@ for (let repetition = 1; repetition <= 3; repetition += 1) {
   });
 }
 
+test('P2 group recovery review: running Provider owner blocks recovery; interrupted recovery preserves owner identity', async () => {
+  await withServer(async (baseUrl, store) => {
+    const { conversationId, messageId } = await seedConversation(baseUrl);
+    const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 }, sourceMessageId: messageId,
+    });
+    assert.equal(created.status, 201);
+    const priorId = (created.json as { interaction: { id: string } }).interaction.id;
+    const claimed = store.boundedGroupService().claimExecution({ workspaceId: 'workspace-a', conversationId,
+      interactionId: priorId, sourceMessageId: messageId, participantAgentIds: ['codex', 'kimi'],
+      ownerId: 'p2-review-owner', createdAt: new Date().toISOString() });
+    const initialCounts = {
+      interactions: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      messages: (store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+    };
+
+    store.runInTransaction(() => {
+      store.groupInteractionRepository().transitionExecutionWithinTransaction({
+        workspaceId: 'workspace-a', interactionId: priorId, ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch,
+        status: 'running', eventType: 'group.test-provider-running', updatedAt: new Date().toISOString(),
+      });
+      store.getDatabase().prepare(`UPDATE cr_group_interactions SET integrity_status = 'unusable',
+        integrity_reason = 'provider-call-outcome-unknown',version = version + 1 WHERE workspace_id = ? AND id = ?`)
+        .run('workspace-a', priorId);
+    });
+    const unusable = store.groupInteractionRepository().findInteractionById('workspace-a', priorId)!;
+    const request = { expectedVersion: unusable.version, expectedOwnerEpoch: claimed.ownerEpoch,
+      content: 'Continue this discussion in a new round' };
+    const recoverUrl = `${baseUrl}/interactions/${priorId}/recover`;
+    const headers = { 'Content-Type': 'application/json', 'Idempotency-Key': 'p2-group-owner-review-01' };
+    const runningRefusal = await fetch(recoverUrl, { method: 'POST', headers, body: JSON.stringify(request) });
+    assert.equal(runningRefusal.status, 409);
+    assert.equal((await runningRefusal.json() as { error: string }).error, 'GROUP_RECOVERY_STALE');
+    const stillRunning = store.groupInteractionRepository().findExecutionOwner('workspace-a', priorId)!;
+    assert.equal(stillRunning.status, 'running');
+    assert.equal(stillRunning.ownerId, claimed.ownerId);
+    assert.equal(stillRunning.ownerEpoch, claimed.ownerEpoch);
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_group_recovery_links').get() as { n: number }).n, 0);
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.interactions, 'a live Provider owner cannot create a competing round');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.messages, 'rejected recovery writes no source message');
+
+    store.runInTransaction(() => store.groupInteractionRepository().transitionExecutionWithinTransaction({
+      workspaceId: 'workspace-a', interactionId: priorId, ownerId: claimed.ownerId, ownerEpoch: claimed.ownerEpoch,
+      status: 'interrupted', terminalReason: 'provider-call-outcome-unknown-after-restart',
+      eventType: 'group.interrupted', updatedAt: new Date().toISOString(),
+    }));
+    const interrupted = store.groupInteractionRepository().findInteractionById('workspace-a', priorId)!;
+    const readyRequest = { ...request, expectedVersion: interrupted.version };
+    const linkedResponse = await fetch(recoverUrl, { method: 'POST', headers, body: JSON.stringify(readyRequest) });
+    assert.equal(linkedResponse.status, 201);
+    const linked = await linkedResponse.json() as {
+      interaction: { id: string; sourceMessageId?: string }; message: { id: string };
+      replayed: boolean; participantAgentIds: string[];
+    };
+    assert.equal(linked.replayed, false);
+    assert.deepEqual(linked.participantAgentIds, ['codex', 'kimi']);
+    const oldOwner = store.groupInteractionRepository().findExecutionOwner('workspace-a', priorId)!;
+    assert.equal(oldOwner.ownerId, claimed.ownerId);
+    assert.equal(oldOwner.ownerEpoch, claimed.ownerEpoch);
+    assert.equal(oldOwner.status, 'abandoned');
+    const link = store.getDatabase().prepare(`SELECT prior_owner_id,prior_owner_epoch,new_interaction_id,source_message_id
+      FROM p2_group_recovery_links WHERE workspace_id = ? AND prior_interaction_id = ?`).get('workspace-a', priorId) as {
+        prior_owner_id: string; prior_owner_epoch: number; new_interaction_id: string; source_message_id: string;
+      };
+    assert.equal(link.prior_owner_id, claimed.ownerId);
+    assert.equal(link.prior_owner_epoch, claimed.ownerEpoch);
+    assert.equal(link.new_interaction_id, linked.interaction.id);
+    assert.equal(link.source_message_id, linked.message.id);
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.interactions + 1);
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
+      initialCounts.messages + 1);
+
+    const replay = await fetch(recoverUrl, { method: 'POST', headers, body: JSON.stringify(readyRequest) });
+    assert.equal(replay.status, 200);
+    const replayBody = await replay.json() as typeof linked;
+    assert.equal(replayBody.replayed, true);
+    assert.equal(replayBody.interaction.id, linked.interaction.id);
+    const changedBody = await fetch(recoverUrl, { method: 'POST', headers,
+      body: JSON.stringify({ ...readyRequest, content: 'Different recovery intent' }) });
+    assert.equal(changedBody.status, 409);
+    assert.equal((await changedBody.json() as { error: string }).error, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_group_recovery_links').get() as { n: number }).n, 1);
+  });
+});
+
 for (let repetition = 1; repetition <= 3; repetition += 1) {
   test(`F10 interrupted and already owned discussions reject before SSE headers and zero replay (${repetition}/3)`, async () => {
     await withServer(async (baseUrl, store) => {

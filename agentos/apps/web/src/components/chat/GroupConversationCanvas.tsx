@@ -4,6 +4,7 @@ import { directConversationClient, type ForwardMessage } from '../../lib/directC
 import { useGroupConversation } from '../../lib/useGroupConversation';
 import type { GroupInteractionBudgetInput } from '../../lib/groupConversationClient';
 import { BoundedGroupView } from './BoundedGroupView';
+import { GroupInteractionRecoveryPanel } from './GroupInteractionRecoveryPanel';
 import { MentionPicker, type MentionAgent } from './MentionPicker';
 import { handleComposerKeyDown, submitComposer } from '../../lib/composerKeyboard';
 import {
@@ -97,7 +98,8 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
   const updateBudget = (key: keyof GroupInteractionBudgetInput) => (value: number) =>
     setBudget(current => ({ ...current, [key]: value }));
 
-  const canSend = content.trim().length > 0 && !group.busy;
+  const interaction = group.interaction;
+  const canSend = content.trim().length > 0 && !group.busy && interaction?.status !== 'active';
 
   const send = async () => {
     if (!canSend) return;
@@ -119,7 +121,6 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
     }
   };
 
-  const interaction = group.interaction;
   const walking = group.walk.phase === 'walking';
 
   return (
@@ -164,7 +165,8 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
               theme={props.theme}
               interaction={{
                 id: interaction.id,
-                status: interaction.status,
+                status: interaction.integrityStatus === 'unusable' && group.executionOwner?.status === 'interrupted'
+                  ? 'interrupted' : interaction.status,
                 stopReason: interaction.stopReason,
                 loopGuardSignal: interaction.loopGuardSignal,
               }}
@@ -181,6 +183,24 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
               {...(group.error === undefined ? {} : { error: group.error })}
               onStop={() => { void group.stop(); }}
             />
+
+            {interaction.status === 'active' && interaction.integrityStatus === 'unusable'
+              && group.executionOwner?.status === 'interrupted' && group.executionOwner.ownerEpoch > 0 ? (
+                <GroupInteractionRecoveryPanel
+                  workspaceId={props.workspaceId}
+                  apiBase={props.apiBase}
+                  interactionId={interaction.id}
+                  interactionVersion={interaction.version}
+                  ownerEpoch={group.executionOwner.ownerEpoch}
+                  onRecovered={result => {
+                    void (async () => {
+                      await group.loadInteraction(result.interaction.id);
+                      await refreshMessages();
+                      await group.run(result.interaction.id, result.message.id, result.participantAgentIds);
+                    })();
+                  }}
+                />
+              ) : null}
 
             {group.walk.speakers.length === 0 && group.walk.skipped.length === 0 ? null : (
               <section data-agentos="group-walk" style={{ marginTop: UI_SPACING_BASE_PX * 2, fontSize: 12 }}>
@@ -236,7 +256,7 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
               onSend: () => { void send(); },
               focus: () => composerRef.current?.focus(),
             })}
-            placeholder="Message the group…"
+            placeholder={interaction?.status === 'active' ? 'Finish or recover the active round above before sending another message…' : 'Message the group…'}
             data-agentos="group-composer"
             rows={1}
             style={{

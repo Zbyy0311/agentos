@@ -7,6 +7,7 @@ import {
   type GroupInteraction,
   type GroupInteractionBudgetInput,
   type GroupReply,
+  type GroupInteractionDetail,
 } from './groupConversationClient';
 import { applyGroupWalkEvent, emptyGroupWalk, type GroupWalkStreamState } from './groupWalkStream';
 import { consumeSseResponse } from './streamReconnect';
@@ -21,6 +22,7 @@ import { consumeSseResponse } from './streamReconnect';
 
 export interface GroupCanvasState {
   readonly interaction: GroupInteraction | null;
+  readonly executionOwner: GroupInteractionDetail['executionOwner'];
   readonly budget: GroupBudgetStatus | null;
   readonly replies: readonly GroupReply[];
   readonly walk: GroupWalkStreamState;
@@ -33,6 +35,7 @@ export interface GroupCanvasActions {
   readonly run: (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly refresh: () => Promise<void>;
+  readonly loadInteraction: (interactionId: string) => Promise<void>;
 }
 
 function describeError(error: unknown): string {
@@ -47,6 +50,7 @@ export function useGroupConversation(
   const clientRef = useRef(groupConversationClient({ workspaceId, apiBase }));
   clientRef.current = groupConversationClient({ workspaceId, apiBase });
   const [interaction, setInteraction] = useState<GroupInteraction | null>(null);
+  const [executionOwner, setExecutionOwner] = useState<GroupInteractionDetail['executionOwner']>(null);
   const [budget, setBudget] = useState<GroupBudgetStatus | null>(null);
   const [replies, setReplies] = useState<readonly GroupReply[]>([]);
   const [walk, setWalk] = useState<GroupWalkStreamState>(emptyGroupWalk);
@@ -60,6 +64,7 @@ export function useGroupConversation(
   useEffect(() => {
     walkAbortRef.current?.abort();
     setInteraction(null);
+    setExecutionOwner(null);
     setBudget(null);
     setReplies([]);
     setWalk(emptyGroupWalk);
@@ -71,11 +76,36 @@ export function useGroupConversation(
     interaction: GroupInteraction;
     budget: GroupBudgetStatus;
     replies: readonly GroupReply[];
+    executionOwner?: GroupInteractionDetail['executionOwner'];
   }) => {
     setInteraction(detail.interaction);
+    setExecutionOwner(detail.executionOwner ?? null);
     setBudget(detail.budget);
     setReplies(detail.replies);
   }, []);
+
+  const loadInteraction = useCallback(async (interactionId: string) => {
+    setError(undefined);
+    setWalk(emptyGroupWalk());
+    applyDetail(await clientRef.current.getInteraction(interactionId));
+  }, [applyDetail]);
+
+  // Restore the latest active round when a conversation is reopened. Startup
+  // reconciliation marks an interrupted round unusable and exposes its durable
+  // owner epoch, so the canvas can offer a linked recovery without replaying it.
+  useEffect(() => {
+    let current = true;
+    if (!conversationId) return () => { current = false; };
+    void clientRef.current.listInteractions(conversationId).then(async ({ interactions }) => {
+      const latestActive = [...interactions].reverse().find(item => item.status === 'active');
+      if (!latestActive) return;
+      const detail = await clientRef.current.getInteraction(latestActive.id);
+      if (current) applyDetail(detail);
+    }).catch(loadError => {
+      if (current) setError(describeError(loadError));
+    });
+    return () => { current = false; };
+  }, [conversationId, applyDetail]);
 
   const refresh = useCallback(async () => {
     if (!conversationId) return;
@@ -184,5 +214,5 @@ export function useGroupConversation(
     }
   }, [interaction, applyDetail]);
 
-  return { interaction, budget, replies, walk, busy, error, start, run, stop, refresh };
+  return { interaction, executionOwner, budget, replies, walk, busy, error, start, run, stop, refresh, loadInteraction };
 }

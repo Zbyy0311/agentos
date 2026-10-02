@@ -7,6 +7,7 @@ import { listRuntimeApprovals, resolveRuntimeApproval, type RuntimeApprovalDecis
 import type { CollaborationProgressState } from '@/lib/useCollaborationProgress';
 import { collaborationControlBlockReason, collaborationMutationRequest, readPendingCollaborationControl } from '@/lib/collaborationControl';
 import { collaborationCandidatePreviewKey, type CollaborationCandidatePreviewIdentity } from '@/lib/collaborationCandidatePreview';
+import { CollaborationRecoveryPanel } from './CollaborationRecoveryPanel';
 import { CollaborationCandidatePreviewPanel } from './CollaborationCandidatePreviewPanel';
 
 const STATUS_LABELS: Record<CollaborationStatus, string> = {
@@ -228,6 +229,15 @@ export function CollaborationTaskDetailsView(props: {
     })}</div></section>}
 
     {error && <div role="alert" className="ui-error mt-4 rounded-xl border px-3 py-2 text-sm">{error}</div>}
+    {(task.status === 'failed' || task.status === 'blocked') && <CollaborationRecoveryPanel
+      workspaceId={props.workspaceId}
+      taskId={task.id}
+      refreshRevision={props.state.refreshRevision}
+      onRecovered={result => {
+        if (result.action === 'new-linked-task') props.state.selectTask(result.task.id);
+        props.state.refresh();
+      }}
+    />}
     <footer className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t ui-border pt-4">{task.status === 'awaiting_confirmation' && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('confirm'); }}>{busy ? '启动中…' : '确认并启动'}</button>}{task.status === 'awaiting_application' && <button type="button" disabled={busy || Boolean(pendingControlReason) || !currentCandidateWasPreviewed} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('apply'); }}>{busy ? '应用中…' : currentCandidateWasPreviewed ? '确认应用已预览候选' : '先查看候选差异'}</button>}{canCancel && <button type="button" disabled={busy || Boolean(pendingControlReason)} className="ui-button-secondary rounded-lg px-3 py-2 text-xs disabled:opacity-50" onClick={() => { void mutate('cancel'); }}>取消任务</button>}</footer>
   </section>;
 }
