@@ -15,6 +15,7 @@ import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
 import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidateGenerationService.js';
 import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from '../services/MemoryContextProjection.js';
 import { MemoryLifecycleService, type MemoryLifecycleInput } from '../services/MemoryLifecycleService.js';
+import { MemoryWorkspaceKnowledgePromotionError, MemoryWorkspaceKnowledgePromotionService } from '../services/MemoryWorkspaceKnowledgePromotionService.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -154,6 +155,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   const router = Router({ mergeParams: true });
 
   const entries = new MemoryEntryRepository(store.getDatabase());
+  const workspacePromotion = new MemoryWorkspaceKnowledgePromotionService(store, { entries });
   const candidates = new MemoryCandidateRepository(store.getDatabase());
   const snapshots = new MemoryContextSnapshotRepository(store.getDatabase());
   const runtime = createMemoryRetrievalRuntime(store.getDatabase(), semanticConfig ?? memoryRetrievalRuntimeConfigFromEnvironment());
@@ -204,6 +206,35 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       ?? entries.listConfirmedGlobalPreferences(workspace.id).find(item => item.id === req.params.entryId);
     if (entry === undefined) { res.status(404).json({ error: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
     res.json({ entry });
+  });
+
+  router.post('/memory/entries/:entryId/promote-to-workspace-knowledge', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    const body = req.body;
+    if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion')
+      || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1) {
+      res.status(400).json({ error: 'MEMORY_WORKSPACE_PROMOTION_INPUT_INVALID' }); return;
+    }
+    try {
+      const result = workspacePromotion.promote({
+        workspaceId: workspace.id,
+        entryId: req.params.entryId,
+        expectedVersion: body.expectedVersion as number,
+        promotedAt: new Date().toISOString(),
+      });
+      res.status(result.outcome === 'created' ? 201 : 200).json(result);
+    } catch (error) {
+      if (error instanceof MemoryWorkspaceKnowledgePromotionError) {
+        const status = error.code === 'ENTRY_NOT_FOUND' ? 404
+          : error.code === 'VERSION_CONFLICT' || error.code === 'ENTRY_NOT_PROMOTABLE' ? 409
+            : error.code === 'INPUT_INVALID' ? 400 : error.code === 'SOURCE_INVALID' ? 422 : 500;
+        res.status(status).json({ error: error.code });
+        return;
+      }
+      res.status(500).json({ error: 'MEMORY_WORKSPACE_PROMOTION_FAILED' });
+    }
   });
 
   const appendEditEvent = (entry: MemoryEntryRecord, timestamp: string, type: 'memory.entry_updated' | 'memory.entry_archived') => {

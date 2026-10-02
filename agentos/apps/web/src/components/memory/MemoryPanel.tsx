@@ -15,6 +15,8 @@ import {
 import {
   isMemoryVersionConflict,
   memoryEntryLifecyclePath,
+  memoryEntryWorkspacePromotionPath,
+  memoryEntryWorkspacePromotionPayload,
   memoryVersionConflictGuidance,
   workspaceResponseIsCurrent,
   type MemoryEntryLifecyclePayload,
@@ -196,6 +198,37 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     }
   };
 
+  const promoteToWorkspaceKnowledge = async () => {
+    const target = selected;
+    if (!target || savingRef.current || detailLoading) return;
+    savingRef.current = true;
+    setSaving(true);
+    setError('');
+    setNotice('');
+    setStaleEntry(false);
+    try {
+      const response = await request<{ entry: MemoryEntryDto; outcome: 'created' | 'existing' }>(
+        memoryEntryWorkspacePromotionPath(workspaceId, target.id),
+        { method: 'POST', body: memoryEntryWorkspacePromotionPayload(target) },
+      );
+      selectedIdRef.current = response.entry.id;
+      setSelectedId(response.entry.id);
+      setSelected(response.entry);
+      setIsNew(false);
+      setStatus('active');
+      setNotice(response.outcome === 'created'
+        ? '已创建工作区知识；原任务或会话记忆仍保留。'
+        : '工作区知识已存在；原任务或会话记忆仍保留。');
+      await loadEntries();
+    } catch (promotionError) {
+      setError([asMessage(promotionError), memoryVersionConflictGuidance(promotionError)].filter(Boolean).join(' '));
+      setStaleEntry(isMemoryVersionConflict(promotionError));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
   const reloadSelected = () => {
     if (!selected || savingRef.current) return;
     void selectEntry(selected);
@@ -238,6 +271,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
             key={isNew ? 'new-entry' : selected ? `${selected.id}:${selected.version}` : 'empty-entry'}
             entry={selected} isNew={isNew} loading={detailLoading} saving={saving} error={error} stale={staleEntry} notice={notice}
             onSave={values => { void saveEntry(values); }} onReload={reloadSelected} onLifecycle={payload => { void applyLifecycle(payload); }} onOpenRun={onOpenRun}
+            onPromoteToWorkspaceKnowledge={() => { void promoteToWorkspaceKnowledge(); }}
           />
         </> : tab === 'maintenance'
           ? <MemoryMaintenance key={workspaceId} workspaceId={workspaceId} onOpenEntry={id => { setTab('entries'); void selectEntry({ id }); }} />

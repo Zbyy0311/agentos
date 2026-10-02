@@ -65,6 +65,14 @@ export function memoryEntryLifecyclePath(workspaceId: string, entryId: string): 
   return `/api/workspaces/${encodeURIComponent(workspaceId)}/memory/entries/${encodeURIComponent(entryId)}/lifecycle`;
 }
 
+export function memoryEntryWorkspacePromotionPath(workspaceId: string, entryId: string): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/memory/entries/${encodeURIComponent(entryId)}/promote-to-workspace-knowledge`;
+}
+
+export function memoryEntryWorkspacePromotionPayload(entry: Pick<MemoryEntryDto, 'version'>): { expectedVersion: number } {
+  return { expectedVersion: entry.version };
+}
+
 export function memoryEntryLifecyclePayload(
   entry: Pick<MemoryEntryDto, 'version'>,
   action: MemoryLifecycleAction,

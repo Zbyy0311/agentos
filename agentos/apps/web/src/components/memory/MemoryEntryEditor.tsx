@@ -27,6 +27,7 @@ interface MemoryEntryEditorProps {
   onSave(values: MemoryEntryFormValues): void;
   onReload?(): void;
   onLifecycle?(payload: MemoryEntryLifecyclePayload): void;
+  onPromoteToWorkspaceKnowledge?(): void;
   onOpenRun(runId: string): void;
 }
 
@@ -48,7 +49,7 @@ function fromEntry(entry: MemoryEntryDto): MemoryEntryFormValues {
   };
 }
 
-export function MemoryEntryEditor({ entry, isNew, loading, saving, error, stale, notice, onSave, onReload, onLifecycle, onOpenRun }: MemoryEntryEditorProps) {
+export function MemoryEntryEditor({ entry, isNew, loading, saving, error, stale, notice, onSave, onReload, onLifecycle, onPromoteToWorkspaceKnowledge, onOpenRun }: MemoryEntryEditorProps) {
   const [values, setValues] = useState<MemoryEntryFormValues>(() => entry ? fromEntry(entry) : empty);
   const [validationError, setValidationError] = useState('');
 
@@ -114,6 +115,14 @@ export function MemoryEntryEditor({ entry, isNew, loading, saving, error, stale,
       {entry && entry.sources.length > 0 && <section className="mt-5 border-t ui-border pt-4"><h4 className="mb-2 text-xs ui-muted">来源记录（只读）</h4><div className="flex flex-wrap gap-2">{entry.sources.map((source, index) => source.kind === 'run'
         ? <button type="button" key={`${source.kind}:${source.id}:${index}`} onClick={() => onOpenRun(source.id)} className="rounded-md border ui-border px-2 py-1 text-[11px] ui-accent hover:border-[var(--app-accent)]">Run {source.id.slice(0, 8)}</button>
         : <span key={`${source.kind}:${source.id}:${index}`} className="rounded-md border ui-border px-2 py-1 text-[11px] ui-accent">{source.kind}: {source.id}</span>)}</div></section>}
+      {entry && entry.status === 'active' && (entry.scope === 'task' || entry.scope === 'conversation') && onPromoteToWorkspaceKnowledge
+        && <section className="mt-5 rounded-xl border ui-border p-3">
+          <p className="text-xs leading-5 ui-dim">创建一条工作区范围的新记忆，并保留当前任务或会话记忆及其来源。</p>
+          <button type="button" disabled={saving || loading} onClick={onPromoteToWorkspaceKnowledge}
+            className="mt-3 rounded-lg border ui-border px-3 py-2 text-xs ui-accent disabled:opacity-50">
+            {saving ? '处理中…' : '提升到工作区知识'}
+          </button>
+        </section>}
       {entry && onLifecycle && <MemoryEntryLifecycle entry={entry} saving={saving || loading} onApply={onLifecycle} />}
     </>}
   </section>;
