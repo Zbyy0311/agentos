@@ -52,8 +52,11 @@ jobs:
           netsh interface ipv4 show dynamicport tcp
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Server tests
-        run: node scripts/capture-lite-verification.mjs server-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/server test; exit $LASTEXITCODE'
+      - name: Server shard coverage contract
+        run: node --test scripts/server-test-shards.test.mjs
+
+      - name: Build server workspace dependencies
+        run: pnpm --filter @agentos/server run build:workspace-deps
 
       - name: Web tests
         run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
@@ -106,6 +109,67 @@ jobs:
         with:
           name: raw-verification-${{ github.sha }}
           path: agentos/logs/pass-audit/
+          if-no-files-found: error
+
+  server-shard:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build server workspace dependencies
+        run: pnpm --filter @agentos/server run build:workspace-deps
+      - name: Complete serialized server shard
+        run: node scripts/server-test-shards.mjs run 12 ${{ matrix.shard }}
+      - name: Preserve server shard inventory and raw output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-shard-${{ matrix.shard }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/shard-${{ matrix.shard }}/
+          if-no-files-found: error
+
+  server-tests:
+    runs-on: windows-latest
+    needs: server-shard
+    if: always()
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require every server shard to succeed
+        if: needs.server-shard.result != 'success'
+        run: throw 'One or more complete server shards failed or did not run'
+      - name: Collect all shard receipts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: server-shard-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/server-shard-download/
+      - name: Verify complete test inventory and exact commit
+        run: node scripts/server-test-shards.mjs verify 12 logs/server-shard-download
+      - name: Preserve aggregate coverage receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/coverage.json
           if-no-files-found: error
 
   p4-core:
