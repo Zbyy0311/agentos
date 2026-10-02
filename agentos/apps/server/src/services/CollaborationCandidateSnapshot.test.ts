@@ -5,7 +5,7 @@ import { lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, rmdir, symlink, u
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { captureCollaborationCandidateSnapshot } from './CollaborationCandidateSnapshot.js';
+import { captureCollaborationCandidateSnapshot, isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 
 interface TestRepositoryOptions {
   readonly autocrlf?: 'false' | 'input' | 'true';
@@ -814,6 +814,94 @@ test('candidate capture fails closed when there are no changes', async () => {
       /COLLABORATION_CANDIDATE_EMPTY/,
     );
   } finally {
+    await repo.dispose();
+  }
+});
+
+test('clean preflight validates HEAD bytes and rejects untracked or changed files without writing the real index', async () => {
+  const repo = await createRepository();
+  try {
+    const index = await readFile(join(repo.root, '.git', 'index'));
+    assert.equal(await isCollaborationWorkspaceClean(repo.root, repo.baseCommit), true);
+    await writeFile(join(repo.root, 'NEW.md'), 'untracked\n');
+    assert.equal(await isCollaborationWorkspaceClean(repo.root, repo.baseCommit), false);
+    await unlink(join(repo.root, 'NEW.md'));
+    await writeFile(join(repo.root, 'src', 'tracked.txt'), 'changed!\n');
+    assert.equal(await isCollaborationWorkspaceClean(repo.root, repo.baseCommit), false);
+    assert.deepEqual(await readFile(join(repo.root, '.git', 'index')), index);
+  } finally {
+    await repo.dispose();
+  }
+});
+
+for (const barrier of ['beforeGitAdd', 'beforeFrozenNormalization'] as const) {
+  test(`clean preflight rejects same-size source mutation at ${barrier}`, async () => {
+    const repo = await createRepository();
+    try {
+      const index = await readFile(join(repo.root, '.git', 'index'));
+      await assert.rejects(isCollaborationWorkspaceClean(repo.root, repo.baseCommit, {
+        [barrier]: () => writeFile(join(repo.root, 'src', 'tracked.txt'), 'mutated!\n'),
+      }), /COLLABORATION_(?:PATH_BOUNDARY|SNAPSHOT_SOURCE_CHANGED)/);
+      assert.deepEqual(await readFile(join(repo.root, '.git', 'index')), index);
+      assert.equal(await readFile(join(repo.root, 'src', 'tracked.txt'), 'utf8'), 'mutated!\n');
+    } finally {
+      await repo.dispose();
+    }
+  });
+}
+
+test('clean preflight independently rejects staged-only changes while live bytes still match HEAD', async () => {
+  const repo = await createRepository();
+  try {
+    await writeFile(join(repo.root, 'src', 'tracked.txt'), 'staged changes\n');
+    execFileSync('git', ['add', 'src/tracked.txt'], { cwd: repo.root });
+    await writeFile(join(repo.root, 'src', 'tracked.txt'), 'original\n');
+    const index = await readFile(join(repo.root, '.git', 'index'));
+    assert.equal(await isCollaborationWorkspaceClean(repo.root, repo.baseCommit), false);
+    assert.deepEqual(await readFile(join(repo.root, '.git', 'index')), index);
+    assert.equal(await readFile(join(repo.root, 'src', 'tracked.txt'), 'utf8'), 'original\n');
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('clean preflight rejects a changed inventory and a HEAD that moved before scanning', async () => {
+  const repo = await createRepository();
+  try {
+    await assert.rejects(isCollaborationWorkspaceClean(repo.root, repo.baseCommit, {
+      beforeFrozenNormalization: () => writeFile(join(repo.root, 'NEW.md'), 'late file\n'),
+    }), /COLLABORATION_SNAPSHOT_SOURCE_CHANGED/);
+    await unlink(join(repo.root, 'NEW.md'));
+    execFileSync('git', ['commit', '--quiet', '--allow-empty', '-m', 'different HEAD, same tree'], { cwd: repo.root });
+    await assert.rejects(isCollaborationWorkspaceClean(repo.root, repo.baseCommit), /HEAD moved before clean preflight/);
+  } finally {
+    await repo.dispose();
+  }
+});
+
+test('clean preflight rejects an ancestor junction swapped before frozen normalization', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const repo = await createRepository();
+  const external = await mkdtemp(join(tmpdir(), 'agentos-clean-preflight-junction-'));
+  const source = join(repo.root, 'src');
+  const saved = join(repo.root, 'saved-source');
+  let linked = false;
+  try {
+    await writeFile(join(external, 'tracked.txt'), 'external private bytes\n');
+    const index = await readFile(join(repo.root, '.git', 'index'));
+    await assert.rejects(isCollaborationWorkspaceClean(repo.root, repo.baseCommit, {
+      beforeFrozenNormalization: async () => {
+        await rename(source, saved);
+        await symlink(external, source, 'junction');
+        linked = true;
+      },
+    }), /COLLABORATION_(?:PATH_BOUNDARY|SNAPSHOT_SOURCE_CHANGED)/);
+    assert.deepEqual(await readFile(join(repo.root, '.git', 'index')), index);
+    assert.equal(await readFile(join(external, 'tracked.txt'), 'utf8'), 'external private bytes\n');
+  } finally {
+    if (linked) await rmdir(source);
+    await rm(external, { recursive: true, force: true });
     await repo.dispose();
   }
 });

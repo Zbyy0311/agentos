@@ -5,6 +5,11 @@
   "scripts": {
     "dev": "pnpm --parallel -r run dev",
     "dev:stable": "pnpm --filter @agentos/server run dev:stable",
+    "local:start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action start",
+    "local:status": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action status",
+    "local:status:json": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action status -Json",
+    "local:stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action stop",
+    "test:local-launcher": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.test.ps1",
     "build": "pnpm -r run build",
     "clean": "pnpm -r run clean",
     "test:smoke": "pnpm --filter @agentos/agent-core run test:smoke"
