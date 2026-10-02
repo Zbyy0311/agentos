@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Server as HttpServer } from 'node:http';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,12 +66,18 @@ import {
 import { TerminalMemoryCandidateReconciler } from './services/TerminalMemoryCandidateReconciler.js';
 import { CollaborationWorkflowService } from './services/CollaborationWorkflowService.js';
 import { createCollaborationRoutes } from './routes/collaborations.js';
+import { createMaintenanceRoutes, createMaintenanceWriteBarrier } from './routes/maintenance.js';
 import { createReadinessRoutes } from './routes/readiness.js';
-import { MaintenanceDiagnosticsService } from './services/MaintenanceDiagnosticsService.js';
+import { MaintenanceBarrier } from './services/MaintenanceBarrier.js';
+import { MaintenanceCoordinator } from './services/MaintenanceCoordinator.js';
+import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './services/MaintenanceDiagnosticsService.js';
+import { MaintenanceService } from './services/MaintenanceService.js';
+import { WorkspaceGitRootRegistry } from './services/WorkspaceGitRootRegistry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
-// Match the Windows launcher's DataPath contract and retain the previous override as fallback.
+// Match the Windows launcher contract: its DataPath is AGENTOS_PROJECT_ROOT.
+// Keep AGENTOS_DATA_ROOT as a compatibility fallback for existing local installs.
 const DATA_ROOT = resolve(process.env.AGENTOS_PROJECT_ROOT?.trim() || process.env.AGENTOS_DATA_ROOT?.trim() || PROJECT_ROOT);
 
 const configuredInstanceId = process.env.AGENTOS_SERVER_INSTANCE_ID?.trim();
@@ -194,6 +201,65 @@ let httpServer: HttpServer | undefined;
 let stopOutboxPublisher: (() => void) | undefined;
 let stopRetention: (() => void) | undefined;
 let shuttingDown = false;
+let maintenancePaused = false;
+let startBackgroundWorkers: (() => void) | undefined;
+let resumeBackgroundQueueWorkers: (() => void) | undefined;
+let worktreeReconcile: Promise<void> | undefined;
+const maintenanceBarrier = new MaintenanceBarrier();
+const dispatchPermitContext = new AsyncLocalStorage<boolean>();
+
+async function withDispatchPermit(operation: () => Promise<void>): Promise<boolean> {
+  if (dispatchPermitContext.getStore() === true) {
+    await operation();
+    return true;
+  }
+  const release = maintenanceBarrier.enterDispatcherStart();
+  if (!release) return false;
+  try {
+    await dispatchPermitContext.run(true, operation);
+    return true;
+  } finally {
+    release();
+  }
+}
+
+async function resumeProductionQueues(input: {
+  readonly runtimeDispatchEnabled: boolean;
+  readonly barrier: MaintenanceBarrier;
+  readonly withDispatchPermit: (operation: () => Promise<void>) => Promise<boolean>;
+  readonly collaborationService: CollaborationWorkflowService;
+  readonly providerExecutionChain: ReturnType<typeof createProviderExecutionChain>;
+  readonly diagLog: (entry: string) => void;
+}): Promise<void> {
+  if (!input.runtimeDispatchEnabled || input.barrier.snapshot.quiescing) return;
+  await input.withDispatchPermit(async () => {
+    await input.collaborationService.resumeGrantedQueuedRuns()
+      .catch(error => input.diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    await input.providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
+      .catch(error => input.diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+  });
+}
+
+async function pauseBackgroundWorkers(): Promise<void> {
+  maintenancePaused = true;
+  if (stopOutboxPublisher) {
+    try { stopOutboxPublisher(); } catch { /* best effort */ }
+    stopOutboxPublisher = undefined;
+  }
+  if (stopRetention) {
+    try { stopRetention(); } catch { /* best effort */ }
+    stopRetention = undefined;
+  }
+  await worktreeReconcile;
+}
+
+function resumeBackgroundWorkers(): void {
+  maintenancePaused = false;
+  if (httpServer && !shuttingDown) {
+    startBackgroundWorkers?.();
+    resumeBackgroundQueueWorkers?.();
+  }
+}
 
 async function bootstrap(): Promise<void> {
   let phase: StartupPhase = 'ownership';
@@ -205,20 +271,31 @@ async function bootstrap(): Promise<void> {
     // reconcile, route, or listen side effect.
     ownership = await acquireServerOwnership(DATA_ROOT);
 
+    const maintenance = new MaintenanceCoordinator(DATA_ROOT, serverInstanceId, maintenanceBarrier, {
+      inspectActivity: () => store
+        ? inspectMaintenanceActivity(store.getDatabase() as any)
+        : { counts: {}, unknown: true },
+      onPauseBackground: pauseBackgroundWorkers,
+      onResumeBackground: resumeBackgroundWorkers,
+    });
+    await maintenance.initialize();
+
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'));
     const workspaceManager = new WorkspaceManager(store);
+    const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
     const collaborationWorktreePaths = new Map<string, string>();
     let collaborationService!: CollaborationWorkflowService;
     const providerExecutionChain = createProviderExecutionChain({
       store,
       artifactRoot: join(DATA_ROOT, '.agentos', 'artifacts'),
+      withDispatchPermit,
       workspaceRootFor: workspaceId => {
         const workspace = workspaceManager.get(workspaceId);
         if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND: ' + workspaceId);
-        return workspace.rootPath;
+        return workspaceGitRoots.rootPathFor(workspaceId) ?? workspace.rootPath;
       },
       worktreePathFor: (_workspaceId, runId) => collaborationWorktreePaths.get(runId),
       continueOwnedRun: (workspaceId, runId) => collaborationService.resumeRun(workspaceId, runId),
@@ -233,8 +310,9 @@ async function bootstrap(): Promise<void> {
       verifiedMemoryFacts: () => providerExecutionChain.verifiedMemoryFacts,
       workspaces: workspaceManager,
       worktrees: worktreeManager,
+      workspaceGitRootFor: workspaceId => workspaceGitRoots.rootPathFor(workspaceId),
       dispatchRun: async (workspaceId, runId) => {
-        await providerExecutionChain.dispatcher.driveSafely(workspaceId, runId);
+        await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },
       requestRunAdmission: input => providerExecutionChain.admissionAuthority.requestCanonicalRun(input),
       releaseRunAdmission: input => providerExecutionChain.admissionAuthority.releaseCanonicalRun(input),
@@ -337,7 +415,36 @@ async function bootstrap(): Promise<void> {
     const retentionService = new RetentionService(store, undefined, error => {
       diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
     });
-    const maintenanceDiagnostics = new MaintenanceDiagnosticsService(store, workspaceManager);
+    const maintenanceDiagnostics = new MaintenanceDiagnosticsService(
+      store,
+      workspaceManager,
+    );
+    maintenanceDiagnostics.setMaintenanceStatusReader(() => {
+      const status = maintenance.status;
+      return {
+        active: status.active,
+        quiescing: status.quiescing,
+        recoveredAfterRestart: status.recoveredAfterRestart,
+        ...(status.state ? { operation: {
+          kind: status.state.kind,
+          status: status.state.status,
+          startedAt: status.state.startedAt,
+          leaseExpiresAt: status.state.leaseExpiresAt,
+        } } : {}),
+      };
+    });
+    const maintenanceService = new MaintenanceService(DATA_ROOT, store.getDatabase() as any, workspaceManager.list());
+    const resumeQueueWorkers = () => {
+      void resumeProductionQueues({
+        runtimeDispatchEnabled,
+        barrier: maintenanceBarrier,
+        withDispatchPermit,
+        collaborationService,
+        providerExecutionChain,
+        diagLog,
+      }).catch(error => diagLog(`RUNTIME_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    };
+    resumeBackgroundQueueWorkers = resumeQueueWorkers;
 
     phase = 'routes';
     const app = express();
@@ -352,6 +459,7 @@ async function bootstrap(): Promise<void> {
     app.use(createRequestIdMiddleware());
     app.use(cors(createLocalCorsOptions(security)));
     app.use(createLocalWriteGuard(security));
+    app.use(createMaintenanceWriteBarrier(maintenanceBarrier));
     // M3 P3C-1 canonical lifecycle routes — the single additive /api mount
     // for POST /api/runs/:runId/start. Mounted ahead of the global strict
     // JSON parser because the route owns a scoped non-strict parser so that
@@ -367,7 +475,7 @@ async function bootstrap(): Promise<void> {
       runtimeDispatch: {
         enabled: runtimeDispatchEnabled,
         drive: async (workspaceId, runId) => {
-          await providerExecutionChain.dispatcher.driveSafely(workspaceId, runId);
+          await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
         },
       },
     }));
@@ -383,6 +491,13 @@ async function bootstrap(): Promise<void> {
       res.json({ ok: true, service: 'agentos-server', time: new Date().toISOString() });
     });
     app.use('/api', createReadinessRoutes(maintenanceDiagnostics));
+    app.use('/api/maintenance', createMaintenanceRoutes({
+      coordinator: maintenance,
+      diagnostics: maintenanceDiagnostics,
+      service: maintenanceService,
+      instanceId: serverInstanceId,
+      workspaceGitRoots,
+    }));
 
     app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
     app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService, worktreeManager));
@@ -400,7 +515,8 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createMemoryImportRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
-    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));
+    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store,
+      workspaceId => workspaceGitRoots.rootPathFor(workspaceId)));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
@@ -422,7 +538,8 @@ async function bootstrap(): Promise<void> {
     // routes are preserved unchanged.
     app.use('/api', createCanonicalRunRoutes(store, workspaceManager));
     app.use('/api', createOpenApiRoutes());
-    app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
+    app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager, undefined,
+      workspaceId => workspaceGitRoots.rootPathFor(workspaceId)));
     app.use('/api/agents', createAgentRoutes(workspaceManager));
     // M3 P4A: unknown API routes and unhandled errors are ApiProblem
     // responses (application/problem+json), never Express HTML or raw
@@ -438,23 +555,38 @@ async function bootstrap(): Promise<void> {
     console.log(`[AgentOS Server] API base: http://${security.host}:${PORT}/api`);
     diagLog(`SERVER_LISTEN pid=${process.pid} instanceId=${serverInstanceId} port=${PORT}`);
 
-    // Background side effects start only after ownership + recovery + listen succeeded.
-    outboxPublisher.reclaimExpired();
-    stopOutboxPublisher = outboxPublisher.start();
-    if (runtimeDispatchEnabled) {
-      void collaborationService.resumeGrantedQueuedRuns()
-        .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
-      void providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
-        .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    let worktreeReconcileStarted = false;
+    startBackgroundWorkers = () => {
+      if (maintenancePaused || maintenanceBarrier.snapshot.quiescing || shuttingDown) return;
+      if (!stopOutboxPublisher) {
+        outboxPublisher.reclaimExpired();
+        stopOutboxPublisher = outboxPublisher.start();
+      }
+      if (!worktreeReconcileStarted) {
+        worktreeReconcileStarted = true;
+        worktreeReconcile = worktreeManager.reconcile()
+          .catch(error => { diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`); })
+          .finally(() => { worktreeReconcile = undefined; });
+      }
+      if (!stopRetention) {
+        try {
+          const result = retentionService.run();
+          diagLog(`RETENTION_RUN reviewedMemoryCandidatesDeleted=${result.reviewedMemoryCandidatesDeleted}`);
+        } catch (error) {
+          diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
+        }
+        stopRetention = retentionService.start();
+      }
+    };
+    startBackgroundWorkers();
+    if (runtimeDispatchEnabled && !maintenanceBarrier.snapshot.quiescing) {
+      void withDispatchPermit(async () => {
+        await collaborationService.resumeGrantedQueuedRuns()
+          .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+        await providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
+          .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+      }).catch(error => diagLog(`RUNTIME_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     }
-    void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
-    try {
-      const result = retentionService.run();
-      diagLog(`RETENTION_RUN reviewedMemoryCandidatesDeleted=${result.reviewedMemoryCandidatesDeleted}`);
-    } catch (error) {
-      diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
-    }
-    stopRetention = retentionService.start();
 
     if (recoveredTaskRuntime.recoveredLegacyTasks.length > 0) {
       console.warn(`[AgentOS Server] recovered ${recoveredTaskRuntime.recoveredLegacyTasks.length} interrupted running task(s) as failed`);

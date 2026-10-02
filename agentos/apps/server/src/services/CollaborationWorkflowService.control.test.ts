@@ -624,18 +624,20 @@ function productionServiceFor(
   };
   const environment = { env: { AGENTOS_RUNTIME_DISPATCH_ENABLED: runtimeValue } };
   const compile = (source: string) => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const construct = new Function('store', 'workspaceManager', 'worktreeManager', 'providerExecutionChain', 'collaborationWorktreePaths', 'CollaborationWorkflowService', 'process',
+  const withDispatchPermit = async (operation: () => Promise<void>) => { await operation(); return true; };
+  const construct = new Function('store', 'workspaceManager', 'worktreeManager', 'providerExecutionChain', 'collaborationWorktreePaths', 'CollaborationWorkflowService', 'process', 'withDispatchPermit',
     compile(`${slices.flag}\nlet collaborationService;\n${slices.construction}\nreturn collaborationService;`));
   const service = construct(fx.store, new WorkspaceManager(fx.store), new WorktreeManager(join(fx.root, 'worktrees')), chain,
-    new Map<string, string>(), CollaborationWorkflowService, environment) as CollaborationWorkflowService;
+    new Map<string, string>(), CollaborationWorkflowService, environment, withDispatchPermit) as CollaborationWorkflowService;
   return { service, authority, approvalResumes: () => approvalResumes,
-    async startProductionBackground(): Promise<void> {
+    async startProductionBackground(quiescing = false): Promise<void> {
       const pending: Promise<void>[] = [];
       const observed = { resumeGrantedQueuedRuns: (...args: Parameters<CollaborationWorkflowService['resumeGrantedQueuedRuns']>) => {
         const result = service.resumeGrantedQueuedRuns(...args); pending.push(result); return result;
       } };
-      const start = new Function('collaborationService', 'providerExecutionChain', 'process', 'diagLog', compile(`${slices.flag}\n${slices.background}`));
-      start(observed, chain, environment, () => undefined);
+      const withDispatchPermit = async (operation: () => Promise<void>) => { await operation(); return true; };
+      const start = new Function('collaborationService', 'providerExecutionChain', 'process', 'diagLog', 'maintenanceBarrier', 'withDispatchPermit', compile(`${slices.flag}\n${slices.background}`));
+      start(observed, chain, environment, () => undefined, { snapshot: { quiescing } }, withDispatchPermit);
       await Promise.all(pending);
     },
   };
@@ -944,6 +946,9 @@ for (let repetition = 1; repetition <= 3; repetition++) {
         });
         await recoverFullStartup(activeStore, production.service);
         assert.equal(dispatches.length, reboot === 1 ? 0 : 1, 'recovery itself must not dispatch an unstarted or waiting-approval Run');
+        await production.startProductionBackground(true);
+        assert.equal(dispatches.length, reboot === 1 ? 0 : 1, 'the maintenance fence blocks startup queue dispatch');
+        assert.equal(production.approvalResumes(), 0, 'the maintenance fence blocks approval queue dispatch');
         await production.startProductionBackground();
         await production.startProductionBackground();
         assert.deepEqual(dispatches, [runId], 'duplicate production queue entries and reboot must not replay the original Run');

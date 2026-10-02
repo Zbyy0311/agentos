@@ -48,6 +48,7 @@ export interface ProviderExecutionChainOptions {
   readonly workspaceRootFor: (workspaceId: string) => string;
   readonly worktreePathFor?: (workspaceId: string, runId: string) => string | undefined;
   readonly continueOwnedRun?: (workspaceId: string, runId: string) => Promise<boolean>;
+  readonly withDispatchPermit?: (operation: () => Promise<void>) => Promise<boolean>;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly probe?: ProcessProbePort;
   readonly claimOwner?: string;
@@ -95,7 +96,12 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   const approvalGate = new RuntimeApprovalGate(store, {
     continueRun: async (workspaceId, runId) => {
       if (await options.continueOwnedRun?.(workspaceId, runId)) return;
-      await dispatcher.driveSafely(workspaceId, runId);
+      const drive = () => dispatcher.driveSafely(workspaceId, runId);
+      if (options.withDispatchPermit) {
+        if (!await options.withDispatchPermit(drive)) return;
+      } else {
+        await drive();
+      }
     },
   });
   const runEventObservation: CanonicalRunEventObservationPort = {

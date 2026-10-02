@@ -63,6 +63,8 @@ export interface CollaborationWorkflowServiceOptions {
   readonly store: SqliteStore;
   readonly workspaces: WorkspaceManager;
   readonly worktrees: WorktreeManager;
+  /** Host-local explicit reconnect mapping; memory/evidence paths keep Workspace.rootPath. */
+  readonly workspaceGitRootFor?: (workspaceId: string) => string | undefined;
   readonly dispatchRun: (workspaceId: string, runId: string) => Promise<void>;
   readonly requestRunAdmission: (input: { workspaceId: string; runId: string }) => Promise<boolean>;
   readonly releaseRunAdmission: (input: { workspaceId: string; runId: string }) => Promise<void>;
@@ -164,8 +166,9 @@ export class CollaborationWorkflowService {
   async createPlan(input: CreateCollaborationPlanInput): Promise<CollaborationTask> {
     const workspace = this.requireWorkspace(input.workspaceId);
     const normalized = this.validatePlan(input, workspace);
-    await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-    const baseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+    const workspaceRoot = this.gitRoot(workspace.id);
+    await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
+    const baseCommit = await git(workspaceRoot, ['rev-parse', 'HEAD']);
     const planHash = hash(JSON.stringify({
       title: normalized.title, objective: normalized.objective, scope: normalized.scope,
       acceptanceCommands: normalized.acceptanceCommands, plannerAgentId: normalized.plannerAgentId,
@@ -620,15 +623,16 @@ export class CollaborationWorkflowService {
     const admitted = await this.options.requestApplicationAdmission({ workspaceId: task.workspaceId, controlId: control.id });
     if (!admitted) throw new CollaborationWorkflowError('COLLABORATION_WRITER_CONFLICT', '工作区正在被其他执行占用，候选未应用');
     const workspace = this.requireWorkspace(input.workspaceId);
+    const workspaceRoot = this.gitRoot(workspace.id);
     let journal: ApplyJournal | undefined;
     try {
       this.controls.assertOwned(control);
-      await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-      if (await git(workspace.rootPath, ['rev-parse', 'HEAD']) !== candidate.baseCommit || candidate.baseCommit !== task.baseCommit) {
+      await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
+      if (await git(workspaceRoot, ['rev-parse', 'HEAD']) !== candidate.baseCommit || candidate.baseCommit !== task.baseCommit) {
         throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', '目标基线已变化，候选未应用');
       }
       this.options.applyFault?.('before_prepare');
-      journal = await this.journals.prepare(control, task, candidate, workspace.rootPath);
+      journal = await this.journals.prepare(control, task, candidate, workspaceRoot);
       this.options.store.runInTransaction(() => this.controls.bind(control, { candidateId: candidate.id }));
       this.options.applyFault?.('before_write');
       if (!await this.journals.matches(journal, 'pre')) throw new CollaborationWorkflowError('COLLABORATION_WORKSPACE_DIRTY', '应用前文件已改变');
@@ -638,7 +642,7 @@ export class CollaborationWorkflowService {
       await this.journals.writePrepared(journal);
       this.journals.setState(journal, 'written');
       this.options.applyFault?.('after_write');
-      const applied = await captureCollaborationCandidateSnapshot(workspace.rootPath, candidate.baseCommit, task.scope);
+      const applied = await captureCollaborationCandidateSnapshot(workspaceRoot, candidate.baseCommit, task.scope);
       if (applied.patchHash !== candidate.diffHash || !await this.journals.matches(journal, 'post')) {
         throw new CollaborationWorkflowError('COLLABORATION_APPLY_VERIFY_FAILED', '应用结果与已评审候选不一致');
       }
@@ -697,8 +701,9 @@ export class CollaborationWorkflowService {
     this.assertConversationAssociation(task.workspaceId, task.conversationId, task.sourceMessageId);
     if (task.version !== input.expectedVersion) throw new CollaborationWorkflowError('COLLABORATION_CONFLICT', 'Task version changed');
     const workspace = this.requireWorkspace(input.workspaceId);
-    await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
-    const baseCommit = await git(workspace.rootPath, ['rev-parse', 'HEAD']);
+    const workspaceRoot = this.gitRoot(workspace.id);
+    await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
+    const baseCommit = await git(workspaceRoot, ['rev-parse', 'HEAD']);
     if (baseCommit !== task.baseCommit) throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The workspace changed after the plan was created');
     const agents = new Map(workspace.agents.map(agent => [agent.id, agent]));
     const planner = agents.get(task.plannerAgentId);
@@ -744,10 +749,10 @@ export class CollaborationWorkflowService {
     }
 
     try {
-    await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+    await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
     const lease = task.canonicalRunId === undefined
       ? await this.options.worktrees.createLease({
-        workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: created.run.id,
+        workspaceId: workspace.id, workspaceRoot, runId: created.run.id,
         executionId: `collaboration-${task.id}`, agentId: implementer.id,
         controlledGitContent: true,
       })
@@ -826,11 +831,11 @@ export class CollaborationWorkflowService {
         this.options.applyFault?.('recovery');
         const { task, candidate } = this.assertApplicationRecoveryOwnership(control, journal);
         const workspace = this.requireWorkspace(journal.workspaceId);
-        if (resolve(workspace.rootPath) !== resolve(journal.targetRoot) || await git(workspace.rootPath, ['rev-parse', 'HEAD']) !== journal.baseCommit) throw new Error('Recovery baseline changed');
+        if (resolve(this.gitRoot(workspace.id)) !== resolve(journal.targetRoot) || await git(this.gitRoot(workspace.id), ['rev-parse', 'HEAD']) !== journal.baseCommit) throw new Error('Recovery baseline changed');
         if (await this.journals.matches(journal, 'pre')) {
           // git status may execute clean filters even for byte-identical files.
           // A changed/unsupported context remains fenced for manual recovery.
-          await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+          await this.options.worktrees.preflight(this.gitRoot(workspace.id), { controlledGitContent: true });
           this.options.store.runInTransaction(() => {
             this.assertApplicationRecoveryOwnership(control, journal);
             this.journals.setState(journal, 'recovered');
@@ -838,7 +843,7 @@ export class CollaborationWorkflowService {
           });
         } else if (await this.journals.matches(journal, 'post')) {
           this.assertApplicationEvidence(task, candidate);
-          const snapshot = await captureCollaborationCandidateSnapshot(workspace.rootPath, candidate.baseCommit, this.scopeFor(task));
+          const snapshot = await captureCollaborationCandidateSnapshot(this.gitRoot(workspace.id), candidate.baseCommit, this.scopeFor(task));
           if (snapshot.patchHash !== journal.candidateHash) throw new Error('Recovery has additional changes');
           this.options.store.runInTransaction(() => {
             this.assertApplicationRecoveryOwnership(control, journal);
@@ -1306,6 +1311,10 @@ export class CollaborationWorkflowService {
     if (!workspace) throw new CollaborationWorkflowError('WORKSPACE_NOT_FOUND', 'Workspace not found');
     if (!workspace.gitEnabled) throw new CollaborationWorkflowError('COLLABORATION_REQUIRES_GIT', 'Collaboration tasks require a Git workspace');
     return workspace;
+  }
+
+  private gitRoot(workspaceId: string): string {
+    return this.options.workspaceGitRootFor?.(workspaceId) ?? this.requireWorkspace(workspaceId).rootPath;
   }
 
   private requireTask(workspaceId: string, collaborationId: string): CollaborationTask {
