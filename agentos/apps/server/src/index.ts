@@ -4,7 +4,6 @@ import type { Server as HttpServer } from 'node:http';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, lstatSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 import { SqliteStore } from './store/SqliteStore.js';
 import { WorkspaceManager } from './managers/WorkspaceManager.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
@@ -67,6 +66,7 @@ import { CollaborationWorkflowService } from './services/CollaborationWorkflowSe
 import { createCollaborationRoutes } from './routes/collaborations.js';
 import { createReadinessRoutes } from './routes/readiness.js';
 import { MaintenanceDiagnosticsService } from './services/MaintenanceDiagnosticsService.js';
+import { createDiagnosticLogger } from './services/DiagnosticLogger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -80,50 +80,8 @@ const serverInstanceId = configuredInstanceId && /^[\w.-]{1,80}$/u.test(configur
 process.env.AGENTOS_SERVER_INSTANCE_ID = serverInstanceId;
 
 const DIAG_LOG_DIR = join(DATA_ROOT, '.agentos', 'logs', 'diagnostics');
-const DIAG_LOG_MAX_BYTES = 8 * 1024 * 1024;
-const DIAG_LOG_ROTATIONS = 4;
 process.env.AGENTOS_DIAG_LOG_DIR = DIAG_LOG_DIR;
-function diagLog(entry: string): void {
-  const timestamp = new Date().toISOString();
-  const line = `${timestamp} [server] ${entry}\n`;
-  try {
-    mkdirSync(DIAG_LOG_DIR, { recursive: true });
-    const logPath = join(DIAG_LOG_DIR, `server-${serverInstanceId}.log`);
-    rotateDiagnosticLog(logPath, Buffer.byteLength(line, 'utf8'));
-    appendFileSync(logPath, line, 'utf-8');
-  } catch {
-    // Best-effort diagnostics; fail silently.
-  }
-}
-
-function rotateDiagnosticLog(logPath: string, incomingBytes: number): void {
-  const current = lstatOptional(logPath);
-  if (!current) return;
-  if (!current.isFile() || current.isSymbolicLink() || Number(current.size) + incomingBytes <= DIAG_LOG_MAX_BYTES) return;
-  const paths = Array.from({ length: DIAG_LOG_ROTATIONS + 1 }, (_, index) => index === 0 ? logPath : `${logPath}.${index}`);
-  for (const path of paths) {
-    const info = lstatOptional(path);
-    if (info && (!info.isFile() || info.isSymbolicLink())) return;
-  }
-  for (let index = DIAG_LOG_ROTATIONS; index >= 1; index -= 1) {
-    const source = paths[index - 1]!;
-    const destination = paths[index]!;
-    const sourceInfo = lstatOptional(source);
-    if (!sourceInfo) continue;
-    const destinationInfo = lstatOptional(destination);
-    if (destinationInfo) {
-      unlinkSync(destination);
-    }
-    renameSync(source, destination);
-  }
-}
-
-function lstatOptional(path: string): ReturnType<typeof lstatSync> | undefined {
-  try { return lstatSync(path); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw error;
-  }
-}
+const diagLog = createDiagnosticLogger({ directory: DIAG_LOG_DIR, instanceId: serverInstanceId });
 
 diagLog(`INSTANCE_START pid=${process.pid} ppid=${process.ppid} instanceId=${serverInstanceId}`);
 
