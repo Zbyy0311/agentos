@@ -361,7 +361,7 @@ for (let repetition = 1; repetition <= 3; repetition++) {
   test(`F01 stale application is rejected before writing files (${repetition}/3)`, async () => {
     const fx = fixture();
     try {
-      const ready = fx.ready();
+      const ready = await fx.verifiedReady();
       await assert.rejects(fx.service.apply(fx.applicationInput(ready, 'stale-apply', ready.version - 1)), conflict);
       assert.equal(readFileSync(join(fx.repositoryRoot, 'README.md'), 'utf8'), 'base\n');
       assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: fx.repositoryRoot, encoding: 'utf8', windowsHide: true }), '');
