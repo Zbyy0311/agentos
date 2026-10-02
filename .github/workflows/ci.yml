@@ -142,7 +142,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Core tests (simulated provider)
-        run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core test; exit $LASTEXITCODE'
+        run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core exec vitest run --maxWorkers=1; exit $LASTEXITCODE'
 
       - name: Preserve P4 Core receipt
         if: always()
