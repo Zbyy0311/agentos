@@ -74,6 +74,7 @@ export interface ServerOwnership {
 }
 
 const LOOPBACK_HOST = '127.0.0.1';
+const WINDOWS_PROBE_SOURCE_ADDRESS = '127.0.0.2';
 const OWNER_PROTOCOL_VERSION = 'AGENTOS_OWNER_V1';
 const OWNER_RESPONSE_PATTERN = /^AGENTOS_OWNER_V1 [0-9a-f]{64}$/;
 const MAX_RESPONSE_BYTES = 128;
@@ -148,10 +149,20 @@ function listenOnce(server: net.Server, target: string | { host: string; port: n
 
 type ProbeOutcome = 'free' | 'same-owner' | 'other-owner' | 'unknown';
 
+function connectOwnershipProbe(port: number): net.Socket {
+  if (process.platform === 'win32') {
+    // Candidate ports share Windows' default dynamic-client-port range. Bind
+    // probes to another loopback address so a source port equal to the target
+    // port cannot be mistaken for a stalled listener through TCP self-connect.
+    return net.connect({ host: LOOPBACK_HOST, port, localAddress: WINDOWS_PROBE_SOURCE_ADDRESS });
+  }
+  return net.connect({ host: LOOPBACK_HOST, port });
+}
+
 function probeCandidate(port: number, token: string, timeoutMs: number): Promise<ProbeOutcome> {
   return new Promise(resolvePromise => {
     let settled = false;
-    const socket = net.connect({ host: LOOPBACK_HOST, port });
+    const socket = connectOwnershipProbe(port);
     const done = (result: ProbeOutcome): void => {
       if (settled) return;
       settled = true;
