@@ -279,6 +279,10 @@ async function runWorker() {
           socket.end('{"ok":false,"code":"INVALID_REQUEST"}\n');
           return;
         }
+        if (message === null || typeof message !== 'object' || Array.isArray(message)) {
+          socket.end('{"ok":false,"code":"INVALID_REQUEST"}\n');
+          return;
+        }
         const nonce = Buffer.from(typeof message.nonce === 'string' ? message.nonce : '', 'utf8');
         const expected = Buffer.from(shutdownNonce, 'utf8');
         const valid = message.operation === 'shutdown' && message.instanceId === instanceId

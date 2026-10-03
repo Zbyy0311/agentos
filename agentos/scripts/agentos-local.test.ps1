@@ -17,6 +17,72 @@ function Get-FreePort {
   try { return ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port } finally { $listener.Stop() }
 }
 
+function Convert-ToUtcCreationTimestamp($Value) {
+  if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) { throw 'Creation timestamp is missing.' }
+  return ([datetime]$Value).ToUniversalTime().ToString('o')
+}
+
+function Get-ProcessRecordIdentityState($Record, $Process) {
+  if ($null -eq $Process) { return 'missing' }
+  try {
+    if (($null -eq $Record -or [int]$Record.pid -le 0 -or [int]$Record.parentPid -le 0 -or
+      [string]::IsNullOrWhiteSpace([string]$Record.executable) -or [string]::IsNullOrWhiteSpace([string]$Record.command) -or
+      [string]::IsNullOrWhiteSpace([string]$Process.ExecutablePath) -or [string]::IsNullOrWhiteSpace([string]$Process.CommandLine) -or
+      $null -eq $Process.ParentProcessId)) { return 'uncertain' }
+    $expectedCreatedAt = Convert-ToUtcCreationTimestamp $Record.createdAt
+    $actualCreatedAt = Convert-ToUtcCreationTimestamp $Process.CreationDate
+  } catch { return 'uncertain' }
+  $matches = ([int]$Process.ProcessId -eq [int]$Record.pid -and
+    $actualCreatedAt -eq $expectedCreatedAt -and
+    [int]$Process.ParentProcessId -eq [int]$Record.parentPid -and
+    [string]::Equals([string]$Process.ExecutablePath, [string]$Record.executable, [System.StringComparison]::OrdinalIgnoreCase) -and
+    [string]::Equals([string]$Process.CommandLine, [string]$Record.command, [System.StringComparison]::Ordinal))
+  return $(if ($matches) { 'match' } else { 'different' })
+}
+
+function Get-RemainingOwnedProcessRecordsFromSnapshot($Records, $Snapshot) {
+  $remaining = @()
+  foreach ($record in @($Records)) {
+    $process = $Snapshot[[int]$record.pid]
+    $identityState = Get-ProcessRecordIdentityState $record $process
+    if ($identityState -in @('match', 'uncertain')) { $remaining += $record }
+  }
+  return $remaining
+}
+
+function Get-RemainingOwnedProcessRecords($Records) {
+  $snapshot = @{}
+  foreach ($process in @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProcessId, CreationDate, ExecutablePath, CommandLine -ErrorAction Stop)) {
+    $snapshot[[int]$process.ProcessId] = $process
+  }
+  return Get-RemainingOwnedProcessRecordsFromSnapshot $Records $snapshot
+}
+
+function Get-ManifestProcessRecord($Manifest, [string] $Role) {
+  return $Manifest.processes | Where-Object { $_.role -eq $Role } | Select-Object -First 1
+}
+
+function Get-ProcessRecordIdentityEvidence($Records) {
+  $snapshot = @{}
+  foreach ($process in @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProcessId, CreationDate, ExecutablePath, CommandLine -ErrorAction Stop)) {
+    $snapshot[[int]$process.ProcessId] = $process
+  }
+  return @($Records | ForEach-Object {
+    $record = $_
+    $process = $snapshot[[int]$record.pid]
+    $actualCreatedAt = $null
+    if ($null -ne $process) { try { $actualCreatedAt = Convert-ToUtcCreationTimestamp $process.CreationDate } catch { } }
+    $expectedCreatedAt = 'unreadable'
+    try { $expectedCreatedAt = Convert-ToUtcCreationTimestamp $record.createdAt } catch { }
+    [pscustomobject]@{
+      pid = [int]$record.pid
+      expectedCreatedAt = $expectedCreatedAt
+      actualCreatedAt = $actualCreatedAt
+      state = Get-ProcessRecordIdentityState $record $process
+    }
+  })
+}
+
 function Write-Utf8NoBom([string] $Path, [string] $Value) {
   $parent = Split-Path -Parent $Path
   if (-not (Test-Path -LiteralPath $parent)) { [void](New-Item -ItemType Directory -Path $parent -Force) }
@@ -92,6 +158,8 @@ $unrelated = $null
 $sleeper = $null
 $savedManifest = $null
 $ownedPids = @()
+$cleanupManifest = $null
+$cleanupRecords = @()
 $originalFixtureEnv = [Environment]::GetEnvironmentVariable('AGENTOS_API_TOKEN', 'Process')
 $originalReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', 'Process')
 $originalMaintenanceReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'Process')
@@ -105,6 +173,34 @@ $cleanupFailure = $null
 $testErrors = [System.Collections.Generic.List[string]]::new()
 
 try {
+  $identityProbe = [pscustomobject]@{
+    pid = 424242; parentPid = 101; createdAt = '2026-10-03T00:00:00.0000000Z'
+    executable = 'C:\fixture\node.exe'; command = 'node fixture.js'
+  }
+  $sameIdentityProbe = [pscustomobject]@{
+    ProcessId = 424242; ParentProcessId = 101; CreationDate = [datetime]::Parse('2026-10-03T00:00:00.0000000Z').ToLocalTime()
+    ExecutablePath = 'C:\fixture\node.exe'; CommandLine = 'node fixture.js'
+  }
+  $jsonManifestProbe = @{
+    pid = 424242; parentPid = 101; createdAt = '2026-10-03T00:00:00.0000000Z'
+    executable = 'C:\fixture\node.exe'; command = 'node fixture.js'
+  } | ConvertTo-Json | ConvertFrom-Json
+  $reusedPidProbe = [pscustomobject]@{
+    ProcessId = 424242; ParentProcessId = 101; CreationDate = [datetime]::Parse('2026-10-03T00:00:01.0000000Z').ToLocalTime()
+    ExecutablePath = 'C:\fixture\node.exe'; CommandLine = 'node fixture.js'
+  }
+  Assert-True ($identityProbe.createdAt -is [string] -and $jsonManifestProbe.createdAt -is [datetime]) 'The identity test did not reproduce the JSON ISO-date conversion.'
+  Assert-True ((Get-ProcessRecordIdentityState $identityProbe $sameIdentityProbe) -eq 'match') 'Exact string/datetime timestamps were not normalized to the same live process identity.'
+  Assert-True ((Get-ProcessRecordIdentityState $jsonManifestProbe $sameIdentityProbe) -eq 'match') 'ConvertFrom-Json DateTime timestamps were not recognized as the same live process identity.'
+  Assert-True (@(Get-RemainingOwnedProcessRecordsFromSnapshot @($jsonManifestProbe) @{ 424242 = $sameIdentityProbe }).Count -eq 1) 'A matching live process from a JSON manifest was mistaken as exited.'
+  Assert-True ((Get-ProcessRecordIdentityState $identityProbe $reusedPidProbe) -eq 'different') 'A reused PID was mistaken for the original process.'
+  $unreadableProbe = [pscustomobject]@{ ProcessId = 424242; ParentProcessId = 101; CreationDate = $null; ExecutablePath = ''; CommandLine = '' }
+  Assert-True ((Get-ProcessRecordIdentityState $identityProbe $unreadableProbe) -eq 'uncertain') 'An uninspectable live PID was not conservatively classified as uncertain.'
+  Assert-True (@(Get-RemainingOwnedProcessRecordsFromSnapshot @($identityProbe) @{ 424242 = $unreadableProbe }).Count -eq 1) 'Uncertain live-process identity was treated as exited and eligible for cleanup.'
+  $falseStoppedResponse = '{"ok":false,"state":"stopped","instanceId":"fixture-instance"}' | ConvertFrom-Json
+  $falseStoppedAccepted = [bool]$falseStoppedResponse.ok -and $falseStoppedResponse.state -eq 'stopped' -and $falseStoppedResponse.instanceId -eq 'fixture-instance'
+  Assert-True (-not $falseStoppedAccepted) 'A JSON stop response with ok=false was accepted as a verified stop.'
+
   [void](New-Item -ItemType Directory -Path $fixtureRoot -Force)
   $temporaryWasCreated = $true
   $serverScript = @'
@@ -300,7 +396,8 @@ http.createServer((_req, res) => {
     $conflictRejected = $_.Exception.Message -match 'already listening' -and $_.Exception.Message -match [string]$conflictPort
   }
   Assert-True $conflictRejected 'Starting on an occupied port did not return an actionable conflict.'
-  $null = & $launcher -Action stop -DataPath $dataRoot -Json
+  $conflictStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-DataPath', $dataRoot)
+  Assert-True ($conflictStop.value.ok -and $conflictStop.value.state -eq 'stopped') ('Failed-start cleanup stop was not a verified no-op: ' + $conflictStop.text)
   Assert-True (-not $unrelated.HasExited) 'A failed start or stop killed the unrelated child process.'
   $unrelatedResponse = Invoke-WebRequest -UseBasicParsing -Uri ('http://127.0.0.1:' + $conflictPort + '/') -TimeoutSec 3
   Assert-True ($unrelatedResponse.Content -eq 'unrelated listener is alive') 'The unrelated listener stopped answering after conflict handling.'
@@ -332,7 +429,27 @@ http.createServer((_req, res) => {
   $badSupervisorControl = Send-NamedPipeRequest $workerIdentity.supervisorPipe $workerIdentity.instanceId ('0' * 64)
   $badServerControl = Send-NamedPipeRequest $workerIdentity.serverPipe $workerIdentity.instanceId ('0' * 64)
   Assert-True (-not $badSupervisorControl.ok -and -not $badServerControl.ok) 'A shutdown request with a wrong local nonce was accepted.'
-  Assert-True ($null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$workerIdentity.serverPid) -ErrorAction SilentlyContinue)) 'Rejected local control altered the server process.'
+  foreach ($rawControlMessage in @('null', '[]', '"invalid"', '17')) {
+    $rawPipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', $workerIdentity.supervisorPipe.Substring('\\.\pipe\'.Length), [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::None)
+    try {
+      $rawPipe.Connect(3000)
+      $rawWriter = [System.IO.StreamWriter]::new($rawPipe, [System.Text.UTF8Encoding]::new($false), 1024, $true)
+      $rawReader = [System.IO.StreamReader]::new($rawPipe, [System.Text.UTF8Encoding]::new($false), $false, 1024, $true)
+      try {
+        $rawWriter.WriteLine($rawControlMessage)
+        $rawWriter.Flush()
+        $rawReadTask = $rawReader.ReadLineAsync()
+        Assert-True ($rawReadTask.Wait(3000)) ('The supervisor did not reject raw malformed shutdown JSON: ' + $rawControlMessage)
+        $rawResponse = $rawReadTask.GetAwaiter().GetResult() | ConvertFrom-Json
+        Assert-True (-not $rawResponse.ok -and $rawResponse.code -eq 'INVALID_REQUEST') ('The supervisor accepted malformed shutdown JSON: ' + $rawControlMessage)
+      } finally { $rawWriter.Dispose(); $rawReader.Dispose() }
+    } finally { $rawPipe.Dispose() }
+  }
+  $ownedAfterMalformedControls = @(Get-ProcessRecordIdentityEvidence $manifestObject.processes)
+  $nonMatchingAfterMalformedControls = @($ownedAfterMalformedControls | Where-Object { $_.state -ne 'match' })
+  Assert-True ($nonMatchingAfterMalformedControls.Count -eq 0) ('Malformed shutdown requests altered process ownership: ' + ($ownedAfterMalformedControls | ConvertTo-Json -Compress))
+  $identityServerRecord = Get-ManifestProcessRecord $manifestObject 'server'
+  Assert-True (@(Get-RemainingOwnedProcessRecords @($identityServerRecord)).Count -eq 1) 'Rejected local control altered the verified server process identity.'
   foreach ($role in @('supervisor', 'server', 'web')) {
     $record = $manifestObject.processes | Where-Object { $_.role -eq $role } | Select-Object -First 1
     $expectedPort = if ($role -eq 'server') { $serverPort } elseif ($role -eq 'web') { $webPort } else { $serverPort }
@@ -383,26 +500,27 @@ http.createServer((_req, res) => {
   Write-Utf8NoBom $manifestPath (ConvertTo-Json -InputObject $tampered -Depth 10)
   $staleStatus = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($staleStatus.value.state -eq 'identity-mismatch' -and -not $staleStatus.value.ok) 'Status did not detect the stale/reused PID identity mismatch.'
-  $stopRefused = $false
-  try { & $launcher -Action stop -Root $fixtureRoot -DataPath $dataRoot } catch {
-    $stopRefused = $_.Exception.Message -match 'identity mismatch'
-  }
-  Assert-True $stopRefused 'Stop did not refuse the stale manifest PID.'
+  $stopRefused = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Write-Output ('RAW_STOP_REFUSED_JSON=' + $stopRefused.text)
+  Assert-True (-not $stopRefused.value.ok -and $stopRefused.value.state -eq 'error' -and $stopRefused.value.error -match 'identity mismatch') ('Stop did not refuse the stale manifest PID: ' + $stopRefused.text)
   Assert-True (-not $sleeper.HasExited) 'Stop killed the unrelated process referenced by the stale PID.'
-  foreach ($pidValue in $ownedPids) {
-    Assert-True ($null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$pidValue) -ErrorAction SilentlyContinue)) ("Stop touched an owned process after identity mismatch (PID " + $pidValue + ').')
-  }
+  $stillOwnedAfterRefusal = @(Get-ProcessRecordIdentityEvidence $manifestObject.processes)
+  $nonMatchingAfterRefusal = @($stillOwnedAfterRefusal | Where-Object { $_.state -ne 'match' })
+  Assert-True ($nonMatchingAfterRefusal.Count -eq 0) ("Stop touched a verified process after identity mismatch: " + ($stillOwnedAfterRefusal | ConvertTo-Json -Compress))
 
   # Restore the authentic manifest, then stop only its verified process tree.
   Write-Utf8NoBom $manifestPath $savedManifest
-  $null = & $launcher -Action stop -Root $fixtureRoot -DataPath $dataRoot -Json
+  $verifiedStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-Json')
+  Write-Output ('RAW_STOP_VERIFIED_JSON=' + $verifiedStop.text)
+  Assert-True ($verifiedStop.value.ok -and $verifiedStop.value.state -eq 'stopped' -and $verifiedStop.value.instanceId -eq $manifestObject.instanceId) ('Verified stop did not accept the expected instance: ' + $verifiedStop.text)
   $deadline = (Get-Date).AddSeconds(10)
   do {
-    $remaining = @($ownedPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($remaining.Count -eq 0) { break }
+    $remainingRecords = @(Get-RemainingOwnedProcessRecords $manifestObject.processes)
+    if ($remainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $deadline)
-  Assert-True ($remaining.Count -eq 0) 'Verified stop left part of the owned process tree alive.'
+  $stopIdentityEvidence = @(Get-ProcessRecordIdentityEvidence $manifestObject.processes)
+  Assert-True ($remainingRecords.Count -eq 0) ('Verified stop left part of the owned process tree alive: ' + (@($remainingRecords | ForEach-Object { [int]$_.pid }) -join ', ') + '; raw stop JSON: ' + $verifiedStop.text + '; PID identity evidence: ' + ($stopIdentityEvidence | ConvertTo-Json -Compress))
   Assert-True (-not $sleeper.HasExited) 'Owned stop affected the unrelated sleeper process.'
   $stopped = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($stopped.value.state -eq 'stopped' -and $stopped.value.ok) 'Status did not report stopped after verified cleanup.'
@@ -430,8 +548,9 @@ http.createServer((_req, res) => {
     & $LauncherPath -Action stop -Root $RepositoryRoot -DataPath $DataRoot -Json
   }
   Assert-True (Wait-Text $eventFile 'shutdown-requested' 8) 'The authenticated local shutdown request did not reach the server.'
-  $serverStillOwned = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$drainIdentity.serverPid) -ErrorAction SilentlyContinue
-  Assert-True ($null -ne $serverStillOwned) 'The server was killed before its in-flight write drained.'
+  $drainManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $drainServerRecord = Get-ManifestProcessRecord $drainManifest 'server'
+  Assert-True (@(Get-RemainingOwnedProcessRecords @($drainServerRecord)).Count -eq 1) 'The verified server was killed before its in-flight write drained.'
   $blockedResponse = $httpClient.PostAsync(('http://127.0.0.1:' + $drainServerPort + '/api/fixture-write'), [System.Net.Http.StringContent]::new('')).GetAwaiter().GetResult()
   Assert-True ([int]$blockedResponse.StatusCode -eq 503) 'The server accepted a new write after graceful shutdown closed admission.'
   Assert-True (-not [System.IO.File]::ReadAllText($eventFile).Contains('http-closed')) 'HTTP closed before the owned write reached its completion boundary.'
@@ -469,8 +588,9 @@ http.createServer((_req, res) => {
   $runtimeStopOutput = @(Receive-Job -Job $runtimeStopJob)
   Remove-Job -Job $runtimeStopJob -Force
   Assert-True (($runtimeStopOutput -join "`n") -match 'STOP_DEFERRED') ("The active runtime stop did not preserve an explicit deferred result: " + ($runtimeStopOutput -join ' '))
-  $runtimeServerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$runtimeIdentity.serverPid) -ErrorAction SilentlyContinue
-  Assert-True ($null -ne $runtimeServerProcess) 'The server was stopped while its provider runtime was still active.'
+  $runtimeManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $runtimeServerRecord = Get-ManifestProcessRecord $runtimeManifest 'server'
+  Assert-True (@(Get-RemainingOwnedProcessRecords @($runtimeServerRecord)).Count -eq 1) 'The verified server was stopped while its provider runtime was still active.'
   Assert-True (Test-Path -LiteralPath $runtimeIdentityPath -PathType Leaf) 'Deferred stop removed runtime ownership evidence.'
   Assert-True ([System.IO.File]::ReadAllText($manifestPath) -ceq $runtimeManifestBefore) 'Deferred stop rewrote the manifest as stopped before runtime completion.'
   $runtimeHttpClient = [System.Net.Http.HttpClient]::new()
@@ -480,14 +600,13 @@ http.createServer((_req, res) => {
     $fencedWrite.Dispose()
   } finally { $runtimeHttpClient.Dispose() }
   Assert-True (-not [System.IO.File]::ReadAllText($eventFile).Contains('provider-runtime-completed')) 'The provider runtime completed before the deferred stop was observed.'
-  $runtimePids = @([int]$runtimeIdentity.supervisorPid, [int]$runtimeIdentity.serverPid, [int]$runtimeIdentity.webPid)
   $runtimeDeadline = (Get-Date).AddSeconds(12)
   do {
-    $runtimeRemaining = @($runtimePids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($runtimeRemaining.Count -eq 0) { break }
+    $runtimeRemainingRecords = @(Get-RemainingOwnedProcessRecords $runtimeManifest.processes)
+    if ($runtimeRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $runtimeDeadline)
-  Assert-True ($runtimeRemaining.Count -eq 0) 'The deferred owned process tree did not exit after runtime completion.'
+  Assert-True ($runtimeRemainingRecords.Count -eq 0) ('The deferred owned process identities did not exit after runtime completion: ' + (@($runtimeRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
   $finalizeDeferredStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($finalizeDeferredStop.value.ok -and $finalizeDeferredStop.value.state -eq 'stopped') 'A subsequent verified stop did not finalize the drained instance manifest.'
   $runtimeEvents = [System.IO.File]::ReadAllLines($eventFile)
@@ -504,14 +623,14 @@ http.createServer((_req, res) => {
   $crashResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri ('http://127.0.0.1:' + $crashPort + '/api/fixture-crash') -TimeoutSec 5
   $crashBody = if ($crashResponse.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($crashResponse.Content) } else { [string]$crashResponse.Content }
   Assert-True ($crashResponse.StatusCode -eq 200 -and $crashBody -eq 'crash requested') ("The natural server-exit fixture did not trigger (HTTP " + $crashResponse.StatusCode + ", body='" + $crashBody + "').")
-  $crashPids = @([int]$crashIdentity.supervisorPid, [int]$crashIdentity.serverPid, [int]$crashIdentity.webPid)
+  $crashManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   $crashDeadline = (Get-Date).AddSeconds(12)
   do {
-    $crashRemaining = @($crashPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($crashRemaining.Count -eq 0) { break }
+    $crashRemainingRecords = @(Get-RemainingOwnedProcessRecords $crashManifest.processes)
+    if ($crashRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $crashDeadline)
-  Assert-True ($crashRemaining.Count -eq 0) 'A proven server process exit left its owned web or supervisor child running.'
+  Assert-True ($crashRemainingRecords.Count -eq 0) ('A proven server process exit left owned process identities running: ' + (@($crashRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
   Assert-True ((Get-Content -LiteralPath $stdoutLog -Raw).Contains('exit code=37')) 'The fixture server exit code was not retained in its bounded process log.'
 
   # Prefer the new readiness contract while retaining the health endpoint fallback.
@@ -521,6 +640,7 @@ http.createServer((_req, res) => {
   while ($readinessWebPort -eq $readinessServerPort) { $readinessWebPort = Get-FreePort }
   $readinessStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$readinessServerPort, '-WebPort', [string]$readinessWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
   Assert-True ($readinessStart.value.ok -and $readinessStart.value.state -eq 'running') ("Startup using /api/readiness failed: " + $readinessStart.text)
+  $readinessManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   $legacyManifestObject = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   $legacyManifestObject.readinessPath = '/api/health'
   Write-Utf8NoBom $manifestPath (ConvertTo-Json -InputObject $legacyManifestObject -Depth 10)
@@ -529,15 +649,15 @@ http.createServer((_req, res) => {
   $pidsDirectory = Join-Path $dataRoot '.agentos/local-runtime'
   $archivedPidRecords = @(Get-ChildItem -Path (Join-Path $pidsDirectory 'worker-pids.json.*.previous') -File -ErrorAction SilentlyContinue)
   Assert-True ($archivedPidRecords.Count -ge 1) 'Restart discarded the previous runtime process record instead of archiving it.'
-  $readinessPids = @($readinessStart.value.processPids | ForEach-Object { [int]$_ })
-  $null = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  $readinessStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($readinessStop.value.ok -and $readinessStop.value.instanceId -eq $readinessManifest.instanceId) ('Readiness stop failed: ' + $readinessStop.text)
   $readinessDeadline = (Get-Date).AddSeconds(10)
   do {
-    $readinessRemaining = @($readinessPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($readinessRemaining.Count -eq 0) { break }
+    $readinessRemainingRecords = @(Get-RemainingOwnedProcessRecords $readinessManifest.processes)
+    if ($readinessRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $readinessDeadline)
-  Assert-True ($readinessRemaining.Count -eq 0) 'Readiness-contract fixture did not stop cleanly.'
+  Assert-True ($readinessRemainingRecords.Count -eq 0) ('Readiness-contract process identities did not stop: ' + (@($readinessRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
 
   # A route alias is supported when the preferred health readiness route returns 404.
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', $null, 'Process')
@@ -549,15 +669,16 @@ http.createServer((_req, res) => {
   Assert-True ($maintenanceStart.value.ok -and $maintenanceStart.value.state -eq 'running') ("Startup using /api/maintenance/readiness failed: " + $maintenanceStart.text)
   $maintenanceStatus = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($maintenanceStatus.value.endpoints.serverReadinessPath -eq '/api/maintenance/readiness') 'Launcher did not follow the readiness alias after a 404 from the preferred route.'
-  $maintenancePids = @($maintenanceStart.value.processPids | ForEach-Object { [int]$_ })
-  $null = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  $maintenanceManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $maintenanceStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($maintenanceStop.value.ok -and $maintenanceStop.value.instanceId -eq $maintenanceManifest.instanceId) ('Maintenance stop failed: ' + $maintenanceStop.text)
   $maintenanceDeadline = (Get-Date).AddSeconds(10)
   do {
-    $maintenanceRemaining = @($maintenancePids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($maintenanceRemaining.Count -eq 0) { break }
+    $maintenanceRemainingRecords = @(Get-RemainingOwnedProcessRecords $maintenanceManifest.processes)
+    if ($maintenanceRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $maintenanceDeadline)
-  Assert-True ($maintenanceRemaining.Count -eq 0) 'Maintenance readiness alias fixture did not stop cleanly.'
+  Assert-True ($maintenanceRemainingRecords.Count -eq 0) ('Maintenance process identities did not stop: ' + (@($maintenanceRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
 
   # A readiness 503 must remain unready even though the legacy liveness route returns 200.
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', $null, 'Process')
@@ -569,14 +690,13 @@ http.createServer((_req, res) => {
   Assert-True (-not $notReadyStart.value.ok -and $notReadyStart.value.error -match '(?i)Readiness timed out.*server=False, web=True') ("A readiness 503 was incorrectly treated as ready or did not time out: " + $notReadyStart.text)
   $notReadyManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   Assert-True ($notReadyManifest.state -eq 'stopped') 'Readiness 503 did not leave an auditable stopped manifest.'
-  $notReadyPids = @($notReadyManifest.processes | ForEach-Object { [int]$_.pid })
   $notReadyDeadline = (Get-Date).AddSeconds(10)
   do {
-    $notReadyRemaining = @($notReadyPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($notReadyRemaining.Count -eq 0) { break }
+    $notReadyRemainingRecords = @(Get-RemainingOwnedProcessRecords $notReadyManifest.processes)
+    if ($notReadyRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $notReadyDeadline)
-  Assert-True ($notReadyRemaining.Count -eq 0) 'Readiness 503 cleanup left an owned process alive.'
+  Assert-True ($notReadyRemainingRecords.Count -eq 0) ('Readiness 503 cleanup left owned process identities alive: ' + (@($notReadyRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
 
   # A service that never opens its port must time out and leave no owned process tree.
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', $null, 'Process')
@@ -592,14 +712,13 @@ http.createServer((_req, res) => {
   Assert-True ($failureTimer.Elapsed.TotalSeconds -lt 12) 'A failed readiness probe exceeded the bounded startup and cleanup time.'
   $failedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   Assert-True ($failedManifest.state -eq 'stopped') 'Failed startup did not preserve a stopped diagnostic manifest.'
-  $failedPids = @($failedManifest.processes | ForEach-Object { [int]$_.pid })
   $failureDeadline = (Get-Date).AddSeconds(10)
   do {
-    $failedRemaining = @($failedPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($failedRemaining.Count -eq 0) { break }
+    $failedRemainingRecords = @(Get-RemainingOwnedProcessRecords $failedManifest.processes)
+    if ($failedRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $failureDeadline)
-  Assert-True ($failedRemaining.Count -eq 0) 'Readiness timeout leaked one or more owned child processes.'
+  Assert-True ($failedRemainingRecords.Count -eq 0) ('Readiness timeout leaked owned process identities: ' + (@($failedRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
 
   # If a startup cleanup cannot authenticate/drain its live server, retain the
   # launcher lock as well as runtime identity. A later verified stop can drain
@@ -619,21 +738,25 @@ http.createServer((_req, res) => {
   $launcherLock = Join-Path $dataRoot '.agentos/local-runtime/launcher.lock'
   Assert-True (Test-Path -LiteralPath $launcherLock -PathType Leaf) 'Startup failure removed launcher.lock while the server could still be alive.'
   $refusedServerRecord = $refusedManifest.processes | Where-Object { $_.role -eq 'server' } | Select-Object -First 1
-  $refusedServerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$refusedServerRecord.pid) -ErrorAction SilentlyContinue
-  Assert-True ($null -ne $refusedServerProcess -and [string]::Equals([string]$refusedServerProcess.CommandLine, [string]$refusedServerRecord.command, [System.StringComparison]::Ordinal)) 'The server identity was not still live when the launcher lock was retained.'
+  Assert-True (@(Get-RemainingOwnedProcessRecords @($refusedServerRecord)).Count -eq 1) 'The verified server identity was not still live when the launcher lock was retained.'
   $restoreShutdown = Send-NamedPipeRequest $refusedIdentity.serverPipe $refusedIdentity.instanceId $refusedIdentity.shutdownNonce 'fixture-allow-shutdown'
   Assert-True $restoreShutdown.ok 'The fixture could not restore authenticated server shutdown.'
   $recoveredStartStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($recoveredStartStop.value.ok -and $recoveredStartStop.value.state -eq 'stopped') 'Verified stop did not drain the server retained after startup cleanup failure.'
-  $refusedPids = @([int]$refusedIdentity.supervisorPid, [int]$refusedIdentity.serverPid, [int]$refusedIdentity.webPid)
+  $refusedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $refusedStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($refusedStop.value.ok -and $refusedStop.value.instanceId -eq $refusedManifest.instanceId) ('Verified refused-start recovery stop failed: ' + $refusedStop.text)
   $refusedDeadline = (Get-Date).AddSeconds(10)
   do {
-    $refusedRemaining = @($refusedPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
-    if ($refusedRemaining.Count -eq 0) { break }
+    $refusedRemainingRecords = @(Get-RemainingOwnedProcessRecords $refusedManifest.processes)
+    if ($refusedRemainingRecords.Count -eq 0) { break }
     Start-Sleep -Milliseconds 150
   } while ((Get-Date) -lt $refusedDeadline)
-  Assert-True ($refusedRemaining.Count -eq 0) 'The recovered startup-failure process tree did not stop cleanly.'
-  Remove-Item -LiteralPath $launcherLock -Force
+  Assert-True ($refusedRemainingRecords.Count -eq 0) ('The recovered startup-failure process identities did not stop: ' + (@($refusedRemainingRecords | ForEach-Object { [int]$_.pid }) -join ', '))
+  $resolvedTestLock = [System.IO.Path]::GetFullPath($launcherLock)
+  $testLockPrefix = [System.IO.Path]::GetFullPath((Join-Path $dataRoot '.agentos/local-runtime')) + [System.IO.Path]::DirectorySeparatorChar
+  Assert-True ($resolvedTestLock.StartsWith($testLockPrefix, [System.StringComparison]::OrdinalIgnoreCase)) 'Refusing to remove a stale lock outside the isolated fixture runtime directory.'
+  Remove-Item -LiteralPath $resolvedTestLock -Force
   Assert-True (-not (Test-Path -LiteralPath $launcherLock)) 'The test-owned stale launcher lock was not removed after all verified processes exited.'
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $null, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $null, 'Process')
@@ -655,9 +778,6 @@ http.createServer((_req, res) => {
   if ($null -ne $sleeper -and -not $sleeper.HasExited) {
     try { $sleeper.Kill(); [void]$sleeper.WaitForExit(5000) } catch {}
   }
-  if ($savedManifest -and (Test-Path -LiteralPath $manifestPath)) {
-    try { Write-Utf8NoBom $manifestPath $savedManifest } catch {}
-  }
   if ($temporaryWasCreated -and (Test-Path -LiteralPath $tempRoot)) {
     $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)
     $expectedPrefix = [System.IO.Path]::GetFullPath((Join-Path $tempParent 'agentos local lifecycle '))
@@ -665,12 +785,21 @@ http.createServer((_req, res) => {
       $cleanupFailure = 'Refusing test cleanup because the resolved temporary path is outside its dedicated test prefix.'
     } else {
       $pidsPath = Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json'
-      $cleanupPids = @()
+      $lockPath = Join-Path $dataRoot '.agentos/local-runtime/launcher.lock'
+      $cleanupManifest = $null
+      $cleanupRecords = @()
+      $cleanupOwnershipValidated = $false
+      $cleanupStopVerified = $false
       if (Test-Path -LiteralPath $manifestPath) {
         try {
           $cleanupManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-          $cleanupPids = @($cleanupManifest.processes | ForEach-Object { [int]$_.pid })
-          & $launcher -Action stop -Root $fixtureRoot -DataPath $dataRoot -Json | Out-Null
+          $cleanupRecords = @($cleanupManifest.processes)
+          $cleanupStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+          if (-not $cleanupStop.value.ok -or $cleanupStop.value.state -ne 'stopped' -or
+            $cleanupStop.value.instanceId -ne $cleanupManifest.instanceId) {
+            throw ('The fixture stop did not verify the owned instance: ' + $cleanupStop.text)
+          }
+          $cleanupStopVerified = $true
         } catch {
           $cleanupFailure = 'The launcher could not safely stop the fixture instance: ' + $_.Exception.Message
         }
@@ -678,9 +807,19 @@ http.createServer((_req, res) => {
       if (Test-Path -LiteralPath $pidsPath) {
         try {
           $workerIds = Get-Content -LiteralPath $pidsPath -Raw | ConvertFrom-Json
-          $cleanupPids += @([int]$workerIds.supervisorPid, [int]$workerIds.serverPid, [int]$workerIds.webPid)
-          $workerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$workerIds.supervisorPid) -ErrorAction SilentlyContinue
-          if ($null -ne $workerProcess) {
+          if ($null -eq $cleanupManifest -or [string]$workerIds.instanceId -ne [string]$cleanupManifest.instanceId) {
+            throw 'The fixture worker state has no matching launcher manifest; preserving its evidence.'
+          }
+          foreach ($role in @('supervisor', 'server', 'web')) {
+            $workerPidProperty = $role + 'Pid'
+            $record = $cleanupRecords | Where-Object { $_.role -eq $role } | Select-Object -First 1
+            if ($null -eq $record -or [int]$workerIds.$workerPidProperty -ne [int]$record.pid) {
+              throw 'The fixture worker PID record does not match its manifest process identity.'
+            }
+          }
+          $cleanupOwnershipValidated = $cleanupRecords.Count -ge 3
+          $liveSupervisor = @(Get-RemainingOwnedProcessRecords @($cleanupRecords | Where-Object { $_.role -eq 'supervisor' }))
+          if ($liveSupervisor.Count -gt 0) {
             $cleanupFailure = 'The fixture supervisor remains after graceful stop; refusing force termination and preserving its evidence.'
           }
         } catch {
@@ -689,16 +828,28 @@ http.createServer((_req, res) => {
       }
       $deadline = (Get-Date).AddSeconds(10)
       do {
-        $remainingPids = @($cleanupPids | Sort-Object -Unique | Where-Object {
-          $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue)
-        })
-        if ($remainingPids.Count -eq 0) { break }
+        $remainingRecords = @(Get-RemainingOwnedProcessRecords $cleanupRecords)
+        if ($remainingRecords.Count -eq 0) { break }
         Start-Sleep -Milliseconds 150
       } while ((Get-Date) -lt $deadline)
-      if ($remainingPids.Count -gt 0) {
-        $cleanupFailure = 'The fixture process IDs are still active (' + ($remainingPids -join ', ') + '); its temporary directory was preserved.'
+      if ($remainingRecords.Count -gt 0) {
+        $remainingPids = @($remainingRecords | ForEach-Object { [int]$_.pid } | Sort-Object -Unique)
+        $cleanupFailure = 'The verified fixture process identities are still active (' + ($remainingPids -join ', ') + '); its temporary directory was preserved.'
       }
-      if ($null -eq $cleanupFailure -and $remainingPids.Count -eq 0) {
+      if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
+        if (-not $cleanupStopVerified -or -not $cleanupOwnershipValidated -or $remainingRecords.Count -gt 0 -or $null -ne $cleanupFailure) {
+          if ($null -eq $cleanupFailure) { $cleanupFailure = 'A launcher.lock remains without verified stopped ownership; preserving the fixture evidence.' }
+        } else {
+          $resolvedLock = [System.IO.Path]::GetFullPath($lockPath)
+          $expectedLockPrefix = [System.IO.Path]::GetFullPath((Join-Path $dataRoot '.agentos/local-runtime')) + [System.IO.Path]::DirectorySeparatorChar
+          if (-not $resolvedLock.StartsWith($expectedLockPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $cleanupFailure = 'Refusing to remove a launcher lock outside the isolated fixture runtime directory.'
+          } else {
+            Remove-Item -LiteralPath $resolvedLock -Force
+          }
+        }
+      }
+      if ($null -eq $cleanupFailure -and $remainingRecords.Count -eq 0) {
         Get-ChildItem -LiteralPath $resolvedTemp -File -Recurse -Force | Remove-Item -Force
         $directories = @(Get-ChildItem -LiteralPath $resolvedTemp -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)
         foreach ($directory in $directories) { Remove-Item -LiteralPath $directory.FullName -Force }
