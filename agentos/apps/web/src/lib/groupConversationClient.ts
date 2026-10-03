@@ -69,6 +69,18 @@ export interface GroupInteractionDetail {
   } | null;
 }
 
+export interface GroupInteractionRecoveryResult {
+  readonly interaction: GroupInteraction;
+  readonly message: {
+    readonly id: string;
+    readonly conversationId?: string;
+    readonly clientMessageId?: string;
+    readonly content: string;
+  };
+  readonly participantAgentIds?: readonly string[];
+  readonly replayed: boolean;
+}
+
 export interface GroupConversationRequestError extends ConversationRuntimeError {
   readonly code?: string;
 }

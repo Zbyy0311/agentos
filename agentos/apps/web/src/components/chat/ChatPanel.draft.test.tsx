@@ -85,3 +85,31 @@ test('valid active group retains its speaker and enabled stop action', () => {
   const stop = markup.match(/<button[^>]*aria-label="停止讨论"[^>]*>/)?.[0];
   assert.ok(stop); assert.equal(/\sdisabled(?:=|\s|>)/.test(stop), false);
 });
+
+test('group recovery is actionable only when an unusable active interaction has an interrupted owner epoch', () => {
+  const groupInteraction = Object.assign(activeGroup(), { integrityStatus: 'unusable' as const, integrityReason: 'execution-owner-interrupted' });
+  const base = {
+    isGroup: true,
+    groupName: 'Group A',
+    groupInteraction,
+    groupRecoveryWorkspaceId: 'workspace-a',
+    scrollIdentityKey: '[1,"workspace-a","runtime","conversation","group-a"]',
+    onGroupInteractionRecovered: () => undefined,
+  };
+
+  const unknownOwner = renderToStaticMarkup(createElement(ChatPanel, props(base)));
+  assert.match(unknownOwner, /执行 owner 状态未知/);
+  assert.doesNotMatch(unknownOwner, /建立关联新一轮/);
+
+  const runningOwner = renderToStaticMarkup(createElement(ChatPanel, props({
+    ...base, groupExecutionOwner: { status: 'running', ownerEpoch: 2 },
+  })));
+  assert.match(runningOwner, /尚未确认中断/);
+  assert.doesNotMatch(runningOwner, /建立关联新一轮/);
+
+  const interruptedOwner = renderToStaticMarkup(createElement(ChatPanel, props({
+    ...base, groupExecutionOwner: { status: 'interrupted', ownerEpoch: 2 }, groupRecoveryGeneration: 3,
+  })));
+  assert.match(interruptedOwner, /从新一轮继续/);
+  assert.match(interruptedOwner, /建立关联新一轮/);
+});
