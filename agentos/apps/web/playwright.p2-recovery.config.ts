@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -17,7 +17,10 @@ if (isAbsolute(nextDistDir) || relativeNextDistPath === '..' || relativeNextDist
 const projectRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-recovery-project-'));
 const resultsRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-group-recovery-results-'));
 const tsconfigRootPrefix = 'agentos-p2-group-recovery-tsconfig-';
-const tsconfigRoot = mkdtempSync(join(tmpdir(), tsconfigRootPrefix));
+// Next 14 joins tsconfigPath with the app root, including absolute paths.
+// Keep the generated configuration on the checkout drive so relative() works.
+mkdirSync(nextDistPath, { recursive: true });
+const tsconfigRoot = mkdtempSync(join(nextDistPath, tsconfigRootPrefix));
 const tempTsconfigPath = resolve(tsconfigRoot, 'tsconfig.json');
 const nextTsconfigPath = relative(webRoot, tempTsconfigPath);
 writeFileSync(tempTsconfigPath, JSON.stringify({
@@ -40,9 +43,18 @@ function removeOwnedTempDirectory(path: string, expectedPrefix: string) {
   } catch { /* preserve uncertain paths; never widen cleanup */ }
 }
 
+function removeOwnedGeneratedTsconfigDirectory() {
+  try {
+    const verifiedPath = realpathSync(tsconfigRoot);
+    if (dirname(verifiedPath) !== realpathSync(nextDistPath)
+      || !basename(verifiedPath).startsWith(tsconfigRootPrefix)) return;
+    rmSync(verifiedPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch { /* preserve uncertain paths */ }
+}
+
 process.once('exit', () => {
   removeOwnedTempDirectory(projectRoot, 'agentos-p2-recovery-project-');
-  removeOwnedTempDirectory(tsconfigRoot, tsconfigRootPrefix);
+  removeOwnedGeneratedTsconfigDirectory();
 });
 
 export default defineConfig({
