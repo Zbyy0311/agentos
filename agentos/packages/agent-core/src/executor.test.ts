@@ -73,7 +73,7 @@ async function executeWrapperFixture<T>(
   ]);
   if (watchdog) clearTimeout(watchdog);
 
-  let finalOutcome = outcome;
+  let finalOutcome: Awaited<typeof execution> | { kind: 'watchdog' } | { kind: 'cancel-pending' } = outcome;
   if (outcome.kind === 'watchdog') {
     let cancelSettleTimer: ReturnType<typeof setTimeout> | undefined;
     finalOutcome = await Promise.race([
@@ -135,7 +135,7 @@ async function executeWrapperFixture<T>(
     throw new Error(`${label} fixture cleanup exceeded its bound: elapsedMs=${cleanupMs}; exists=${existsSync(commandRoot)}; result=${cleanupResult.kind}${cleanupResult.kind === 'failed' ? `:${cleanupResult.error}` : ''}; phases=${phaseSummary}`);
   }
   if (watchdogFired) {
-    throw new Error(`${label} fixture execution exceeded ${STRUCTURED_FIXTURE_WATCHDOG_MS}ms; canceled and settled=${finalOutcome.kind !== 'cancel-pending'} within ${STRUCTURED_FIXTURE_CANCEL_SETTLE_MS}ms; totalMs=${elapsedMs}; cleanupMs=${cleanupMs}; phases=${phaseSummary}`);
+    throw new Error(`${label} fixture execution exceeded ${STRUCTURED_FIXTURE_WATCHDOG_MS}ms; canceled and settled=${finalOutcome.kind} within ${STRUCTURED_FIXTURE_CANCEL_SETTLE_MS}ms; totalMs=${elapsedMs}; cleanupMs=${cleanupMs}; phases=${phaseSummary}`);
   }
   if (finalOutcome.kind === 'failed') {
     const cause = finalOutcome.error instanceof Error ? finalOutcome.error.message : String(finalOutcome.error);
