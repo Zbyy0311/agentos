@@ -315,7 +315,12 @@ function Test-PortOwnershipRecord($Snapshot, [int] $RootPid, [int] $PortValue, $
   if ($expected.Count -ne $actual.owners.Count) { return [pscustomobject]@{ owned = $false; owners = $actual.owners } }
   foreach ($owner in $actual.owners) {
     $recorded = $expected | Where-Object { [int]$_.pid -eq [int]$owner.pid } | Select-Object -First 1
-    if ($null -eq $recorded -or [string]$recorded.createdAt -ne [string]$owner.createdAt -or -not [string]::Equals([string]$recorded.executable, [string]$owner.executable, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($null -eq $recorded) { return [pscustomobject]@{ owned = $false; owners = $actual.owners } }
+    try {
+      $recordedCreatedAt = Convert-CreationTime $recorded.createdAt
+      $actualCreatedAt = Convert-CreationTime $owner.createdAt
+    } catch { return [pscustomobject]@{ owned = $false; owners = $actual.owners } }
+    if ($recordedCreatedAt -ne $actualCreatedAt -or -not [string]::Equals([string]$recorded.executable, [string]$owner.executable, [System.StringComparison]::OrdinalIgnoreCase)) {
       return [pscustomobject]@{ owned = $false; owners = $actual.owners }
     }
   }
