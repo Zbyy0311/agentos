@@ -305,9 +305,10 @@ http.createServer((_req, res) => {
   $ownedPids = @($started.value.processPids | ForEach-Object { [int]$_ })
   Assert-True ($ownedPids.Count -ge 3) 'The manifest did not record supervisor, server and web process IDs.'
   $status = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
-  Assert-True ($status.value.state -eq 'running' -and $status.value.endpoints.server -and $status.value.endpoints.web) 'Status did not report the owned processes and both ready endpoints.'
+  $statusEvidence = $status.value | Select-Object state, processPids, endpoints, message | ConvertTo-Json -Compress -Depth 5
+  Assert-True ($status.value.state -eq 'running' -and $status.value.endpoints.server -and $status.value.endpoints.web) ("Status did not report both ready endpoints for the owned instance. Status evidence: " + $statusEvidence)
   Assert-True ($status.value.endpoints.serverReadinessPath -eq '/api/health') 'Legacy liveness fallback was not selected when every readiness route returned 404.'
-  Assert-True ($status.value.endpoints.serverPortOwned -and $status.value.endpoints.webPortOwned) 'Status did not verify that the owned process trees hold both ports.'
+  Assert-True ($status.value.endpoints.serverPortOwned -and $status.value.endpoints.webPortOwned) ("Status did not verify that the owned process trees hold both ports. Status evidence: " + $statusEvidence)
   Assert-True (-not $status.text.Contains($fixtureSecret)) 'Machine-readable status exposed a .env value.'
   $manifestText = Get-Content -LiteralPath $manifestPath -Raw
   Assert-True (-not $manifestText.Contains($fixtureSecret)) 'The process manifest exposed a .env value.'
