@@ -14,6 +14,7 @@ import { getWorkflowTemplate, type CollaborationCandidate, type CollaborationTas
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { CollaborationRepository } from '../store/CollaborationRepository.js';
 import { CollaborationControlRepository } from '../store/CollaborationControlRepository.js';
+import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
 import { CollaborationApplyJournalService } from './CollaborationApplyJournal.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { isTransactionActive } from '../store/Transaction.js';
@@ -808,6 +809,155 @@ test('P2 linked queued retry survives database restart admission reconstruction 
     const replay = await service.recover(input);
     assert.equal(replay.replayed, true);
     assert.equal(replay.newRunId, child.id);
+  } finally {
+    reopened?.close();
+    await fx.close();
+  }
+});
+
+test('P2 startup resumes a running collaboration task after its queued child Start claim survives restart', async () => {
+  let fx!: ReturnType<typeof fixture>;
+  fx = fixture({
+    runtimeDispatchEnabled: false,
+    requestRunAdmission: input => fx.authority.requestCanonicalRun(input),
+  });
+  let reopened: SqliteStore | undefined;
+  const dispatches: string[] = [];
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run: originalRun, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', originalRun.id, originalRun.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: originalRun.id });
+    const recoveryInput = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-running-queued-child-start-restart-01', action: 'retry-known-failure' as const,
+    };
+    const recovered = await fx.service.recover(recoveryInput);
+    const childRunId = recovered.newRunId;
+    assert.ok(childRunId);
+    assert.equal(recovered.task.status, 'queued', 'dispatch-disabled recovery leaves the authorized child queued');
+    assert.equal(fx.store.runRepository().findById('workspace-a', childRunId)?.status, 'queued');
+    assert.equal(fx.store.operationService().listByRun('workspace-a', childRunId)
+      .filter(operation => operation.type === 'run.start' && operation.status === 'queued').length, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT state FROM p2_collaboration_recoveries WHERE idempotency_key = ?')
+      .get(recoveryInput.idempotencyKey) as { state: string }).state, 'completed');
+
+    // Reproduce the durable claim/crash boundary: the queue worker commits
+    // queued -> running, then the process stops before resumeRun can start.
+    const interruptedQueue = productionServiceFor(fx, 'true', async () => { assert.fail('the interrupted process must not dispatch'); });
+    interruptedQueue.service.resumeRun = async () => { throw new Error('simulated process stop after queue claim'); };
+    await assert.rejects(() => interruptedQueue.service.resumeGrantedQueuedRuns(), /simulated process stop/u);
+    const claimedTask = fx.repository.findById('workspace-a', fx.plan.id)!;
+    assert.equal(claimedTask.status, 'running');
+    assert.equal(claimedTask.canonicalRunId, childRunId);
+    assert.equal(fx.store.runRepository().findById('workspace-a', childRunId)?.status, 'queued');
+    const claimedVersion = claimedTask.version;
+    const stageAttempts = fx.store.runStageRepository().listByRun('workspace-a', childRunId)
+      .map(stage => ({ id: stage.id, attempt: stage.attempt }));
+    fx.closeDatabase();
+
+    reopened = new SqliteStore(fx.dataRoot);
+    const activeStore = reopened;
+    const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
+      dispatches.push(resumedRunId);
+      admitFollowerToApproval(activeStore, workspaceId, resumedRunId);
+    });
+    await recoverFullStartup(activeStore, production.service);
+    const repository = new CollaborationRepository(activeStore.getDatabase());
+    const current = () => repository.findById('workspace-a', fx.plan.id)!;
+    assert.equal(current().status, 'running', 'startup reconciliation must preserve the committed queue claim');
+    assert.equal(current().version, claimedVersion, 'reconciliation must not rewrite the already-running task');
+    assert.equal(current().canonicalRunId, childRunId);
+    assert.equal(activeStore.runRepository().findById('workspace-a', childRunId)?.status, 'queued');
+    assert.equal((activeStore.getDatabase().prepare('SELECT state FROM workspace_admissions WHERE canonical_run_id = ?')
+      .get(childRunId) as { state: string }).state, 'GRANTED');
+    assert.deepEqual(dispatches, [], 'startup reconciliation itself never dispatches the queued child');
+
+    const admissions = new WorkspaceAdmissionRepository(activeStore.getDatabase());
+    const setAdmission = (state: 'GRANTED' | 'QUEUED') => {
+      const existing = admissions.findBySubject('workspace-a', { subjectKind: 'CANONICAL_RUN', canonicalRunId: childRunId });
+      assert.ok(existing);
+      assert.equal(admissions.updateState({
+        workspaceId: 'workspace-a', admissionId: existing.id, expectedVersion: existing.version, state,
+        queueReason: state === 'QUEUED' ? 'fixture tests the non-granted queue fence' : null,
+        releaseReason: null, grantedAt: state === 'GRANTED' ? NOW : null, releasedAt: null,
+        effectiveMutationClass: existing.effectiveMutationClass,
+        enforcementEvidenceJson: existing.enforcementEvidenceJson, updatedAt: NOW,
+      }), true);
+    };
+    const assertStillFenced = async (message: string) => {
+      await production.service.resumeGrantedQueuedRuns();
+      assert.deepEqual(dispatches, [], message);
+      assert.equal(current().status, 'running', 'a rejected candidate must retain its persisted task status');
+      assert.equal(current().version, claimedVersion, 'a rejected candidate must not rewrite the claimed task');
+    };
+
+    // Mutate the admission after the inventory scan but before its claim
+    // transaction to prove that the worker uses fresh authorization evidence.
+    const originalTransaction = activeStore.runInTransaction.bind(activeStore);
+    let changedAfterScan = false;
+    activeStore.runInTransaction = fn => {
+      if (!changedAfterScan) {
+        setAdmission('QUEUED');
+        changedAfterScan = true;
+      }
+      return originalTransaction(fn);
+    };
+    await assertStillFenced('a stale GRANTED inventory row cannot dispatch after the admission became non-GRANTED');
+    activeStore.runInTransaction = originalTransaction;
+    assert.equal(changedAfterScan, true);
+    setAdmission('GRANTED');
+
+    const db = activeStore.getDatabase();
+    const start = activeStore.operationService().listByRun('workspace-a', childRunId)
+      .find(operation => operation.type === 'run.start')!;
+    assert.ok(start);
+    db.prepare('DELETE FROM operations WHERE workspace_id = ? AND id = ?').run('workspace-a', start.id);
+    await assertStillFenced('a queued child without a durable Start cannot dispatch');
+    const restoredStart = activeStore.operationService().create({ workspaceId: 'workspace-a', runId: childRunId, type: 'run.start' });
+
+    const duplicateStart = activeStore.operationService().create({ workspaceId: 'workspace-a', runId: childRunId, type: 'run.start' });
+    await assertStillFenced('duplicate Start authorization cannot dispatch');
+    db.prepare('DELETE FROM operations WHERE workspace_id = ? AND id = ?').run('workspace-a', duplicateStart.id);
+    assert.equal(activeStore.operationService().listByRun('workspace-a', childRunId)
+      .filter(operation => operation.type === 'run.start').length, 1);
+    assert.equal(restoredStart.status, 'queued');
+
+    let childRun = activeStore.runRepository().findById('workspace-a', childRunId)!;
+    activeStore.runInTransaction(() => activeStore.runRepository().markRecoveryRequiredWithinTransaction({
+      workspaceId: 'workspace-a', runId: childRunId, expectedStatus: 'queued', expectedVersion: childRun.version,
+      timestamp: new Date().toISOString(),
+    }));
+    await assertStillFenced('recovery-required Run state cannot dispatch');
+    db.prepare('UPDATE runs SET recovery_required = 0,version = version + 1,updated_at = ? WHERE workspace_id = ? AND id = ?')
+      .run(NOW, 'workspace-a', childRunId);
+
+    const controls = new CollaborationControlRepository(db);
+    const pending = activeStore.runInTransaction(() => controls.reserve({
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id, action: 'cancel', expectedVersion: current().version,
+      idempotencyKey: 'p2-running-queue-pending-control-fence',
+    }));
+    await assertStillFenced('a pending collaboration control cannot dispatch the queued child');
+    activeStore.runInTransaction(() => controls.finish(pending.control, current()));
+
+    const runCount = (db.prepare('SELECT COUNT(*) AS count FROM runs WHERE workspace_id = ?').get('workspace-a') as { count: number }).count;
+    await production.service.resumeGrantedQueuedRuns();
+    assert.deepEqual(dispatches, [childRunId], 'the recovered queue claim resumes the same child exactly once');
+    assert.equal(current().status, 'running');
+    assert.equal(current().version, claimedVersion, 'a task already claimed before restart is not written again');
+    assert.equal(current().canonicalRunId, childRunId);
+    assert.equal(activeStore.runRepository().findById('workspace-a', childRunId)?.status, 'waiting_approval');
+    assert.deepEqual(activeStore.runStageRepository().listByRun('workspace-a', childRunId)
+      .map(stage => ({ id: stage.id, attempt: stage.attempt })), stageAttempts,
+    'recovery keeps the existing Run and stage attempts');
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runs WHERE workspace_id = ?').get('workspace-a') as { count: number }).count, runCount,
+      'recovery cannot create another Run');
+    await production.service.resumeGrantedQueuedRuns();
+    assert.deepEqual(dispatches, [childRunId], 'a subsequent queue sweep cannot dispatch the same Run again');
   } finally {
     reopened?.close();
     await fx.close();
