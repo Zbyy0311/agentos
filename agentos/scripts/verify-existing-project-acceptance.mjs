@@ -848,9 +848,14 @@ async function configureWorkspace(baseUrl, workspaceId, mode, model, executable)
     });
   }
   for (const [agent, role, permissions] of roleConfig) {
+    const checkpointInstructions = role === 'implementer'
+      ? 'An explicit first-delivery checkpoint is a scope boundary. In the initial round, submit only its primary examples and focused tests; do not add compatibility evidence that the plan explicitly reserves for a later round. In a linked revision, address the actual recorded review request and add the requested evidence. Keep the primary implementation working; never insert a defect to cause rework.'
+      : role === 'reviewer'
+        ? 'A first-delivery checkpoint does not waive the final acceptance criteria. Inspect the frozen candidate and actual tests for the complete required evidence. If required compatibility evidence is missing, request those concrete missing checks before approval. Approve directly when all requirements are already proven; never invent findings or request cosmetic changes merely to create a revision.'
+        : 'Preserve any explicit first-delivery checkpoint in the plan. Distinguish the initial deliverable from final acceptance evidence; do not instruct the implementer to include evidence explicitly reserved for a linked revision in the initial candidate.';
     const systemPrompt = mode === 'simulated-provider'
       ? `P4_ACCEPTANCE_SIM_ROLE=${role}\nYou are the ${role}. Stay within the approved plan and report concrete evidence.`
-      : `You are the ${role} in a bounded existing-project acceptance run. Follow the user's concrete plan, keep changes within scope, and report evidence. Inspect only the approved scope and the frozen candidate/test evidence provided in this call. Do not scan repository documentation, historical receipts, personal memories or other workspaces for task identifiers. Keep planning and review concise. A read-only stage can run git with a per-command safe.directory for the exact current worktree if needed; never change global Git configuration. Do not fabricate findings or review transitions.`;
+      : `You are the ${role} in a bounded existing-project acceptance run. Follow the user's concrete plan, keep changes within scope, and report evidence. ${checkpointInstructions} Inspect only the approved scope and the frozen candidate/test evidence provided in this call. Do not scan repository documentation, historical receipts, personal memories or other workspaces for task identifiers. Keep planning and review concise. A read-only stage can run git with a per-command safe.directory for the exact current worktree if needed; never change global Git configuration. Do not fabricate findings or review transitions.`;
     await api(baseUrl, `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agent.id)}`, {
       method: 'PATCH', body: { permissions, systemPrompt },
     });
