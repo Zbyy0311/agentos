@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChildProcess, execFileSync } from 'node:child_process';
+import { rm } from 'node:fs/promises';
 import { CLIExecutor, CLIError, createCommandInvocation, DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveInactivityTimeoutMs, resolveKimiCliArgs, safeCleanup } from './executor.js';
 import type { AgentConfig } from './types.js';
 import type { RunFileChange } from '@agentos/shared';
@@ -15,6 +16,149 @@ const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: new (path: st
 process.env.AGENTOS_FORCE_MOCK = 'false';
 const originalAgentTimeout = process.env.AGENTOS_AGENT_TIMEOUT;
 const originalMaxExecutionTimeout = process.env.AGENTOS_MAX_EXECUTION_MS;
+// Keep abort + process-exit observation + bounded cleanup inside each 20s test deadline.
+const STRUCTURED_FIXTURE_WATCHDOG_MS = 16_000;
+const STRUCTURED_FIXTURE_CANCEL_SETTLE_MS = 1_000;
+const STRUCTURED_FIXTURE_CLEANUP_BUDGET_MS = 750;
+
+interface WrapperFixtureEvent {
+  phase: 'probe-version' | 'probe-help' | 'execute';
+  state: 'start' | 'end';
+  at: number;
+  pid: number;
+}
+
+async function executeWrapperFixture<T>(
+  label: string,
+  commandRoot: string,
+  lifecyclePath: string,
+  execute: (signal: AbortSignal) => Promise<T>,
+): Promise<{ value: T; events: WrapperFixtureEvent[]; phaseDurationsMs: number[]; elapsedMs: number; cleanupMs: number }> {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  let watchdogFired = false;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const execution = Promise.resolve().then(() => execute(controller.signal)).then(
+    value => ({ kind: 'completed' as const, value }),
+    error => ({ kind: 'failed' as const, error }),
+  );
+  let cleanupPromise: Promise<{ kind: 'removed' } | { kind: 'failed'; error: string } | { kind: 'timed-out' }> | undefined;
+  const cleanup = () => {
+    cleanupPromise ??= (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const removal = rm(commandRoot, { recursive: true, force: true, maxRetries: 4, retryDelay: 50 }).then(
+        () => ({ kind: 'removed' as const }),
+        error => ({ kind: 'failed' as const, error: error instanceof Error ? error.message : String(error) }),
+      );
+      const outcome = await Promise.race([
+        removal,
+        new Promise<{ kind: 'timed-out' }>(resolve => {
+          timer = setTimeout(() => resolve({ kind: 'timed-out' }), STRUCTURED_FIXTURE_CLEANUP_BUDGET_MS);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      return outcome;
+    })();
+    return cleanupPromise;
+  };
+  const outcome = await Promise.race([
+    execution,
+    new Promise<{ kind: 'watchdog' }>(resolve => {
+      watchdog = setTimeout(() => {
+        watchdogFired = true;
+        controller.abort();
+        resolve({ kind: 'watchdog' });
+      }, STRUCTURED_FIXTURE_WATCHDOG_MS);
+    }),
+  ]);
+  if (watchdog) clearTimeout(watchdog);
+
+  let finalOutcome: Awaited<typeof execution> | { kind: 'watchdog' } | { kind: 'cancel-pending' } = outcome;
+  if (outcome.kind === 'watchdog') {
+    let cancelSettleTimer: ReturnType<typeof setTimeout> | undefined;
+    finalOutcome = await Promise.race([
+      execution,
+      new Promise<{ kind: 'cancel-pending' }>(resolve => {
+        cancelSettleTimer = setTimeout(() => resolve({ kind: 'cancel-pending' }), STRUCTURED_FIXTURE_CANCEL_SETTLE_MS);
+      }),
+    ]);
+    if (cancelSettleTimer) clearTimeout(cancelSettleTimer);
+  }
+
+  const readEvents = (): WrapperFixtureEvent[] => {
+    try {
+      return existsSync(lifecyclePath)
+        ? readFileSync(lifecyclePath, 'utf8').split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as WrapperFixtureEvent)
+        : [];
+    } catch { return []; }
+  };
+  const events = readEvents();
+  const pending = new Map<string, WrapperFixtureEvent>();
+  const phaseDurationsMs: number[] = [];
+  for (const event of events) {
+    const key = `${event.phase}:${event.pid}`;
+    if (event.state === 'start') pending.set(key, event);
+    else {
+      const start = pending.get(key);
+      if (start) phaseDurationsMs.push(event.at - start.at);
+      pending.delete(key);
+    }
+  }
+  const phaseSummary = events.map(event => `${event.phase}:${event.state}+${event.at - startedAt}ms(pid=${event.pid})`).join(',') || 'no fixture markers';
+  const isPidActive = (pid: number): boolean => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+  };
+  if (finalOutcome.kind === 'cancel-pending') {
+    throw new Error(`${label} execute did not settle within ${STRUCTURED_FIXTURE_CANCEL_SETTLE_MS}ms after cancellation; fixture retained at ${commandRoot}; totalMs=${Date.now() - startedAt}; phases=${phaseSummary}`);
+  }
+
+  let activePids = [...new Set(events.map(event => event.pid))].filter(isPidActive);
+
+  if (activePids.length > 0) {
+    // Wait briefly for an abort-triggered wrapper exit, but preserve files if it survives.
+    const exitDeadline = Date.now() + STRUCTURED_FIXTURE_CANCEL_SETTLE_MS;
+    while (activePids.length > 0 && Date.now() < exitDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+      activePids = activePids.filter(isPidActive);
+    }
+    if (activePids.length > 0) {
+      throw new Error(`${label} fixture process remained active after execute settled; fixture retained at ${commandRoot}; activePids=${activePids.join(',')}; totalMs=${Date.now() - startedAt}; phases=${phaseSummary}`);
+    }
+  }
+
+  const cleanupStartedAt = Date.now();
+  const cleanupResult = await cleanup();
+  const cleanupMs = Date.now() - cleanupStartedAt;
+  const elapsedMs = Date.now() - startedAt;
+  if (cleanupResult.kind !== 'removed' || existsSync(commandRoot)) {
+    throw new Error(`${label} fixture cleanup exceeded its bound: elapsedMs=${cleanupMs}; exists=${existsSync(commandRoot)}; result=${cleanupResult.kind}${cleanupResult.kind === 'failed' ? `:${cleanupResult.error}` : ''}; phases=${phaseSummary}`);
+  }
+  if (watchdogFired) {
+    throw new Error(`${label} fixture execution exceeded ${STRUCTURED_FIXTURE_WATCHDOG_MS}ms; canceled and settled=${finalOutcome.kind} within ${STRUCTURED_FIXTURE_CANCEL_SETTLE_MS}ms; totalMs=${elapsedMs}; cleanupMs=${cleanupMs}; phases=${phaseSummary}`);
+  }
+  if (finalOutcome.kind === 'failed') {
+    const cause = finalOutcome.error instanceof Error ? finalOutcome.error.message : String(finalOutcome.error);
+    throw new Error(`${label} fixture execution failed after ${elapsedMs}ms; cleanupMs=${cleanupMs}; phases=${phaseSummary}; cause=${cause}`);
+  }
+  if (finalOutcome.kind !== 'completed') {
+    throw new Error(`${label} fixture did not settle; cleanupMs=${cleanupMs}; phases=${phaseSummary}`);
+  }
+  return { value: finalOutcome.value, events, phaseDurationsMs, elapsedMs, cleanupMs };
+}
+
+function expectCompletedWrapperLifecycle(
+  label: string,
+  fixture: { events: WrapperFixtureEvent[]; phaseDurationsMs: number[]; elapsedMs: number; cleanupMs: number },
+): void {
+  const diagnostic = `${label} lifecycle: elapsedMs=${fixture.elapsedMs}; phaseDurationsMs=${fixture.phaseDurationsMs.join(',')}; cleanupMs=${fixture.cleanupMs}; markers=${fixture.events.map(event => `${event.phase}:${event.state}+${event.at - (fixture.events[0]?.at ?? event.at)}ms(pid=${event.pid})`).join(',')}`;
+  expect(fixture.events.map(event => `${event.phase}:${event.state}`), diagnostic).toEqual([
+    'probe-version:start', 'probe-version:end', 'probe-help:start', 'probe-help:end', 'execute:start', 'execute:end',
+  ]);
+  expect(fixture.phaseDurationsMs, diagnostic).toHaveLength(3);
+  expect(fixture.phaseDurationsMs.every(durationMs => durationMs < 5000), diagnostic).toBe(true);
+  expect(fixture.cleanupMs, diagnostic).toBeLessThan(STRUCTURED_FIXTURE_CLEANUP_BUDGET_MS);
+}
 
 describe('resolveAgentRuntimeConfig', () => {
   it('replaces the Kimi model without mutating the source args', () => {
@@ -187,38 +331,44 @@ describe('CLIExecutor', () => {
     const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-structured-codex-'));
     const commandPath = join(commandRoot, 'codex.cmd');
     const scriptPath = join(commandRoot, 'fake-codex.mjs');
+    const lifecyclePath = join(commandRoot, 'lifecycle.jsonl');
     writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "%~dp0fake-codex.mjs" %*\r\nexit /b %ERRORLEVEL%\r\n`, 'utf8');
     writeFileSync(scriptPath, [
+      "import { appendFileSync } from 'node:fs';",
       "const args = process.argv.slice(2);",
+      `const lifecyclePath = ${JSON.stringify(lifecyclePath)};`,
+      "const phase = args.includes('--version') ? 'probe-version' : args.includes('--help') ? 'probe-help' : 'execute';",
+      "const mark = state => appendFileSync(lifecyclePath, JSON.stringify({phase,state,at:Date.now(),pid:process.pid}) + '\\n');",
+      "const run = async () => { mark('start'); try {",
       "if (args.includes('--version')) { console.log('codex 0.0.0'); }",
       "else if (args.includes('--help')) { console.log('Usage: codex exec --json'); }",
       "else {",
       "  const lines = [JSON.stringify({type:'thread.started'}), JSON.stringify({type:'item.started',item:{id:'cmd-1',type:'command_execution',command:'echo evidence'}}), JSON.stringify({type:'item.completed',item:{id:'cmd-1',type:'command_execution',status:'completed',exit_code:0}}), JSON.stringify({type:'item.completed',item:{id:'msg-1',type:'agent_message',text:'结构化回复'}}), JSON.stringify({type:'turn.completed',usage:{output_tokens:2}})];",
-      "  process.stdout.write(lines[0] + '\\n'); setTimeout(() => process.stdout.write(lines[1] + '\\n' + lines[2] + '\\n'), 10); setTimeout(() => { process.stdout.write(lines[3] + '\\n' + lines[4] + '\\n'); }, 20);",
-      "}",
+      "  process.stdout.write(lines[0] + '\\n'); await new Promise(resolve => setTimeout(resolve, 10)); process.stdout.write(lines[1] + '\\n' + lines[2] + '\\n'); await new Promise(resolve => setTimeout(resolve, 10)); process.stdout.write(lines[3] + '\\n' + lines[4] + '\\n');",
+      "} } finally { mark('end'); } };",
+      "await run();",
     ].join('\n'), 'utf8');
 
-    try {
-      const runtimeEvents: string[] = [];
-      const chunks: Array<{ text: string; done: boolean }> = [];
-      const log = await CLIExecutor.execute({
-        name: 'Fake Codex', role: 'codex_manager', cliCommand: commandPath, cliArgs: ['exec'],
-      }, 'structured prompt', {
-        ...ctx('structured-codex'),
-        onRuntimeEvent: event => runtimeEvents.push(event.type),
-        onChunk: (text, done) => chunks.push({ text, done }),
-      });
+    const runtimeEvents: string[] = [];
+    const chunks: Array<{ text: string; done: boolean }> = [];
+    const fixture = await executeWrapperFixture('Codex', commandRoot, lifecyclePath, signal => CLIExecutor.execute({
+      name: 'Fake Codex', role: 'codex_manager', cliCommand: commandPath, cliArgs: ['exec'],
+    }, 'structured prompt', {
+      ...ctx('structured-codex'),
+      signal,
+      onRuntimeEvent: event => runtimeEvents.push(event.type),
+      onChunk: (text, done) => chunks.push({ text, done }),
+    }));
 
-      expect(log.stdout).toBe('结构化回复');
-      expect(log.stdout).not.toContain('item.completed');
-      expect(runtimeEvents).toEqual(['status', 'tool.started', 'tool.completed', 'assistant.message', 'status', 'usage']);
-      expect(chunks.filter(chunk => !chunk.done).map(chunk => chunk.text)).toEqual(['结构化回复']);
-      expect(chunks.filter(chunk => chunk.done)).toHaveLength(1);
-    } finally {
-      rmSync(commandRoot, { recursive: true, force: true });
-    }
+    const log = fixture.value;
+    expectCompletedWrapperLifecycle('Codex', fixture);
+    expect(log.stdout).toBe('结构化回复');
+    expect(log.stdout).not.toContain('item.completed');
+    expect(runtimeEvents).toEqual(['status', 'tool.started', 'tool.completed', 'assistant.message', 'status', 'usage']);
+    expect(chunks.filter(chunk => !chunk.done).map(chunk => chunk.text)).toEqual(['结构化回复']);
+    expect(chunks.filter(chunk => chunk.done)).toHaveLength(1);
   // Two real capability probes each have a 5s bound before the stream starts.
-  // Keep the fixture deadline above that budget on Windows CI runners.
+  // Keep the test deadline above the probes and retain a shorter cancel-and-cleanup watchdog.
   }, 20_000);
 
   it('emits OpenCode token usage from the per-run SQLite delta', async () => {
@@ -294,30 +444,38 @@ describe('CLIExecutor', () => {
     const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-fake-kimi-'));
     const commandPath = join(commandRoot, 'kimi.cmd');
     const scriptPath = join(commandRoot, 'fake-kimi.cjs');
-    writeFileSync(commandPath, '@echo off\r\nnode "%~dp0fake-kimi.cjs" %*\r\n', 'utf8');
+    const lifecyclePath = join(commandRoot, 'lifecycle.jsonl');
+    writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "%~dp0fake-kimi.cjs" %*\r\nexit /b %ERRORLEVEL%\r\n`, 'utf8');
     writeFileSync(scriptPath, [
+      "const { appendFileSync } = require('node:fs');",
       "const args = process.argv.slice(2);",
-      "if (args.includes('--version')) { console.log('0.23.5'); process.exit(0); }",
-      "if (args.includes('--help')) { console.log('Usage: kimi --output-format <format> (choices: text, stream-json)'); process.exit(0); }",
-      "console.log(JSON.stringify({role:'assistant',tool_calls:[{type:'function',id:'tool-1',function:{name:'Glob',arguments:'{\\\"pattern\\\":\\\"*.ts\\\"}'}}]}));",
-      "console.log(JSON.stringify({role:'tool',tool_call_id:'tool-1',content:'executor.ts'}));",
-      "console.log(JSON.stringify({role:'assistant',content:'Kimi done'}));",
-      "console.log(JSON.stringify({type:'step.end',id:'step-1',usage:{input_tokens:8,cached_input_tokens:2,output_tokens:3}}));",
+      `const lifecyclePath = ${JSON.stringify(lifecyclePath)};`,
+      "const phase = args.includes('--version') ? 'probe-version' : args.includes('--help') ? 'probe-help' : 'execute';",
+      "const mark = state => appendFileSync(lifecyclePath, JSON.stringify({phase,state,at:Date.now(),pid:process.pid}) + '\\n');",
+      "mark('start');",
+      "try {",
+      "  if (args.includes('--version')) { console.log('0.23.5'); }",
+      "  else if (args.includes('--help')) { console.log('Usage: kimi --output-format <format> (choices: text, stream-json)'); }",
+      "  else {",
+      "    console.log(JSON.stringify({role:'assistant',tool_calls:[{type:'function',id:'tool-1',function:{name:'Glob',arguments:'{\\\"pattern\\\":\\\"*.ts\\\"}'}}]}));",
+      "    console.log(JSON.stringify({role:'tool',tool_call_id:'tool-1',content:'executor.ts'}));",
+      "    console.log(JSON.stringify({role:'assistant',content:'Kimi done'}));",
+      "    console.log(JSON.stringify({type:'step.end',id:'step-1',usage:{input_tokens:8,cached_input_tokens:2,output_tokens:3}}));",
+      "  }",
+      "} finally { mark('end'); }",
     ].join('\n'), 'utf8');
     const events: Array<{ type: string; [key: string]: unknown }> = [];
-    try {
-      const log = await CLIExecutor.execute({
-        name: 'KimiCode', role: 'kimi_worker', provider: 'kimi', cliCommand: commandPath, cliArgs: ['-p'],
-      }, 'read files', { ...ctx('kimi-stream-json'), onRuntimeEvent: event => events.push(event) });
-      expect(log.exitCode).toBe(0);
-      expect(log.stdout).toContain('Kimi done');
-      expect(events.some(event => event.type === 'tool.started')).toBe(true);
-      expect(events.some(event => event.type === 'tool.completed')).toBe(true);
-      expect(events.find(event => event.type === 'usage')).toMatchObject({ inputTokens: 8, cachedInputTokens: 2, outputTokens: 3 });
-    } finally {
-      rmSync(commandRoot, { recursive: true, force: true });
-    }
-  });
+    const fixture = await executeWrapperFixture('Kimi', commandRoot, lifecyclePath, signal => CLIExecutor.execute({
+      name: 'KimiCode', role: 'kimi_worker', provider: 'kimi', cliCommand: commandPath, cliArgs: ['-p'],
+    }, 'read files', { ...ctx('kimi-stream-json'), signal, onRuntimeEvent: event => events.push(event) }));
+    const log = fixture.value;
+    expectCompletedWrapperLifecycle('Kimi', fixture);
+    expect(log.exitCode).toBe(0);
+    expect(log.stdout).toContain('Kimi done');
+    expect(events.some(event => event.type === 'tool.started')).toBe(true);
+    expect(events.some(event => event.type === 'tool.completed')).toBe(true);
+    expect(events.find(event => event.type === 'usage')).toMatchObject({ inputTokens: 8, cachedInputTokens: 2, outputTokens: 3 });
+  }, 20_000);
 
   it('reports a redacted CLI lifecycle and Git file changes', async () => {
     execFileSync('git', ['init', workspaceRoot], { stdio: 'ignore' });

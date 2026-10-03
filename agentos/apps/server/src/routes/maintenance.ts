@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { sendProblem } from '../problemDetails.js';
 import type { MaintenanceBarrier } from '../services/MaintenanceBarrier.js';
+import { beginMaintenanceRequestDrain } from '../services/MaintenanceRequestDrain.js';
 import type { MaintenanceCoordinator } from '../services/MaintenanceCoordinator.js';
 import { MaintenanceError as CoordinatorError } from '../services/MaintenanceCoordinator.js';
 import type { MaintenanceDiagnosticsService } from '../services/MaintenanceDiagnosticsService.js';
@@ -133,14 +134,7 @@ export function createMaintenanceWriteBarrier(barrier: MaintenanceBarrier) {
       });
       return;
     }
-    let released = false;
-    const releaseOnce = () => {
-      if (released) return;
-      released = true;
-      release();
-    };
-    res.once('finish', releaseOnce);
-    res.once('close', releaseOnce);
+    beginMaintenanceRequestDrain(req, res, release);
     next();
   };
 }

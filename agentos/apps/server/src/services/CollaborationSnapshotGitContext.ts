@@ -158,6 +158,7 @@ export class CollaborationSnapshotGitContext {
         temporaryDirectory, gitDirectory, shadowWorktree, privateEnv);
       for (const [key, value] of [
         ['core.bare', 'false'], ['core.attributesfile', emptyConfig], ['core.fsmonitor', 'false'],
+        ...(process.platform === 'win32' ? [['core.longpaths', 'true']] : []),
         ['core.untrackedcache', 'false'], ['core.hookspath', join(temporaryDirectory, 'empty-hooks')],
       ]) await context.run(['config', key, value]);
       for (const key of NORMALIZATION_CONFIG) {

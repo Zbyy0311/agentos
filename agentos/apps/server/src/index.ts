@@ -70,6 +70,7 @@ import { createCollaborationRoutes } from './routes/collaborations.js';
 import { createMaintenanceRoutes, createMaintenanceWriteBarrier } from './routes/maintenance.js';
 import { createReadinessRoutes } from './routes/readiness.js';
 import { MaintenanceBarrier } from './services/MaintenanceBarrier.js';
+import { installMaintenanceRequestDrain } from './services/MaintenanceRequestDrain.js';
 import { MaintenanceCoordinator, MaintenanceError } from './services/MaintenanceCoordinator.js';
 import { createMaintenanceShutdownController } from './services/MaintenanceShutdown.js';
 import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './services/MaintenanceDiagnosticsService.js';
@@ -562,6 +563,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api', createApiNotFoundHandler());
     app.use(createProblemErrorHandler());
 
+    installMaintenanceRequestDrain(app);
     phase = 'listen';
     httpServer = await listenHttpServer(app, PORT, security.host);
     const localControlNonce = process.env.AGENTOS_LOCAL_SHUTDOWN_NONCE;

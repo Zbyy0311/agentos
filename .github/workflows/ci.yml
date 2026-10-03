@@ -62,7 +62,7 @@ jobs:
         run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
 
       - name: P4 acceptance receipt contract tests
-        run: node --test --test-reporter=tap scripts/validate-existing-project-acceptance.test.mjs
+        run: node --test --test-reporter=tap scripts/p4-plan-bindings.test.mjs scripts/validate-existing-project-acceptance.test.mjs scripts/verify-existing-project-acceptance.test.mjs scripts/acceptance-provider-identity.test.mjs scripts/acceptance-server-shutdown.test.mjs
 
       - name: Validate P4 acceptance manifest without claiming a run
         run: node scripts/validate-existing-project-acceptance.mjs --check-manifest
@@ -171,6 +171,31 @@ jobs:
         with:
           name: server-coverage-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/coverage.json
+          if-no-files-found: error
+
+  p3-local-operations:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Diagnostic redaction contract
+        run: node --test scripts/agentos-diagnostic-redaction.test.mjs
+      - name: Windows instance ownership and safe lifecycle
+        run: node scripts/run-p4-ci-gate.mjs windows-local-launcher --mode real-windows-process -- pwsh -NoProfile -File scripts/agentos-local.test.ps1 -TimeoutSeconds 60
+      - name: Preserve local lifecycle receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-local-operations-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/windows-local-launcher/
           if-no-files-found: error
 
   p4-core:
