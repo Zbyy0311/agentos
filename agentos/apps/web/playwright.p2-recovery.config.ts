@@ -18,13 +18,15 @@ const projectRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-recovery-project-'));
 const resultsRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-group-recovery-results-'));
 const tsconfigRootPrefix = 'agentos-p2-group-recovery-tsconfig-';
 // Next 14 joins tsconfigPath with the app root, including absolute paths.
-// Keep the generated configuration on the checkout drive so relative() works.
-mkdirSync(nextDistPath, { recursive: true });
-const tsconfigRoot = mkdtempSync(join(nextDistPath, tsconfigRootPrefix));
+// Keep it on the checkout drive and outside dist, which Next clears on startup.
+const generatedConfigRoot = join(webRoot, '.next-p2-group-recovery-config');
+mkdirSync(generatedConfigRoot, { recursive: true });
+const tsconfigRoot = mkdtempSync(join(generatedConfigRoot, tsconfigRootPrefix));
 const tempTsconfigPath = resolve(tsconfigRoot, 'tsconfig.json');
 const nextTsconfigPath = relative(webRoot, tempTsconfigPath);
 writeFileSync(tempTsconfigPath, JSON.stringify({
   extends: nextConfigPath,
+  compilerOptions: { baseUrl: webRoot },
   include: [
     resolve(webRoot, 'next-env.d.ts'),
     resolve(webRoot, 'src/**/*.ts'),
@@ -46,7 +48,7 @@ function removeOwnedTempDirectory(path: string, expectedPrefix: string) {
 function removeOwnedGeneratedTsconfigDirectory() {
   try {
     const verifiedPath = realpathSync(tsconfigRoot);
-    if (dirname(verifiedPath) !== realpathSync(nextDistPath)
+    if (dirname(verifiedPath) !== realpathSync(generatedConfigRoot)
       || !basename(verifiedPath).startsWith(tsconfigRootPrefix)) return;
     rmSync(verifiedPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   } catch { /* preserve uncertain paths */ }
