@@ -594,6 +594,86 @@ test('P2 retry recovery resumes one queued child after a pre-Start interruption,
   } finally { await fx.close(); }
 });
 
+test('P2 linked queued retry survives database restart admission reconstruction and same-key recovery', async () => {
+  let fx!: ReturnType<typeof fixture>;
+  let dispatchCalls = 0;
+  fx = fixture({
+    requestRunAdmission: input => fx.authority.requestCanonicalRun(input),
+    releaseRunAdmission: input => fx.authority.releaseCanonicalRun(input),
+    dispatchRun: async () => { dispatchCalls++; },
+  });
+  let reopened: SqliteStore | undefined;
+  try {
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-linked-queued-retry-restart-01', action: 'retry-known-failure' as const,
+    };
+    const realPreflight = fx.worktrees.preflight.bind(fx.worktrees);
+    fx.worktrees.preflight = async (root, options) => {
+      if (root !== fx.repositoryRoot) throw new Error('simulated interruption after canonical child link and before Start');
+      return realPreflight(root, options);
+    };
+    await assert.rejects(() => fx.service.recover(input), /after canonical child link/u);
+    const child = fx.store.getDatabase().prepare('SELECT id,status FROM runs WHERE workspace_id = ? AND parent_run_id = ?')
+      .get('workspace-a', failed.id) as { id: string; status: string };
+    assert.equal(child.status, 'queued');
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, child.id);
+    assert.equal(fx.store.operationService().listByRun('workspace-a', child.id).filter(operation => operation.type === 'run.start').length, 0);
+    fx.closeDatabase();
+
+    reopened = new SqliteStore(fx.dataRoot);
+    const authority = new WorkspaceAdmissionAuthority({ store: reopened });
+    const worktrees = new WorktreeManager(join(fx.root, 'worktrees'));
+    const service = new CollaborationWorkflowService({
+      store: reopened, workspaces: new WorkspaceManager(reopened), worktrees,
+      dispatchRun: async () => { dispatchCalls++; },
+      requestRunAdmission: input => authority.requestCanonicalRun(input),
+      releaseRunAdmission: input => authority.releaseCanonicalRun(input),
+      requestApplicationAdmission: async input => Boolean((await authority.requestCollaborationApplication(input)).grantedAdmission),
+      releaseApplicationAdmission: async input => { await authority.releaseCollaborationApplication(input); },
+      registerWorktreePath: () => undefined,
+      cancelRun: async () => { throw new Error('Pre-Start recovery must not replay cancellation effects'); },
+    });
+    recoverInterruptedTaskRuntime(reopened, new TaskRunService(reopened), { classifyRunningProcess: () => 'unknown' });
+    recoverInterruptedRuns(reopened);
+    await new WorkspaceAdmissionStartupReconciler({ store: reopened }).reconcileOnStartup();
+    await service.reconcileOnStartup();
+    const admission = reopened.getDatabase().prepare('SELECT state FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?')
+      .get('workspace-a', child.id) as { state: string };
+    assert.equal(admission.state, 'GRANTED', 'startup admission reconstruction is expected for this free workspace');
+
+    await service.resumeGrantedQueuedRuns();
+    assert.equal(new CollaborationRepository(reopened.getDatabase()).findById('workspace-a', fx.plan.id)?.status, 'queued',
+      'startup queue handling cannot claim a retry without durable Start authorization');
+    assert.equal(dispatchCalls, 0);
+    const options = await service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.retryKnownFailure, true, 'a queue-only admission is not Provider side-effect evidence');
+    assert.equal(options.resumeRequest?.idempotencyKey, input.idempotencyKey);
+
+    const resumed = await service.recover(input);
+    assert.equal(resumed.newRunId, child.id, 'same-key recovery resumes the already-linked child');
+    assert.equal(reopened.runRepository().findById('workspace-a', child.id)?.status, 'queued');
+    assert.equal(reopened.operationService().listByRun('workspace-a', child.id).filter(operation => operation.type === 'run.start').length, 1);
+    assert.equal((reopened.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE workspace_id = ? AND parent_run_id = ?')
+      .get('workspace-a', failed.id) as { count: number }).count, 1);
+    assert.equal(dispatchCalls, 1, 'the existing grant dispatches only after same-key recovery authorizes Start');
+    const replay = await service.recover(input);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.newRunId, child.id);
+  } finally {
+    reopened?.close();
+    await fx.close();
+  }
+});
+
 test('P2 retry recovery rechecks durable Start evidence inside the Start authorization transaction', async () => {
   const fx = fixture({ runtimeDispatchEnabled: false });
   try {
@@ -629,18 +709,39 @@ test('P2 retry recovery rechecks durable Start evidence inside the Start authori
 
     const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
     assert.equal(options.actions.retryKnownFailure, false);
-    assert.match(options.reason ?? '', /Start/u);
-    await assert.rejects(() => fx.service.recover(input), error =>
-      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_REQUIRED');
+    assert.equal(options.actions.newLinkedTask, true,
+      'a queued Start is not replayable but can be safely retired into a clean linked task');
+    assert.match(options.reason ?? '', /Start.*不会重放/u);
+    assert.equal(fx.service.canDispatch('workspace-a', child), false,
+      'the unresolved P2 row fences startup and every dispatch boundary');
+    const linkInput = {
+      ...input,
+      expectedTaskVersion: options.taskVersion,
+      expectedRunId: options.runId!,
+      expectedRunVersion: options.runVersion!,
+      action: 'new-linked-task' as const,
+      idempotencyKey: 'p2-recovery-start-linked-clean-01',
+    };
+    const linked = await fx.service.recover(linkInput);
+    assert.equal(linked.task.status, 'awaiting_confirmation');
+    assert.equal(linked.checkedBaseCommit, fx.plan.baseCommit);
+    assert.equal(fx.store.runRepository().findById('workspace-a', child)?.status, 'cancelled');
+    assert.deepEqual(fx.store.operationService().listByRun('workspace-a', child)
+      .filter(item => item.type === 'run.start').map(item => item.status), ['cancelled']);
     assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.canonicalRunId, child,
-      'the queued child is linked, but the Start evidence race keeps it from dispatch');
+      'the old task retains the cancelled child as its canonical history');
+    assert.equal(fx.repository.findById('workspace-a', fx.plan.id)?.status, 'blocked');
     assert.equal(fx.worktrees.listLeases().some(item => item.runId === child && item.status === 'active'), true,
-      'the race occurs after worktree creation, so the same owned lease is retained');
+      'the old owned lease remains preserved for inspection');
     assert.equal(fx.store.operationService().listByRun('workspace-a', child).filter(item => item.type === 'run.start').length, 1,
-      'the service does not add a second Start operation after the transactional evidence recheck');
+      'the recovery never adds a second Start operation');
     assert.equal((fx.store.getDatabase().prepare('SELECT state FROM p2_collaboration_recoveries WHERE id = ?')
       .get(recovery.id) as { state: string }).state, 'recovery_required');
-    assert.equal(fx.store.runRepository().findById('workspace-a', child)?.status, 'queued');
+    const replay = await fx.service.recover(linkInput);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.task.id, linked.task.id);
+    await assert.rejects(() => fx.service.recover({ ...linkInput, expectedRunVersion: linkInput.expectedRunVersion + 1 }), error =>
+      (error as { code?: string }).code === 'COLLABORATION_RECOVERY_IDEMPOTENCY_CONFLICT');
   } finally { await fx.close(); }
 });
 

@@ -4,9 +4,10 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { CollaborationProgress } from '@agentos/shared';
 import type { CollaborationProgressState } from '../../lib/useCollaborationProgress';
+import { shouldRenderCollaborationRecoveryPanel } from './CollaborationRecoveryPanel';
 import { CollaborationTaskDetailsView } from './CollaborationTaskDetailsView';
 
-function renderDetails(status: 'failed' | 'blocked' | 'running' | 'awaiting_application'): string {
+function renderDetails(status: 'failed' | 'blocked' | 'running' | 'queued' | 'awaiting_application'): string {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const task = {
     id: 'collab-recovery-view', status, title: 'Recover a failed task', objective: 'Keep the original goal and history.',
@@ -33,10 +34,22 @@ function renderDetails(status: 'failed' | 'blocked' | 'running' | 'awaiting_appl
   />);
 }
 
-test('failed collaboration details render the recovery panel while active tasks do not', () => {
+test('failed collaboration details render recovery while ordinary queued and active tasks stay quiet', () => {
   assert.match(renderDetails('failed'), /aria-label="协作任务恢复"/u);
   assert.match(renderDetails('blocked'), /aria-label="协作任务恢复"/u);
+  assert.doesNotMatch(renderDetails('queued'), /aria-label="协作任务恢复"/u);
   assert.doesNotMatch(renderDetails('running'), /aria-label="协作任务恢复"/u);
+});
+
+test('queued recovery UI appears only after the server offers a resumable action', () => {
+  const unavailable = { actions: { retryKnownFailure: false, newLinkedTask: false } } as Parameters<typeof shouldRenderCollaborationRecoveryPanel>[0];
+  const resumable = { actions: { retryKnownFailure: true, newLinkedTask: false } } as Parameters<typeof shouldRenderCollaborationRecoveryPanel>[0];
+  const linkedOnly = { actions: { retryKnownFailure: false, newLinkedTask: true } } as Parameters<typeof shouldRenderCollaborationRecoveryPanel>[0];
+  assert.equal(shouldRenderCollaborationRecoveryPanel(null, false), false, 'queued loading state has no placeholder');
+  assert.equal(shouldRenderCollaborationRecoveryPanel(unavailable, false), false);
+  assert.equal(shouldRenderCollaborationRecoveryPanel(resumable, false), true);
+  assert.equal(shouldRenderCollaborationRecoveryPanel(linkedOnly, false), true);
+  assert.equal(shouldRenderCollaborationRecoveryPanel(unavailable, true), true, 'failed tasks retain their unavailable explanation');
 });
 
 test('collaboration details render frozen preview and keep Apply disabled until it is inspected', () => {

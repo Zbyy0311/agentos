@@ -14,6 +14,7 @@ import { CollaborationRepository } from './store/CollaborationRepository.js';
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = join(SERVER_DIR, 'index.ts');
 const SERVER_CWD = resolve(SERVER_DIR, '..');
+const COMPILED_SERVER_ENTRY = join(SERVER_CWD, 'dist', 'index.js');
 
 interface SpawnedServer {
   readonly child: ChildProcess;
@@ -21,9 +22,33 @@ interface SpawnedServer {
   output(): string;
 }
 
+function fetchFixture(url: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  return fetch(url, { ...init, signal });
+}
+
+async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => true, () => true),
+      new Promise<boolean>(resolvePromise => { timer = setTimeout(() => resolvePromise(false), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function spawnServer(root: string, port: number, receipt: string, worktreeRoot?: string, capabilityReceipt?: string): SpawnedServer {
   let output = '';
-  const child = spawn(process.execPath, ['--import', 'tsx', SERVER_ENTRY], {
+  const useCompiledServer = process.env.AGENTOS_P2_RESTART_COMPILED === 'true';
+  if (useCompiledServer && !existsSync(COMPILED_SERVER_ENTRY)) {
+    throw new Error(`compiled restart fixture requested but server build is missing: ${COMPILED_SERVER_ENTRY}`);
+  }
+  const child = spawn(process.execPath, useCompiledServer
+    ? [COMPILED_SERVER_ENTRY]
+    : ['--import', 'tsx', SERVER_ENTRY], {
     cwd: SERVER_CWD,
     env: {
       ...process.env,
@@ -58,7 +83,8 @@ async function waitForHealthy(port: number): Promise<void> {
   let lastError = 'not attempted';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2_000) });
+      const response = await fetchFixture(`http://127.0.0.1:${port}/api/health`, {}, 2_000);
+      await response.arrayBuffer();
       if (response.ok) return;
       lastError = `HTTP ${response.status}`;
     } catch (error) { lastError = String(error); }
@@ -70,8 +96,33 @@ async function waitForHealthy(port: number): Promise<void> {
 async function waitForExit(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   await new Promise<void>((resolvePromise, reject) => {
-    const timer = setTimeout(() => reject(new Error('server process exit timed out')), 20_000);
-    child.once('exit', () => { clearTimeout(timer); resolvePromise(); });
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.removeListener('exit', onExit);
+      child.removeListener('error', onError);
+    };
+    const onExit = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolvePromise();
+    };
+    const onError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('server process exit timed out'));
+    }, 20_000);
+    child.once('exit', onExit);
+    child.once('error', onError);
+    if (child.exitCode !== null || child.signalCode !== null) onExit();
   });
 }
 
@@ -145,11 +196,13 @@ async function waitForRuntimeApproval(port: number, workspaceId: string, timeout
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/workspaces/${workspaceId}/runtime-approvals`);
+      const response = await fetchFixture(`http://127.0.0.1:${port}/api/workspaces/${workspaceId}/runtime-approvals`);
       if (response.ok) {
         const body = await response.json() as { requests?: Array<{ id: string; version: number; status: string }> };
         const pending = body.requests?.find(request => request.status === 'pending');
         if (pending) return pending;
+      } else {
+        await response.arrayBuffer();
       }
     } catch { /* the app may still be starting its Run */ }
     await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
@@ -239,7 +292,7 @@ async function waitForPidsToExit(pids: readonly number[], timeoutMs = 15_000): P
 }
 
 async function postJson(url: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<{ status: number; json: any }> {
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...extraHeaders }, body: JSON.stringify(body) });
+  const response = await fetchFixture(url, { method: 'POST', headers: { 'content-type': 'application/json', ...extraHeaders }, body: JSON.stringify(body) });
   return { status: response.status, json: await response.json() };
 }
 
@@ -294,6 +347,8 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
   let server = spawnServer(root, port, receipt);
   let cliPids: number[] = [];
   let responseDrain: Promise<unknown> | undefined;
+  const responseControllers: AbortController[] = [];
+  let testFailed = false;
   try {
     await waitForHealthy(port);
     const base = `http://127.0.0.1:${port}/api/workspaces/workspace-a/runtime`;
@@ -310,11 +365,14 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     const interactionId = discussion.json.interaction.id as string;
     const sourceMessageId = discussion.json.message.id as string;
     const responseUrl = `${base}/conversations/${conversationId}/interactions/${interactionId}/respond`;
-    const speakerRequest = fetch(responseUrl, {
+    const speakerController = new AbortController();
+    responseControllers.push(speakerController);
+    const speakerRequest = fetchFixture(responseUrl, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sourceMessageId }),
-    });
-    responseDrain = speakerRequest.then(response => response.text()).catch(() => undefined);
+      signal: speakerController.signal,
+    }, 170_000);
+    responseDrain = speakerRequest.then(async response => { await response.arrayBuffer(); }).catch(() => undefined);
     try { await waitForLineCount(receipt, 2); } catch (error) {
       const debug = new SqliteStore(root);
       let durable: unknown;
@@ -342,6 +400,7 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     await waitForGroupProviderEvidence(root, conversationId, interactionId, cliPids);
 
     server.child.kill('SIGKILL');
+    speakerController.abort(new Error('server restart intentionally ends the in-flight Provider response'));
     await waitForExit(server.child);
     server = spawnServer(root, port, receipt);
     await waitForHealthy(port);
@@ -430,13 +489,16 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
       assert.equal(link.source_message_id, newSourceMessageId);
     } finally { resumedOwner.close(); }
     const nextResponseUrl = `${base}/conversations/${conversationId}/interactions/${newInteractionId}/respond`;
-    const nextSpeakerRequest = fetch(nextResponseUrl, {
+    const nextSpeakerController = new AbortController();
+    responseControllers.push(nextSpeakerController);
+    const nextSpeakerRequest = fetchFixture(nextResponseUrl, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sourceMessageId: newSourceMessageId, namedAgentIds: participants }),
-    });
+      signal: nextSpeakerController.signal,
+    }, 170_000);
     responseDrain = Promise.all([
       responseDrain ?? Promise.resolve(),
-      nextSpeakerRequest.then(response => response.text()).catch(() => undefined),
+      nextSpeakerRequest.then(async response => { await response.arrayBuffer(); }).catch(() => undefined),
     ]);
     await waitForLineCount(receipt, 3);
     const recoveryReceipts = readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).map(row => JSON.parse(row) as { pid: number });
@@ -445,15 +507,23 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     assert.notEqual(recoveryReceipts[1]!.pid, recoveryReceipts[2]!.pid);
     cliPids.push(recoveryReceipts[2]!.pid);
   } catch (error) {
+    testFailed = true;
     throw new Error(`${error instanceof Error ? error.message : String(error)}\n${server.output()}`);
   } finally {
+    for (const controller of responseControllers) controller.abort(new Error('restart fixture teardown'));
     killServer(server);
-    await waitForExit(server.child).catch(() => {});
-    await responseDrain;
     for (const pid of cliPids) {
       try { process.kill(pid, 'SIGKILL'); } catch { /* already gone after platform cleanup */ }
     }
+    let serverExited = false;
+    try { await waitForExit(server.child); serverExited = true; } catch { /* bounded cleanup; preserve earlier assertions */ }
+    let providerChildrenExited = true;
+    try { await waitForPidsToExit(cliPids, 5_000); } catch { providerChildrenExited = false; }
+    const responsesSettled = await settlesWithin(responseDrain ?? Promise.resolve(), 5_000);
     try { rmSync(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* test result is more useful than a brief Windows teardown lock */ }
+    if (!testFailed && (!serverExited || !providerChildrenExited || !responsesSettled)) {
+      throw new Error(`group restart fixture teardown timed out (serverExited=${serverExited}, providerChildrenExited=${providerChildrenExited}, responsesSettled=${responsesSettled})`);
+    }
   }
 });
 
@@ -485,6 +555,7 @@ test('P2 recovery: a known pre-Provider failure creates exactly one canonical re
 
   const port = await freePort();
   let server = spawnServer(root, port, '', worktreeRoot);
+  let testFailed = false;
   try {
     await waitForHealthy(port);
     const base = `http://127.0.0.1:${port}/api/workspaces/workspace-a`;
@@ -503,7 +574,7 @@ test('P2 recovery: a known pre-Provider failure creates exactly one canonical re
     assert.equal(findNamedFile(worktreeRoot, 'p2-provider-invocation.jsonl'), undefined,
       'the fixture rejects missing structured-output capability before a Provider invocation');
     const recoveryUrl = `${base}/collaboration/tasks/${task.id}/recovery`;
-    const availabilityResponse = await fetch(recoveryUrl);
+    const availabilityResponse = await fetchFixture(recoveryUrl);
     const availability = (await availabilityResponse.json() as { recovery: { actions: { retryKnownFailure: boolean; newLinkedTask: boolean }; checkedBaseCommit?: string } }).recovery;
     assert.equal(availabilityResponse.status, 200);
     assert.equal(availability.actions.retryKnownFailure, true);
@@ -555,6 +626,7 @@ test('P2 recovery: a known pre-Provider failure creates exactly one canonical re
       assert.equal(spawnSyncGit(['status', '--porcelain'], workspaceRoot).stdout, '');
     } finally { verified.close(); }
   } catch (error) {
+    testFailed = true;
     const diagnosticStore = new SqliteStore(root);
     let diagnostic: unknown;
     try {
@@ -568,8 +640,10 @@ test('P2 recovery: a known pre-Provider failure creates exactly one canonical re
     throw new Error(`${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(diagnostic)}\n${server.output()}`);
   } finally {
     killServer(server);
-    await waitForExit(server.child).catch(() => {});
+    let serverExited = false;
+    try { await waitForExit(server.child); serverExited = true; } catch { /* bounded cleanup; preserve earlier assertions */ }
     try { rmSync(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* preserve the assertion result */ }
+    if (!testFailed && !serverExited) throw new Error('known-failure restart fixture server did not exit after teardown');
   }
 });
 
@@ -604,6 +678,7 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
   const port = await freePort();
   let server = spawnServer(root, port, '', worktreeRoot);
   let providerPid: number | undefined;
+  let testFailed = false;
   try {
     await waitForHealthy(port);
     const base = `http://127.0.0.1:${port}/api/workspaces/workspace-a`;
@@ -677,7 +752,7 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
     const recoveryUrl = `${taskUrl}/recovery`;
     const dirtyMarker = join(workspaceRoot, 'dirty-before-recovery.txt');
     writeFileSync(dirtyMarker, 'must block linked recovery until removed\n');
-    const dirtyOptionsResponse = await fetch(recoveryUrl);
+    const dirtyOptionsResponse = await fetchFixture(recoveryUrl);
     const dirtyOptions = await dirtyOptionsResponse.json() as { recovery: { actions: { newLinkedTask: boolean }; reason?: string } };
     assert.equal(dirtyOptionsResponse.status, 200);
     assert.equal(dirtyOptions.recovery.actions.newLinkedTask, false, 'unknown effects cannot create a task from a dirty baseline');
@@ -689,7 +764,7 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
     const cleanCheckedBaseline = spawnSyncGit(['rev-parse', 'HEAD'], workspaceRoot).stdout.trim();
     assert.notEqual(cleanCheckedBaseline, baseline);
     assert.equal(spawnSyncGit(['status', '--porcelain'], workspaceRoot).stdout, '');
-    const cleanOptionsResponse = await fetch(recoveryUrl);
+    const cleanOptionsResponse = await fetchFixture(recoveryUrl);
     const cleanOptions = await cleanOptionsResponse.json() as {
       recovery: {
         taskVersion: number; runId?: string; runVersion?: number;
@@ -761,13 +836,20 @@ test('P2 reproduction: a collaboration Provider side effect stays fenced after r
       assert.equal(spawnSyncGit(['status', '--porcelain'], workspaceRoot).stdout, '', 'the linked task was anchored to a clean checked baseline');
     } finally { finalStore.close(); }
   } catch (error) {
+    testFailed = true;
     throw new Error(`${error instanceof Error ? error.message : String(error)}\n${server.output()}`);
   } finally {
     killServer(server);
-    await waitForExit(server.child).catch(() => {});
     if (providerPid !== undefined) {
       try { process.kill(providerPid, 'SIGKILL'); } catch { /* the Windows job may already have ended it */ }
     }
+    let serverExited = false;
+    try { await waitForExit(server.child); serverExited = true; } catch { /* bounded cleanup; preserve earlier assertions */ }
+    let providerExited = true;
+    try { if (providerPid !== undefined) await waitForPidsToExit([providerPid], 5_000); } catch { providerExited = false; }
     try { rmSync(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* preserve the assertion result */ }
+    if (!testFailed && (!serverExited || !providerExited)) {
+      throw new Error(`collaboration restart fixture teardown timed out (serverExited=${serverExited}, providerExited=${providerExited})`);
+    }
   }
 });

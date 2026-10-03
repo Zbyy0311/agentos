@@ -702,13 +702,30 @@ export class CollaborationWorkflowService {
           ...(priorRun?.failureCode === undefined ? {} : { failureCode: priorRun.failureCode }),
           recoveryRequired: true, actions: { retryKnownFailure: false, newLinkedTask: false }, reason,
         });
-        if (!proof.safe || !priorRun) return unavailableRetry(proof.reason ?? '恢复记录无法与原失败 Run 对应；操作保持封锁');
+        if ((!proof.safe && !proof.linkedTaskOnly) || !priorRun) {
+          return unavailableRetry(proof.reason ?? '恢复记录无法与原失败 Run 对应；操作保持封锁');
+        }
         let checkedBaseCommit: string;
         try {
           const workspace = this.requireWorkspace(workspaceId);
           checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
         } catch {
-          return unavailableRetry('原重试已被接受但尚未授权启动；请先恢复干净、可检查的源基线');
+          return unavailableRetry(proof.linkedTaskOnly
+            ? '子 Run 已有 Start 授权；请先恢复干净、可检查的源基线，再创建关联任务'
+            : '原重试已被接受但尚未授权启动；请先恢复干净、可检查的源基线');
+        }
+        if (proof.linkedTaskOnly) {
+          if (!proof.childRunId || run?.id !== proof.childRunId || task.canonicalRunId !== proof.childRunId
+            || task.status !== 'queued') {
+            return unavailableRetry('Start 授权对应的 queued 子 Run 已变化；恢复操作保持封锁');
+          }
+          return {
+            taskId: task.id, taskVersion: task.version, runId: run.id, runVersion: run.version,
+            ...(priorRun.failureCode === undefined ? {} : { failureCode: priorRun.failureCode }),
+            recoveryRequired: true, checkedBaseCommit,
+            actions: { retryKnownFailure: false, newLinkedTask: true },
+            reason: 'queued 子 Run 已有持久化 Start 授权；不会重放该 Run。可在已检查的干净基线上创建需重新确认的关联任务',
+          };
         }
         if (checkedBaseCommit !== task.baseCommit
           || (retryRecovery.checked_base_commit !== null && checkedBaseCommit !== retryRecovery.checked_base_commit)) {
@@ -793,7 +810,7 @@ export class CollaborationWorkflowService {
   private inspectRetryRecoveryResume(
     task: CollaborationTask,
     recovery: CollaborationRecoveryRow,
-  ): { readonly safe: boolean; readonly reason?: string } {
+  ): { readonly safe: boolean; readonly linkedTaskOnly?: boolean; readonly childRunId?: string; readonly startOperationId?: string; readonly reason?: string } {
     const reject = (reason: string) => ({ safe: false as const, reason });
     if (recovery.workspace_id !== task.workspaceId || recovery.collaboration_task_id !== task.id
       || recovery.action !== 'retry-known-failure' || recovery.state !== 'recovery_required') {
@@ -849,7 +866,9 @@ export class CollaborationWorkflowService {
         .get(task.workspaceId, parentRun.id) as { count: number | bigint };
       if (Number(retryOperations.count) !== 1) return reject('子 Run 缺少唯一、已完成的原 retry 授权记录');
       childRunId = child.id;
-      const sideEffect = this.retryChildSideEffectEvidence(task.workspaceId, task.id, child.id);
+      const admissionEvidence = this.retryChildAdmissionEvidence(task.workspaceId, child.id);
+      if (admissionEvidence) return reject(`已存在${admissionEvidence}证据；恢复保持封锁`);
+      const sideEffect = this.retryChildRuntimeSideEffectEvidence(task.workspaceId, task.id, child.id);
       if (sideEffect) return reject(`已存在${sideEffect}证据；恢复保持封锁，不会重放副作用`);
     }
 
@@ -868,17 +887,42 @@ export class CollaborationWorkflowService {
     if (Number(processCount.count) !== 0 || Number(outputCount.count) !== 0) {
       return reject('原 Run 出现 Provider 进程或阶段输出；不会继续重试');
     }
-    return { safe: true };
+    if (childRunId !== undefined) {
+      const startOperations = this.options.store.operationService().listByRun(task.workspaceId, childRunId)
+        .filter(operation => operation.type === 'run.start');
+      if (startOperations.length > 0) {
+        const start = startOperations.length === 1 ? startOperations[0] : undefined;
+        if (!linkedButNotStarted || !start || start.status !== 'queued') {
+          return reject('子 Run 已有 Start 授权或状态不唯一；不会重放副作用');
+        }
+        return {
+          safe: false, linkedTaskOnly: true, childRunId, startOperationId: start.id,
+          reason: 'queued 子 Run 已有 Start 授权；不会重放旧 Run，可检查干净基线后创建关联任务',
+        };
+      }
+    }
+    return { safe: true, ...(childRunId === undefined ? {} : { childRunId }) };
   }
 
-  private retryChildSideEffectEvidence(workspaceId: string, collaborationTaskId: string, runId: string): string | undefined {
+  /** Admission is queue authority, not proof that a Provider was started. Startup reconciliation
+   * is required to reconstruct it for an existing queued Run. Only a uniquely-bound active
+   * canonical admission is compatible with pre-Start continuation. */
+  private retryChildAdmissionEvidence(workspaceId: string, runId: string): string | undefined {
+    const db = this.options.store.getDatabase();
+    const rows = db.prepare(`SELECT subject_kind,state FROM workspace_admissions
+      WHERE workspace_id = ? AND canonical_run_id = ? ORDER BY created_at,id`).all(workspaceId, runId) as Array<{ subject_kind: string; state: string }>;
+    if (rows.length > 1) return '运行准入记录不唯一';
+    if (rows.some(row => row.subject_kind !== 'CANONICAL_RUN'
+      || !['REQUESTED', 'QUEUED', 'GRANTED'].includes(row.state))) return '运行准入状态不匹配';
+    return undefined;
+  }
+
+  private retryChildRuntimeSideEffectEvidence(workspaceId: string, collaborationTaskId: string, runId: string): string | undefined {
     const db = this.options.store.getDatabase();
     const checks: Array<[string, string, unknown[]]> = [
-      ['Start 授权', "SELECT COUNT(*) AS count FROM operations WHERE workspace_id = ? AND run_id = ? AND type = 'run.start'", [workspaceId, runId]],
       ['Provider session', 'SELECT COUNT(*) AS count FROM provider_sessions WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
       ['运行进程', 'SELECT COUNT(*) AS count FROM runtime_processes WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
       ['阶段输出', 'SELECT COUNT(*) AS count FROM collaboration_stage_outputs WHERE workspace_id = ? AND collaboration_task_id = ? AND canonical_run_id = ?', [workspaceId, collaborationTaskId, runId]],
-      ['运行准入', 'SELECT COUNT(*) AS count FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?', [workspaceId, runId]],
       ['运行阶段事件', `SELECT COUNT(*) AS count FROM runtime_events WHERE workspace_id = ? AND run_id = ?
         AND type NOT IN ('run.created','stage.created')`, [workspaceId, runId]],
     ];
@@ -887,6 +931,14 @@ export class CollaborationWorkflowService {
       if (Number(row.count) !== 0) return label;
     }
     return undefined;
+  }
+
+  private retryChildSideEffectEvidence(workspaceId: string, collaborationTaskId: string, runId: string): string | undefined {
+    const starts = this.options.store.operationService().listByRun(workspaceId, runId)
+      .filter(operation => operation.type === 'run.start');
+    if (starts.length > 0) return 'Start 授权';
+    return this.retryChildAdmissionEvidence(workspaceId, runId)
+      ?? this.retryChildRuntimeSideEffectEvidence(workspaceId, collaborationTaskId, runId);
   }
 
   async recover(input: CollaborationRecoveryInput): Promise<{
@@ -1166,10 +1218,22 @@ export class CollaborationWorkflowService {
       return undefined;
     };
 
+    const releaseCancelledRetryAdmission = async (priorRunId: string): Promise<void> => {
+      const cancelledRetry = db.prepare(`SELECT 1 AS present FROM p2_collaboration_recoveries retry
+        JOIN runs child ON child.workspace_id = retry.workspace_id AND child.parent_run_id = retry.prior_run_id
+        WHERE retry.workspace_id = ? AND retry.collaboration_task_id = ? AND retry.action = 'retry-known-failure'
+          AND retry.state = 'recovery_required' AND child.id = ? AND child.status = 'cancelled' LIMIT 1`)
+        .get(input.workspaceId, input.collaborationId, priorRunId);
+      if (cancelledRetry) await this.releaseRunAdmission({ workspaceId: input.workspaceId, runId: priorRunId });
+    };
+
     const keyedBeforePreflight = findKeyedRecovery();
     if (keyedBeforePreflight) {
       const resolved = resolveExisting(keyedBeforePreflight);
-      if (resolved) return resolved;
+      if (resolved) {
+        await releaseCancelledRetryAdmission(resolved.priorRunId);
+        return resolved;
+      }
     }
 
     const task = this.requireTask(input.workspaceId, input.collaborationId);
@@ -1177,12 +1241,22 @@ export class CollaborationWorkflowService {
     const unresolvedSideEffect = Boolean(run && (run.recoveryRequired === true || run.failureCode === 'RUN_PROCESS_MISSING'
       || run.failureCode === 'RUN_PROCESS_UNKNOWN' || run.failureCode?.includes('RECOVERY')));
     const interruptedRecoveryRun = Boolean(run && ['starting', 'running'].includes(run.status) && unresolvedSideEffect);
+    const interruptedRetryRecovery = db.prepare(`SELECT * FROM p2_collaboration_recoveries
+      WHERE workspace_id = ? AND collaboration_task_id = ? AND action = 'retry-known-failure'
+        AND state = 'recovery_required' ORDER BY updated_at DESC,created_at DESC LIMIT 1`)
+      .get(input.workspaceId, task.id) as CollaborationRecoveryRow | undefined;
+    const interruptedRetryProof = interruptedRetryRecovery
+      ? this.inspectRetryRecoveryResume(task, interruptedRetryRecovery) : undefined;
+    const queuedRetryStartOnly = Boolean(run && task.status === 'queued' && run.status === 'queued'
+      && interruptedRetryProof?.linkedTaskOnly && interruptedRetryProof.childRunId === run.id);
     if (task.version !== input.expectedTaskVersion || task.canonicalRunId !== input.expectedRunId
-      || !run || run.version !== input.expectedRunVersion || !['failed', 'blocked'].includes(task.status)
-      || (run.status !== 'failed' && !interruptedRecoveryRun) || this.controls.pending(input.workspaceId, task.id)) {
+      || !run || run.version !== input.expectedRunVersion
+      || (!queuedRetryStartOnly && (!['failed', 'blocked'].includes(task.status)
+        || (run.status !== 'failed' && !interruptedRecoveryRun)))
+      || this.controls.pending(input.workspaceId, task.id)) {
       throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Current task, Run or action changed; refresh before recovering');
     }
-    if (!unresolvedSideEffect) {
+    if (!unresolvedSideEffect && !queuedRetryStartOnly) {
       throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_NOT_REQUIRED', 'A new linked task is reserved for unresolved Provider side effects');
     }
 
@@ -1196,7 +1270,7 @@ export class CollaborationWorkflowService {
       throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_UNRESOLVED', 'A clean, checkable source baseline is required for linked recovery');
     }
 
-    return this.options.store.runInTransaction(() => {
+    const result = this.options.store.runInTransaction(() => {
       const existing = findKeyedRecovery();
       if (existing) {
         const resolved = resolveExisting(existing);
@@ -1209,6 +1283,35 @@ export class CollaborationWorkflowService {
         || currentRun?.version !== input.expectedRunVersion || currentTask.controlEpoch !== task.controlEpoch
         || this.controls.pending(input.workspaceId, task.id)) {
         throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_STALE', 'Task or prior Run changed during baseline verification');
+      }
+
+      if (queuedRetryStartOnly) {
+        const currentRetry = interruptedRetryRecovery
+          ? db.prepare('SELECT * FROM p2_collaboration_recoveries WHERE id = ?').get(interruptedRetryRecovery.id) as CollaborationRecoveryRow | undefined
+          : undefined;
+        const proof = currentRetry ? this.inspectRetryRecoveryResume(currentTask, currentRetry) : undefined;
+        if (!proof?.linkedTaskOnly || proof.childRunId !== run.id || !proof.startOperationId
+          || currentTask.status !== 'queued' || currentRun?.status !== 'queued') {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', proof?.reason
+            ?? 'Queued retry Start evidence changed; no Provider call will be replayed');
+        }
+        const startOperation = this.options.store.operationService().listByRun(input.workspaceId, run.id)
+          .find(operation => operation.id === proof.startOperationId && operation.type === 'run.start');
+        if (!startOperation || startOperation.status !== 'queued') {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Queued retry Start authorization changed; no Provider call will be replayed');
+        }
+        this.options.store.operationService().cancelWithinTransaction({
+          workspaceId: input.workspaceId, operationId: startOperation.id, expectedVersion: startOperation.version,
+        });
+        const cancelledRun = this.options.store.runRepository().findById(input.workspaceId, run.id);
+        if (cancelledRun?.status !== 'cancelled') {
+          throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'Queued retry Run could not be cancelled safely');
+        }
+        this.repository.progress({
+          workspaceId: input.workspaceId, id: task.id, expectedVersion: currentTask.version,
+          status: 'blocked', expectedRunId: run.id,
+          failureReason: 'A queued Start authorization was persisted before interruption. The old Provider call was not replayed; continue through a newly confirmed linked task.',
+        });
       }
 
       let recoveryId: string;
@@ -1250,6 +1353,9 @@ export class CollaborationWorkflowService {
       }
       return { ...result, replayed: false };
     });
+    if (result.replayed) await releaseCancelledRetryAdmission(result.priorRunId);
+    else if (queuedRetryStartOnly) await this.releaseRunAdmission({ workspaceId: input.workspaceId, runId: run!.id });
+    return result;
   }
 
   async cancel(input: CollaborationMutationInput): Promise<CollaborationTask> {
@@ -1944,8 +2050,30 @@ export class CollaborationWorkflowService {
     const task = matches?.length === 1 ? this.repository.findById(workspaceId, matches[0].id) : undefined;
     if (!task) return run?.createdBy !== 'collaboration-workflow';
     if (this.options.runtimeDispatchEnabled === false) return false;
-    return task.canonicalRunId === runId && ['queued', 'running', 'reviewing'].includes(task.status)
-      && !this.controls.pending(workspaceId, task.id);
+    if (task.canonicalRunId !== runId || !['queued', 'running', 'reviewing'].includes(task.status)
+      || this.controls.pending(workspaceId, task.id)) return false;
+
+    // A retry recovery row owns this child until the original idempotent
+    // recovery either authorizes Start or is safely redirected to a linked
+    // task. Startup admission reconciliation may grant the queued child, but
+    // that queue claim alone must not dispatch it or change its task state.
+    const retryRecoveryPending = this.options.store.getDatabase().prepare(`SELECT 1 AS pending
+      FROM p2_collaboration_recoveries retry
+      JOIN runs child ON child.workspace_id = retry.workspace_id AND child.parent_run_id = retry.prior_run_id
+      WHERE retry.workspace_id = ? AND retry.collaboration_task_id = ? AND retry.action = 'retry-known-failure'
+        AND retry.state IN ('reserved','dispatching','recovery_required') AND child.id = ? LIMIT 1`)
+      .get(workspaceId, task.id, runId);
+    if (retryRecoveryPending) return false;
+
+    if (run?.status === 'queued') {
+      const starts = this.options.store.operationService().listByRun(workspaceId, runId)
+        .filter(operation => operation.type === 'run.start');
+      // The Engine is authorized only by one queued Start Operation. In
+      // particular, a recovered queued retry with no Start remains resumable
+      // under its original recovery key instead of being claimed as running.
+      if (starts.length !== 1 || starts[0]?.status !== 'queued') return false;
+    }
+    return true;
   }
 
   private assertExecutionFence(task: CollaborationTask, runId: string): void {

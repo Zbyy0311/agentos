@@ -12,6 +12,7 @@ import {
   type CollaborationRecoveryAvailability,
   type CollaborationRecoveryTarget,
 } from '@/lib/collaborationRecovery';
+import type { CollaborationProgress } from '@agentos/shared';
 
 interface RecoveryResult {
   readonly action: CollaborationRecoveryAction;
@@ -28,10 +29,19 @@ interface OwnedValue<T> {
   readonly value: T;
 }
 
+export function shouldRenderCollaborationRecoveryPanel(
+  availability: CollaborationRecoveryAvailability | null,
+  showUnavailable: boolean,
+): boolean {
+  return showUnavailable || Boolean(availability?.actions.retryKnownFailure || availability?.actions.newLinkedTask);
+}
+
 export function CollaborationRecoveryPanel(props: {
   readonly workspaceId: string;
   readonly taskId: string;
   readonly refreshRevision?: number;
+  /** Queued tasks stay quiet unless the server confirms a recovery action. */
+  readonly taskStatus?: CollaborationProgress['task']['status'];
   readonly onRecovered?: (result: RecoveryResult) => void;
 }) {
   const { request } = useApi();
@@ -136,10 +146,16 @@ export function CollaborationRecoveryPanel(props: {
     }
   };
 
-  if (!availability) return <section className="mt-5 rounded-xl border ui-border p-4 text-xs ui-muted" aria-label="协作任务恢复" aria-live="polite">
-    {error ? <div role="alert" className="text-[var(--app-danger)]">{error}</div> : '正在核验恢复条件…'}
-    {notice && <div role="status" className="mt-3 text-xs ui-text-soft">{notice}</div>}
-  </section>;
+  const showUnavailable = props.taskStatus === undefined
+    || props.taskStatus === 'failed' || props.taskStatus === 'blocked';
+  if (!availability) {
+    if (!showUnavailable) return null;
+    return <section className="mt-5 rounded-xl border ui-border p-4 text-xs ui-muted" aria-label="协作任务恢复" aria-live="polite">
+      {error ? <div role="alert" className="text-[var(--app-danger)]">{error}</div> : '正在核验恢复条件…'}
+      {notice && <div role="status" className="mt-3 text-xs ui-text-soft">{notice}</div>}
+    </section>;
+  }
+  if (!shouldRenderCollaborationRecoveryPanel(availability, showUnavailable)) return null;
   const { actions } = availability;
 
   return <section className="mt-5 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-surface-soft)] p-4" aria-label="协作任务恢复">
