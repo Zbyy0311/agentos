@@ -2225,18 +2225,38 @@ export class CollaborationWorkflowService {
         + " ON a.workspace_id = t.workspace_id AND a.canonical_run_id = t.canonical_run_id"
         + " JOIN runs r ON r.workspace_id = t.workspace_id AND r.id = t.canonical_run_id"
         + " AND r.task_id = t.canonical_task_id"
-        + " WHERE t.status = 'queued' AND a.subject_kind = 'CANONICAL_RUN' AND a.state = 'GRANTED'"
+        + " WHERE t.status IN ('queued','running') AND a.subject_kind = 'CANONICAL_RUN' AND a.state = 'GRANTED'"
         + " AND r.status = 'queued' AND COALESCE(r.recovery_required,0) = 0"
         + (workspaceId === undefined ? '' : ' AND t.workspace_id = ?')
         + ' ORDER BY a.request_order,a.id',
     ).all(...(workspaceId === undefined ? [] : [workspaceId])) as Array<{ workspaceId: string; runId: string }>;
     for (const row of rows) {
-      if (!this.canDispatch(row.workspaceId, row.runId)) continue;
-      const task = this.repository.findByCanonicalRun(row.workspaceId, row.runId);
-      if (!task || task.status !== 'queued') continue;
-      // CAS marks this existing queued Run claimed before the first await. A
-      // duplicate release cannot schedule the same pending writer a second time.
-      this.progress(task, 'running', row.runId);
+      const shouldResume = this.options.store.runInTransaction(() => {
+        // The ordered scan is only a candidate list. Re-read every durable
+        // authorization inside the claim transaction so a stale admission,
+        // Run, task link, or Start cannot be turned into a dispatch.
+        const task = this.repository.findByCanonicalRun(row.workspaceId, row.runId);
+        const run = this.options.store.runRepository().findById(row.workspaceId, row.runId);
+        const admissions = this.options.store.getDatabase().prepare(`SELECT subject_kind AS subjectKind,state
+          FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?`)
+          .all(row.workspaceId, row.runId) as Array<{ subjectKind: string; state: string }>;
+        if (!task || task.canonicalRunId !== row.runId || !['queued', 'running'].includes(task.status)
+          || !run || run.taskId !== task.canonicalTaskId || run.status !== 'queued' || run.recoveryRequired
+          || admissions.length !== 1 || admissions[0]?.subjectKind !== 'CANONICAL_RUN' || admissions[0]?.state !== 'GRANTED'
+          || !this.canDispatch(row.workspaceId, row.runId)) return false;
+
+        // A queued task needs the original CAS before the first await. If a
+        // prior process already committed it, leave its version untouched.
+        if (task.status === 'queued') {
+          this.repository.progress({
+            workspaceId: task.workspaceId, id: task.id, expectedVersion: task.version,
+            status: 'running', canonicalRunId: row.runId,
+            expectedRunId: row.runId, expectedControlEpoch: task.controlEpoch ?? 0,
+          });
+        }
+        return true;
+      });
+      if (!shouldResume) continue;
       await this.resumeRun(row.workspaceId, row.runId);
     }
   }
