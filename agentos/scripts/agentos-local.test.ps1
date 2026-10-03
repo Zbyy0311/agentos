@@ -91,6 +91,7 @@ $originalReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_R
 $originalMaintenanceReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'Process')
 $originalReadiness503Env = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', 'Process')
 $originalFailWebEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'Process')
+$originalRefuseShutdownEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', 'Process')
 $originalEventFileEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_EVENT_FILE', 'Process')
 $temporaryWasCreated = $false
 $testFailure = $null
@@ -113,6 +114,7 @@ const pipePath = process.env.AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE;
 let acceptingWrites = true;
 let activeWrites = 0;
 let activeRuntime = false;
+let refuseShutdown = process.env.AGENTOS_FIXTURE_REFUSE_SHUTDOWN === 'true';
 let shutdownRequested = false;
 function event(name) { if (eventFile) fs.appendFileSync(eventFile, name + '\n'); }
   process.stderr.write(process.env.AGENTOS_SHORT_TOKEN + '\n');
@@ -178,6 +180,13 @@ const control = net.createServer(socket => {
     let message;
     try { message = JSON.parse(raw.slice(0, newline)); } catch { socket.end('{"ok":false}\n'); return; }
     if (message.operation !== 'shutdown' || message.instanceId !== instanceId || message.nonce !== nonce) {
+      if (message.operation === 'fixture-allow-shutdown'
+        && message.instanceId === instanceId && message.nonce === nonce) {
+        refuseShutdown = false;
+        event('shutdown-control-restored');
+        socket.end('{"ok":true,"state":"fixture-updated"}\n');
+        return;
+      }
       if ((message.operation === 'fixture-active-runtime' || message.operation === 'fixture-runtime-idle')
         && message.instanceId === instanceId && message.nonce === nonce) {
         activeRuntime = message.operation === 'fixture-active-runtime';
@@ -188,6 +197,11 @@ const control = net.createServer(socket => {
         return;
       }
       socket.end('{"ok":false,"code":"CONTROL_IDENTITY_MISMATCH"}\n'); return;
+    }
+    if (refuseShutdown) {
+      event('shutdown-refused');
+      socket.end('{"ok":false,"code":"FIXTURE_SHUTDOWN_REFUSED"}\n');
+      return;
     }
     acceptingWrites = false;
     shutdownRequested = true;
@@ -555,7 +569,44 @@ http.createServer((_req, res) => {
   } while ((Get-Date) -lt $failureDeadline)
   Assert-True ($failedRemaining.Count -eq 0) 'Readiness timeout leaked one or more owned child processes.'
 
-  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, disconnected write drain, active runtime STOP_DEFERRED drain, proven server-exit cleanup, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
+  # If a startup cleanup cannot authenticate/drain its live server, retain the
+  # launcher lock as well as runtime identity. A later verified stop can drain
+  # the instance; only then may the test remove its stale lock file.
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'true', 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', 'true', 'Process')
+  $refusedServerPort = Get-FreePort
+  $refusedWebPort = Get-FreePort
+  while ($refusedWebPort -eq $refusedServerPort) { $refusedWebPort = Get-FreePort }
+  $refusedStartLines = @(& $launcher -Action start -Root $fixtureRoot -DataPath $dataRoot -ServerHost '127.0.0.1' -WebHost '127.0.0.1' -ServerPort $refusedServerPort -WebPort $refusedWebPort -ReadyTimeoutSeconds 1 -Json -WarningAction SilentlyContinue)
+  Assert-True ($refusedStartLines.Count -eq 1) ("The refused-cleanup start did not return one JSON result: " + ($refusedStartLines -join ' '))
+  $refusedStart = [string]$refusedStartLines[0] | ConvertFrom-Json
+  Assert-True (-not $refusedStart.ok -and $refusedStart.state -eq 'error') 'The fixture did not report startup failure when server cleanup was refused.'
+  Assert-True ([System.IO.File]::ReadAllText($eventFile).Contains('shutdown-refused')) 'The live server did not record the intentional cleanup refusal.'
+  $refusedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $refusedIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
+  $launcherLock = Join-Path $dataRoot '.agentos/local-runtime/launcher.lock'
+  Assert-True (Test-Path -LiteralPath $launcherLock -PathType Leaf) 'Startup failure removed launcher.lock while the server could still be alive.'
+  $refusedServerRecord = $refusedManifest.processes | Where-Object { $_.role -eq 'server' } | Select-Object -First 1
+  $refusedServerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$refusedServerRecord.pid) -ErrorAction SilentlyContinue
+  Assert-True ($null -ne $refusedServerProcess -and [string]::Equals([string]$refusedServerProcess.CommandLine, [string]$refusedServerRecord.command, [System.StringComparison]::Ordinal)) 'The server identity was not still live when the launcher lock was retained.'
+  $restoreShutdown = Send-NamedPipeRequest $refusedIdentity.serverPipe $refusedIdentity.instanceId $refusedIdentity.shutdownNonce 'fixture-allow-shutdown'
+  Assert-True $restoreShutdown.ok 'The fixture could not restore authenticated server shutdown.'
+  $recoveredStartStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($recoveredStartStop.value.ok -and $recoveredStartStop.value.state -eq 'stopped') 'Verified stop did not drain the server retained after startup cleanup failure.'
+  $refusedPids = @([int]$refusedIdentity.supervisorPid, [int]$refusedIdentity.serverPid, [int]$refusedIdentity.webPid)
+  $refusedDeadline = (Get-Date).AddSeconds(10)
+  do {
+    $refusedRemaining = @($refusedPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($refusedRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $refusedDeadline)
+  Assert-True ($refusedRemaining.Count -eq 0) 'The recovered startup-failure process tree did not stop cleanly.'
+  Remove-Item -LiteralPath $launcherLock -Force
+  Assert-True (-not (Test-Path -LiteralPath $launcherLock)) 'The test-owned stale launcher lock was not removed after all verified processes exited.'
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $null, 'Process')
+
+  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, disconnected write drain, active runtime STOP_DEFERRED drain, proven server-exit cleanup, startup cleanup refusal retains launcher lock and live identity, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
 } catch {
   $testFailure = $_.Exception
 } finally {
@@ -564,6 +615,7 @@ http.createServer((_req, res) => {
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', $originalMaintenanceReadinessEnv, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', $originalReadiness503Env, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $originalFailWebEnv, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $originalRefuseShutdownEnv, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_EVENT_FILE', $originalEventFileEnv, 'Process')
   if ($null -ne $unrelated -and -not $unrelated.HasExited) {
     try { $unrelated.Kill(); [void]$unrelated.WaitForExit(5000) } catch {}

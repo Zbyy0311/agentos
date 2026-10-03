@@ -613,6 +613,11 @@ async function bootstrap(): Promise<void> {
     if (stopRetention) {
       try { stopRetention(); } catch { /* best effort */ }
     }
+    if (localShutdownControl) {
+      try { await closeLocalShutdownControl(localShutdownControl); }
+      catch (closeError) { diagLog(`STARTUP_SHUTDOWN_CONTROL_CLOSE_FAILED error=${String(closeError)}`); }
+      localShutdownControl = undefined;
+    }
     if (httpServer) {
       try { await closeHttpServer(httpServer); } catch { /* best effort */ }
     }

@@ -30,6 +30,7 @@ $script:workerNodePath = $null
 $script:workerIdentity = $null
 $script:workerExpectedManifest = $null
 $script:startupCommitted = $false
+$script:startupCleanupSafe = $true
 $script:manifestPath = $null
 
 function Set-ScopedEnvironment([string] $Name, [string] $Value) {
@@ -734,6 +735,7 @@ try {
     $argumentLine = $quotedArgs -join ' '
     $workerProcess = Start-Process -FilePath $nodePath -ArgumentList $argumentLine -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
     $script:workerProcess = $workerProcess
+    $script:startupCleanupSafe = $false
     $workerSnapshot = Get-ProcessMap
     if ($workerSnapshot.ContainsKey([int]$workerProcess.Id)) {
       $script:workerIdentity = Get-ProcessRecord $workerSnapshot[[int]$workerProcess.Id] 'supervisor' $repoRoot $serverPortValue
@@ -807,7 +809,10 @@ try {
     if (-not $ready.server -or -not $ready.web) {
       $details = 'server=' + $ready.server + ', web=' + $ready.web
       $assessment = Get-ManifestAssessment $manifest
-      try { Stop-Manifest $manifest $assessment } catch { throw "Readiness timed out ($details). Safe owned-process cleanup could not complete: $($_.Exception.Message). Inspect $stateDir." }
+      try {
+        Stop-Manifest $manifest $assessment
+        $script:startupCleanupSafe = $true
+      } catch { throw "Readiness timed out ($details). Safe owned-process cleanup could not complete: $($_.Exception.Message). Inspect $stateDir." }
       throw "Readiness timed out after $ReadyTimeoutSeconds seconds ($details). The verified owned process tree was stopped. Inspect $stateDir."
     }
     $manifest.state = 'running'
@@ -815,6 +820,7 @@ try {
     $manifest | Add-Member -NotePropertyName readyAt -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
     Write-Manifest $manifestPath $manifest
     $script:startupCommitted = $true
+    $script:startupCleanupSafe = $true
     $result = [pscustomobject][ordered]@{
       ok = $true; state = 'running'; instanceId = $instanceId; mode = $modeValue
       root = $repoRoot; dataPath = $dataRoot; ports = $manifest.ports
@@ -825,7 +831,9 @@ try {
     if ($Json) { Write-JsonResult $result } else { Write-Output ('AgentOS ' + $modeValue + ' started: Server ' + $result.urls.server + ', Web ' + $result.urls.web + '.') }
   } finally {
     if ($null -ne $lock) { $lock.Dispose() }
-    if ($null -ne $lock -and (Test-Path -LiteralPath $lockPath -PathType Leaf)) { Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue }
+    if ($null -ne $lock -and $script:startupCleanupSafe -and (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+      Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+    }
   }
 } catch {
   if ($Action -eq 'start' -and $null -ne $script:workerProcess -and -not $script:startupCommitted) {
@@ -835,10 +843,24 @@ try {
         if ($null -ne $partialManifest) {
           $partialAssessment = Get-ManifestAssessment $partialManifest
           Stop-Manifest $partialManifest $partialAssessment
+          $script:startupCleanupSafe = $true
         }
+      } elseif ($script:workerProcess.HasExited) {
+        $remainingTree = @(Get-TreePids (Get-ProcessMap) ([int]$script:workerProcess.Id))
+        if ($remainingTree.Count -eq 0 -and -not (Test-Path -LiteralPath $pidsPath -PathType Leaf)) {
+          throw 'The startup supervisor exited before a verified worker identity was published; retain the launcher lock and inspect the configured ports before retrying.'
+        }
+        if ($remainingTree.Count -eq 0) { $script:startupCleanupSafe = $true }
+        else { throw "The startup supervisor exited while child process IDs remain ($($remainingTree -join ', ')); preserve the launcher lock and runtime evidence." }
+      } else {
+        throw 'The startup supervisor is still alive without a verified manifest; preserve the launcher lock and runtime evidence.'
       }
     } catch {
       Write-Warning ('Startup cleanup could not prove graceful ownership shutdown; no process was force-stopped. Preserve the manifest/runtime evidence. ' + $_.Exception.Message)
+    }
+    if ($script:startupCleanupSafe) {
+      $lockPath = Join-Path ([string]$script:workerDataPath) '.agentos/local-runtime/launcher.lock'
+      if (Test-Path -LiteralPath $lockPath -PathType Leaf) { Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue }
     }
   }
   if ($Json) {

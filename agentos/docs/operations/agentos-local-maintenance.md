@@ -23,6 +23,22 @@ Before publication, the SQLite snapshot, copied payloads, and manifest are expli
 
 If synchronization fails after the final directory rename on POSIX, the complete-looking bundle is retained and the operation still reports failure. Inspect `.agentos/backups` and run offline verification on that bundle before deciding whether to retry; a retained directory alone is not proof that publication was durable.
 
+Backup payloads are copied, hashed, verified, and restored as 64 KiB streams. The current hard limits are 512 MiB per file, 4 GiB across a bundle, 25,000 payload files, and a 32 MiB manifest. These limits include the SQLite snapshot in the file and byte totals. Backup refuses an over-budget source before publication; verify and restore reject an over-budget or oversized manifest before installing a target. The HTTP API reports limit errors as `413` with a stable `BACKUP_*_LIMIT_EXCEEDED` code. Keep individual workspace evidence and attachments below these limits or split operational data before backing up.
+
+## Windows local stop and drain
+
+`pnpm local:stop` uses an instance-specific named pipe and a random local nonce from the verified runtime identity. The server stops accepting new writes and dispatch starts, then drains admitted HTTP mutations, maintenance work, background reconciliation, and persisted active Run/provider work before closing SQLite and releasing data-root ownership. A stop request does not cancel an operation or delete its evidence.
+
+The launcher waits up to 90 seconds by default. To allow a longer drain, invoke the same script with a larger timeout (the accepted range is 1–3600 seconds):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 `
+  -Action stop `
+  -GracefulStopTimeoutSeconds 300
+```
+
+If that wait expires, the command reports `STOP_DEFERRED`, leaves the server and supervisor running, and preserves the manifest and runtime process identity. New writes remain fenced. The server closes itself only after the admitted work reaches a durable terminal state and runtime inspection is known idle. If inspection remains unknown, it stays fenced for diagnosis. Retry `pnpm local:stop` after the drain completes to record the stopped manifest. A failed startup also retains `launcher.lock` whenever the launcher cannot prove its owned process tree stopped; do not remove that lock, the manifest, or runtime PID record while a recorded process is live or its identity is uncertain. After all recorded processes are confirmed stopped, a stale lock file may be removed before retrying startup. Do not use `taskkill /F` to force the tree down while work may still be active. A hard process termination cannot guarantee operation completion or durable evidence.
+
 Verify the entire bundle and build identity offline before restore:
 
 ```powershell
