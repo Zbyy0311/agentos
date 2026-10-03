@@ -11,6 +11,7 @@ import { GroupEditor } from '@/components/chat/GroupEditor';
 import { GroupRenameModal } from '@/components/chat/GroupRenameModal';
 import { ConversationContextMenu } from '@/components/chat/ConversationContextMenu';
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import type { GroupRecoveryDispatchState, GroupRecoveryIdentity } from '@/components/chat/GroupInteractionRecoveryPanel';
 import { ConversationHistory } from '@/components/chat/ConversationHistory';
 import { ExecutionInspector } from '@/components/chat/ExecutionInspector';
 import { WorkspacePanelOverlay } from '@/components/layout/WorkspacePanelOverlay';
@@ -42,7 +43,7 @@ import { indexPresence } from '@/lib/agentPresence';
 import { mergeRuntimeEvent, projectRuntimeResult, type RuntimeResultProjection } from '@/lib/runtimeProjection';
 import { useCollaborationProgress } from '@/lib/useCollaborationProgress';
 import { directConversationClient, type ForwardConversation, type ForwardConversationMember } from '@/lib/directConversationClient';
-import { groupConversationClient, mergeGroupInteractionVersionEvent, type GroupInteraction, type GroupInteractionBudgetInput } from '@/lib/groupConversationClient';
+import { groupConversationClient, mergeGroupInteractionVersionEvent, type GroupInteraction, type GroupInteractionBudgetInput, type GroupInteractionDetail, type GroupInteractionRecoveryResult } from '@/lib/groupConversationClient';
 import { useConversationDraft } from '@/lib/useConversationDraft';
 import { captureDraftSubmission, createConversationDraftIdentityKey, enqueueDraftSubmission, isCurrentConversationGeneration, type ConversationDraftIdentity, type QueuedConversationMessage, type SubmittedConversationDraft } from '@/lib/conversationDraftState';
 import { completeDirectConversationSubmission } from '@/lib/conversationDraftLifecycle';
@@ -175,6 +176,7 @@ export default function WorkspacePage() {
   const [activeArtifacts, setActiveArtifacts] = useState<RuntimeArtifact[]>([]);
   const [activeRuntimeResult, setActiveRuntimeResult] = useState<RuntimeResultProjection | null>(null);
   const [groupInteraction, setGroupInteraction] = useState<GroupInteraction | null>(null);
+  const [groupExecutionOwner, setGroupExecutionOwner] = useState<GroupInteractionDetail['executionOwner']>(null);
   const [groupBudget, setGroupBudget] = useState<{ repliesUsed: number; repliesRemaining: number; hopsUsed: number; hopsRemaining: number; distinctAgents: number; agentsRemaining: number } | null>(null);
   const [groupDiscussionError, setGroupDiscussionError] = useState('');
   const [groupSpeakingAgentId, setGroupSpeakingAgentId] = useState<string | undefined>();
@@ -233,6 +235,7 @@ export default function WorkspacePage() {
   selectedAgentIdRef.current = selectedAgentId;
   const activeConversationIdRef = useRef<string | null>(null);
   const activeDraftIdentityKeyRef = useRef<string | null>(null);
+  const activeGroupInteractionIdRef = useRef<string | null>(null);
   const blockedQueueItemByIdentityRef = useRef(new Map<string, string>());
   const activeScopeGenerationRef = useRef({ identityKey: null as string | null, generation: 0 });
   const activeSendRef = useRef(new Map<string, { identityKey: string; generation: number; directController?: AbortController; observerController?: AbortController; runId?: string; cancelled: boolean }>());
@@ -240,6 +243,7 @@ export default function WorkspacePage() {
   const toastIdRef = useRef(0);
   const typewriterRef = useRef(new TypewriterQueue());
   const typewriterOwnerRef = useRef<{ identityKey: string; generation: number } | null>(null);
+  const groupRecoveryObserverRef = useRef(new Map<string, AbortController>());
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
   const isLegacyRuntimeLink = returnConversationSource === 'runtime';
@@ -247,6 +251,7 @@ export default function WorkspacePage() {
   // is kept only to render an explicit missing-record state after local cleanup.
   const activeConversationId = getActiveConversationId({ selectedGroupId, selectedDirectConversationId });
   activeConversationIdRef.current = activeConversationId;
+  activeGroupInteractionIdRef.current = groupInteraction?.id ?? null;
   const selectedConversation = selectedGroupId
     ? groups.find(conversation => conversation.id === selectedGroupId)
     : conversations.find(conversation => conversation.id === selectedDirectConversationId);
@@ -319,9 +324,13 @@ export default function WorkspacePage() {
     setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null);
     setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     setGroupInteraction(null); setGroupBudget(null); setGroupSpeakingAgentId(undefined);
+    setGroupExecutionOwner(null);
     setGroupDiscussionError(''); setAttachmentError(''); setValidationError(''); setError(''); setConnectionNotice(''); setRunDetails(null);
     for (const [key, operation] of activeSendRef.current) {
       if (key !== activeDraftIdentityKey) operation.observerController?.abort();
+    }
+    for (const [key, controller] of groupRecoveryObserverRef.current) {
+      if (key !== activeDraftIdentityKey) { controller.abort(); groupRecoveryObserverRef.current.delete(key); }
     }
   }, [activeDraftIdentityKey]);
   useEffect(() => {
@@ -781,6 +790,7 @@ export default function WorkspacePage() {
     if (!isCurrent()) return;
     setMessages(messageResult.messages.map(message => toUiGroupMessage(message, conversationId, workspaceId, API_BASE)));
     setGroupInteraction(detail?.interaction ?? selected ?? null);
+    setGroupExecutionOwner(detail?.executionOwner ?? null);
     setGroupBudget(detail?.budget ?? null);
     setGroupDiscussionError('');
     setConversationRuns([]);
@@ -794,6 +804,116 @@ export default function WorkspacePage() {
     setActiveStartedAt(undefined);
     setActiveRunId(undefined);
     setActiveWaitingQuestion(undefined);
+  }, [API_BASE, groupClient, runtimeClient, workspaceId]);
+
+  const handleGroupInteractionRecovered = useCallback(async (
+    result: GroupInteractionRecoveryResult,
+    dispatch: GroupRecoveryDispatchState,
+    identity: GroupRecoveryIdentity,
+  ) => {
+    const { conversationId: recoveredConversationId, identityKey: recoveryIdentityKey, generation: recoveryGeneration, workspaceId: recoveryWorkspaceId } = identity;
+    const isRecoveryIdentityCurrent = () => workspaceId === recoveryWorkspaceId
+      && activeConversationIdRef.current === recoveredConversationId
+      && activeGroupInteractionIdRef.current === identity.interactionId
+      && isCurrentConversationGeneration(activeDraftIdentityKeyRef.current, activeScopeGenerationRef.current.generation, recoveryIdentityKey, recoveryGeneration);
+    if (!recoveryWorkspaceId || !recoveredConversationId || !recoveryIdentityKey || !groupClient || !runtimeClient
+      || result.interaction.conversationId !== recoveredConversationId
+      || result.interaction.id === identity.interactionId
+      || (result.message.conversationId !== undefined && result.message.conversationId !== recoveredConversationId)) {
+      throw new Error('恢复响应不属于发起请求的群聊；已停止后续启动。');
+    }
+    const sourceMessageId = result.message.id;
+    if (!sourceMessageId || result.interaction.sourceMessageId !== sourceMessageId) {
+      throw new Error('恢复响应的新轮次与源消息不匹配；已停止后续启动。');
+    }
+
+    // The click authorized only this response's new interaction and source
+    // message. Do not replace the visible old interaction before the response
+    // is confirmed: the recovery panel must remain mounted to show an uncertain
+    // respond result and keep its durable retry fence visible.
+    // The recovery CAS can settle after navigation, but the linked interaction
+    // may only start while its original source identity is still visible.
+    if (!isRecoveryIdentityCurrent()) return;
+    if (!dispatch.markResponding()) return;
+    const startResponse = await groupClient.respond(result.interaction.id, recoveredConversationId, {
+      sourceMessageId,
+      ...(result.message.clientMessageId ? { clientMessageId: result.message.clientMessageId } : {}),
+      ...(result.participantAgentIds?.length ? { mentionedAgentIds: [...result.participantAgentIds] } : {}),
+    });
+    await startResponse.body?.cancel().catch(() => undefined);
+    dispatch.markDispatched();
+
+    if (!isRecoveryIdentityCurrent()) return;
+    const existing = groupRecoveryObserverRef.current.get(recoveryIdentityKey);
+    existing?.abort();
+    const observer = new AbortController();
+    groupRecoveryObserverRef.current.set(recoveryIdentityKey, observer);
+    void (async () => {
+      let cursor = 0;
+      try {
+        while (!observer.signal.aborted && isRecoveryIdentityCurrent()) {
+          const response = await groupClient.observeEvents(recoveredConversationId, result.interaction.id, cursor, observer.signal);
+          const consumed = await consumeSseResponse(response, async (event, payload) => {
+            const eventCursor = typeof payload.cursor === 'number' ? payload.cursor : Number(event.id);
+            if (!Number.isSafeInteger(eventCursor) || eventCursor <= cursor || !isRecoveryIdentityCurrent()) return;
+            cursor = eventCursor;
+            setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, payload));
+            if (event.event === 'group.turn.start') {
+              setGroupSpeakingAgentId(typeof payload.agentId === 'string' ? payload.agentId : undefined);
+              setStreamingContent('');
+            } else if (event.event === 'group.checkpoint' && typeof payload.delta === 'string') {
+              if (typeof payload.agentId === 'string') setGroupSpeakingAgentId(payload.agentId);
+              typewriterRef.current.enqueue(payload.delta);
+            } else if (event.event === 'group.reply.final' || event.event === 'group.turn.final'
+              || event.event === 'group.turn.failed' || event.event === 'group.turn.cancelled') {
+              typewriterRef.current.flush(); setStreamingContent(''); setGroupSpeakingAgentId(undefined);
+              const [latest, messagesResult] = await Promise.all([
+                groupClient.getInteraction(result.interaction.id),
+                runtimeClient.listMessages(recoveredConversationId),
+              ]);
+              if (isRecoveryIdentityCurrent()) {
+                setGroupInteraction(latest.interaction); setGroupExecutionOwner(latest.executionOwner ?? null); setGroupBudget(latest.budget);
+                setMessages(messagesResult.messages.map(message => toUiGroupMessage(message, recoveredConversationId, recoveryWorkspaceId, API_BASE)));
+              }
+            } else if (event.event === 'group.done' || event.event === 'group.stopped' || event.event === 'group.interrupted') {
+              typewriterRef.current.flush(); setStreamingContent(''); setGroupSpeakingAgentId(undefined);
+            }
+          }, { terminalEvents: ['group.done', 'group.stopped', 'group.interrupted'] });
+          cursor = Math.max(cursor, consumed.lastCursor);
+          const latest = await groupClient.getInteraction(result.interaction.id);
+          if (!isRecoveryIdentityCurrent()) return;
+          setGroupInteraction(latest.interaction); setGroupExecutionOwner(latest.executionOwner ?? null); setGroupBudget(latest.budget);
+          if (latest.interaction.status !== 'active') break;
+        }
+      } catch (observationError) {
+        if (!observer.signal.aborted && isRecoveryIdentityCurrent()) {
+          setGroupDiscussionError(`新轮次已启动；状态观察暂不可用，可重新打开群聊查询，不会再次调用 Provider。（${observationError instanceof Error ? observationError.message : String(observationError)}）`);
+        }
+      } finally {
+        if (groupRecoveryObserverRef.current.get(recoveryIdentityKey) === observer) groupRecoveryObserverRef.current.delete(recoveryIdentityKey);
+      }
+    })();
+
+    try {
+      const [detail, messageResult] = await Promise.all([
+        groupClient.getInteraction(result.interaction.id),
+        runtimeClient.listMessages(recoveredConversationId),
+      ]);
+      if (detail.interaction.id !== result.interaction.id || detail.interaction.conversationId !== recoveredConversationId) {
+        throw new Error('新轮次详情与当前群聊身份不匹配。');
+      }
+      if (isRecoveryIdentityCurrent()) {
+        setMessages(messageResult.messages.map(message => toUiGroupMessage(message, recoveredConversationId, recoveryWorkspaceId, API_BASE)));
+        setGroupInteraction(detail.interaction);
+        setGroupExecutionOwner(detail.executionOwner ?? null);
+        setGroupBudget(detail.budget);
+        setGroupDiscussionError('');
+      }
+    } catch (refreshError) {
+      if (isRecoveryIdentityCurrent()) {
+        setGroupDiscussionError(`新轮次启动已确认，但状态刷新暂不可用；恢复意图已锁定，不会重复调用 Provider。（${refreshError instanceof Error ? refreshError.message : String(refreshError)}）`);
+      }
+    }
   }, [API_BASE, groupClient, runtimeClient, workspaceId]);
 
   const loadPresence = useCallback(async () => {
@@ -1199,13 +1319,14 @@ export default function WorkspacePage() {
               return withoutOptimistic.some(message => message.id === persistedMessage.id) ? withoutOptimistic : [...withoutOptimistic, persistedMessage];
             });
             setGroupInteraction(created.interaction);
+            setGroupExecutionOwner(null);
           }
         }
         if (!interactionId) throw new Error('恢复记录缺少 interactionId；未尝试新建讨论。');
         if (groupOutboxEntry.phase === 'created') {
           const snapshot = await groupClient.getInteraction(interactionId);
           sourceMessageId ??= snapshot.interaction.sourceMessageId ?? undefined;
-          if (isCurrentScope()) { setGroupInteraction(snapshot.interaction); setGroupBudget(snapshot.budget); }
+          if (isCurrentScope()) { setGroupInteraction(snapshot.interaction); setGroupExecutionOwner(snapshot.executionOwner ?? null); setGroupBudget(snapshot.budget); }
           if (!sourceMessageId) throw new Error('群聊源消息暂不可用；保留恢复记录并等待核对。');
           browserGroupDiscussionOutbox.updatePhase(identityKey, groupOutboxEntry.idempotencyKey, 'responding', interactionId);
           groupOutboxEntry = { ...groupOutboxEntry, phase: 'responding', interactionId };
@@ -1222,7 +1343,7 @@ export default function WorkspacePage() {
         } else {
           const snapshot = await groupClient.getInteraction(interactionId);
           sourceMessageId = snapshot.interaction.sourceMessageId ?? undefined;
-          if (isCurrentScope()) { setGroupInteraction(snapshot.interaction); setGroupBudget(snapshot.budget); }
+          if (isCurrentScope()) { setGroupInteraction(snapshot.interaction); setGroupExecutionOwner(snapshot.executionOwner ?? null); setGroupBudget(snapshot.budget); }
         }
         if (!activeOperation.observerController) activeOperation.observerController = new AbortController();
         const observerSignal = activeOperation.observerController.signal;
@@ -1258,6 +1379,7 @@ export default function WorkspacePage() {
                 const [latest, messageResult] = await Promise.all([groupClient.getInteraction(interactionId), runtimeClient.listMessages(groupConversation.id)]);
                 if (isCurrentScope()) {
                   setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction));
+                  setGroupExecutionOwner(latest.executionOwner ?? null);
                   setGroupBudget(latest.budget);
                   setMessages(messageResult.messages.map(message => toUiGroupMessage(message, groupConversation.id, workspaceId, API_BASE)));
                 }
@@ -1270,7 +1392,7 @@ export default function WorkspacePage() {
           } catch (observationError) {
             if (observerSignal.aborted) throw observationError;
             const latest = await groupClient.getInteraction(interactionId);
-            if (isCurrentScope()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupBudget(latest.budget); }
+            if (isCurrentScope()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupExecutionOwner(latest.executionOwner ?? null); setGroupBudget(latest.budget); }
             if (latest.interaction.status !== 'active') break;
             if (!shouldReconnect(observationError) || retryIndex >= MAX_RECONNECT_ATTEMPTS) throw observationError;
             if (isCurrentScope()) setConnectionNotice('群聊观察连接中断；只读续传不会再次启动讨论…');
@@ -1279,7 +1401,7 @@ export default function WorkspacePage() {
             continue;
           }
           const latest = await groupClient.getInteraction(interactionId);
-          if (isCurrentScope()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupBudget(latest.budget); }
+          if (isCurrentScope()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupExecutionOwner(latest.executionOwner ?? null); setGroupBudget(latest.budget); }
           if (latest.interaction.status !== 'active') break;
           if (!shouldReconnect(new UnexpectedStreamEndError()) || retryIndex >= MAX_RECONNECT_ATTEMPTS) throw new UnexpectedStreamEndError();
           await waitForReconnect(getReconnectDelay(retryIndex), observerSignal);
@@ -1290,6 +1412,7 @@ export default function WorkspacePage() {
         if (finalDetail.interaction.status === 'active') throw new Error('执行 owner 仍处于活动状态；恢复记录保留，尚未确认完成。');
         if (isCurrentScope()) {
           setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, finalDetail.interaction));
+          setGroupExecutionOwner(finalDetail.executionOwner ?? null);
           setGroupBudget(finalDetail.budget);
           await loadCanonicalGroupDetails(conversation.id);
           setGroupDiscussionError(''); setConnectionNotice(''); setAttachmentError('');
@@ -1470,6 +1593,7 @@ export default function WorkspacePage() {
       void groupClient.getInteraction(interactionId).then(async latest => {
         if (!isCurrent()) return;
         setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction));
+        setGroupExecutionOwner(latest.executionOwner ?? null);
         setGroupBudget(latest.budget);
         const result = await groupClient.stopInteraction(interactionId, latest.interaction.version, `workspace-ui-group-stop-${interactionId}-${latest.interaction.version}`);
         if (!isCurrent()) return;
@@ -1477,13 +1601,14 @@ export default function WorkspacePage() {
         const final = await groupClient.getInteraction(interactionId);
         if (!isCurrent()) return;
         setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, final.interaction));
+        setGroupExecutionOwner(final.executionOwner ?? null);
         setGroupBudget(final.budget);
         await loadCanonicalGroupDetails(selectedConversation.id);
       }).catch(async stopError => {
         if ((stopError as { code?: string })?.code === 'GROUP_VERSION_CONFLICT') {
           try {
             const latest = await groupClient.getInteraction(interactionId);
-            if (isCurrent()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupBudget(latest.budget); }
+            if (isCurrent()) { setGroupInteraction(current => mergeGroupInteractionVersionEvent(current, latest.interaction)); setGroupExecutionOwner(latest.executionOwner ?? null); setGroupBudget(latest.budget); }
           } catch { /* report the original optimistic-version conflict */ }
           if (isCurrent()) setGroupDiscussionError('群聊版本已变化，已刷新最新状态；没有自动重试停止，请确认后再次操作。');
           return;
@@ -1637,7 +1762,7 @@ export default function WorkspacePage() {
       return;
     }
     conversationLoadGenerationRef.current += 1;
-    setSelectedGroupId(groupId); setSelectedDirectConversationId(null); setSelectedAgentId(null); setWorkspaceView('chat'); setExecutionRunHint(undefined); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setGroupInteraction(null); setGroupBudget(null); setGroupDiscussionError('');
+    setSelectedGroupId(groupId); setSelectedDirectConversationId(null); setSelectedAgentId(null); setWorkspaceView('chat'); setExecutionRunHint(undefined); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setGroupInteraction(null); setGroupExecutionOwner(null); setGroupBudget(null); setGroupDiscussionError('');
     setOverlayPanel(null);
     if (syncUrl && workspaceId) {
       const query = new URLSearchParams({ conversationId: groupId, view: 'chat' });
@@ -1881,9 +2006,13 @@ export default function WorkspacePage() {
     onCreateCollaborationTask={() => { setCollaborationPanelCreateMode(true); setShowCollaborationTask(true); }}
     onOpenCollaborationTask={openCollaborationDetails} collaborationProgressState={collaborationProgressState}
     groupInteraction={evidenceVisible && isGroupConversation ? groupInteraction : undefined}
+    groupExecutionOwner={evidenceVisible && isGroupConversation ? groupExecutionOwner : undefined}
     groupBudget={evidenceVisible && isGroupConversation ? groupBudget : undefined}
     groupSpeakingAgentName={evidenceVisible && isGroupConversation ? agents.find(agent => agent.id === groupSpeakingAgentId)?.name : undefined}
     groupDiscussionError={evidenceVisible && isGroupConversation ? groupDiscussionError : undefined}
+    groupRecoveryWorkspaceId={evidenceVisible && isGroupConversation ? workspaceId ?? undefined : undefined}
+    groupRecoveryGeneration={evidenceVisible && isGroupConversation ? activeScopeGenerationRef.current.generation : undefined}
+    onGroupInteractionRecovered={handleGroupInteractionRecovered}
     layoutControls={{ workspaceMode: effectiveLayout.workspaceMode, historyAvailable: !selectedGroupId && !isLegacyRuntimeLink,
       historyVisible: effectiveLayout.historyVisible, inspectorVisible: effectiveLayout.inspectorVisible, focusMode: layoutPreferences.focusMode,
       view: activeWorkspaceView, onViewChange: changeWorkspaceView, onToggleWorkspace: () => toggleLayoutPanel('workspace'),

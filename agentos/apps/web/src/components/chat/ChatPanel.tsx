@@ -20,7 +20,8 @@ import { MentionPicker } from './MentionPicker';
 import { useLiquidGlass } from '@/components/glass/useLiquidGlass';
 import { CollaborationTaskProgressCard } from './CollaborationTaskProgressCard';
 import type { CollaborationProgressState } from '@/lib/useCollaborationProgress';
-import { groupInteractionRecoveryReason, type GroupBudgetStatus, type GroupInteraction } from '@/lib/groupConversationClient';
+import { groupInteractionRecoveryReason, type GroupBudgetStatus, type GroupInteraction, type GroupInteractionDetail, type GroupInteractionRecoveryResult } from '@/lib/groupConversationClient';
+import { GroupInteractionRecoveryPanel, type GroupRecoveryDispatchState, type GroupRecoveryIdentity } from './GroupInteractionRecoveryPanel';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string; runtimeEvent?: AgentEvent };
 
@@ -83,9 +84,13 @@ interface ChatPanelProps {
   onOpenCollaborationTask?(): void;
   collaborationProgressState?: CollaborationProgressState;
   groupInteraction?: GroupInteraction | null;
+  groupExecutionOwner?: GroupInteractionDetail['executionOwner'];
   groupBudget?: GroupBudgetStatus | null;
   groupSpeakingAgentName?: string;
   groupDiscussionError?: string;
+  groupRecoveryWorkspaceId?: string;
+  groupRecoveryGeneration?: number;
+  onGroupInteractionRecovered?: (result: GroupInteractionRecoveryResult, dispatch: GroupRecoveryDispatchState, identity: GroupRecoveryIdentity) => void | Promise<void>;
   mentionedAgentIds?: string[];
   onMentionedAgentIdsChange?(agentIds: string[]): void;
   draftReady?: boolean;
@@ -305,7 +310,7 @@ function ThinkingProcess({ events, runtimeEvents = [], sending, interrupted = fa
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onResumeQueue, onOpenRuntimeDetails, onOpenRuntime, onCreateCollaborationTask, onOpenCollaborationTask, collaborationProgressState, groupInteraction, groupBudget, groupSpeakingAgentName, groupDiscussionError, mentionedAgentIds = [], onMentionedAgentIdsChange, draftReady = true, draftPersistenceWarning, scrollIdentityKey, savedScrollPosition = 0, onScrollPositionChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onResumeQueue, onOpenRuntimeDetails, onOpenRuntime, onCreateCollaborationTask, onOpenCollaborationTask, collaborationProgressState, groupInteraction, groupExecutionOwner, groupBudget, groupSpeakingAgentName, groupDiscussionError, groupRecoveryWorkspaceId, groupRecoveryGeneration, onGroupInteractionRecovered, mentionedAgentIds = [], onMentionedAgentIdsChange, draftReady = true, draftPersistenceWarning, scrollIdentityKey, savedScrollPosition = 0, onScrollPositionChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -469,6 +474,20 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
   const title = conversationTitle ?? (agentName ? `${agentName} · ${roleTitle ?? 'Agent'}` : '选择一个 Agent 开始对话');
   const recoveryReason = isGroup ? groupInteractionRecoveryReason(groupInteraction) : undefined;
   const groupReadOnly = recoveryReason !== undefined;
+  const groupRecoveryAvailable = groupInteraction?.status === 'active'
+    && groupInteraction.integrityStatus === 'unusable'
+    && groupExecutionOwner?.status === 'interrupted'
+    && Number.isSafeInteger(groupExecutionOwner.ownerEpoch) && groupExecutionOwner.ownerEpoch > 0
+    && Boolean(groupRecoveryWorkspaceId && scrollIdentityKey && onGroupInteractionRecovered);
+  const groupRecoveryBlockedReason = isGroup && groupInteraction?.status === 'active' && groupInteraction.integrityStatus === 'unusable'
+    ? !groupExecutionOwner
+      ? '恢复入口未开放：执行 owner 状态未知，无法确认旧 Provider 已停止。为避免重复调用，保留历史供查看。'
+      : groupExecutionOwner.status !== 'interrupted'
+        ? `恢复入口未开放：执行 owner 状态为“${groupExecutionOwner.status}”，尚未确认中断。`
+        : groupExecutionOwner.ownerEpoch <= 0
+          ? '恢复入口未开放：中断 owner 缺少有效 epoch，无法安全执行版本比较。'
+          : undefined
+    : undefined;
   const effectiveSending = sending && !groupReadOnly;
   const status = !groupReadOnly && activeStatus ? statusLabels[activeStatus] : undefined;
   const baseSendButtonState = getSendButtonState({ canSend: canSendMessage(draft, attachments), sending: effectiveSending });
@@ -517,7 +536,19 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
 
     {target.kind === 'none' ? <div className="signal-empty m-6 grid flex-1 place-items-center px-6 text-center" style={{ marginTop: chromeTop + 24 }}><div className="relative z-10"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
       <div ref={scrollRef} data-scroll-restoration={!scrollIdentityKey || (draftReady && restoredScrollIdentity === scrollIdentityKey) ? 'ready' : 'pending'} onWheel={markReaderNavigation} onTouchMove={markReaderNavigation} onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markReaderNavigation(); }} onScroll={event => handleScroll(event.currentTarget)} className="signal-chat-scroll flex-1 min-w-0 overflow-y-auto px-4 sm:px-6" style={{ paddingTop: chromeTop + 28, paddingBottom: chromeBottom + 28 }}><div className="message-content-column mx-auto max-w-[70rem] min-w-0 space-y-3">
-        {isGroup && (groupInteraction || groupDiscussionError) && <div className="rounded-2xl border ui-border bg-[var(--app-surface-raised)] px-4 py-3 text-sm ui-text-soft"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${!groupReadOnly && groupInteraction?.status === 'active' ? 'bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} /><span className="font-medium ui-text">轮流讨论</span>{groupStatusLabel && <span className="ui-muted">· {groupStatusLabel}</span>}</div><span className="text-xs ui-muted">{groupBudget ? `${groupBudget.repliesUsed}/${groupBudget.repliesUsed + groupBudget.repliesRemaining} 次回复 · ${groupBudget.distinctAgents} 位 Agent` : '预算准备中'}</span></div>{groupReadOnly && <div role="status" className="mt-2 text-xs ui-text-soft">等待处理：{recoveryReason}。该讨论无法安全续接；保留历史供查看，发送、继续和停止已禁用。</div>}{groupInteraction?.stopReason && <div className="mt-1 text-xs ui-muted">结束原因：{groupInteraction.stopReason}</div>}{groupDiscussionError && <div role="alert" className="mt-2 text-xs text-[var(--app-danger)]">{groupDiscussionError}</div>}</div>}
+        {isGroup && (groupInteraction || groupDiscussionError) && <div className="rounded-2xl border ui-border bg-[var(--app-surface-raised)] px-4 py-3 text-sm ui-text-soft"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${!groupReadOnly && groupInteraction?.status === 'active' ? 'bg-[var(--app-accent)]' : 'bg-[var(--app-dim)]'}`} /><span className="font-medium ui-text">轮流讨论</span>{groupStatusLabel && <span className="ui-muted">· {groupStatusLabel}</span>}</div><span className="text-xs ui-muted">{groupBudget ? `${groupBudget.repliesUsed}/${groupBudget.repliesUsed + groupBudget.repliesRemaining} 次回复 · ${groupBudget.distinctAgents} 位 Agent` : '预算准备中'}</span></div>{groupReadOnly && <div role="status" className="mt-2 text-xs ui-text-soft">等待处理：{recoveryReason}。该讨论无法安全续接；保留历史供查看，发送、继续和停止已禁用。</div>}{groupRecoveryBlockedReason && <div role="status" className="mt-2 text-xs ui-text-soft">{groupRecoveryBlockedReason}</div>}{groupInteraction?.stopReason && <div className="mt-1 text-xs ui-muted">结束原因：{groupInteraction.stopReason}</div>}{groupDiscussionError && <div role="alert" className="mt-2 text-xs text-[var(--app-danger)]">{groupDiscussionError}</div>}</div>}
+        {groupRecoveryAvailable && groupInteraction && groupExecutionOwner && groupRecoveryWorkspaceId && scrollIdentityKey && onGroupInteractionRecovered && <GroupInteractionRecoveryPanel
+          workspaceId={groupRecoveryWorkspaceId}
+          apiBase={apiBase}
+          identityKey={scrollIdentityKey}
+          conversationId={groupInteraction.conversationId}
+          generation={groupRecoveryGeneration ?? 0}
+          interactionId={groupInteraction.id}
+          interactionVersion={groupInteraction.version}
+          ownerEpoch={groupExecutionOwner.ownerEpoch}
+          dispatchManagedByCaller
+          onRecovered={onGroupInteractionRecovered}
+        />}
         {messages.length === 0 && !streamingContent && !collaborationProgressState?.progress && !collaborationProgressState?.error && !groupInteraction && <div className="signal-empty px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始轮流讨论。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
         {isGroup && collaborationProgressState?.error && <section role="alert" className="mx-auto w-full max-w-[70rem] rounded-2xl border border-[var(--app-danger)]/40 bg-[var(--app-surface-raised)] px-4 py-3 text-sm leading-6 text-[var(--app-danger)]">协作任务无法加载：{collaborationProgressState.error}</section>}
         {isGroup && collaborationProgressState?.progress && <CollaborationTaskProgressCard state={collaborationProgressState} agents={agents} onOpenTask={() => (onOpenCollaborationTask ?? onCreateCollaborationTask)?.()} onCreateTask={() => onCreateCollaborationTask?.()} onOpenRuntime={runId => onOpenRuntime?.(runId)} />}
