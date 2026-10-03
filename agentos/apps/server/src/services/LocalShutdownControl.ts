@@ -26,11 +26,16 @@ export async function startLocalShutdownControl(options: LocalShutdownControlOpt
       const newline = request.indexOf('\n');
       if (newline < 0) return;
       const raw = request.slice(0, newline);
-      let message: { readonly operation?: unknown; readonly instanceId?: unknown; readonly nonce?: unknown };
-      try { message = JSON.parse(raw) as typeof message; } catch {
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw) as unknown; } catch {
         socket.end('{"ok":false,"code":"INVALID_REQUEST"}\n');
         return;
       }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        socket.end('{"ok":false,"code":"INVALID_REQUEST"}\n');
+        return;
+      }
+      const message = parsed as { readonly operation?: unknown; readonly instanceId?: unknown; readonly nonce?: unknown };
       const nonce = typeof message.nonce === 'string' ? Buffer.from(message.nonce, 'utf8') : Buffer.alloc(0);
       const expected = Buffer.from(options.nonce, 'utf8');
       const authenticated = message.operation === 'shutdown'
