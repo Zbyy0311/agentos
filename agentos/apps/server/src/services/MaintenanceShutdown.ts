@@ -16,6 +16,10 @@ export interface MaintenanceShutdownInput {
   readonly graceMs?: number;
 }
 
+export interface MaintenanceShutdownControllerInput extends Omit<MaintenanceShutdownInput, 'onFinished'> {
+  readonly onFinished: (exitCode: number) => void;
+}
+
 const DEFAULT_SHUTDOWN_GRACE_MS = 60_000;
 
 /**
@@ -71,6 +75,29 @@ export async function shutdownMaintenanceRuntime(input: MaintenanceShutdownInput
     .then(() => finalize())
     .catch(error => input.onError(error));
   return 'deferred';
+}
+
+/**
+ * Shares one drain across overlapping signal, local-control, and bootstrap
+ * failure paths. A startup failure may upgrade the eventual exit code while
+ * an already-started graceful drain is still preserving runtime evidence.
+ */
+export function createMaintenanceShutdownController(
+  resolveInput: () => MaintenanceShutdownControllerInput,
+): (exitCode: number) => Promise<'finished' | 'deferred'> {
+  let drain: Promise<'finished' | 'deferred'> | undefined;
+  let requestedExitCode = 0;
+  return (exitCode: number): Promise<'finished' | 'deferred'> => {
+    if (exitCode !== 0) requestedExitCode = exitCode;
+    if (!drain) {
+      const input = resolveInput();
+      drain = shutdownMaintenanceRuntime({
+        ...input,
+        onFinished: () => input.onFinished(requestedExitCode),
+      });
+    }
+    return drain;
+  };
 }
 
 async function waitForRuntimeDrain(input: MaintenanceShutdownInput, timeoutMs?: number): Promise<boolean> {

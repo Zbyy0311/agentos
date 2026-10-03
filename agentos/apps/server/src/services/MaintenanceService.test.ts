@@ -27,7 +27,7 @@ import { CollaborationWorkflowService } from './CollaborationWorkflowService.js'
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorkspaceGitRootRegistry } from './WorkspaceGitRootRegistry.js';
 import { CollaborationApplyJournalService } from './CollaborationApplyJournal.js';
-import { shutdownMaintenanceRuntime } from './MaintenanceShutdown.js';
+import { createMaintenanceShutdownController, shutdownMaintenanceRuntime } from './MaintenanceShutdown.js';
 import { inspectMaintenanceActivity } from './MaintenanceDiagnosticsService.js';
 
 const require = createRequire(import.meta.url);
@@ -1098,7 +1098,7 @@ test('storage diagnostics summarize capacity and backups without reading secrets
   }
 });
 
-test('disconnecting a backup client does not release SQLite or ownership before maintenance drains on shutdown', async () => {
+test('bootstrap failure after listen fences writes and retains SQLite and ownership until disconnected maintenance drains', async () => {
   const fx = createFixture();
   const barrier = new MaintenanceBarrier();
   let enterCopy!: () => void;
@@ -1149,18 +1149,19 @@ test('disconnecting a backup client does not release SQLite or ownership before 
     requestAbort.abort();
     await assert.rejects(disconnectedRequest);
 
-    const shutdown = await shutdownMaintenanceRuntime({
+    const requestStartupFailureCleanup = createMaintenanceShutdownController(() => ({
       barrier,
       coordinator,
       inspectActivity: () => ({ counts: {} }),
       server,
       closeStore: () => { storeClosed = true; fx.store.close(); },
       releaseOwnership: () => { ownershipReleased = true; },
-      onFinished: finished,
+      onFinished: exitCode => { assert.equal(exitCode, 1); finished(); },
       onDeferred: () => { stopDeferred = true; },
       onError: error => { throw error; },
       graceMs: 20,
-    });
+    }));
+    const shutdown = await requestStartupFailureCleanup(1);
     assert.equal(shutdown, 'deferred', 'bounded grace reports deferred instead of aborting the active snapshot');
     assert.equal(stopDeferred, true, 'shutdown exposes the explicit deferred-stop state');
     assert.equal(barrier.enterMutation(), undefined, 'new writes are fenced at shutdown start');
