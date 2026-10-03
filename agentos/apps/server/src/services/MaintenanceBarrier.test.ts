@@ -40,6 +40,10 @@ test('production entry installs write fence before routes and guards canonical, 
   const fence = source.indexOf('app.use(createMaintenanceWriteBarrier(maintenanceBarrier))');
   const firstApiWriteRoute = source.indexOf("app.use('/api', createRunLifecycleRoutes");
   assert.ok(fence >= 0 && firstApiWriteRoute > fence, 'the global mutation fence must precede production API route mounts');
+  const handlerTracking = source.indexOf('installMaintenanceRequestDrain(app)');
+  const lastMiddleware = source.indexOf('app.use(createProblemErrorHandler())');
+  const listen = source.indexOf("phase = 'listen'");
+  assert.ok(handlerTracking > lastMiddleware && handlerTracking < listen, 'all production router handlers must be tracked before accepting requests');
   assert.match(source, /dispatchRun:\s*async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
   assert.match(source, /runtimeDispatch:\s*\{\s*enabled: runtimeDispatchEnabled,\s*drive: async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
   assert.match(source, /if \(!input\.runtimeDispatchEnabled \|\| input\.barrier\.snapshot\.quiescing\) return;[\s\S]*?await input\.withDispatchPermit\(async \(\) => \{\s*await input\.collaborationService\.resumeGrantedQueuedRuns/u);
