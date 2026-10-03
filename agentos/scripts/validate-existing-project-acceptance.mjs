@@ -265,6 +265,13 @@ export function validateManifest(manifest) {
   requireCondition(requirements?.repositoryTreeSha === 'full-40-character-git-sha', 'full repository tree SHA is required');
   requireCondition(requirements?.actualCheckoutMustMatchExpectedSha === true, 'the checkout must match the externally supplied expected SHA');
   requireCondition(requirements?.immutableRepositorySnapshot === true, 'repository commit and tree must be identical at start and end');
+  const project = requirements.projectRepository;
+  requireCondition(project?.commitSha === 'full-40-character-git-commit-sha-in-runtime-repository'
+    && project.treeSha === 'git-tree-resolved-from-project-commit'
+    && project.defaultCommit === 'expected-runtime-sha'
+    && project.distinctCommitRequiresExplicitProjectSha === true
+    && project.receiptMustNotSelectProjectSha === true,
+  'project identity must be supplied externally and bound to a real commit and its tree');
   requireCondition(sameArray(requirements?.modelFields, ['provider', 'id']), 'model provider and id are required');
   requireCondition(requirements.processExitCode === 0 && requirements.acceptanceExitCode === 0,
     'process and acceptance exits must both require 0');
@@ -283,7 +290,9 @@ export function validateManifest(manifest) {
     && requirements.realPlanEvidence.receiptMustMatchCapturedPlanFields === true,
   'real acceptance must preserve and bind the original raw plan bytes');
   requireCondition(requirements.baselineProbe?.sourcePathPrefix === 'agentos/scripts/fixtures/p4-memory-source-probes/'
-    && requirements.baselineProbe.sourceMustBeTrackedCleanAndCommittedAtExpectedSha === true
+    && requirements.baselineProbe.sourceMustBeCommittedAtProjectSha === true
+    && requirements.baselineProbe.isolatedWorkspaceSourceMustBeTrackedAndClean === true
+    && requirements.baselineProbe.runtimeCheckoutSourceMustBeCleanWhenProjectShaEqualsExpectedSha === true
     && sameArray(requirements.baselineProbe.sourceBindings,
       ['sourcePath', 'sourceSha256', 'sourceBlobSha', 'sourceCommitSha'])
     && requirements.baselineProbe.argvMustBeBoundAndIdenticalAcrossBaselineAndCandidate === true

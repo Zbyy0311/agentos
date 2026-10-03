@@ -21,6 +21,21 @@ const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
 const validatorPath = fileURLToPath(new URL('./validate-existing-project-acceptance.mjs', import.meta.url));
 const manifest = validateManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
 
+test('manifest binds the project baseline separately from the immutable runtime checkout', () => {
+  assert.doesNotThrow(() => validateManifest(manifest));
+  for (const field of ['distinctCommitRequiresExplicitProjectSha', 'receiptMustNotSelectProjectSha']) {
+    const invalid = structuredClone(manifest);
+    invalid.receiptRequirements.projectRepository[field] = false;
+    assert.throws(() => validateManifest(invalid), /project identity must be supplied externally/u);
+  }
+  for (const field of ['sourceMustBeCommittedAtProjectSha', 'isolatedWorkspaceSourceMustBeTrackedAndClean',
+    'runtimeCheckoutSourceMustBeCleanWhenProjectShaEqualsExpectedSha']) {
+    const invalid = structuredClone(manifest);
+    invalid.receiptRequirements.baselineProbe[field] = false;
+    assert.throws(() => validateManifest(invalid), /probes must be source-bound/u);
+  }
+});
+
 function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }

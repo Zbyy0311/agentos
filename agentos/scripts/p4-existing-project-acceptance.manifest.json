@@ -20,6 +20,13 @@
     "repositoryTreeSha": "full-40-character-git-sha",
     "actualCheckoutMustMatchExpectedSha": true,
     "immutableRepositorySnapshot": true,
+    "projectRepository": {
+      "commitSha": "full-40-character-git-commit-sha-in-runtime-repository",
+      "treeSha": "git-tree-resolved-from-project-commit",
+      "defaultCommit": "expected-runtime-sha",
+      "distinctCommitRequiresExplicitProjectSha": true,
+      "receiptMustNotSelectProjectSha": true
+    },
     "modelFields": ["provider", "id"],
     "processExitCode": 0,
     "acceptanceExitCode": 0,
@@ -41,7 +48,9 @@
     },
     "baselineProbe": {
       "sourcePathPrefix": "agentos/scripts/fixtures/p4-memory-source-probes/",
-      "sourceMustBeTrackedCleanAndCommittedAtExpectedSha": true,
+      "sourceMustBeCommittedAtProjectSha": true,
+      "isolatedWorkspaceSourceMustBeTrackedAndClean": true,
+      "runtimeCheckoutSourceMustBeCleanWhenProjectShaEqualsExpectedSha": true,
       "sourceBindings": ["sourcePath", "sourceSha256", "sourceBlobSha", "sourceCommitSha"],
       "argvMustBeBoundAndIdenticalAcrossBaselineAndCandidate": true,
       "baselineRequiresNonzeroAndExpectedAssertionMarker": true,
