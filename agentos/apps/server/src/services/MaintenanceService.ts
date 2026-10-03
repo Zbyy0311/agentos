@@ -50,6 +50,13 @@ const sqlite = require('node:sqlite') as {
 
 const BACKUP_FORMAT = 'agentos-maintenance-backup';
 const BACKUP_FORMAT_VERSION = 2;
+export const MAINTENANCE_BACKUP_LIMITS = Object.freeze({
+  maxFiles: 25_000,
+  maxFileBytes: 512 * 1024 * 1024,
+  maxTotalBytes: 4 * 1024 * 1024 * 1024,
+  maxManifestBytes: 32 * 1024 * 1024,
+  streamChunkBytes: 64 * 1024,
+});
 const BUILD_IDENTITY = getAgentOsBuildIdentity();
 const RESERVED_AGENTOS_DIRS = new Set(['backups', 'migration-backups', 'logs', 'cache', 'caches', 'tmp', 'temp', 'worktrees']);
 const CLEANUP_QUARANTINE_RELATIVE = '.agentos/cleanup-quarantine';
@@ -87,6 +94,10 @@ export interface MaintenanceBackupManifest {
 export interface BackupResult {
   readonly backupDirectory: string;
   readonly manifest: MaintenanceBackupManifest;
+  readonly durability: {
+    readonly fileContents: 'synced';
+    readonly directoryEntries: 'synced' | 'not-guaranteed';
+  };
 }
 
 export interface RestoreResult {
@@ -155,6 +166,10 @@ interface MaintenanceServiceSeams {
   readonly afterCleanupQuarantine?: (input: { readonly sourcePath: string; readonly quarantinedPath: string }) => void | Promise<void>;
   /** @internal Deterministic source replacement seam for stable-copy tests. */
   readonly beforeStableCopyOpen?: (input: { readonly sourcePath: string }) => void | Promise<void>;
+  /** @internal Deterministic mid-stream source mutation seam for stability tests. */
+  readonly afterStableCopyChunk?: (input: { readonly sourcePath: string; readonly bytesCopied: number }) => void | Promise<void>;
+  /** @internal Inject an I/O failure at a publication barrier. */
+  readonly beforeBackupFileSync?: (input: { readonly path: string; readonly kind: 'database' | 'manifest' }) => void | Promise<void>;
 }
 
 export class MaintenanceServiceError extends Error {
@@ -197,7 +212,8 @@ export class MaintenanceService {
     try {
       throwIfAborted(signal);
       const databasePath = join(stage, 'payload', '000000.sqlite');
-      await createSqliteSnapshot(this.database, databasePath, signal);
+      await createSqliteSnapshot(this.database, databasePath, signal, () =>
+        this.seams.beforeBackupFileSync?.({ path: databasePath, kind: 'database' }));
       const snapshotDb = openDatabase(databasePath);
       let migrations: Array<{ id: string; name: string; checksum: string }>;
       let workspaceRoots: Record<string, string>;
@@ -211,17 +227,27 @@ export class MaintenanceService {
       } finally { snapshotDb.close(); }
       const schemaVersion = migrations.at(-1)?.id ?? '000';
       const files: BackupFileEntry[] = [await makeEntry('database', '.agentos/agentos.sqlite', 'payload/000000.sqlite', databasePath)];
+      let copiedBytes = files[0]!.sizeBytes;
+      if (copiedBytes > MAINTENANCE_BACKUP_LIMITS.maxTotalBytes) throw new MaintenanceServiceError('BACKUP_TOTAL_LIMIT_EXCEEDED');
       let index = 1;
 
       const dataFiles = await listManagedDataFiles(join(this.dataRoot, '.agentos'), '.agentos');
       dataFiles.push(...await listKnownWorkspaceMetadata(this.dataRoot, workspaceSnapshot));
-      for (const source of uniqueByTarget(dataFiles, item => item.targetPath)) {
+      const uniqueDataFiles = uniqueByTarget(dataFiles, item => item.targetPath);
+      if (1 + uniqueDataFiles.length + externalFiles.length > MAINTENANCE_BACKUP_LIMITS.maxFiles) {
+        throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+      }
+      await validateBackupSourceBudget([...uniqueDataFiles, ...externalFiles], copiedBytes);
+      for (const source of uniqueDataFiles) {
         throwIfAborted(signal);
         const payloadPath = `payload/${String(index).padStart(6, '0')}.bin`;
         const payloadAbsolute = join(stage, ...payloadPath.split('/'));
-        await copyStable(source.absolutePath, payloadAbsolute, this.dataRoot, signal,
-          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }));
-        files.push(await makeEntry('data-root', source.targetPath, payloadPath, payloadAbsolute));
+        const copied = await copyStable(source.absolutePath, payloadAbsolute, this.dataRoot, signal,
+          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }),
+          MAINTENANCE_BACKUP_LIMITS.maxTotalBytes - copiedBytes,
+          this.seams.afterStableCopyChunk === undefined ? undefined : input => this.seams.afterStableCopyChunk!(input));
+        copiedBytes += copied.sizeBytes;
+        files.push(await makeEntry('data-root', source.targetPath, payloadPath, payloadAbsolute, undefined, copied));
         index += 1;
       }
 
@@ -232,9 +258,12 @@ export class MaintenanceService {
         await validateWorkspacePath(workspaceRoot, source.absolutePath);
         const payloadPath = `payload/${String(index).padStart(6, '0')}.bin`;
         const payloadAbsolute = join(stage, ...payloadPath.split('/'));
-        await copyStable(source.absolutePath, payloadAbsolute, workspaceRoot, signal,
-          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }));
-        files.push(await makeEntry('workspace-root', source.relativePath, payloadPath, payloadAbsolute, source.workspaceId));
+        const copied = await copyStable(source.absolutePath, payloadAbsolute, workspaceRoot, signal,
+          this.seams.beforeStableCopyOpen === undefined ? undefined : () => this.seams.beforeStableCopyOpen!({ sourcePath: source.absolutePath }),
+          MAINTENANCE_BACKUP_LIMITS.maxTotalBytes - copiedBytes,
+          this.seams.afterStableCopyChunk === undefined ? undefined : input => this.seams.afterStableCopyChunk!(input));
+        copiedBytes += copied.sizeBytes;
+        files.push(await makeEntry('workspace-root', source.relativePath, payloadPath, payloadAbsolute, source.workspaceId, copied));
         index += 1;
       }
 
@@ -251,11 +280,28 @@ export class MaintenanceService {
         workspaceRoots,
         files,
       };
-      await writeFile(join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+      const manifestPath = join(stage, 'manifest.json');
+      const manifestFile = await open(manifestPath, 'wx');
+      try {
+        await manifestFile.writeFile(`${JSON.stringify(manifest, null, 2)}\n`);
+        try {
+          await this.seams.beforeBackupFileSync?.({ path: manifestPath, kind: 'manifest' });
+          await manifestFile.sync();
+        } catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+      } finally { await manifestFile.close(); }
       throwIfAborted(signal);
-      await MaintenanceService.readAndVerifyBackup(stage);
+      await MaintenanceService.readAndVerifyBackup(stage, signal);
+      await syncBackupDirectory(join(stage, 'payload'));
+      await syncBackupDirectory(stage);
+      throwIfAborted(signal);
       await rename(stage, finalPath);
-      return { backupDirectory: finalPath, manifest };
+      await syncBackupDirectory(backupRoot);
+      await syncBackupDirectory(dirname(backupRoot));
+      return {
+        backupDirectory: finalPath,
+        manifest,
+        durability: { fileContents: 'synced', directoryEntries: process.platform === 'win32' ? 'not-guaranteed' : 'synced' },
+      };
     } catch (error) {
       await rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {});
       if (error instanceof MaintenanceServiceError) throw error;
@@ -265,7 +311,7 @@ export class MaintenanceService {
     }
   }
 
-  static async readAndVerifyBackup(backupDirectory: string): Promise<MaintenanceBackupManifest> {
+  static async readAndVerifyBackup(backupDirectory: string, signal?: AbortSignal): Promise<MaintenanceBackupManifest> {
     const root = resolve(backupDirectory);
     const rootInfo = await lstat(root).catch(() => undefined);
     if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_DIRECTORY_INVALID');
@@ -274,9 +320,10 @@ export class MaintenanceService {
     try {
       const manifestInfo = await lstat(manifestPath);
       if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink()) throw new Error('invalid manifest file');
-      const text = await readFile(manifestPath, 'utf8');
+      const text = await readBoundedStableUtf8(manifestPath, MAINTENANCE_BACKUP_LIMITS.maxManifestBytes);
       manifest = JSON.parse(text) as MaintenanceBackupManifest;
-    } catch {
+    } catch (error) {
+      if (error instanceof MaintenanceServiceError) throw error;
       throw new MaintenanceServiceError('BACKUP_MANIFEST_INVALID');
     }
     validateManifest(manifest);
@@ -296,11 +343,11 @@ export class MaintenanceService {
     if (databaseEntries.length !== 1) throw new MaintenanceServiceError('BACKUP_DATABASE_MISSING');
     const databaseEntry = databaseEntries[0]!;
     const dbPath = resolveInside(root, databaseEntry.payloadPath);
-    await verifyBackupPayload(root, databaseEntry);
+    await verifyBackupPayload(root, databaseEntry, signal);
     verifyDatabase(dbPath, manifest);
     for (const entry of manifest.files) {
       if (entry.scope === 'database') continue;
-      await verifyBackupPayload(root, entry);
+      await verifyBackupPayload(root, entry, signal);
     }
     await verifyPayloadInventory(root, manifest);
     await verifyBackupRecoveryMaterials(root, manifest);
@@ -350,15 +397,13 @@ export class MaintenanceService {
         const payload = resolveInside(backupRoot, entry.payloadPath);
         const destination = resolveInside(staging, entry.targetPath);
         await mkdir(dirname(destination), { recursive: true });
-        await copyStable(payload, destination, backupRoot);
-        const copied = await hashStable(destination);
+        const copied = await copyStable(payload, destination, backupRoot);
         if (copied.sizeBytes !== entry.sizeBytes || copied.sha256 !== entry.sha256) throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
       }
       const databaseEntry = manifest.files.find(item => item.scope === 'database')!;
       const stagedDatabase = resolveInside(staging, databaseEntry.targetPath);
       await mkdir(dirname(stagedDatabase), { recursive: true });
-      await copyStable(resolveInside(backupRoot, databaseEntry.payloadPath), stagedDatabase, backupRoot);
-      const databaseHash = await hashStable(stagedDatabase);
+      const databaseHash = await copyStable(resolveInside(backupRoot, databaseEntry.payloadPath), stagedDatabase, backupRoot);
       if (databaseHash.sizeBytes !== databaseEntry.sizeBytes || databaseHash.sha256 !== databaseEntry.sha256) {
         throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
       }
@@ -375,8 +420,7 @@ export class MaintenanceService {
         const destination = resolveWorkspaceAsset(workspaceRoot, entry.targetPath);
         const payload = resolveInside(backupRoot, entry.payloadPath);
         await mkdir(dirname(destination), { recursive: true });
-        await copyStable(payload, destination, backupRoot);
-        const copied = await hashStable(destination);
+        const copied = await copyStable(payload, destination, backupRoot);
         if (copied.sizeBytes !== entry.sizeBytes || copied.sha256 !== entry.sha256) {
           throw new MaintenanceServiceError('RESTORE_COPY_VERIFY_FAILED');
         }
@@ -692,21 +736,51 @@ function isSafeControlId(value: string): boolean {
   return value.length > 0 && value.length <= 160 && /^[\w.-]+$/u.test(value) && value !== '.' && value !== '..';
 }
 
-export async function createSqliteSnapshot(database: SqliteDatabase, target: string, signal?: AbortSignal): Promise<void> {
+export async function createSqliteSnapshot(
+  database: SqliteDatabase,
+  target: string,
+  signal?: AbortSignal,
+  beforeSync?: () => void | Promise<void>,
+): Promise<void> {
   const existing = await inspectOptionalFile(target);
   if (existing) throw new MaintenanceServiceError('BACKUP_TARGET_EXISTS');
   if (typeof sqlite.backup === 'function') {
+    const pageSizeRow = database.prepare('PRAGMA page_size').get() as { page_size?: number } | undefined;
+    const pageSize = Number(pageSizeRow?.page_size ?? 4096);
     await sqlite.backup(database, target, {
       rate: 128,
-      progress: () => {
+      progress: progress => {
         if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
+        const bytes = pageSize * progress.totalPages;
+        if (!Number.isSafeInteger(bytes) || bytes > MAINTENANCE_BACKUP_LIMITS.maxFileBytes) {
+          throw new MaintenanceServiceError('BACKUP_FILE_LIMIT_EXCEEDED');
+        }
       },
     });
-    return;
+  } else {
+    if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
+    const sqlPath = target.replaceAll("'", "''");
+    database.exec(`VACUUM INTO '${sqlPath}'`);
   }
-  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new MaintenanceServiceError('MAINTENANCE_ABORTED');
-  const sqlPath = target.replaceAll("'", "''");
-  database.exec(`VACUUM INTO '${sqlPath}'`);
+  throwIfAborted(signal);
+  const file = await open(target, 'r+');
+  try {
+    try {
+      await beforeSync?.();
+      await file.sync();
+    } catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+  } finally { await file.close(); }
+}
+
+async function syncBackupDirectory(path: string): Promise<void> {
+  // Node's portable directory handles cannot guarantee Windows directory-entry
+  // persistence. The API reports that limit instead of claiming power-loss safety.
+  if (process.platform === 'win32') return;
+  const directory = await open(path, 'r');
+  try {
+    try { await directory.sync(); }
+    catch { throw new MaintenanceServiceError('BACKUP_SYNC_FAILED'); }
+  } finally { await directory.close(); }
 }
 
 function readMigrationRows(database: DatabaseSyncLike): Array<{ id: string; name: string; checksum: string }> {
@@ -854,7 +928,7 @@ function safeStorageKey(value: string): string {
   return value;
 }
 
-async function verifyBackupPayload(root: string, entry: BackupFileEntry): Promise<void> {
+async function verifyBackupPayload(root: string, entry: BackupFileEntry, signal?: AbortSignal): Promise<void> {
   const payload = resolveInside(root, entry.payloadPath);
   try {
     await assertNoSymlinkComponents(payload);
@@ -863,7 +937,7 @@ async function verifyBackupPayload(root: string, entry: BackupFileEntry): Promis
     if (!isPathInside(rootReal, payloadReal)) throw new MaintenanceServiceError('BACKUP_PATH_INVALID');
     const info = await lstat(payload);
     if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
-    const actual = await hashStable(payload);
+    const actual = await hashStable(payload, MAINTENANCE_BACKUP_LIMITS.maxTotalBytes, signal);
     if (actual.sizeBytes !== entry.sizeBytes || actual.sha256 !== entry.sha256) {
       throw new MaintenanceServiceError('BACKUP_HASH_MISMATCH');
     }
@@ -889,7 +963,10 @@ async function verifyPayloadInventory(root: string, manifest: MaintenanceBackupM
       const childInfo = await lstat(absolute);
       if (childInfo.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_SYMLINK_UNSUPPORTED');
       if (childInfo.isDirectory()) await walk(absolute, relativePath);
-      else if (childInfo.isFile()) actual.add(relativePath.toLocaleLowerCase('en-US'));
+      else if (childInfo.isFile()) {
+        actual.add(relativePath.toLocaleLowerCase('en-US'));
+        if (actual.size > MAINTENANCE_BACKUP_LIMITS.maxFiles) throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+      }
       else throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
     }
   };
@@ -909,7 +986,24 @@ function validateManifest(manifest: MaintenanceBackupManifest): void {
     || !Array.isArray(manifest.files) || manifest.files.length < 1) {
     throw new MaintenanceServiceError('BACKUP_MANIFEST_INVALID');
   }
+  if (manifest.files.length > MAINTENANCE_BACKUP_LIMITS.maxFiles) {
+    throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+  }
+  let totalBytes = 0;
+  for (const entry of manifest.files) {
+    if (!Number.isSafeInteger(entry?.sizeBytes) || entry.sizeBytes < 0
+      || entry.sizeBytes > MAINTENANCE_BACKUP_LIMITS.maxFileBytes) {
+      throw new MaintenanceServiceError('BACKUP_FILE_LIMIT_EXCEEDED');
+    }
+    totalBytes += entry.sizeBytes;
+    if (totalBytes > MAINTENANCE_BACKUP_LIMITS.maxTotalBytes) {
+      throw new MaintenanceServiceError('BACKUP_TOTAL_LIMIT_EXCEEDED');
+    }
+  }
   for (const [id, root] of Object.entries(manifest.workspaceRoots)) {
+    if (Object.keys(manifest.workspaceRoots).length > MAINTENANCE_BACKUP_LIMITS.maxFiles) {
+      throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+    }
     if (!isValidWorkspaceId(id) || typeof root !== 'string' || !isAbsolute(root)) throw new MaintenanceServiceError('BACKUP_MANIFEST_INVALID');
   }
   if (!isBuildLabel(manifest.buildVersion) || !isBuildLabel(manifest.buildId)
@@ -1005,12 +1099,36 @@ async function listManagedDataFiles(agentosRoot: string, prefix: string): Promis
       const info = await lstat(absolutePath);
       if (info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_SYMLINK_UNSUPPORTED');
       if (info.isDirectory()) await walk(absolutePath, [relativeDir, entry.name].filter(Boolean).join('/'));
-      else if (info.isFile()) files.push({ absolutePath, targetPath });
+      else if (info.isFile()) {
+        files.push({ absolutePath, targetPath });
+        if (files.length + 1 > MAINTENANCE_BACKUP_LIMITS.maxFiles) throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+      }
       else throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
     }
   };
   await walk(root, '');
   return files;
+}
+
+async function validateBackupSourceBudget(
+  files: readonly { readonly absolutePath: string }[],
+  initialBytes: number,
+): Promise<void> {
+  if (files.length + 1 > MAINTENANCE_BACKUP_LIMITS.maxFiles) {
+    throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
+  }
+  let totalBytes = initialBytes;
+  for (const item of files) {
+    const info = await lstat(item.absolutePath, { bigint: true });
+    if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+    if (info.size > BigInt(MAINTENANCE_BACKUP_LIMITS.maxFileBytes)) {
+      throw new MaintenanceServiceError('BACKUP_FILE_LIMIT_EXCEEDED');
+    }
+    totalBytes += Number(info.size);
+    if (!Number.isSafeInteger(totalBytes) || totalBytes > MAINTENANCE_BACKUP_LIMITS.maxTotalBytes) {
+      throw new MaintenanceServiceError('BACKUP_TOTAL_LIMIT_EXCEEDED');
+    }
+  }
 }
 
 async function listKnownWorkspaceMetadata(dataRoot: string, workspaces: readonly WorkspaceRoot[]): Promise<Array<{ absolutePath: string; targetPath: string }>> {
@@ -1046,14 +1164,15 @@ function listWorkspaceReferences(database: SqliteDatabase, workspaces: readonly 
     const absolutePath = resolveWorkspaceAsset(root, normalized);
     const key = `${workspaceId}:${normalized.toLowerCase()}`;
     references.set(key, { absolutePath, relativePath: normalized, workspaceId });
+    if (references.size > MAINTENANCE_BACKUP_LIMITS.maxFiles) throw new MaintenanceServiceError('BACKUP_FILE_COUNT_LIMIT_EXCEEDED');
   };
   if (hasTable('memories')) {
-    const rows = database.prepare('SELECT workspace_id, content_path FROM memories').all() as Array<{ workspace_id: string; content_path: string }>;
+    const rows = database.prepare(`SELECT workspace_id, content_path FROM memories LIMIT ${MAINTENANCE_BACKUP_LIMITS.maxFiles + 1}`).all() as Array<{ workspace_id: string; content_path: string }>;
     for (const row of rows) add(row.workspace_id, row.content_path, 'agent-memory/records/');
   }
   for (const table of ['message_attachments', 'cr_message_attachments']) {
     if (!hasTable(table)) continue;
-    const rows = database.prepare(`SELECT workspace_id, relative_path FROM "${table}"`).all() as Array<{ workspace_id: string; relative_path: string }>;
+    const rows = database.prepare(`SELECT workspace_id, relative_path FROM "${table}" LIMIT ${MAINTENANCE_BACKUP_LIMITS.maxFiles + 1}`).all() as Array<{ workspace_id: string; relative_path: string }>;
     for (const row of rows) add(row.workspace_id, row.relative_path, '.agentos/attachments/');
   }
   return [...references.values()].sort((a, b) => `${a.workspaceId}/${a.relativePath}`.localeCompare(`${b.workspaceId}/${b.relativePath}`));
@@ -1145,8 +1264,9 @@ async function makeEntry(
   payloadPath: string,
   filePath: string,
   workspaceId?: string,
+  copied?: { readonly sizeBytes: number; readonly sha256: string },
 ): Promise<BackupFileEntry> {
-  const hash = await hashStable(filePath);
+  const hash = copied ?? await hashStable(filePath);
   return {
     scope,
     ...(workspaceId ? { workspaceId } : {}),
@@ -1163,7 +1283,9 @@ async function copyStable(
   boundaryRoot: string,
   signal?: AbortSignal,
   beforeOpen?: () => void | Promise<void>,
-): Promise<void> {
+  totalBudgetRemaining = MAINTENANCE_BACKUP_LIMITS.maxTotalBytes,
+  afterChunk?: (input: { readonly sourcePath: string; readonly bytesCopied: number }) => void | Promise<void>,
+): Promise<{ readonly sizeBytes: number; readonly sha256: string }> {
   throwIfAborted(signal);
   const source = resolve(sourcePath);
   let root: string;
@@ -1190,7 +1312,7 @@ async function copyStable(
   const input = await open(sourcePath, 'r');
   try {
     const before = await input.stat({ bigint: true });
-    if (!before.isFile() || !sameFileIdentity(initial, before)) {
+    if (!before.isFile() || !sameStableFileState(initial, before)) {
       throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
     }
     // Re-check both opened-handle identity and every parent directory witness.
@@ -1198,24 +1320,52 @@ async function copyStable(
     try { await assertCollaborationPathBoundaryUnchanged(root, witness); }
     catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
     const openedPath = await lstat(source, { bigint: true });
-    if (!sameFileIdentity(before, openedPath)) throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
-    const bytes = await input.readFile();
-    const after = await input.stat({ bigint: true });
-    try { await assertCollaborationPathBoundaryUnchanged(root, witness); }
-    catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
-    const afterPath = await lstat(source, { bigint: true });
-    if (!sameFileIdentity(before, after) || !sameFileIdentity(before, afterPath)
-      || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
-      throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED');
+    if (!sameStableFileState(before, openedPath)) throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
+    const expectedSize = Number(before.size);
+    if (!Number.isSafeInteger(expectedSize) || expectedSize > MAINTENANCE_BACKUP_LIMITS.maxFileBytes) {
+      throw new MaintenanceServiceError('BACKUP_FILE_LIMIT_EXCEEDED');
     }
-    throwIfAborted(signal);
+    if (expectedSize > totalBudgetRemaining) throw new MaintenanceServiceError('BACKUP_TOTAL_LIMIT_EXCEEDED');
     await mkdir(dirname(targetPath), { recursive: true });
     const output = await open(targetPath, 'wx');
+    const digest = createHash('sha256');
+    const buffer = Buffer.allocUnsafe(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes);
+    let position = 0;
+    let completed = false;
     try {
-      await output.writeFile(bytes);
+      while (true) {
+        throwIfAborted(signal);
+        const { bytesRead } = await input.read(buffer, 0, buffer.byteLength, position);
+        if (bytesRead === 0) break;
+        position += bytesRead;
+        if (position > MAINTENANCE_BACKUP_LIMITS.maxFileBytes || position > totalBudgetRemaining) {
+          throw new MaintenanceServiceError(position > totalBudgetRemaining ? 'BACKUP_TOTAL_LIMIT_EXCEEDED' : 'BACKUP_FILE_LIMIT_EXCEEDED');
+        }
+        digest.update(buffer.subarray(0, bytesRead));
+        let written = 0;
+        while (written < bytesRead) {
+          const result = await output.write(buffer, written, bytesRead - written, position - bytesRead + written);
+          if (result.bytesWritten <= 0) throw new MaintenanceServiceError('BACKUP_WRITE_FAILED');
+          written += result.bytesWritten;
+        }
+        await afterChunk?.({ sourcePath, bytesCopied: position });
+      }
+      const after = await input.stat({ bigint: true });
+      try { await assertCollaborationPathBoundaryUnchanged(root, witness); }
+      catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
+      const afterPath = await lstat(source, { bigint: true });
+      if (!sameStableFileState(before, after) || !sameStableFileState(before, afterPath)
+        || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
+        || position !== expectedSize) {
+        throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED');
+      }
+      throwIfAborted(signal);
       await output.sync();
+      completed = true;
+      return { sizeBytes: position, sha256: digest.digest('hex') };
     } finally {
       await output.close();
+      if (!completed) await rm(targetPath, { force: true }).catch(() => {});
     }
   } finally {
     await input.close();
@@ -1226,21 +1376,105 @@ function sameFileIdentity(left: { dev: bigint; ino: bigint; mode: bigint }, righ
   return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode;
 }
 
-async function hashStable(filePath: string): Promise<{ sizeBytes: number; sha256: string }> {
-  const info = await lstat(filePath);
+function sameStableFileState(
+  left: { dev: bigint; ino: bigint; mode: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint },
+  right: { dev: bigint; ino: bigint; mode: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint },
+): boolean {
+  return sameFileIdentity(left, right) && left.size === right.size
+    && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
+}
+
+async function hashStable(
+  filePath: string,
+  totalBudgetRemaining = MAINTENANCE_BACKUP_LIMITS.maxTotalBytes,
+  signal?: AbortSignal,
+): Promise<{ sizeBytes: number; sha256: string }> {
+  const absolutePath = resolve(filePath);
+  const info = await lstat(absolutePath, { bigint: true });
   if (!info.isFile() || info.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
-  const file = await open(filePath, 'r');
+  if (info.size > BigInt(MAINTENANCE_BACKUP_LIMITS.maxFileBytes)) throw new MaintenanceServiceError('BACKUP_FILE_LIMIT_EXCEEDED');
+  if (info.size > BigInt(totalBudgetRemaining)) throw new MaintenanceServiceError('BACKUP_TOTAL_LIMIT_EXCEEDED');
+  const parentPath = dirname(absolutePath);
+  let realParentBefore: string;
+  let realPathBefore: string;
+  let boundary: Awaited<ReturnType<typeof captureCollaborationPathBoundary>>;
   try {
-    const before = await file.stat();
-    const bytes = await file.readFile();
-    const after = await file.stat();
-    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+    realParentBefore = await realpath(parentPath);
+    realPathBefore = await realpath(absolutePath);
+    boundary = await captureCollaborationPathBoundary(realParentBefore,
+      [relative(realParentBefore, realPathBefore).split(sep).join('/')]);
+  } catch { throw new MaintenanceServiceError('BACKUP_PATH_INVALID'); }
+  const file = await open(absolutePath, 'r');
+  try {
+    const before = await file.stat({ bigint: true });
+    if (!sameStableFileState(info, before)) throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
+    const digest = createHash('sha256');
+    const buffer = Buffer.allocUnsafe(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes);
+    let position = 0;
+    while (true) {
+      throwIfAborted(signal);
+      const { bytesRead } = await file.read(buffer, 0, buffer.byteLength, position);
+      if (bytesRead === 0) break;
+      position += bytesRead;
+      if (position > MAINTENANCE_BACKUP_LIMITS.maxFileBytes || position > totalBudgetRemaining) {
+        throw new MaintenanceServiceError(position > totalBudgetRemaining ? 'BACKUP_TOTAL_LIMIT_EXCEEDED' : 'BACKUP_FILE_LIMIT_EXCEEDED');
+      }
+      digest.update(buffer.subarray(0, bytesRead));
+    }
+    const after = await file.stat({ bigint: true });
+    const pathAfter = await lstat(absolutePath, { bigint: true });
+    let realPathAfter: string;
+    let realParentAfter: string;
+    try {
+      realPathAfter = await realpath(absolutePath);
+      realParentAfter = await realpath(parentPath);
+      await assertCollaborationPathBoundaryUnchanged(realParentBefore, boundary);
+    } catch { throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED'); }
+    if (!sameStableFileState(before, after) || !sameStableFileState(before, pathAfter)
+      || position !== Number(before.size) || realPathBefore !== realPathAfter || realParentBefore !== realParentAfter) {
       throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED');
     }
-    return { sizeBytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') };
+    return { sizeBytes: position, sha256: digest.digest('hex') };
   } finally {
     await file.close();
   }
+}
+
+async function readBoundedStableUtf8(filePath: string, maxBytes: number): Promise<string> {
+  const absolutePath = resolve(filePath);
+  const beforePath = await lstat(absolutePath, { bigint: true });
+  if (!beforePath.isFile() || beforePath.isSymbolicLink()) throw new MaintenanceServiceError('BACKUP_FILE_TYPE_UNSUPPORTED');
+  if (beforePath.size > BigInt(maxBytes)) throw new MaintenanceServiceError('BACKUP_MANIFEST_LIMIT_EXCEEDED');
+  const parentPath = dirname(absolutePath);
+  const realParentBefore = await realpath(parentPath);
+  const realPathBefore = await realpath(absolutePath);
+  const boundary = await captureCollaborationPathBoundary(realParentBefore,
+    [relative(realParentBefore, realPathBefore).split(sep).join('/')]);
+  const file = await open(absolutePath, 'r');
+  try {
+    const before = await file.stat({ bigint: true });
+    if (!sameStableFileState(beforePath, before)) throw new MaintenanceServiceError('BACKUP_SOURCE_IDENTITY_CHANGED');
+    const chunks: Buffer[] = [];
+    const buffer = Buffer.allocUnsafe(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes);
+    let position = 0;
+    while (true) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.byteLength, position);
+      if (bytesRead === 0) break;
+      position += bytesRead;
+      if (position > maxBytes) throw new MaintenanceServiceError('BACKUP_MANIFEST_LIMIT_EXCEEDED');
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    const after = await file.stat({ bigint: true });
+    const afterPath = await lstat(absolutePath, { bigint: true });
+    const realPathAfter = await realpath(absolutePath);
+    const realParentAfter = await realpath(parentPath);
+    await assertCollaborationPathBoundaryUnchanged(realParentBefore, boundary);
+    if (!sameStableFileState(before, after) || !sameStableFileState(before, afterPath)
+      || position !== Number(before.size) || realPathBefore !== realPathAfter || realParentBefore !== realParentAfter) {
+      throw new MaintenanceServiceError('BACKUP_SOURCE_CHANGED');
+    }
+    return Buffer.concat(chunks, position).toString('utf8');
+  } finally { await file.close(); }
 }
 
 async function inspectOptionalFile(path: string): Promise<{ sizeBytes: number; sha256: string } | undefined> {

@@ -43,6 +43,7 @@ export function createMaintenanceRoutes(input: {
         createdAt: result.result.manifest.createdAt,
         schemaVersion: result.result.manifest.schemaVersion,
         fileCount: result.result.manifest.files.length,
+        durability: result.result.durability,
       });
     } catch (error) {
       return respondMaintenanceError(req, res, error);
@@ -149,11 +150,14 @@ function respondMaintenanceError(req: Request, res: Response, error: unknown): v
     ? error.code
     : 'MAINTENANCE_OPERATION_FAILED';
   const status = code === 'WORKSPACE_NOT_FOUND' ? 404
+    : code === 'BACKUP_FILE_LIMIT_EXCEEDED' || code === 'BACKUP_TOTAL_LIMIT_EXCEEDED'
+      || code === 'BACKUP_FILE_COUNT_LIMIT_EXCEEDED' || code === 'BACKUP_MANIFEST_LIMIT_EXCEEDED' ? 413
     : code === 'WORKSPACE_GIT_ROOT_NOT_ABSOLUTE' || code === 'WORKSPACE_GIT_ROOT_REQUIRED' ? 400
     : code.startsWith('WORKSPACE_GIT_') || code === 'MAINTENANCE_ALREADY_ACTIVE' || code === 'MAINTENANCE_LEASE_NOT_EXPIRED'
     || code === 'CLEANUP_PREVIEW_STALE' || code === 'CLEANUP_PREVIEW_INVALID'
     ? 409
     : code === 'MAINTENANCE_DRAIN_TIMEOUT' || code === 'MAINTENANCE_MAX_DURATION_EXCEEDED'
+      || code === 'MAINTENANCE_SHUTTING_DOWN'
       ? 503
       : 500;
   sendProblem(req, res, {

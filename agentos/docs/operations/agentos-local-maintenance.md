@@ -19,6 +19,26 @@ node apps/server/dist/commands/maintenance.js backup
 
 `backup` calls the local loopback server. The server fences new API writes and runtime dispatch, pauses background writers, waits for admitted writes and active executions to drain, then creates a SQLite online snapshot (or `VACUUM INTO` fallback). It hashes each payload and writes a manifest containing the package version, source commit/build ID, schema version, migration checksums, and referenced files. AgentOS durable state, app-owned configuration, task metadata, candidate/evidence files, referenced memory files, and conversation attachments are included. User project trees, worktree checkouts, diagnostic logs, derived caches, and migration backup copies are not copied. Treat the backup as private because it can contain local provider configuration and user memory/evidence.
 
+Before publication, the SQLite snapshot, copied payloads, and manifest are explicitly synchronized through their file handles. A failed file sync rejects the backup with `BACKUP_SYNC_FAILED` and never returns success. The backup response reports `durability.fileContents: "synced"`. On Windows it also reports `durability.directoryEntries: "not-guaranteed"`: portable Node APIs do not provide a directory-entry persistence guarantee for the final rename, so an immediate power loss can still lose the published directory. On supported POSIX filesystems, the payload/staging directories and publication parent are synchronized; a directory sync failure also rejects success. Keep a verified second copy for power-loss protection, and verify the bundle after an abnormal shutdown. This response describes this backup operation, not older bundles.
+
+If synchronization fails after the final directory rename on POSIX, the complete-looking bundle is retained and the operation still reports failure. Inspect `.agentos/backups` and run offline verification on that bundle before deciding whether to retry; a retained directory alone is not proof that publication was durable.
+
+Backup payloads are copied, hashed, verified, and restored as 64 KiB streams. The current hard limits are 512 MiB per file, 4 GiB across a bundle, 25,000 payload files, and a 32 MiB manifest. These limits include the SQLite snapshot in the file and byte totals. Backup refuses an over-budget source before publication; verify and restore reject an over-budget or oversized manifest before installing a target. The HTTP API reports limit errors as `413` with a stable `BACKUP_*_LIMIT_EXCEEDED` code. Keep individual workspace evidence and attachments below these limits or split operational data before backing up.
+
+## Windows local stop and drain
+
+`pnpm local:stop` uses an instance-specific named pipe and a random local nonce from the verified runtime identity. The server stops accepting new writes and dispatch starts, then drains admitted HTTP mutations, maintenance work, background reconciliation, and persisted active Run/provider work before closing SQLite and releasing data-root ownership. A stop request does not cancel an operation or delete its evidence.
+
+The launcher waits up to 90 seconds by default. To allow a longer drain, invoke the same script with a larger timeout (the accepted range is 1–3600 seconds):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 `
+  -Action stop `
+  -GracefulStopTimeoutSeconds 300
+```
+
+If that wait expires, the command reports `STOP_DEFERRED`, leaves the server and supervisor running, and preserves the manifest and runtime process identity. New writes remain fenced. The server closes itself only after the admitted work reaches a durable terminal state and runtime inspection is known idle. If inspection remains unknown, it stays fenced for diagnosis. Retry `pnpm local:stop` after the drain completes to record the stopped manifest. A failed startup also retains `launcher.lock` whenever the launcher cannot prove its owned process tree stopped; do not remove that lock, the manifest, or runtime PID record while a recorded process is live or its identity is uncertain. After all recorded processes are confirmed stopped, a stale lock file may be removed before retrying startup. Do not use `taskkill /F` to force the tree down while work may still be active. A hard process termination cannot guarantee operation completion or durable evidence.
+
 Verify the entire bundle and build identity offline before restore:
 
 ```powershell

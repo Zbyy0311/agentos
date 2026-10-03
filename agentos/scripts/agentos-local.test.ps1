@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$null = Add-Type -AssemblyName System.Net.Http
 
 function Assert-True([bool] $Condition, [string] $Message) {
   if (-not $Condition) { throw $Message }
@@ -47,6 +48,31 @@ function Wait-File([string] $Path, [int] $Timeout) {
   return (Test-Path -LiteralPath $Path)
 }
 
+function Wait-Text([string] $Path, [string] $Text, [int] $Timeout) {
+  $deadline = (Get-Date).AddSeconds($Timeout)
+  while ((Get-Date) -lt $deadline) {
+    if ((Test-Path -LiteralPath $Path -PathType Leaf) -and [System.IO.File]::ReadAllText($Path).Contains($Text)) { return $true }
+    Start-Sleep -Milliseconds 50
+  }
+  return $false
+}
+
+function Send-NamedPipeRequest([string] $PipePath, [string] $InstanceId, [string] $Nonce, [string] $Operation = 'shutdown') {
+  $client = [System.IO.Pipes.NamedPipeClientStream]::new('.', $PipePath.Substring('\\.\pipe\'.Length), [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::None)
+  try {
+    $client.Connect(3000)
+    $writer = [System.IO.StreamWriter]::new($client, [System.Text.UTF8Encoding]::new($false), 1024, $true)
+    $reader = [System.IO.StreamReader]::new($client, [System.Text.UTF8Encoding]::new($false), $false, 1024, $true)
+    try {
+      $writer.WriteLine((ConvertTo-Json -InputObject ([ordered]@{ operation = $Operation; instanceId = $InstanceId; nonce = $Nonce }) -Compress))
+      $writer.Flush()
+      $readTask = $reader.ReadLineAsync()
+      if (-not $readTask.Wait(3000)) { throw 'The named-pipe fixture response timed out.' }
+      return ($readTask.GetAwaiter().GetResult() | ConvertFrom-Json)
+    } finally { $writer.Dispose(); $reader.Dispose() }
+  } finally { $client.Dispose() }
+}
+
 $launcher = Join-Path $PSScriptRoot 'agentos-local.ps1'
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 $testId = [guid]::NewGuid().ToString('N')
@@ -65,6 +91,8 @@ $originalReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_R
 $originalMaintenanceReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'Process')
 $originalReadiness503Env = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', 'Process')
 $originalFailWebEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'Process')
+$originalRefuseShutdownEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', 'Process')
+$originalEventFileEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_EVENT_FILE', 'Process')
 $temporaryWasCreated = $false
 $testFailure = $null
 $cleanupFailure = $null
@@ -75,10 +103,38 @@ try {
   $temporaryWasCreated = $true
   $serverScript = @'
 const http = require('node:http');
+const net = require('node:net');
+const fs = require('node:fs');
 const host = process.env.AGENTOS_SERVER_HOST || '127.0.0.1';
 const port = Number(process.env.PORT);
+const eventFile = process.env.AGENTOS_FIXTURE_EVENT_FILE;
+const instanceId = process.env.AGENTOS_LOCAL_INSTANCE_ID;
+const nonce = process.env.AGENTOS_LOCAL_SHUTDOWN_NONCE;
+const pipePath = process.env.AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE;
+let acceptingWrites = true;
+let activeWrites = 0;
+let activeRuntime = false;
+let refuseShutdown = process.env.AGENTOS_FIXTURE_REFUSE_SHUTDOWN === 'true';
+let shutdownRequested = false;
+function event(name) { if (eventFile) fs.appendFileSync(eventFile, name + '\n'); }
   process.stderr.write(process.env.AGENTOS_SHORT_TOKEN + '\n');
 const server = http.createServer((req, res) => {
+  if (req.url === '/api/fixture-write' && req.method === 'POST') {
+    if (!acceptingWrites) { res.writeHead(503); res.end('writes fenced'); return; }
+    activeWrites += 1;
+    event('write-start');
+    setTimeout(() => {
+      activeWrites -= 1;
+      event('write-finished');
+      res.writeHead(200); res.end('write completed');
+      finishShutdown();
+    }, 1800);
+    return;
+  }
+  if (req.url === '/api/fixture-crash' && req.method === 'POST') {
+    res.writeHead(200); res.end('crash requested', () => setTimeout(() => process.exit(37), 250));
+    return;
+  }
   if (req.url === '/api/health/ready') {
     if (process.env.AGENTOS_FIXTURE_READINESS_503 === 'true') {
       res.writeHead(503, { 'content-type': 'application/json' });
@@ -110,7 +166,50 @@ const server = http.createServer((req, res) => {
   res.writeHead(404);
   res.end();
 });
-server.listen(port, host, () => {
+function finishShutdown() {
+  if (!shutdownRequested || activeWrites !== 0 || activeRuntime) return;
+  server.close(() => { event('http-closed'); process.exit(0); });
+}
+const control = net.createServer(socket => {
+  let raw = '';
+  socket.on('data', chunk => {
+    raw += chunk.toString('utf8');
+    if (raw.length > 2048) { socket.destroy(); return; }
+    const newline = raw.indexOf('\n');
+    if (newline < 0) return;
+    let message;
+    try { message = JSON.parse(raw.slice(0, newline)); } catch { socket.end('{"ok":false}\n'); return; }
+    if (message.operation !== 'shutdown' || message.instanceId !== instanceId || message.nonce !== nonce) {
+      if (message.operation === 'fixture-allow-shutdown'
+        && message.instanceId === instanceId && message.nonce === nonce) {
+        refuseShutdown = false;
+        event('shutdown-control-restored');
+        socket.end('{"ok":true,"state":"fixture-updated"}\n');
+        return;
+      }
+      if ((message.operation === 'fixture-active-runtime' || message.operation === 'fixture-runtime-idle')
+        && message.instanceId === instanceId && message.nonce === nonce) {
+        activeRuntime = message.operation === 'fixture-active-runtime';
+        event(activeRuntime ? 'provider-runtime-active' : 'provider-runtime-idle');
+        if (activeRuntime) setTimeout(() => { activeRuntime = false; event('provider-runtime-completed'); finishShutdown(); }, 4500);
+        else finishShutdown();
+        socket.end('{"ok":true,"state":"fixture-updated"}\n');
+        return;
+      }
+      socket.end('{"ok":false,"code":"CONTROL_IDENTITY_MISMATCH"}\n'); return;
+    }
+    if (refuseShutdown) {
+      event('shutdown-refused');
+      socket.end('{"ok":false,"code":"FIXTURE_SHUTDOWN_REFUSED"}\n');
+      return;
+    }
+    acceptingWrites = false;
+    shutdownRequested = true;
+    event('shutdown-requested');
+    socket.end('{"ok":true,"state":"shutdown-accepted"}\n', finishShutdown);
+  });
+});
+control.listen(pipePath, () => server.listen(port, host, () => {
   const line = 'L'.repeat(32768) + '\n';
   for (let index = 0; index < 129; index += 1) process.stdout.write(line);
   process.stderr.write(process.env.AGENTOS_SHORT_TOKEN + '\n');
@@ -123,7 +222,7 @@ server.listen(port, host, () => {
     ' KEY-----\n',
   ];
   diagnosticChunks.forEach((chunk, index) => setTimeout(() => process.stderr.write(chunk), index * 20));
-});
+}));
 '@
   $nextScript = @'
 const http = require('node:http');
@@ -163,6 +262,8 @@ http.createServer((_req, res) => {
   $fixtureSecret = '  local launcher fixture = secret  '
   $shortFixtureSecret = 'x9Q'
   Write-Utf8NoBom (Join-Path $fixtureRoot '.env') ('AGENTOS_API_TOKEN="' + $fixtureSecret + '"' + [Environment]::NewLine + 'AGENTOS_SHORT_TOKEN=' + $shortFixtureSecret + [Environment]::NewLine)
+  $eventFile = Join-Path $tempRoot 'fixture-events.log'
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_EVENT_FILE', $eventFile, 'Process')
 
   # Dry-run validates production inputs and configuration without creating runtime state.
   $dryServerPort = Get-FreePort
@@ -212,6 +313,13 @@ http.createServer((_req, res) => {
   Assert-True (-not $manifestText.Contains($fixtureSecret)) 'The process manifest exposed a .env value.'
   $manifestObject = $manifestText | ConvertFrom-Json
   Assert-True ($manifestObject.instanceId -eq $started.value.instanceId -and -not [string]::IsNullOrWhiteSpace([string]$manifestObject.instanceId)) 'The manifest did not persist the returned instance ID.'
+  Assert-True ($manifestObject.shutdownControl.serverPipe -match ([regex]::Escape($manifestObject.instanceId) + '-server$') -and $manifestObject.shutdownControl.supervisorPipe -match ([regex]::Escape($manifestObject.instanceId) + '-supervisor$')) 'The manifest did not bind both private shutdown pipes to its instance ID.'
+  $workerIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
+  Assert-True ($workerIdentity.shutdownNonce -match '^[a-f0-9]{64}$') 'The runtime identity did not persist a local random shutdown nonce.'
+  $badSupervisorControl = Send-NamedPipeRequest $workerIdentity.supervisorPipe $workerIdentity.instanceId ('0' * 64)
+  $badServerControl = Send-NamedPipeRequest $workerIdentity.serverPipe $workerIdentity.instanceId ('0' * 64)
+  Assert-True (-not $badSupervisorControl.ok -and -not $badServerControl.ok) 'A shutdown request with a wrong local nonce was accepted.'
+  Assert-True ($null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$workerIdentity.serverPid) -ErrorAction SilentlyContinue)) 'Rejected local control altered the server process.'
   foreach ($role in @('supervisor', 'server', 'web')) {
     $record = $manifestObject.processes | Where-Object { $_.role -eq $role } | Select-Object -First 1
     $expectedPort = if ($role -eq 'server') { $serverPort } elseif ($role -eq 'web') { $webPort } else { $serverPort }
@@ -269,6 +377,110 @@ http.createServer((_req, res) => {
   $sleeper.Kill()
   [void]$sleeper.WaitForExit(5000)
   $sleeper = $null
+
+  # A disconnected in-flight write remains owned until it finishes; stop fences new writes and does not force-kill the server.
+  $drainServerPort = Get-FreePort
+  $drainWebPort = Get-FreePort
+  while ($drainWebPort -eq $drainServerPort) { $drainWebPort = Get-FreePort }
+  Remove-Item -LiteralPath $eventFile -Force -ErrorAction SilentlyContinue
+  $drainStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$drainServerPort, '-WebPort', [string]$drainWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
+  Assert-True ($drainStart.value.ok -and $drainStart.value.state -eq 'running') 'The drain fixture did not start.'
+  $drainIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
+  $httpClient = [System.Net.Http.HttpClient]::new()
+  $cancelSource = [System.Threading.CancellationTokenSource]::new()
+  $writeRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, ('http://127.0.0.1:' + $drainServerPort + '/api/fixture-write'))
+  $writeTask = $httpClient.SendAsync($writeRequest, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cancelSource.Token)
+  Assert-True (Wait-Text $eventFile 'write-start' 5) 'The long-lived fixture write did not enter its critical section.'
+  $cancelSource.Cancel()
+  try { $null = $writeTask.GetAwaiter().GetResult() } catch { }
+  $stopJob = Start-Job -ArgumentList $launcher, $fixtureRoot, $dataRoot -ScriptBlock {
+    param($LauncherPath, $RepositoryRoot, $DataRoot)
+    & $LauncherPath -Action stop -Root $RepositoryRoot -DataPath $DataRoot -Json
+  }
+  Assert-True (Wait-Text $eventFile 'shutdown-requested' 8) 'The authenticated local shutdown request did not reach the server.'
+  $serverStillOwned = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$drainIdentity.serverPid) -ErrorAction SilentlyContinue
+  Assert-True ($null -ne $serverStillOwned) 'The server was killed before its in-flight write drained.'
+  $blockedResponse = $httpClient.PostAsync(('http://127.0.0.1:' + $drainServerPort + '/api/fixture-write'), [System.Net.Http.StringContent]::new('')).GetAwaiter().GetResult()
+  Assert-True ([int]$blockedResponse.StatusCode -eq 503) 'The server accepted a new write after graceful shutdown closed admission.'
+  Assert-True (-not [System.IO.File]::ReadAllText($eventFile).Contains('http-closed')) 'HTTP closed before the owned write reached its completion boundary.'
+  $stopWait = Wait-Job -Job $stopJob -Timeout 12
+  Assert-True ($null -ne $stopWait) 'local:stop did not complete after the owned write drained.'
+  $stopOutput = @(Receive-Job -Job $stopJob)
+  Remove-Job -Job $stopJob -Force
+  Assert-True ($stopOutput.Count -eq 1 -and ([string]$stopOutput[0] | ConvertFrom-Json).ok) 'Graceful local:stop did not return success.'
+  $events = [System.IO.File]::ReadAllLines($eventFile)
+  Assert-True ([Array]::IndexOf($events, 'shutdown-requested') -lt [Array]::IndexOf($events, 'write-finished') -and [Array]::IndexOf($events, 'write-finished') -lt [Array]::IndexOf($events, 'http-closed')) 'Shutdown event ordering did not retain the active write through HTTP close.'
+  $httpClient.Dispose(); $writeRequest.Dispose(); $cancelSource.Dispose(); if ($null -ne $blockedResponse) { $blockedResponse.Dispose() }
+
+  # A runtime/provider owner can outlive HTTP and is not represented by an
+  # open request. A bounded local:stop must report STOP_DEFERRED, retain its
+  # identity evidence and let the owner finish before the process tree exits.
+  $runtimeServerPort = Get-FreePort
+  $runtimeWebPort = Get-FreePort
+  while ($runtimeWebPort -eq $runtimeServerPort) { $runtimeWebPort = Get-FreePort }
+  Remove-Item -LiteralPath $eventFile -Force -ErrorAction SilentlyContinue
+  $runtimeStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$runtimeServerPort, '-WebPort', [string]$runtimeWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
+  Assert-True ($runtimeStart.value.ok -and $runtimeStart.value.state -eq 'running') 'The active-runtime drain fixture did not start.'
+  $runtimeIdentityPath = Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json'
+  $runtimeIdentity = Get-Content -LiteralPath $runtimeIdentityPath -Raw | ConvertFrom-Json
+  $runtimeActivated = Send-NamedPipeRequest $runtimeIdentity.serverPipe $runtimeIdentity.instanceId $runtimeIdentity.shutdownNonce 'fixture-active-runtime'
+  Assert-True $runtimeActivated.ok 'The fixture did not admit its simulated active provider runtime.'
+  Assert-True (Wait-Text $eventFile 'provider-runtime-active' 3) 'The provider runtime activity boundary was not recorded.'
+  $runtimeManifestBefore = Get-Content -LiteralPath $manifestPath -Raw
+  $runtimeStopJob = Start-Job -ArgumentList $launcher, $fixtureRoot, $dataRoot -ScriptBlock {
+    param($LauncherPath, $RepositoryRoot, $DataRoot)
+    try { & $LauncherPath -Action stop -Root $RepositoryRoot -DataPath $DataRoot -GracefulStopTimeoutSeconds 2 -Json }
+    catch { 'STOP_ERROR: ' + $_.Exception.Message }
+  }
+  $runtimeStopWait = Wait-Job -Job $runtimeStopJob -Timeout 6
+  Assert-True ($null -ne $runtimeStopWait) 'local:stop did not return its bounded STOP_DEFERRED result.'
+  $runtimeStopOutput = @(Receive-Job -Job $runtimeStopJob)
+  Remove-Job -Job $runtimeStopJob -Force
+  Assert-True (($runtimeStopOutput -join "`n") -match 'STOP_DEFERRED') ("The active runtime stop did not preserve an explicit deferred result: " + ($runtimeStopOutput -join ' '))
+  $runtimeServerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$runtimeIdentity.serverPid) -ErrorAction SilentlyContinue
+  Assert-True ($null -ne $runtimeServerProcess) 'The server was stopped while its provider runtime was still active.'
+  Assert-True (Test-Path -LiteralPath $runtimeIdentityPath -PathType Leaf) 'Deferred stop removed runtime ownership evidence.'
+  Assert-True ([System.IO.File]::ReadAllText($manifestPath) -ceq $runtimeManifestBefore) 'Deferred stop rewrote the manifest as stopped before runtime completion.'
+  $runtimeHttpClient = [System.Net.Http.HttpClient]::new()
+  try {
+    $fencedWrite = $runtimeHttpClient.PostAsync(('http://127.0.0.1:' + $runtimeServerPort + '/api/fixture-write'), [System.Net.Http.StringContent]::new('')).GetAwaiter().GetResult()
+    Assert-True ([int]$fencedWrite.StatusCode -eq 503) 'The server accepted a new write after shutdown was deferred.'
+    $fencedWrite.Dispose()
+  } finally { $runtimeHttpClient.Dispose() }
+  Assert-True (-not [System.IO.File]::ReadAllText($eventFile).Contains('provider-runtime-completed')) 'The provider runtime completed before the deferred stop was observed.'
+  $runtimePids = @([int]$runtimeIdentity.supervisorPid, [int]$runtimeIdentity.serverPid, [int]$runtimeIdentity.webPid)
+  $runtimeDeadline = (Get-Date).AddSeconds(12)
+  do {
+    $runtimeRemaining = @($runtimePids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($runtimeRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $runtimeDeadline)
+  Assert-True ($runtimeRemaining.Count -eq 0) 'The deferred owned process tree did not exit after runtime completion.'
+  $finalizeDeferredStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($finalizeDeferredStop.value.ok -and $finalizeDeferredStop.value.state -eq 'stopped') 'A subsequent verified stop did not finalize the drained instance manifest.'
+  $runtimeEvents = [System.IO.File]::ReadAllLines($eventFile)
+  Assert-True ([Array]::IndexOf($runtimeEvents, 'provider-runtime-active') -lt [Array]::IndexOf($runtimeEvents, 'shutdown-requested') -and [Array]::IndexOf($runtimeEvents, 'shutdown-requested') -lt [Array]::IndexOf($runtimeEvents, 'provider-runtime-completed') -and [Array]::IndexOf($runtimeEvents, 'provider-runtime-completed') -lt [Array]::IndexOf($runtimeEvents, 'http-closed')) 'The runtime owner did not finish before HTTP/process shutdown completed.'
+
+  # An unexpected server process exit closes its private pipe. The supervisor
+  # must use the proven child exit and clean only its owned web sibling.
+  $crashPort = Get-FreePort
+  $crashWebPort = Get-FreePort
+  while ($crashWebPort -eq $crashPort) { $crashWebPort = Get-FreePort }
+  $crashStart = Invoke-LauncherJson $launcher @('-Action', 'start', '-Root', $fixtureRoot, '-DataPath', $dataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$crashPort, '-WebPort', [string]$crashWebPort, '-ReadyTimeoutSeconds', [string]$TimeoutSeconds)
+  Assert-True ($crashStart.value.ok -and $crashStart.value.state -eq 'running') 'The natural server-exit fixture did not start.'
+  $crashIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
+  $crashResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri ('http://127.0.0.1:' + $crashPort + '/api/fixture-crash') -TimeoutSec 5
+  $crashBody = if ($crashResponse.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($crashResponse.Content) } else { [string]$crashResponse.Content }
+  Assert-True ($crashResponse.StatusCode -eq 200 -and $crashBody -eq 'crash requested') ("The natural server-exit fixture did not trigger (HTTP " + $crashResponse.StatusCode + ", body='" + $crashBody + "').")
+  $crashPids = @([int]$crashIdentity.supervisorPid, [int]$crashIdentity.serverPid, [int]$crashIdentity.webPid)
+  $crashDeadline = (Get-Date).AddSeconds(12)
+  do {
+    $crashRemaining = @($crashPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($crashRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $crashDeadline)
+  Assert-True ($crashRemaining.Count -eq 0) 'A proven server process exit left its owned web or supervisor child running.'
+  Assert-True ((Get-Content -LiteralPath $stdoutLog -Raw).Contains('exit code=37')) 'The fixture server exit code was not retained in its bounded process log.'
 
   # Prefer the new readiness contract while retaining the health endpoint fallback.
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', 'true', 'Process')
@@ -357,7 +569,44 @@ http.createServer((_req, res) => {
   } while ((Get-Date) -lt $failureDeadline)
   Assert-True ($failedRemaining.Count -eq 0) 'Readiness timeout leaked one or more owned child processes.'
 
-  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
+  # If a startup cleanup cannot authenticate/drain its live server, retain the
+  # launcher lock as well as runtime identity. A later verified stop can drain
+  # the instance; only then may the test remove its stale lock file.
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', 'true', 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', 'true', 'Process')
+  $refusedServerPort = Get-FreePort
+  $refusedWebPort = Get-FreePort
+  while ($refusedWebPort -eq $refusedServerPort) { $refusedWebPort = Get-FreePort }
+  $refusedStartLines = @(& $launcher -Action start -Root $fixtureRoot -DataPath $dataRoot -ServerHost '127.0.0.1' -WebHost '127.0.0.1' -ServerPort $refusedServerPort -WebPort $refusedWebPort -ReadyTimeoutSeconds 1 -Json -WarningAction SilentlyContinue)
+  Assert-True ($refusedStartLines.Count -eq 1) ("The refused-cleanup start did not return one JSON result: " + ($refusedStartLines -join ' '))
+  $refusedStart = [string]$refusedStartLines[0] | ConvertFrom-Json
+  Assert-True (-not $refusedStart.ok -and $refusedStart.state -eq 'error') 'The fixture did not report startup failure when server cleanup was refused.'
+  Assert-True ([System.IO.File]::ReadAllText($eventFile).Contains('shutdown-refused')) 'The live server did not record the intentional cleanup refusal.'
+  $refusedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $refusedIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
+  $launcherLock = Join-Path $dataRoot '.agentos/local-runtime/launcher.lock'
+  Assert-True (Test-Path -LiteralPath $launcherLock -PathType Leaf) 'Startup failure removed launcher.lock while the server could still be alive.'
+  $refusedServerRecord = $refusedManifest.processes | Where-Object { $_.role -eq 'server' } | Select-Object -First 1
+  $refusedServerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$refusedServerRecord.pid) -ErrorAction SilentlyContinue
+  Assert-True ($null -ne $refusedServerProcess -and [string]::Equals([string]$refusedServerProcess.CommandLine, [string]$refusedServerRecord.command, [System.StringComparison]::Ordinal)) 'The server identity was not still live when the launcher lock was retained.'
+  $restoreShutdown = Send-NamedPipeRequest $refusedIdentity.serverPipe $refusedIdentity.instanceId $refusedIdentity.shutdownNonce 'fixture-allow-shutdown'
+  Assert-True $restoreShutdown.ok 'The fixture could not restore authenticated server shutdown.'
+  $recoveredStartStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
+  Assert-True ($recoveredStartStop.value.ok -and $recoveredStartStop.value.state -eq 'stopped') 'Verified stop did not drain the server retained after startup cleanup failure.'
+  $refusedPids = @([int]$refusedIdentity.supervisorPid, [int]$refusedIdentity.serverPid, [int]$refusedIdentity.webPid)
+  $refusedDeadline = (Get-Date).AddSeconds(10)
+  do {
+    $refusedRemaining = @($refusedPids | Where-Object { $null -ne (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$_) -ErrorAction SilentlyContinue) })
+    if ($refusedRemaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 150
+  } while ((Get-Date) -lt $refusedDeadline)
+  Assert-True ($refusedRemaining.Count -eq 0) 'The recovered startup-failure process tree did not stop cleanly.'
+  Remove-Item -LiteralPath $launcherLock -Force
+  Assert-True (-not (Test-Path -LiteralPath $launcherLock)) 'The test-owned stale launcher lock was not removed after all verified processes exited.'
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $null, 'Process')
+
+  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, disconnected write drain, active runtime STOP_DEFERRED drain, proven server-exit cleanup, startup cleanup refusal retains launcher lock and live identity, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
 } catch {
   $testFailure = $_.Exception
 } finally {
@@ -366,6 +615,8 @@ http.createServer((_req, res) => {
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', $originalMaintenanceReadinessEnv, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_READINESS_503', $originalReadiness503Env, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $originalFailWebEnv, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $originalRefuseShutdownEnv, 'Process')
+  [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_EVENT_FILE', $originalEventFileEnv, 'Process')
   if ($null -ne $unrelated -and -not $unrelated.HasExited) {
     try { $unrelated.Kill(); [void]$unrelated.WaitForExit(5000) } catch {}
   }
@@ -398,25 +649,10 @@ http.createServer((_req, res) => {
           $cleanupPids += @([int]$workerIds.supervisorPid, [int]$workerIds.serverPid, [int]$workerIds.webPid)
           $workerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$workerIds.supervisorPid) -ErrorAction SilentlyContinue
           if ($null -ne $workerProcess) {
-            $workerCommand = [string]$workerProcess.CommandLine
-            $ownsWorker = [string]::Equals([string]$workerProcess.ExecutablePath, $nodePath, [System.StringComparison]::OrdinalIgnoreCase) -and
-              $workerCommand.Contains('agentos-local-worker.mjs') -and
-              $workerCommand.Contains([string]$workerIds.instanceId) -and
-              $workerCommand.Contains($fixtureRoot) -and
-              $workerCommand.Contains($dataRoot)
-            $children = @(Get-CimInstance Win32_Process | Where-Object { [int]$_.ParentProcessId -eq [int]$workerIds.supervisorPid })
-            $validChildren = @($children | Where-Object {
-              ([string]::Equals([string]$_.ExecutablePath, $nodePath, [System.StringComparison]::OrdinalIgnoreCase) -and [string]$_.CommandLine.Contains($fixtureRoot)) -or
-              [string]::Equals([string]$_.ExecutablePath, (Join-Path $env:SystemRoot 'System32/conhost.exe'), [System.StringComparison]::OrdinalIgnoreCase)
-            })
-            if (-not $ownsWorker -or $validChildren.Count -ne $children.Count) {
-              $cleanupFailure = 'The temporary worker identity did not match the unique fixture; its directory was preserved.'
-            } else {
-              & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID ([int]$workerIds.supervisorPid) /T /F 2>$null | Out-Null
-            }
+            $cleanupFailure = 'The fixture supervisor remains after graceful stop; refusing force termination and preserving its evidence.'
           }
         } catch {
-          if ($null -eq $cleanupFailure) { $cleanupFailure = 'The fixture worker required fallback cleanup: ' + $_.Exception.Message }
+          if ($null -eq $cleanupFailure) { $cleanupFailure = 'The fixture worker state could not be safely checked: ' + $_.Exception.Message }
         }
       }
       $deadline = (Get-Date).AddSeconds(10)

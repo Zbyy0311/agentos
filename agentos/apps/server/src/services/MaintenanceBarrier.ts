@@ -11,6 +11,7 @@ export interface MaintenanceDrainSnapshot {
 
 export class MaintenanceBarrier {
   private quiescing = false;
+  private closed = false;
   private mutatingRequests = 0;
   private dispatcherStarts = 0;
 
@@ -23,9 +24,15 @@ export class MaintenanceBarrier {
   }
 
   begin(): boolean {
-    if (this.quiescing) return false;
+    if (this.quiescing || this.closed) return false;
     this.quiescing = true;
     return true;
+  }
+
+  /** Permanently rejects new writes and dispatches for this server lifetime. */
+  close(): void {
+    this.closed = true;
+    this.quiescing = true;
   }
 
   enterMutation(): (() => void) | undefined {
@@ -55,7 +62,7 @@ export class MaintenanceBarrier {
   }
 
   end(): void {
-    this.quiescing = false;
+    if (!this.closed) this.quiescing = false;
   }
 
   private current(activity: MaintenanceActivitySnapshot): MaintenanceDrainSnapshot {

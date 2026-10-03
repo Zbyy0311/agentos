@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import net from 'node:net';
 import { createDiagnosticRedactor, MAX_DIAGNOSTIC_LINE_CHARS } from './agentos-diagnostic-redaction.mjs';
 
 const MAX_LOG_BYTES = 4 * 1024 * 1024;
@@ -120,16 +121,32 @@ function startChild(role, command, args, cwd, env, stateDir, redactDiagnostic, o
   return entry;
 }
 
-function terminateEntries(entries) {
-  const taskkill = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
-  for (const entry of [...entries].reverse()) {
-    const child = entry.child;
-    if (!child.pid || child.exitCode !== null || child.signalCode !== null) continue;
-    const result = spawnSync(taskkill, ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', timeout: 10_000 });
-    if (result.error || result.status !== 0) {
-      try { child.kill(); } catch {}
-    }
-  }
+function requestServerShutdown(pipePath, instanceId, nonce) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = net.createConnection(pipePath);
+    let response = '';
+    const timer = setTimeout(() => {
+      socket.destroy();
+      rejectPromise(new Error('server shutdown control timed out'));
+    }, 5_000);
+    timer.unref();
+    socket.setEncoding('utf8');
+    socket.on('connect', () => socket.write(JSON.stringify({ operation: 'shutdown', instanceId, nonce }) + '\n'));
+    socket.on('data', chunk => {
+      response += chunk;
+      if (response.length > 2_048) { socket.destroy(new Error('server shutdown response exceeded its limit')); return; }
+      const newline = response.indexOf('\n');
+      if (newline < 0) return;
+      clearTimeout(timer);
+      socket.end();
+      try {
+        const parsed = JSON.parse(response.slice(0, newline));
+        if (!parsed.ok) rejectPromise(new Error('server rejected the bound shutdown identity'));
+        else resolvePromise(parsed);
+      } catch { rejectPromise(new Error('server shutdown response was invalid')); }
+    });
+    socket.on('error', error => { clearTimeout(timer); rejectPromise(error); });
+  });
 }
 
 async function waitForSpawn(entry, role) {
@@ -153,9 +170,21 @@ async function runWorker() {
   const serverPort = Number(args['server-port']);
   const webHost = args['web-host'] || '127.0.0.1';
   const webPort = Number(args['web-port']);
+  const supervisorPipe = process.env.AGENTOS_LOCAL_SUPERVISOR_SHUTDOWN_PIPE;
+  const serverPipe = process.env.AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE;
+  const shutdownNonce = process.env.AGENTOS_LOCAL_SHUTDOWN_NONCE;
+  if (!/^[a-f0-9]{32}$/u.test(instanceId || '') || !/^[a-f0-9]{64}$/u.test(shutdownNonce || '')
+    || supervisorPipe !== `\\\\.\\pipe\\agentos-local-${instanceId}-supervisor`
+    || serverPipe !== `\\\\.\\pipe\\agentos-local-${instanceId}-server`) {
+    throw new Error('Local shutdown control identity is invalid.');
+  }
   const serverEntry = resolve(root, 'apps', 'server', 'dist', 'index.js');
   const nextEntry = resolve(root, 'apps', 'web', 'node_modules', 'next', 'dist', 'bin', 'next');
-  const serverEnv = { ...process.env, PORT: String(serverPort), AGENTOS_SERVER_HOST: serverHost, AGENTOS_PROJECT_ROOT: dataPath };
+  const serverEnv = {
+    ...process.env, PORT: String(serverPort), AGENTOS_SERVER_HOST: serverHost, AGENTOS_PROJECT_ROOT: dataPath,
+    AGENTOS_SERVER_INSTANCE_ID: instanceId, AGENTOS_LOCAL_INSTANCE_ID: instanceId,
+    AGENTOS_LOCAL_SHUTDOWN_NONCE: shutdownNonce, AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE: serverPipe,
+  };
   const webEnv = { ...process.env, PORT: String(webPort), HOSTNAME: webHost };
   const redactDiagnostic = createDiagnosticRedactor(process.env);
   mkdirSync(stateDir, { recursive: true });
@@ -163,26 +192,54 @@ async function runWorker() {
   let startupComplete = false;
   let stopping = false;
   let heartbeat = null;
-  let shutdownDeadline = null;
   let shutdownExitCode = 0;
+  let shutdownControl = null;
+  let shutdownRequestActive = false;
   const finishShutdownIfReady = () => {
     if (stopping && entries.every(entry => entry.closed || entry.child.exitCode !== null || entry.child.signalCode !== null)) {
-      if (shutdownDeadline !== null) clearTimeout(shutdownDeadline);
       process.exit(shutdownExitCode);
     }
   };
-  const shutdown = exitCode => {
+  const shutdown = (exitCode, serverAlreadyAccepted = false) => {
     if (stopping) return;
     stopping = true;
     shutdownExitCode = exitCode;
     if (heartbeat !== null) clearInterval(heartbeat);
-    terminateEntries(entries);
-    shutdownDeadline = setTimeout(() => process.exit(shutdownExitCode), 10_000);
-    shutdownDeadline.unref();
-    finishShutdownIfReady();
+    void performGracefulShutdown(serverAlreadyAccepted);
+  };
+  const performGracefulShutdown = async serverAlreadyAccepted => {
+    try {
+      if (!serverAlreadyAccepted) {
+        if (shutdownRequestActive) return;
+        shutdownRequestActive = true;
+        await requestServerShutdown(serverPipe, instanceId, shutdownNonce);
+      }
+      const server = entries[0];
+      if (server && !server.closed) await new Promise(resolvePromise => server.child.once('close', resolvePromise));
+      const web = entries[1];
+      if (web && !web.closed && web.child.pid) {
+        const webClosed = new Promise(resolvePromise => web.child.once('close', resolvePromise));
+        if (!web.child.kill()) throw new Error('verified web child cleanup failed after server shutdown');
+        await webClosed;
+      }
+      finishShutdownIfReady();
+    } catch (error) {
+      shutdownRequestActive = false;
+      stopping = false;
+      shutdownExitCode = 1;
+      if (heartbeat === null) heartbeat = setInterval(() => {}, 60_000);
+      process.stderr.write(new Date().toISOString() + ' STOP_DEFERRED graceful-shutdown ' + (error.message || 'UNKNOWN') + '\n');
+    }
   };
   const childClosed = () => {
-    if (startupComplete && !stopping) shutdown(1);
+    if (startupComplete && !stopping) {
+      const server = entries[0];
+      const serverExited = server && (server.closed || server.child.exitCode !== null || server.child.signalCode !== null);
+      // A closed ChildProcess handle is positive evidence that the server is
+      // gone. Only then can the supervisor clean up its sibling web process
+      // without asking a pipe that no longer exists.
+      shutdown(1, Boolean(serverExited));
+    }
     else finishShutdownIfReady();
   };
   process.once('SIGINT', () => shutdown(0));
@@ -207,6 +264,40 @@ async function runWorker() {
     writeJsonAtomic(pidsPath, {
       schemaVersion: 1, instanceId, supervisorPid: process.pid,
       serverPid: entries[0].child.pid, webPid: entries[1].child.pid,
+      supervisorPipe, serverPipe, shutdownNonce,
+    });
+    shutdownControl = net.createServer(socket => {
+      socket.setTimeout(5_000, () => socket.destroy());
+      let request = '';
+      socket.on('data', chunk => {
+        request += chunk.toString('utf8');
+        if (request.length > 2_048) { socket.destroy(); return; }
+        const newline = request.indexOf('\n');
+        if (newline < 0) return;
+        let message;
+        try { message = JSON.parse(request.slice(0, newline)); } catch {
+          socket.end('{"ok":false,"code":"INVALID_REQUEST"}\n');
+          return;
+        }
+        const nonce = Buffer.from(typeof message.nonce === 'string' ? message.nonce : '', 'utf8');
+        const expected = Buffer.from(shutdownNonce, 'utf8');
+        const valid = message.operation === 'shutdown' && message.instanceId === instanceId
+          && nonce.length === expected.length && timingSafeEqual(nonce, expected);
+        if (!valid) { socket.end('{"ok":false,"code":"CONTROL_IDENTITY_MISMATCH"}\n'); return; }
+        if (stopping) { socket.end('{"ok":true,"state":"shutdown-already-requested"}\n'); return; }
+        shutdownRequestActive = true;
+        void requestServerShutdown(serverPipe, instanceId, shutdownNonce).then(() => {
+          socket.end('{"ok":true,"state":"shutdown-accepted"}\n', () => setImmediate(() => shutdown(0, true)));
+        }).catch(error => {
+          shutdownRequestActive = false;
+          process.stderr.write(new Date().toISOString() + ' graceful-shutdown-rejected ' + (error.message || 'UNKNOWN') + '\n');
+          socket.end('{"ok":false,"code":"SERVER_CONTROL_UNAVAILABLE"}\n');
+        });
+      });
+    });
+    await new Promise((resolvePromise, rejectPromise) => {
+      shutdownControl.once('error', rejectPromise);
+      shutdownControl.listen(supervisorPipe, resolvePromise);
     });
     startupComplete = true;
     heartbeat = setInterval(() => {}, 60_000);
@@ -216,8 +307,23 @@ async function runWorker() {
     await new Promise(() => {});
   } catch (error) {
     stopping = true;
+    shutdownExitCode = 1;
     if (heartbeat !== null) clearInterval(heartbeat);
-    terminateEntries(entries);
+    const server = entries[0];
+    if (server && !server.closed && server.child.exitCode === null && server.child.signalCode === null) {
+      // Startup failure still uses the server's authenticated shutdown path.
+      // If control cannot be proven, retain the process and its evidence.
+      await performGracefulShutdown(false);
+    } else {
+      // The server is already gone (or was never spawned), so its maintenance
+      // work cannot still own SQLite. Only now may the owned web child stop.
+      const web = entries[1];
+      if (web && !web.closed && web.child.exitCode === null && web.child.signalCode === null && web.child.pid) {
+        if (!web.child.kill()) {
+          process.stderr.write(new Date().toISOString() + ' web-child-cleanup-deferred; preserve runtime evidence\\n');
+        }
+      }
+    }
     throw error;
   }
 }
