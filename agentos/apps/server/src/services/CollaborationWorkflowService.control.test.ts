@@ -1666,6 +1666,7 @@ for (const outcome of ['success', 'rollback', 'before_prepare', 'unknown', 'disa
         },
         dispatchRun: async (workspaceId, runId) => {
           dispatches.push({ workspaceId, runId });
+          admitFollowerToApproval(fx.store, workspaceId, runId);
         },
         applyFault: point => {
           if (outcome === 'rollback' && point === 'after_write') throw new Error('F24 injected safe rollback');
@@ -1758,6 +1759,13 @@ for (const outcome of ['success', 'rollback', 'before_prepare', 'unknown', 'disa
             "SELECT state FROM workspace_admissions WHERE workspace_id = ? AND canonical_run_id = ?",
           ).get('workspace-a', runIdB) as { state: string };
           assert.equal(admissionAfter.state, 'GRANTED');
+          const startedRunB = fx.store.runRepository().findById('workspace-a', runIdB);
+          assert.equal(startedRunB?.status, 'waiting_approval');
+          const startsB = fx.store.operationService().listByRun('workspace-a', runIdB)
+            .filter(operation => operation.type === 'run.start');
+          assert.equal(startsB.length, 1);
+          assert.equal(startsB[0].status, 'completed');
+          const stagesB = fx.store.runStageRepository().listByRun('workspace-a', runIdB);
           if (outcome === 'success') {
             const replay = await fx.service.apply(applyInput);
             assert.equal(replay.status, 'applied');
@@ -1765,7 +1773,14 @@ for (const outcome of ['success', 'rollback', 'before_prepare', 'unknown', 'disa
             await assert.rejects(fx.service.apply(applyInput));
           }
           await fx.authority.releaseCollaborationApplication({ workspaceId: 'workspace-a', controlId });
+          await fx.service.resumeGrantedQueuedRuns('workspace-a');
+          await fx.service.resumeGrantedQueuedRuns();
           assert.equal(dispatches.length, 1, 'same-key replay and duplicate authority release must not dispatch B again');
+          assert.deepEqual(fx.store.runRepository().findById('workspace-a', runIdB), startedRunB);
+          assert.deepEqual(fx.store.operationService().listByRun('workspace-a', runIdB)
+            .filter(operation => operation.type === 'run.start'), startsB);
+          assert.deepEqual(fx.store.runStageRepository().listByRun('workspace-a', runIdB), stagesB,
+            'same-key replay and repeated queue scans must preserve stage status, version and attempt');
         } else {
           await new Promise<void>(resolve => setImmediate(resolve));
           assert.deepEqual(dispatches, [], 'unknown A must never start B');
@@ -1805,7 +1820,10 @@ test('F24 resumes the exact GRANTED Run beyond the default 100-task repository p
     },
     requestRunAdmission: input => fx.authority.requestCanonicalRun(input),
     releaseApplicationAdmission: async input => { await fx.authority.releaseCollaborationApplication(input); },
-    dispatchRun: async (workspaceId, runId) => { dispatches.push({ workspaceId, runId }); },
+    dispatchRun: async (workspaceId, runId) => {
+      dispatches.push({ workspaceId, runId });
+      admitFollowerToApproval(fx.store, workspaceId, runId);
+    },
   });
   try {
     const taskA = await fx.verifiedReady();
@@ -1832,6 +1850,21 @@ test('F24 resumes the exact GRANTED Run beyond the default 100-task repository p
     assert.equal(currentB.canonicalRunId, runIdB);
     assert.equal(currentB.controlEpoch, epochB);
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM workspace_admissions WHERE state = \'GRANTED\' AND subject_kind = \'CANONICAL_RUN\'').get() as { n: number }).n, 1);
+    const startedRunB = fx.store.runRepository().findById('workspace-a', runIdB);
+    assert.equal(startedRunB?.status, 'waiting_approval');
+    const startsB = fx.store.operationService().listByRun('workspace-a', runIdB)
+      .filter(operation => operation.type === 'run.start');
+    assert.equal(startsB.length, 1);
+    assert.equal(startsB[0].status, 'completed');
+    const stagesB = fx.store.runStageRepository().listByRun('workspace-a', runIdB);
+    await fx.service.resumeGrantedQueuedRuns('workspace-a');
+    await fx.service.resumeGrantedQueuedRuns();
+    assert.deepEqual(dispatches, [{ workspaceId: 'workspace-a', runId: runIdB }]);
+    assert.deepEqual(fx.store.runRepository().findById('workspace-a', runIdB), startedRunB);
+    assert.deepEqual(fx.store.operationService().listByRun('workspace-a', runIdB)
+      .filter(operation => operation.type === 'run.start'), startsB);
+    assert.deepEqual(fx.store.runStageRepository().listByRun('workspace-a', runIdB), stagesB,
+      'repeated full-inventory scans must preserve the original stage status, version and attempt');
   } finally {
     continueApplication.resolve();
     await fx.close();
