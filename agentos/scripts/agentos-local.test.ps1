@@ -62,6 +62,42 @@ function Get-ManifestProcessRecord($Manifest, [string] $Role) {
   return $Manifest.processes | Where-Object { $_.role -eq $Role } | Select-Object -First 1
 }
 
+function Register-FixtureStartAttempt {
+  $script:fixtureStartState.attempts += 1
+  $script:fixtureStartState.previousInstanceId = $null
+  $script:fixtureStartState.previousManifestReadable = $true
+  try {
+    if (Test-Path -LiteralPath $script:manifestPath) {
+      $previous = Get-Content -LiteralPath $script:manifestPath -Raw | ConvertFrom-Json
+      if ([string]::IsNullOrWhiteSpace([string]$previous.instanceId)) { throw 'The previous instance identity is missing.' }
+      $script:fixtureStartState.previousInstanceId = [string]$previous.instanceId
+    }
+  } catch { $script:fixtureStartState.previousManifestReadable = $false }
+}
+
+function Get-FixtureCleanupDisposition($StartState, $Manifest, $StopResult, $RemainingRecords, [bool] $HasRuntimeEvidence) {
+  try {
+    if ($StartState.attempts -eq 0 -and -not $HasRuntimeEvidence) { return 'never-started' }
+    if ($StartState.attempts -le 0 -or -not $StartState.previousManifestReadable -or -not $HasRuntimeEvidence) { return 'preserve' }
+    if ($null -eq $Manifest -or [string]::IsNullOrWhiteSpace([string]$Manifest.instanceId) -or
+      [string]$Manifest.instanceId -eq [string]$StartState.previousInstanceId) { return 'preserve' }
+    $records = @($Manifest.processes)
+    foreach ($role in @('supervisor', 'server', 'web')) {
+      if (@($records | Where-Object { $_.role -eq $role }).Count -ne 1) { return 'preserve' }
+    }
+    if (@($records | ForEach-Object { [int]$_.pid } | Sort-Object -Unique).Count -ne $records.Count) { return 'preserve' }
+    foreach ($record in $records) {
+      if ([int]$record.pid -le 0 -or [int]$record.parentPid -le 0 -or
+        [string]::IsNullOrWhiteSpace([string]$record.executable) -or [string]::IsNullOrWhiteSpace([string]$record.command)) { return 'preserve' }
+      $null = Convert-ToUtcCreationTimestamp $record.createdAt
+    }
+    if ($null -eq $StopResult -or $StopResult.ok -isnot [bool] -or -not $StopResult.ok -or
+      $StopResult.state -ne 'stopped' -or [string]$StopResult.instanceId -ne [string]$Manifest.instanceId -or
+      @($RemainingRecords).Count -ne 0) { return 'preserve' }
+    return 'verified-stopped'
+  } catch { return 'preserve' }
+}
+
 function Get-ProcessRecordIdentityEvidence($Records) {
   $snapshot = @{}
   foreach ($process in @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProcessId, CreationDate, ExecutablePath, CommandLine -ErrorAction Stop)) {
@@ -107,6 +143,9 @@ function Invoke-LauncherJson([string] $Path, [string[]] $ExtraArguments) {
     } else {
       $callArguments[$name] = $true
     }
+  }
+  if ($callArguments['Action'] -eq 'start' -and -not $callArguments.ContainsKey('DryRun')) {
+    Register-FixtureStartAttempt
   }
   $output = @(& $Path @callArguments 2>&1)
   if ($output.Count -ne 1) { throw "Expected one JSON line from the launcher; received $($output.Count) lines: $($output -join [Environment]::NewLine)" }
@@ -160,6 +199,7 @@ $savedManifest = $null
 $ownedPids = @()
 $cleanupManifest = $null
 $cleanupRecords = @()
+$fixtureStartState = @{ attempts = 0; previousInstanceId = $null; previousManifestReadable = $true }
 $originalFixtureEnv = [Environment]::GetEnvironmentVariable('AGENTOS_API_TOKEN', 'Process')
 $originalReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_READINESS', 'Process')
 $originalMaintenanceReadinessEnv = [Environment]::GetEnvironmentVariable('AGENTOS_FIXTURE_MAINTENANCE_READINESS', 'Process')
@@ -200,6 +240,35 @@ try {
   $falseStoppedResponse = '{"ok":false,"state":"stopped","instanceId":"fixture-instance"}' | ConvertFrom-Json
   $falseStoppedAccepted = [bool]$falseStoppedResponse.ok -and $falseStoppedResponse.state -eq 'stopped' -and $falseStoppedResponse.instanceId -eq 'fixture-instance'
   Assert-True (-not $falseStoppedAccepted) 'A JSON stop response with ok=false was accepted as a verified stop.'
+
+  # These are guard inputs, not runtime receipts: no process or ownership file is changed.
+  $neverStartedProbe = @{ attempts = 0; previousInstanceId = $null; previousManifestReadable = $true }
+  $attemptedProbe = @{ attempts = 1; previousInstanceId = $null; previousManifestReadable = $true }
+  $cleanupManifestProbe = [pscustomobject]@{ instanceId = 'fixture-instance'; processes = @(
+    foreach ($role in @('supervisor', 'server', 'web')) {
+      [pscustomobject]@{ role = $role; pid = 424242 + @('supervisor', 'server', 'web').IndexOf($role); parentPid = 101
+        createdAt = $identityProbe.createdAt; executable = $identityProbe.executable; command = $identityProbe.command }
+    }
+  ) }
+  $cleanupStopProbe = [pscustomobject]@{ ok = $true; state = 'stopped'; instanceId = 'fixture-instance' }
+  Assert-True ((Get-FixtureCleanupDisposition $neverStartedProbe $null $null @() $false) -eq 'never-started') 'A fixture that never attempted start cannot be cleaned.'
+  Assert-True ((Get-FixtureCleanupDisposition $neverStartedProbe $null $null @() $true) -eq 'preserve') 'Unexpected runtime evidence was ignored before any start attempt.'
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $null $null @() $false) -eq 'preserve') 'All-missing runtime evidence after a start attempt was mistaken for proof of exit.'
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $cleanupManifestProbe $null @() $true) -eq 'preserve') 'Process identities without a matching stop result authorized cleanup.'
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $cleanupManifestProbe $falseStoppedResponse @() $true) -eq 'preserve') 'A refused stop authorized cleanup.'
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $cleanupManifestProbe $cleanupStopProbe @($identityProbe) $true) -eq 'preserve') 'A remaining or uncertain owned process authorized cleanup.'
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $cleanupManifestProbe $cleanupStopProbe @() $true) -eq 'verified-stopped') 'Complete stopped-instance evidence cannot authorize cleanup.'
+  $emptyManifestProbe = [pscustomobject]@{ instanceId = 'fixture-instance'; processes = @() }
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $emptyManifestProbe $cleanupStopProbe @() $true) -eq 'preserve') 'Empty process records were accepted as stopped ownership.'
+  $wrongStopProbe = [pscustomobject]@{ ok = $true; state = 'stopped'; instanceId = 'another-instance' }
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $cleanupManifestProbe $wrongStopProbe @() $true) -eq 'preserve') 'An unrelated instance stop authorized cleanup.'
+  $nextAttemptProbe = @{ attempts = 2; previousInstanceId = 'fixture-instance'; previousManifestReadable = $true }
+  Assert-True ((Get-FixtureCleanupDisposition $nextAttemptProbe $cleanupManifestProbe $cleanupStopProbe @() $true) -eq 'preserve') 'An earlier stopped instance authorized cleanup after a new start attempt.'
+  $unknownPreviousProbe = @{ attempts = 1; previousInstanceId = $null; previousManifestReadable = $false }
+  Assert-True ((Get-FixtureCleanupDisposition $unknownPreviousProbe $cleanupManifestProbe $cleanupStopProbe @() $true) -eq 'preserve') 'An unreadable previous identity authorized cleanup.'
+  $incompleteManifestProbe = [pscustomobject]@{ instanceId = 'fixture-instance'; processes = @($cleanupManifestProbe.processes | Select-Object -First 2) }
+  Assert-True ((Get-FixtureCleanupDisposition $attemptedProbe $incompleteManifestProbe $cleanupStopProbe @() $true) -eq 'preserve') 'Partial process identity records authorized cleanup.'
+  Write-Output 'CLEANUP_GUARD_CLASSIFICATIONS: never-started, all-missing, unexpected evidence, missing/refused/mismatched stop, remaining identity, empty/partial records, stale attempt, unreadable previous identity, verified-stopped.'
 
   [void](New-Item -ItemType Directory -Path $fixtureRoot -Force)
   $temporaryWasCreated = $true
@@ -380,6 +449,7 @@ http.createServer((_req, res) => {
   $dry = Invoke-LauncherJson $launcher @('-Action', 'start', '-DryRun', '-Root', $fixtureRoot, '-DataPath', $dryDataRoot, '-ServerHost', '127.0.0.1', '-WebHost', '127.0.0.1', '-ServerPort', [string]$dryServerPort, '-WebPort', [string]$dryWebPort)
   Assert-True ($dry.value.ok -and $dry.value.state -eq 'dry-run' -and -not $dry.value.secretsIncluded) ("Dry-run did not return the expected safe JSON status: " + $dry.text)
   Assert-True (-not (Test-Path -LiteralPath (Join-Path $dryDataRoot '.agentos/local-runtime'))) 'Dry-run created runtime state.'
+  Assert-True ($fixtureStartState.attempts -eq 0) 'Dry-run was counted as a real start attempt.'
 
   # An unrelated child owns a requested port. Failed start and stop must leave it running.
   $conflictPort = Get-FreePort
@@ -391,11 +461,13 @@ http.createServer((_req, res) => {
   Assert-True (Wait-File $readyFile 8) 'The unrelated port-holder child did not become ready.'
   $conflictRejected = $false
   try {
+    Register-FixtureStartAttempt
     & $launcher -Action start -Root $fixtureRoot -DataPath $dataRoot -ServerHost '127.0.0.1' -WebHost '127.0.0.1' -ServerPort $conflictPort -WebPort $webPort
   } catch {
     $conflictRejected = $_.Exception.Message -match 'already listening' -and $_.Exception.Message -match [string]$conflictPort
   }
   Assert-True $conflictRejected 'Starting on an occupied port did not return an actionable conflict.'
+  Assert-True ($fixtureStartState.attempts -eq 1) 'The rejected occupied-port start attempt was not recorded.'
   $conflictStop = Invoke-LauncherJson $launcher @('-Action', 'stop', '-DataPath', $dataRoot)
   Assert-True ($conflictStop.value.ok -and $conflictStop.value.state -eq 'stopped') ('Failed-start cleanup stop was not a verified no-op: ' + $conflictStop.text)
   Assert-True (-not $unrelated.HasExited) 'A failed start or stop killed the unrelated child process.'
@@ -422,6 +494,9 @@ http.createServer((_req, res) => {
   $manifestText = Get-Content -LiteralPath $manifestPath -Raw
   Assert-True (-not $manifestText.Contains($fixtureSecret)) 'The process manifest exposed a .env value.'
   $manifestObject = $manifestText | ConvertFrom-Json
+  $liveCleanupRecords = @(Get-RemainingOwnedProcessRecords $manifestObject.processes)
+  Assert-True ($liveCleanupRecords.Count -ge 3) 'The cleanup guard regression did not observe a real owned process tree.'
+  Assert-True ((Get-FixtureCleanupDisposition $fixtureStartState $manifestObject $null $liveCleanupRecords $true) -eq 'preserve') 'The cleanup guard allowed removal while the real owned fixture was running.'
   Assert-True ($manifestObject.instanceId -eq $started.value.instanceId -and -not [string]::IsNullOrWhiteSpace([string]$manifestObject.instanceId)) 'The manifest did not persist the returned instance ID.'
   Assert-True ($manifestObject.shutdownControl.serverPipe -match ([regex]::Escape($manifestObject.instanceId) + '-server$') -and $manifestObject.shutdownControl.supervisorPipe -match ([regex]::Escape($manifestObject.instanceId) + '-supervisor$')) 'The manifest did not bind both private shutdown pipes to its instance ID.'
   $workerIdentity = Get-Content -LiteralPath (Join-Path $dataRoot '.agentos/local-runtime/worker-pids.json') -Raw | ConvertFrom-Json
@@ -521,6 +596,9 @@ http.createServer((_req, res) => {
   } while ((Get-Date) -lt $deadline)
   $stopIdentityEvidence = @(Get-ProcessRecordIdentityEvidence $manifestObject.processes)
   Assert-True ($remainingRecords.Count -eq 0) ('Verified stop left part of the owned process tree alive: ' + (@($remainingRecords | ForEach-Object { [int]$_.pid }) -join ', ') + '; raw stop JSON: ' + $verifiedStop.text + '; PID identity evidence: ' + ($stopIdentityEvidence | ConvertTo-Json -Compress))
+  Assert-True ((Get-FixtureCleanupDisposition $fixtureStartState $manifestObject $verifiedStop.value $remainingRecords $true) -eq 'verified-stopped') 'The cleanup guard rejected the real verified stopped fixture.'
+  Assert-True ((Get-FixtureCleanupDisposition $fixtureStartState $null $verifiedStop.value @() $false) -eq 'preserve') 'A prior real stop result authorized cleanup without process identity evidence.'
+  Write-Output 'CLEANUP_GUARD_REAL_FIXTURE: running=preserve, verified-stop=verified-stopped, missing-identities=preserve; no ownership files removed.'
   Assert-True (-not $sleeper.HasExited) 'Owned stop affected the unrelated sleeper process.'
   $stopped = Invoke-LauncherJson $launcher @('-Action', 'status', '-Root', $fixtureRoot, '-DataPath', $dataRoot)
   Assert-True ($stopped.value.state -eq 'stopped' -and $stopped.value.ok) 'Status did not report stopped after verified cleanup.'
@@ -728,6 +806,7 @@ http.createServer((_req, res) => {
   $refusedServerPort = Get-FreePort
   $refusedWebPort = Get-FreePort
   while ($refusedWebPort -eq $refusedServerPort) { $refusedWebPort = Get-FreePort }
+  Register-FixtureStartAttempt
   $refusedStartLines = @(& $launcher -Action start -Root $fixtureRoot -DataPath $dataRoot -ServerHost '127.0.0.1' -WebHost '127.0.0.1' -ServerPort $refusedServerPort -WebPort $refusedWebPort -ReadyTimeoutSeconds 1 -Json -WarningAction SilentlyContinue)
   Assert-True ($refusedStartLines.Count -eq 1) ("The refused-cleanup start did not return one JSON result: " + ($refusedStartLines -join ' '))
   $refusedStart = [string]$refusedStartLines[0] | ConvertFrom-Json
@@ -761,7 +840,6 @@ http.createServer((_req, res) => {
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_FAIL_WEB', $null, 'Process')
   [Environment]::SetEnvironmentVariable('AGENTOS_FIXTURE_REFUSE_SHUTDOWN', $null, 'Process')
 
-  Write-Output 'PASS: dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, disconnected write drain, active runtime STOP_DEFERRED drain, proven server-exit cleanup, startup cleanup refusal retains launcher lock and live identity, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
 } catch {
   $testFailure = $_.Exception
 } finally {
@@ -790,6 +868,8 @@ http.createServer((_req, res) => {
       $cleanupRecords = @()
       $cleanupOwnershipValidated = $false
       $cleanupStopVerified = $false
+      $cleanupStopResult = $null
+      $hasRuntimeEvidence = (Test-Path -LiteralPath $manifestPath) -or (Test-Path -LiteralPath $pidsPath) -or (Test-Path -LiteralPath $lockPath)
       if (Test-Path -LiteralPath $manifestPath) {
         try {
           $cleanupManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
@@ -800,6 +880,8 @@ http.createServer((_req, res) => {
             throw ('The fixture stop did not verify the owned instance: ' + $cleanupStop.text)
           }
           $cleanupStopVerified = $true
+          $cleanupStopResult = $cleanupStop.value
+          Write-Output ('RAW_CLEANUP_STOP_JSON=' + $cleanupStop.text)
         } catch {
           $cleanupFailure = 'The launcher could not safely stop the fixture instance: ' + $_.Exception.Message
         }
@@ -836,6 +918,12 @@ http.createServer((_req, res) => {
         $remainingPids = @($remainingRecords | ForEach-Object { [int]$_.pid } | Sort-Object -Unique)
         $cleanupFailure = 'The verified fixture process identities are still active (' + ($remainingPids -join ', ') + '); its temporary directory was preserved.'
       }
+      $cleanupDisposition = Get-FixtureCleanupDisposition $fixtureStartState $cleanupManifest $cleanupStopResult $remainingRecords $hasRuntimeEvidence
+      if ($cleanupDisposition -eq 'preserve' -and $null -eq $cleanupFailure) {
+        $cleanupFailure = 'Fixture cleanup lacks complete identity and matching stop/exit evidence for the latest start attempt (' + $fixtureStartState.attempts + '); preserving ' + $resolvedTemp
+      }
+      Write-Output ('CLEANUP_EVIDENCE_JSON=' + ([ordered]@{ startAttempts = $fixtureStartState.attempts; disposition = $cleanupDisposition
+        runtimeEvidencePresent = $hasRuntimeEvidence; processRecords = $cleanupRecords.Count; remainingRecords = $remainingRecords.Count; path = $resolvedTemp } | ConvertTo-Json -Compress))
       if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
         if (-not $cleanupStopVerified -or -not $cleanupOwnershipValidated -or $remainingRecords.Count -gt 0 -or $null -ne $cleanupFailure) {
           if ($null -eq $cleanupFailure) { $cleanupFailure = 'A launcher.lock remains without verified stopped ownership; preserving the fixture evidence.' }
@@ -849,7 +937,7 @@ http.createServer((_req, res) => {
           }
         }
       }
-      if ($null -eq $cleanupFailure -and $remainingRecords.Count -eq 0) {
+      if ($null -eq $cleanupFailure -and $cleanupDisposition -in @('never-started', 'verified-stopped')) {
         Get-ChildItem -LiteralPath $resolvedTemp -File -Recurse -Force | Remove-Item -Force
         $directories = @(Get-ChildItem -LiteralPath $resolvedTemp -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)
         foreach ($directory in $directories) { Remove-Item -LiteralPath $directory.FullName -Force }
@@ -862,3 +950,4 @@ http.createServer((_req, res) => {
 if ($null -ne $testFailure -and $null -ne $cleanupFailure) { throw ('Test failed: ' + $testFailure.Message + ' Cleanup also failed: ' + $cleanupFailure) }
 if ($null -ne $testFailure) { throw $testFailure }
 if ($null -ne $cleanupFailure) { throw $cleanupFailure }
+Write-Output 'PASS: cleanup evidence guard classification and real owned fixture, dry-run isolation, occupied-port conflict preserves unrelated child, safe reused-PID refusal, owned status/stop, disconnected write drain, active runtime STOP_DEFERRED drain, proven server-exit cleanup, startup cleanup refusal retains launcher lock and live identity, readiness aliases and 503 semantics, legacy liveness fallback, failed-start cleanup, archived runtime records, dotenv preservation, sensitive-log filtering, and bounded logs.'
