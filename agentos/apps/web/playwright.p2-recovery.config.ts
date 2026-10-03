@@ -1,15 +1,48 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const serverPort = process.env.P2_RECOVERY_SERVER_PORT ?? '3240';
 const webPort = process.env.P2_RECOVERY_WEB_PORT ?? '3241';
 const serverBaseURL = `http://127.0.0.1:${serverPort}`;
+const webRoot = resolve(process.cwd());
+const nextConfigPath = resolve(webRoot, 'tsconfig.json');
+const nextDistDir = process.env.P2_RECOVERY_NEXT_DIST_DIR ?? '.next-p2-group-recovery-e2e';
+const nextDistPath = resolve(webRoot, nextDistDir);
+const relativeNextDistPath = relative(webRoot, nextDistPath);
+if (isAbsolute(nextDistDir) || relativeNextDistPath === '..' || relativeNextDistPath.startsWith(`..${sep}`)) {
+  throw new Error('P2 recovery Next dist must stay inside the Web workspace.');
+}
 const projectRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-recovery-project-'));
 const resultsRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-group-recovery-results-'));
+const tsconfigRootPrefix = 'agentos-p2-group-recovery-tsconfig-';
+const tsconfigRoot = mkdtempSync(join(tmpdir(), tsconfigRootPrefix));
+const tempTsconfigPath = resolve(tsconfigRoot, 'tsconfig.json');
+const nextTsconfigPath = relative(webRoot, tempTsconfigPath);
+writeFileSync(tempTsconfigPath, JSON.stringify({
+  extends: nextConfigPath,
+  include: [
+    resolve(webRoot, 'next-env.d.ts'),
+    resolve(webRoot, 'src/**/*.ts'),
+    resolve(webRoot, 'src/**/*.tsx'),
+    resolve(nextDistPath, 'types/**/*.ts'),
+  ],
+  exclude: [resolve(webRoot, 'node_modules')],
+}, null, 2) + '\n', 'utf8');
+
+function removeOwnedTempDirectory(path: string, expectedPrefix: string) {
+  try {
+    const tempRoot = realpathSync(tmpdir());
+    const verifiedPath = realpathSync(path);
+    if (dirname(verifiedPath) !== tempRoot || !basename(verifiedPath).startsWith(expectedPrefix)) return;
+    rmSync(verifiedPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch { /* preserve uncertain paths; never widen cleanup */ }
+}
+
 process.once('exit', () => {
-  try { rmSync(projectRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); } catch { /* best effort */ }
+  removeOwnedTempDirectory(projectRoot, 'agentos-p2-recovery-project-');
+  removeOwnedTempDirectory(tsconfigRoot, tsconfigRootPrefix);
 });
 
 export default defineConfig({
@@ -44,7 +77,8 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
       env: {
-        AGENTOS_NEXT_DIST_DIR: '.next-p2-group-recovery-e2e',
+        AGENTOS_NEXT_DIST_DIR: relativeNextDistPath,
+        AGENTOS_NEXT_TSCONFIG_PATH: nextTsconfigPath,
         NEXT_PUBLIC_API_URL: serverBaseURL,
       },
     },
