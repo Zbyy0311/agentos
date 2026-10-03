@@ -25,6 +25,7 @@ const tempTsconfigPath = resolve(tsconfigRoot, 'tsconfig.json');
 const nextTsconfigPath = relative(webRoot, tempTsconfigPath);
 writeFileSync(tempTsconfigPath, JSON.stringify({
   extends: nextConfigPath,
+  compilerOptions: { baseUrl: webRoot },
   include: [
     resolve(webRoot, 'next-env.d.ts'),
     resolve(webRoot, 'src/**/*.ts'),
