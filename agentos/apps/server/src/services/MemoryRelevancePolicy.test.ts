@@ -128,7 +128,7 @@ test('tokenizer upgrade rebuilds prior terms and distinguishes languages through
     const dotnet = fx.add({ title: '.NET', summary: '', content: '.NET', tags: [] });
     fx.retrieval.retrieve(fx.request('C++'));
     fx.db.prepare('UPDATE memory_lexical_entries SET tokenizer_version = ? WHERE entry_id = ?')
-      .run('nfkc-han-bigrams.v1', cpp.id);
+      .run('nfkc-han-bigrams.v2', cpp.id);
     fx.db.prepare('UPDATE memory_lexical_fts SET terms = ? WHERE entry_id = ?').run('obsolete', cpp.id);
     assert.deepEqual(fx.retrieval.retrieve(fx.request('Ｃ＋＋')).map(item => item.entry.id), [cpp.id]);
     assert.equal((fx.db.prepare('SELECT tokenizer_version FROM memory_lexical_entries WHERE entry_id = ?')
