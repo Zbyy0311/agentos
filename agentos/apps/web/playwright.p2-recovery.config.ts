@@ -2,12 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const serverPort = process.env.P2_RECOVERY_SERVER_PORT ?? '3240';
 const webPort = process.env.P2_RECOVERY_WEB_PORT ?? '3241';
 const serverBaseURL = `http://127.0.0.1:${serverPort}`;
-const webRoot = dirname(fileURLToPath(import.meta.url));
+const webRoot = resolve(process.cwd());
 const nextConfigPath = resolve(webRoot, 'tsconfig.json');
 const nextDistDir = process.env.P2_RECOVERY_NEXT_DIST_DIR ?? '.next-p2-group-recovery-e2e';
 const nextDistPath = resolve(webRoot, nextDistDir);
