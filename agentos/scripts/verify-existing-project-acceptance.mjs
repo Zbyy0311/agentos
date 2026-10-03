@@ -759,18 +759,25 @@ export function captureCandidateProbeOverlayIdentity(rootPath, workspace, candid
   }
 }
 
+export function createCandidateProbeCheckout(workspaceRoot, target, baseCommit) {
+  mkdirSync(dirname(target), { recursive: true });
+  const cloned = spawnSync('git', ['clone', '--shared', '--no-checkout', workspaceRoot, target], {
+    encoding: 'utf8', windowsHide: true, shell: false, timeout: 90_000,
+  });
+  invariant(!cloned.error && cloned.status === 0,
+    `could not create isolated candidate probe checkout: ${safeText(cloned.stderr || cloned.error?.message)}`);
+  // Clone-local configuration is not inherited from the source workspace.
+  // Set it before checkout so the final-candidate probe includes deep files.
+  if (process.platform === 'win32') git(target, ['config', 'core.longpaths', 'true']);
+  git(target, ['config', 'core.autocrlf', 'false']);
+  git(target, ['checkout', '--detach', baseCommit]);
+}
+
 function captureCandidateProbe(evidenceRoot, plan, workspace, candidate, runRoot) {
   if (!plan.baselineProbe) return undefined;
   const probe = plan.baselineProbe;
   const target = join(runRoot, 'candidate-probes', plan.kind);
-  mkdirSync(dirname(target), { recursive: true });
-  const cloned = spawnSync('git', ['clone', '--shared', '--no-checkout', workspace.root, target], {
-    encoding: 'utf8', windowsHide: true, shell: false, timeout: 90_000,
-  });
-  invariant(!cloned.error && cloned.status === 0,
-    `could not create isolated ${plan.kind} candidate probe checkout: ${safeText(cloned.stderr || cloned.error?.message)}`);
-  git(target, ['config', 'core.autocrlf', 'false']);
-  git(target, ['checkout', '--detach', candidate.baseCommit]);
+  createCandidateProbeCheckout(workspace.root, target, candidate.baseCommit);
   verifyProbeWorkspaceSource(plan, target);
   const patch = Buffer.from(candidate.diffText, 'utf8');
   invariant(candidate.baseCommit === workspace.baseCommit && sha256(patch) === candidate.diffHash,

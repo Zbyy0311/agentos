@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   acceptanceCodexArguments, acceptanceWaitBudget, changedPathsFromPatch, createSimulationExecutable, loadOwnedFrozenCandidates, selectOwnedPendingApprovals,
   simulationPlan, validatePlan, validateRealPlanPaths, verifyFrozenCandidatePreview,
-  captureCandidateProbeOverlayIdentity,
+  captureCandidateProbeOverlayIdentity, createCandidateProbeCheckout,
   verifyCandidateReviewSequence, frozenCandidateContentHash,
   observeOwnedProviderProcesses, verifyCapturedRunnerOutcome,
 } from './verify-existing-project-acceptance.mjs';
@@ -346,6 +346,50 @@ test('revision changed paths come from the frozen Git patch bytes rather than th
   ].join('\n');
   assert.deepEqual(changedPathsFromPatch(patch), ['agentos/apps/server/src/health.ts']);
   assert.throws(() => changedPathsFromPatch(''), /does not identify a unique changed-path set/u);
+});
+
+test('candidate probe checkout includes deep tracked files without changing source configuration', () => {
+  const temporaryRoot = process.platform === 'win32' ? realpathSync.native(tmpdir()) : tmpdir();
+  const root = mkdtempSync(join(temporaryRoot, 'p4-deep-probe-'));
+  const source = join(root, 'source');
+  const target = join(root, 'candidate-probes', 'defect');
+  const git = args => spawnSync('git', ['-C', source, '-c', 'core.longpaths=true', ...args], {
+    encoding: 'utf8', windowsHide: true, shell: false,
+  });
+  try {
+    mkdirSync(source);
+    assert.equal(git(['init', '-q']).status, 0);
+    assert.equal(git(['config', '--local', 'user.name', 'P4 deep probe']).status, 0);
+    assert.equal(git(['config', '--local', 'user.email', 'p4-probe@example.invalid']).status, 0);
+    assert.equal(git(['config', '--local', 'core.longpaths', 'false']).status, 0);
+    assert.equal(git(['config', '--local', 'core.autocrlf', 'false']).status, 0);
+    const pathSegments = ['agentos', 'docs', ...Array.from({ length: 8 }, (_, index) => `frozen-evidence-directory-${index}`), 'assertions.json'];
+    const sourcePath = join(source, ...pathSegments);
+    const targetPath = join(target, ...pathSegments);
+    assert.ok(targetPath.length > 260);
+    mkdirSync(join(source, ...pathSegments.slice(0, -1)), { recursive: true });
+    const bytes = '{"receipt":"frozen deep file"}\n';
+    writeFileSync(sourcePath, bytes);
+    assert.equal(git(['add', '--all']).status, 0);
+    assert.equal(git(['commit', '-m', 'deep tracked source', '-q']).status, 0);
+    const baseCommit = git(['rev-parse', 'HEAD']).stdout.trim();
+    const sourceConfig = readFileSync(join(source, '.git', 'config'));
+
+    createCandidateProbeCheckout(source, target, baseCommit);
+
+    assert.equal(readFileSync(targetPath, 'utf8'), bytes);
+    const actualHead = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
+    assert.equal(actualHead.status, 0, actualHead.stderr);
+    assert.equal(actualHead.stdout.trim(), baseCommit);
+    assert.deepEqual(readFileSync(join(source, '.git', 'config')), sourceConfig);
+    if (process.platform === 'win32') {
+      const targetConfig = spawnSync('git', ['-C', target, 'config', '--local', '--get', 'core.longpaths'], {
+        encoding: 'utf8', windowsHide: true,
+      });
+      assert.equal(targetConfig.status, 0, targetConfig.stderr);
+      assert.equal(targetConfig.stdout.trim(), 'true');
+    }
+  } finally { removeCandidateOverlayFixture(root); }
 });
 
 test('candidate probe overlay identity captures its exact root, frozen base tree, and staged overlay tree', () => {
