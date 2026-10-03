@@ -7,6 +7,7 @@ import { MaintenanceBarrier } from './MaintenanceBarrier.js';
 export const MAINTENANCE_LEASE_MS = 60_000;
 export const MAINTENANCE_MAX_DURATION_MS = 15 * 60_000;
 export const MAINTENANCE_DRAIN_TIMEOUT_MS = 30_000;
+export const MAINTENANCE_SHUTDOWN_DRAIN_TIMEOUT_MS = 20 * 60_000;
 
 export interface DurableMaintenanceState {
   readonly formatVersion: 1;
@@ -51,6 +52,8 @@ export class MaintenanceCoordinator {
   private recoveredAfterRestart = false;
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
+  private accepting = true;
+  private activeRun: Promise<void> | undefined;
   private readonly drainTimeoutMs: number;
   private readonly maxDurationMs: number;
 
@@ -131,10 +134,13 @@ export class MaintenanceCoordinator {
     readonly drain: MaintenanceDrainSnapshot;
     readonly operationId: string;
   }> {
+    if (!this.accepting) throw new MaintenanceError('MAINTENANCE_SHUTTING_DOWN');
     if (this.running || this.state?.status === 'active' || !this.barrier.begin()) {
       throw new MaintenanceError('MAINTENANCE_ALREADY_ACTIVE');
     }
     this.running = true;
+    let finishRun!: () => void;
+    this.activeRun = new Promise<void>(resolvePromise => { finishRun = resolvePromise; });
     const operationId = randomUUID();
     const startedAt = this.now();
     const deadline = startedAt.getTime() + this.maxDurationMs;
@@ -187,11 +193,35 @@ export class MaintenanceCoordinator {
       this.clearExpiryTimer();
       this.barrier.end();
       this.running = false;
+      this.activeRun = undefined;
+      finishRun();
       this.options.onResumeBackground?.();
     }
   }
 
+  /** Stop new maintenance work and wait for the owned operation to settle. */
+  async closeAndDrain(timeoutMs = MAINTENANCE_SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<boolean> {
+    this.accepting = false;
+    this.barrier.close();
+    const activeRun = this.activeRun;
+    if (!activeRun) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        activeRun.then(() => true),
+        new Promise<boolean>(resolvePromise => {
+          timer = setTimeout(() => resolvePromise(false), Math.max(0, timeoutMs));
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  whenIdle(): Promise<void> { return this.activeRun ?? Promise.resolve(); }
+
   async releaseExpiredLease(): Promise<boolean> {
+    if (!this.accepting) throw new MaintenanceError('MAINTENANCE_SHUTTING_DOWN');
     if (this.state?.status !== 'active') return false;
     const expiresAt = Date.parse(this.state.leaseExpiresAt);
     if (!Number.isFinite(expiresAt) || expiresAt > this.now().getTime()) {

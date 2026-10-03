@@ -14,7 +14,9 @@ param(
   [string] $WebHost,
   [int] $WebPort = 0,
   [ValidateRange(1, 300)]
-  [int] $ReadyTimeoutSeconds = 45
+  [int] $ReadyTimeoutSeconds = 45,
+  [ValidateRange(1, 3600)]
+  [int] $GracefulStopTimeoutSeconds = 90
 )
 
 $ErrorActionPreference = 'Stop'
@@ -174,7 +176,7 @@ function Test-RecordIdentity($Manifest, $Record, $Snapshot) {
   $actual = $Snapshot[$pidValue]
   $reasons = [System.Collections.Generic.List[string]]::new()
   try {
-    if ((Convert-CreationTime $actual.CreationDate) -ne [string]$Record.createdAt) { $reasons.Add('creation-time') }
+    if ((Convert-CreationTime $actual.CreationDate) -ne (Convert-CreationTime $Record.createdAt)) { $reasons.Add('creation-time') }
   } catch { $reasons.Add('creation-time') }
   if ([int]$actual.ParentProcessId -ne [int]$Record.parentPid) { $reasons.Add('parent-pid') }
   if (-not [string]::Equals([string]$actual.ExecutablePath, [string]$Record.executable, [System.StringComparison]::OrdinalIgnoreCase)) { $reasons.Add('executable') }
@@ -219,6 +221,12 @@ function Write-Manifest([string] $Path, $Manifest) {
   $jsonText = ConvertTo-Json -InputObject $Manifest -Depth 10
   [System.IO.File]::WriteAllText($temporary, $jsonText, [System.Text.UTF8Encoding]::new($false))
   Move-Item -LiteralPath $temporary -Destination $Path -Force
+}
+
+function Get-Sha256Hex([byte[]] $Bytes) {
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($algorithm.ComputeHash($Bytes)).Replace('-', '').ToLowerInvariant() }
+  finally { $algorithm.Dispose() }
 }
 
 function Get-CurrentProcessName([int] $ProcessId) {
@@ -313,6 +321,33 @@ function Test-PortOwnershipRecord($Snapshot, [int] $RootPid, [int] $PortValue, $
   return [pscustomobject]@{ owned = $true; owners = $actual.owners }
 }
 
+function Send-LocalShutdownRequest($RuntimeIdentity, [string] $PipeKey) {
+  $pipeName = [string]$RuntimeIdentity.$PipeKey
+  $instanceId = [string]$RuntimeIdentity.instanceId
+  $nonce = [string]$RuntimeIdentity.shutdownNonce
+  $expectedPipe = '\\.\pipe\agentos-local-' + $instanceId + '-' + ($PipeKey -replace 'Pipe$', '')
+  if ($instanceId -notmatch '^[a-f0-9]{32}$' -or $nonce -notmatch '^[a-f0-9]{64}$' -or $pipeName -ne $expectedPipe) {
+    throw 'The local shutdown control identity is missing or invalid; no process was touched.'
+  }
+  $client = [System.IO.Pipes.NamedPipeClientStream]::new('.', $pipeName.Substring('\\.\pipe\'.Length), [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::None)
+  try {
+    try { $client.Connect(5000) } catch { throw 'The verified local shutdown control channel is unavailable; no process was touched.' }
+    $writer = [System.IO.StreamWriter]::new($client, [System.Text.UTF8Encoding]::new($false), 1024, $true)
+    $reader = [System.IO.StreamReader]::new($client, [System.Text.UTF8Encoding]::new($false), $false, 1024, $true)
+    try {
+      $writer.WriteLine((ConvertTo-Json -InputObject ([ordered]@{ operation = 'shutdown'; instanceId = $instanceId; nonce = $nonce }) -Compress))
+      $writer.Flush()
+      $readTask = $reader.ReadLineAsync()
+      if (-not $readTask.Wait(5000)) { throw 'The local shutdown control response timed out; no process was force-stopped.' }
+      $line = $readTask.GetAwaiter().GetResult()
+      if ([string]::IsNullOrWhiteSpace($line)) { throw 'The local shutdown control channel closed without a result; no process was touched.' }
+      $response = $line | ConvertFrom-Json
+      if (-not $response.ok) { throw 'The local shutdown control identity was rejected; no process was touched.' }
+      return $response
+    } finally { $writer.Dispose(); $reader.Dispose() }
+  } finally { $client.Dispose() }
+}
+
 function Get-TreePids($Snapshot, [int] $RootPid) {
   $children = @{}
   foreach ($process in $Snapshot.Values) {
@@ -363,39 +398,6 @@ function Test-OwnedTree($Manifest, $Snapshot, [int] $RootPid, [int[]] $TreePids)
   return $null
 }
 
-function Stop-VerifiedTree($Manifest, [int] $RootPid) {
-  $initial = Get-ProcessMap
-  if (-not $initial.ContainsKey($RootPid)) { return $true }
-  $treePids = @(Get-TreePids $initial $RootPid)
-  $rootRecord = $Manifest.processes | Where-Object { [int]$_.pid -eq $RootPid } | Select-Object -First 1
-  if ($null -eq $rootRecord) { throw 'The requested process is not listed in the launcher manifest.' }
-  $rootIdentity = Test-RecordIdentity $Manifest $rootRecord $initial
-  if (-not $rootIdentity.match) { throw "PID $RootPid no longer matches the recorded process identity; nothing was stopped." }
-  $treeError = Test-OwnedTree $Manifest $initial $RootPid $treePids
-  if ($null -ne $treeError) { throw $treeError }
-  $fresh = Get-ProcessMap
-  if (-not $fresh.ContainsKey($RootPid)) { return $true }
-  $freshIdentity = Test-RecordIdentity $Manifest $rootRecord $fresh
-  if (-not $freshIdentity.match) { throw "PID $RootPid changed identity before stop; nothing was stopped." }
-  $freshTree = @(Get-TreePids $fresh $RootPid)
-  $freshError = Test-OwnedTree $Manifest $fresh $RootPid $freshTree
-  if ($null -ne $freshError) { throw $freshError }
-  $taskkill = Join-Path $env:SystemRoot 'System32/taskkill.exe'
-  & $taskkill /PID $RootPid /T /F 2>$null | Out-Null
-  $taskkillExitCode = $LASTEXITCODE
-  $deadline = (Get-Date).AddSeconds(10)
-  do {
-    Start-Sleep -Milliseconds 200
-    $after = Get-ProcessMap
-    if (-not $after.ContainsKey($RootPid)) {
-      $remaining = @($freshTree | Where-Object { $after.ContainsKey([int]$_) })
-      if ($remaining.Count -eq 0) { return $true }
-    }
-  } while ((Get-Date) -lt $deadline)
-  if ($taskkillExitCode -ne 0) { throw "Windows could not stop the verified process tree rooted at PID $RootPid; no unrelated process was targeted." }
-  throw "The verified process tree rooted at PID $RootPid did not stop completely."
-}
-
 function Stop-Manifest($Manifest, $Assessment) {
   if ($Assessment.mismatches.Count -gt 0) {
     throw "Process identity mismatch ($($Assessment.mismatches -join ', ')); no process was stopped. Preserve the manifest and inspect it."
@@ -403,13 +405,67 @@ function Stop-Manifest($Manifest, $Assessment) {
   $supervisor = $Manifest.processes | Where-Object { $_.role -eq 'supervisor' } | Select-Object -First 1
   $supervisorResult = $Assessment.results.supervisor
   if ($null -ne $supervisorResult -and $supervisorResult.state -eq 'running') {
-    [void](Stop-VerifiedTree $Manifest ([int]$supervisor.pid))
+    $pidsPath = Join-Path ([string]$Manifest.dataPath) '.agentos/local-runtime/worker-pids.json'
+    if (-not (Test-Path -LiteralPath $pidsPath -PathType Leaf)) { throw 'The verified local shutdown identity is unavailable; no process was touched.' }
+    try { $runtimeIdentity = Get-Content -LiteralPath $pidsPath -Raw | ConvertFrom-Json }
+    catch { throw 'The verified local shutdown identity is unreadable; no process was touched.' }
+    if (([string]$runtimeIdentity.instanceId -ne [string]$Manifest.instanceId) -or ([int]$runtimeIdentity.supervisorPid -ne [int]$supervisor.pid)) {
+      throw 'The local shutdown identity does not match the verified launcher manifest; no process was touched.'
+    }
+    if (($null -eq $Manifest.shutdownControl) -or ([string]$runtimeIdentity.supervisorPipe -ne [string]$Manifest.shutdownControl.supervisorPipe) -or ([string]$runtimeIdentity.serverPipe -ne [string]$Manifest.shutdownControl.serverPipe)) {
+      throw 'This running instance has no manifest-bound graceful shutdown channel; no process was touched.'
+    }
+    $nonceHash = Get-Sha256Hex ([System.Text.Encoding]::UTF8.GetBytes([string]$runtimeIdentity.shutdownNonce))
+    if ($nonceHash -ne [string]$Manifest.shutdownControl.nonceSha256) {
+      throw 'The local shutdown nonce does not match the launcher manifest; no process was touched.'
+    }
+    $fresh = Get-ProcessMap
+    $freshSupervisor = Test-RecordIdentity $Manifest $supervisor $fresh
+    if (-not $freshSupervisor.match) { throw 'The supervisor identity changed before graceful shutdown; no process was touched.' }
+    $freshTree = @(Get-TreePids $fresh ([int]$supervisor.pid))
+    $treeError = Test-OwnedTree $Manifest $fresh ([int]$supervisor.pid) $freshTree
+    if ($null -ne $treeError) { throw $treeError }
+    $trackedPids = @([int]$supervisor.pid)
+    $trackedPids += $freshTree
+    $trackedPids = @($trackedPids | Sort-Object -Unique)
+    $tracked = foreach ($pidValue in $trackedPids) {
+      $process = $fresh[[int]$pidValue]
+      [pscustomobject]@{
+        pid = [int]$pidValue
+        createdAt = Convert-CreationTime $process.CreationDate
+        parentPid = [int]$process.ParentProcessId
+        executable = [string]$process.ExecutablePath
+        command = [string]$process.CommandLine
+      }
+    }
+    $null = Send-LocalShutdownRequest $runtimeIdentity 'supervisorPipe'
+    $deadline = (Get-Date).AddSeconds($GracefulStopTimeoutSeconds)
+    do {
+      Start-Sleep -Milliseconds 200
+      $after = Get-ProcessMap
+      $remaining = @()
+      foreach ($record in $tracked) {
+        $pidValue = [int]$record.pid
+        if (-not $after.ContainsKey($pidValue)) { continue }
+        $current = $after[$pidValue]
+        $sameIdentity = (
+          (Convert-CreationTime $current.CreationDate) -eq [string]$record.createdAt -and
+          [int]$current.ParentProcessId -eq [int]$record.parentPid -and
+          [string]::Equals([string]$current.ExecutablePath, [string]$record.executable, [System.StringComparison]::OrdinalIgnoreCase) -and
+          [string]::Equals([string]$current.CommandLine, [string]$record.command, [System.StringComparison]::Ordinal)
+        )
+        if ($sameIdentity) { $remaining += $pidValue }
+      }
+      if ($remaining.Count -eq 0) { break }
+    } while ((Get-Date) -lt $deadline)
+    if ($remaining.Count -gt 0) {
+      throw "STOP_DEFERRED: graceful shutdown is still draining or timed out (PIDs $($remaining -join ', ')); no process was force-stopped. Preserve the manifest and runtime evidence, then inspect maintenance state."
+    }
   } else {
     foreach ($role in @('server', 'web')) {
       $result = $Assessment.results[$role]
       if ($null -ne $result -and $result.state -eq 'running') {
-        $record = $Manifest.processes | Where-Object { $_.role -eq $role } | Select-Object -First 1
-        [void](Stop-VerifiedTree $Manifest ([int]$record.pid))
+        throw "The supervisor is unavailable while the $role child remains. No process was touched because graceful shutdown cannot be verified."
       }
     }
   }
@@ -632,6 +688,17 @@ try {
     catch { throw 'Another local launcher operation is active, or a stale launcher.lock exists. Inspect the lock before retrying.' }
 
     $instanceId = [guid]::NewGuid().ToString('N')
+    $nonceBytes = New-Object byte[] 32
+    $nonceGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $nonceGenerator.GetBytes($nonceBytes) } finally { $nonceGenerator.Dispose() }
+    $shutdownNonce = [BitConverter]::ToString($nonceBytes).Replace('-', '').ToLowerInvariant()
+    $supervisorPipe = '\\.\pipe\agentos-local-' + $instanceId + '-supervisor'
+    $serverPipe = '\\.\pipe\agentos-local-' + $instanceId + '-server'
+    Set-ScopedEnvironment 'AGENTOS_LOCAL_INSTANCE_ID' $instanceId
+    Set-ScopedEnvironment 'AGENTOS_LOCAL_SHUTDOWN_NONCE' $shutdownNonce
+    Set-ScopedEnvironment 'AGENTOS_LOCAL_SUPERVISOR_SHUTDOWN_PIPE' $supervisorPipe
+    Set-ScopedEnvironment 'AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE' $serverPipe
+    Set-ScopedEnvironment 'AGENTOS_SERVER_INSTANCE_ID' $instanceId
     $script:workerInstanceId = $instanceId
     $script:workerRoot = $repoRoot
     $script:workerDataPath = $dataRoot
@@ -708,6 +775,11 @@ try {
       serverHost = $serverHostValue
       webHost = $webHostValue
       ports = [pscustomobject][ordered]@{ server = $serverPortValue; web = $webPortValue }
+      shutdownControl = [pscustomobject][ordered]@{
+        supervisorPipe = $supervisorPipe
+        serverPipe = $serverPipe
+        nonceSha256 = Get-Sha256Hex ([System.Text.Encoding]::UTF8.GetBytes($shutdownNonce))
+      }
       processes = $records
       logDirectory = Resolve-AbsolutePath $stateDir
     }
@@ -759,45 +831,15 @@ try {
   if ($Action -eq 'start' -and $null -ne $script:workerProcess -and -not $script:startupCommitted) {
     try {
       if (Test-Path -LiteralPath $script:manifestPath) {
-        try {
-          $partialManifest = Read-Manifest $script:manifestPath
-          if ($null -ne $partialManifest) {
-            $partialAssessment = Get-ManifestAssessment $partialManifest
-            Stop-Manifest $partialManifest $partialAssessment
-          }
-        } catch {}
-      }
-      $snapshot = Get-ProcessMap
-      $workerPid = [int]$script:workerProcess.Id
-      if ($snapshot.ContainsKey($workerPid)) {
-        $workerRecord = $script:workerIdentity
-        if ($null -eq $workerRecord) {
-          $workerRecord = Get-ProcessRecord $snapshot[$workerPid] 'supervisor' $script:workerRoot ([int]$script:workerExpectedManifest.ports.server)
-        }
-        $identityMatches = Test-RecordIdentity $script:workerExpectedManifest $workerRecord $snapshot
-        if ($identityMatches.match) {
-          $children = @(Get-CimInstance Win32_Process | Where-Object { [int]$_.ParentProcessId -eq $workerPid })
-          $knownPids = @()
-          $pidsFile = Join-Path (Join-Path $script:workerDataPath '.agentos/local-runtime') 'worker-pids.json'
-          if (Test-Path -LiteralPath $pidsFile) {
-            try {
-              $known = Get-Content -LiteralPath $pidsFile -Raw | ConvertFrom-Json
-              if ([string]$known.instanceId -eq [string]$script:workerInstanceId -and [int]$known.supervisorPid -eq $workerPid) {
-                $knownPids = @([int]$known.serverPid, [int]$known.webPid)
-              }
-            } catch {}
-          }
-          $safeChildren = @($children | Where-Object {
-            ([int]$_.ProcessId -in $knownPids -and [string]::Equals([string]$_.ExecutablePath, [string]$script:workerNodePath, [System.StringComparison]::OrdinalIgnoreCase) -and [string]$_.CommandLine.Contains([string]$script:workerRoot)) -or
-            [string]::Equals([string]$_.ExecutablePath, (Resolve-AbsolutePath (Join-Path $env:SystemRoot 'System32/conhost.exe')), [System.StringComparison]::OrdinalIgnoreCase)
-          })
-          if ($safeChildren.Count -eq $children.Count) {
-            $taskkill = Join-Path $env:SystemRoot 'System32/taskkill.exe'
-            & $taskkill /PID $workerPid /T /F 2>$null | Out-Null
-          }
+        $partialManifest = Read-Manifest $script:manifestPath
+        if ($null -ne $partialManifest) {
+          $partialAssessment = Get-ManifestAssessment $partialManifest
+          Stop-Manifest $partialManifest $partialAssessment
         }
       }
-    } catch {}
+    } catch {
+      Write-Warning ('Startup cleanup could not prove graceful ownership shutdown; no process was force-stopped. Preserve the manifest/runtime evidence. ' + $_.Exception.Message)
+    }
   }
   if ($Json) {
     Write-JsonResult ([pscustomobject]@{ ok = $false; state = 'error'; error = $_.Exception.Message; secretsIncluded = $false })

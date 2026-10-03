@@ -4,17 +4,17 @@ import { createHash } from 'node:crypto';
 import { getWorkflowTemplate } from '@agentos/shared';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MaintenanceBarrier } from './MaintenanceBarrier.js';
 import { MaintenanceCoordinator } from './MaintenanceCoordinator.js';
-import { MaintenanceService } from './MaintenanceService.js';
+import { MAINTENANCE_BACKUP_LIMITS, MaintenanceService } from './MaintenanceService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import express from 'express';
-import { createMaintenanceRoutes } from '../routes/maintenance.js';
+import { createMaintenanceRoutes, createMaintenanceWriteBarrier } from '../routes/maintenance.js';
 import { main as runMaintenanceCli } from '../commands/maintenance.js';
 import { CollaborationRepository } from '../store/CollaborationRepository.js';
 import { ConversationRepository } from '../store/ConversationRepository.js';
@@ -27,6 +27,8 @@ import { CollaborationWorkflowService } from './CollaborationWorkflowService.js'
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorkspaceGitRootRegistry } from './WorkspaceGitRootRegistry.js';
 import { CollaborationApplyJournalService } from './CollaborationApplyJournal.js';
+import { shutdownMaintenanceRuntime } from './MaintenanceShutdown.js';
+import { inspectMaintenanceActivity } from './MaintenanceDiagnosticsService.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: new (path: string) => {
@@ -196,6 +198,83 @@ test('backup rejects a source ancestor junction swapped after path inspection an
     if (originalMoved && existsSync(heldEvidenceDirectory)) renameSync(heldEvidenceDirectory, evidenceDirectory);
     fx.cleanup();
   }
+});
+
+test('backup streams, verifies and restores a multi-chunk referenced file', async () => {
+  const fx = createFixture();
+  const memoryPath = join(fx.workspaceRoot, 'agent-memory/records/knowledge/memory_fixture.md');
+  const large = Buffer.alloc(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes * 5 + 37);
+  for (let index = 0; index < large.length; index += 1) large[index] = (index * 31) & 0xff;
+  writeFileSync(memoryPath, large);
+  try {
+    const backup = await fx.service.createBackup();
+    const entry = backup.manifest.files.find(item => item.scope === 'workspace-root' && item.targetPath.endsWith('memory_fixture.md'));
+    assert.ok(entry);
+    assert.equal(entry.sizeBytes, large.byteLength);
+    assert.equal(entry.sha256, createHash('sha256').update(large).digest('hex'));
+    await MaintenanceService.readAndVerifyBackup(backup.backupDirectory);
+    const restored = join(fx.root, 'large-file-restore');
+    await MaintenanceService.restoreBackup(backup.backupDirectory, restored);
+    assert.deepEqual(readFileSync(join(restored, 'workspace-roots', fx.workspace.id, 'agent-memory/records/knowledge/memory_fixture.md')), large);
+  } finally { fx.cleanup(); }
+});
+
+test('backup rejects source mutation during chunked copy and removes partial publication', async () => {
+  const fx = createFixture();
+  const memoryPath = join(fx.workspaceRoot, 'agent-memory/records/knowledge/memory_fixture.md');
+  const large = Buffer.alloc(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes * 4 + 9, 0x41);
+  writeFileSync(memoryPath, large);
+  let changed = false;
+  const service = new MaintenanceService(
+    fx.dataRoot, fx.store.getDatabase() as any,
+    [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }], () => new Date(),
+    { afterStableCopyChunk: input => {
+      if (realpathSync.native(input.sourcePath) !== realpathSync.native(memoryPath) || changed || input.bytesCopied < MAINTENANCE_BACKUP_LIMITS.streamChunkBytes) return;
+      changed = true;
+      const fd = openSync(memoryPath, 'r+');
+      try { writeSync(fd, Buffer.from([0x42]), 0, 1, 0); fsyncSync(fd); } finally { closeSync(fd); }
+    } },
+  );
+  try {
+    await assert.rejects(service.createBackup(), (error: { code?: string }) => error.code === 'BACKUP_SOURCE_CHANGED');
+    assert.equal(changed, true);
+    assert.deepEqual(readdirSync(join(fx.dataRoot, '.agentos', 'backups')), [], 'no partial bundle is published');
+  } finally { fx.cleanup(); }
+});
+
+test('backup verification visibly rejects per-file, aggregate and file-count budgets before restore switches a target', async () => {
+  const fx = createFixture();
+  try {
+    const backup = await fx.service.createBackup();
+    const cases: Array<{ readonly code: string; readonly mutate: (manifest: any) => void }> = [
+      { code: 'BACKUP_FILE_LIMIT_EXCEEDED', mutate: manifest => { manifest.files[0].sizeBytes = MAINTENANCE_BACKUP_LIMITS.maxFileBytes + 1; } },
+      { code: 'BACKUP_TOTAL_LIMIT_EXCEEDED', mutate: manifest => {
+        const source = manifest.files[0];
+        manifest.files = Array.from({ length: 9 }, (_, index) => ({
+          ...source, scope: 'data-root', targetPath: `.agentos/budget-${index}`,
+          payloadPath: `payload/${String(index).padStart(6, '0')}.bin`, sizeBytes: MAINTENANCE_BACKUP_LIMITS.maxFileBytes,
+        }));
+      } },
+      { code: 'BACKUP_FILE_COUNT_LIMIT_EXCEEDED', mutate: manifest => {
+        const source = { ...manifest.files[0], sizeBytes: 0 };
+        manifest.files = Array.from({ length: MAINTENANCE_BACKUP_LIMITS.maxFiles + 1 }, (_, index) => ({
+          ...source, targetPath: `.agentos/count-${index}`, payloadPath: `payload/${String(index).padStart(6, '0')}.bin`,
+        }));
+      } },
+    ];
+    for (const item of cases) {
+      const copy = await cloneBackup(backup.backupDirectory, fx.root);
+      const manifestPath = join(copy, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      item.mutate(manifest);
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      await assert.rejects(MaintenanceService.readAndVerifyBackup(copy), { code: item.code });
+      const target = join(fx.root, `rejected-${item.code}`);
+      await assert.rejects(MaintenanceService.restoreBackup(copy, target), { code: item.code });
+      assert.equal(existsSync(target), false, 'budget refusal must happen before target publication');
+      rmSync(copy, { recursive: true, force: true });
+    }
+  } finally { fx.cleanup(); }
 });
 
 test('online backup drains writes and active executions, then restores SQLite candidates, memory, attachments and evidence', async () => {
@@ -1016,5 +1095,199 @@ test('storage diagnostics summarize capacity and backups without reading secrets
     assert.equal(JSON.stringify(report).includes('do-not-print'), false);
   } finally {
     fx.cleanup();
+  }
+});
+
+test('disconnecting a backup client does not release SQLite or ownership before maintenance drains on shutdown', async () => {
+  const fx = createFixture();
+  const barrier = new MaintenanceBarrier();
+  let enterCopy!: () => void;
+  let releaseCopy!: () => void;
+  const copyStarted = new Promise<void>(resolvePromise => { enterCopy = resolvePromise; });
+  const copyGate = new Promise<void>(resolvePromise => { releaseCopy = resolvePromise; });
+  const memoryPath = join(fx.workspaceRoot, 'agent-memory/records/knowledge/memory_fixture.md');
+  let storeClosed = false;
+  let ownershipReleased = false;
+  let stopDeferred = false;
+  let finished!: () => void;
+  const shutdownFinished = new Promise<void>(resolvePromise => { finished = resolvePromise; });
+  const service = new MaintenanceService(
+    fx.dataRoot, fx.store.getDatabase() as any,
+    [{ id: fx.workspace.id, rootPath: fx.workspace.rootPath }], () => new Date(),
+    { beforeStableCopyOpen: async input => {
+      if (realpathSync.native(input.sourcePath) !== realpathSync.native(memoryPath)) return;
+      enterCopy();
+      await copyGate;
+    } },
+  );
+  const coordinator = new MaintenanceCoordinator(fx.dataRoot, 'disconnect-shutdown-instance', barrier, {
+    inspectActivity: () => ({ counts: {} }), drainTimeoutMs: 100, maxDurationMs: 5_000,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use(createMaintenanceWriteBarrier(barrier));
+  app.use('/api/maintenance', createMaintenanceRoutes({
+    coordinator,
+    diagnostics: { async readiness() { return { ok: true }; } } as any,
+    service,
+    instanceId: 'disconnect-shutdown-instance',
+  }));
+  const server = await new Promise<ReturnType<typeof app.listen>>(resolvePromise => {
+    const listening = app.listen(0, '127.0.0.1', () => resolvePromise(listening));
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const requestAbort = new AbortController();
+  const disconnectedRequest = fetch(`http://127.0.0.1:${address.port}/api/maintenance/backup`, {
+    method: 'POST', signal: requestAbort.signal,
+  });
+  try {
+    await Promise.race([
+      copyStarted,
+      new Promise<never>((_resolvePromise, rejectPromise) => setTimeout(() => rejectPromise(new Error('backup copy did not start')), 5_000)),
+    ]);
+    requestAbort.abort();
+    await assert.rejects(disconnectedRequest);
+
+    const shutdown = await shutdownMaintenanceRuntime({
+      barrier,
+      coordinator,
+      inspectActivity: () => ({ counts: {} }),
+      server,
+      closeStore: () => { storeClosed = true; fx.store.close(); },
+      releaseOwnership: () => { ownershipReleased = true; },
+      onFinished: finished,
+      onDeferred: () => { stopDeferred = true; },
+      onError: error => { throw error; },
+      graceMs: 20,
+    });
+    assert.equal(shutdown, 'deferred', 'bounded grace reports deferred instead of aborting the active snapshot');
+    assert.equal(stopDeferred, true, 'shutdown exposes the explicit deferred-stop state');
+    assert.equal(barrier.enterMutation(), undefined, 'new writes are fenced at shutdown start');
+    await assert.rejects(coordinator.run('cleanup', async () => undefined), { code: 'MAINTENANCE_SHUTTING_DOWN' });
+    assert.equal(storeClosed, false, 'SQLite remains open while the disconnected request still owns a backup');
+    assert.equal(ownershipReleased, false, 'the data-root lease remains held during the backup');
+
+    releaseCopy();
+    await Promise.race([
+      shutdownFinished,
+      new Promise<never>((_resolvePromise, rejectPromise) => setTimeout(() => rejectPromise(new Error('shutdown did not finish after the copy drained')), 10_000)),
+    ]);
+    assert.equal(storeClosed, true);
+    assert.equal(ownershipReleased, true);
+    const backupRoot = join(fx.dataRoot, '.agentos', 'backups');
+    const published = readdirSync(backupRoot).filter(name => !name.endsWith('.tmp'));
+    assert.equal(published.length, 1, 'the disconnected client did not cancel durable backup publication');
+    await MaintenanceService.readAndVerifyBackup(join(backupRoot, published[0]!));
+  } finally {
+    releaseCopy();
+    requestAbort.abort();
+    if (!storeClosed) fx.store.close();
+    rmSync(fx.root, { recursive: true, force: true, maxRetries: 10 });
+  }
+});
+
+test('shutdown defers while a provider/runtime execution remains active even after HTTP closes', async () => {
+  const fx = createFixture();
+  const barrier = new MaintenanceBarrier();
+  let storeClosed = false;
+  let ownershipReleased = false;
+  let finished!: () => void;
+  const shutdownFinished = new Promise<void>(resolvePromise => { finished = resolvePromise; });
+  const app = express();
+  const server = await new Promise<ReturnType<typeof app.listen>>(resolvePromise => {
+    const listening = app.listen(0, '127.0.0.1', () => resolvePromise(listening));
+  });
+  const coordinator = new MaintenanceCoordinator(fx.dataRoot, 'provider-shutdown-instance', barrier, {
+    inspectActivity: () => ({ counts: {} }), drainTimeoutMs: 100, maxDurationMs: 5_000,
+  });
+  const database = fx.store.getDatabase() as any;
+  database.prepare("UPDATE agent_runs SET status = 'running' WHERE id = ?").run('run_fixture');
+  database.prepare(`INSERT INTO executions (
+    id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, 'running', 'mock', ?, ?)`)
+    .run('provider-shutdown-execution', 'run_fixture', 'conv_fixture', fx.workspace.id, 'msg_fixture', 'codex', new Date().toISOString(), new Date().toISOString());
+  const beforeShutdownActivity = inspectMaintenanceActivity(database);
+  assert.equal(beforeShutdownActivity.counts.executions, 1);
+  assert.equal(beforeShutdownActivity.counts.agent_runs, 1);
+  const releaseDispatchPermit = barrier.enterDispatcherStart();
+  assert.ok(releaseDispatchPermit);
+  try {
+    const shutdown = await shutdownMaintenanceRuntime({
+      barrier,
+      coordinator,
+      inspectActivity: () => inspectMaintenanceActivity(database),
+      server,
+      closeStore: () => { storeClosed = true; fx.store.close(); },
+      releaseOwnership: () => { ownershipReleased = true; },
+      onFinished: finished,
+      onDeferred: () => undefined,
+      onError: error => { throw error; },
+      graceMs: 30,
+    });
+    assert.equal(shutdown, 'deferred', 'an active provider Run keeps the process alive after its HTTP listener closes');
+    assert.equal(barrier.snapshot.activeDispatcherStarts, 1, 'shutdown rejects new dispatch but retains the admitted owner');
+    assert.equal(barrier.enterDispatcherStart(), undefined, 'new provider dispatches are fenced while the existing owner drains');
+    assert.equal(storeClosed, false, 'SQLite remains open for provider completion evidence');
+    assert.equal(ownershipReleased, false, 'data-root ownership remains held until provider state is terminal');
+
+    database.prepare("UPDATE executions SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), new Date().toISOString(), 'provider-shutdown-execution');
+    database.prepare("UPDATE agent_runs SET status = 'completed' WHERE id = ?").run('run_fixture');
+    releaseDispatchPermit();
+    await Promise.race([
+      shutdownFinished,
+      new Promise<never>((_resolvePromise, rejectPromise) => setTimeout(() => rejectPromise(new Error('provider shutdown did not finish after its durable terminal state')), 5_000)),
+    ]);
+    assert.equal(storeClosed, true);
+    assert.equal(ownershipReleased, true);
+  } finally {
+    releaseDispatchPermit?.();
+    if (!storeClosed) fx.store.close();
+    rmSync(fx.root, { recursive: true, force: true, maxRetries: 10 });
+  }
+});
+
+test('shutdown defers closedown when runtime activity inspection is unknown', async () => {
+  const fx = createFixture();
+  const barrier = new MaintenanceBarrier();
+  let storeClosed = false;
+  let ownershipReleased = false;
+  let unknown = true;
+  let finished!: () => void;
+  const shutdownFinished = new Promise<void>(resolvePromise => { finished = resolvePromise; });
+  const app = express();
+  const server = await new Promise<ReturnType<typeof app.listen>>(resolvePromise => {
+    const listening = app.listen(0, '127.0.0.1', () => resolvePromise(listening));
+  });
+  try {
+    const shutdown = await shutdownMaintenanceRuntime({
+      barrier,
+      inspectActivity: () => ({ counts: {}, ...(unknown ? { unknown: true } : {}) }),
+      server,
+      closeStore: () => { storeClosed = true; fx.store.close(); },
+      releaseOwnership: () => { ownershipReleased = true; },
+      onFinished: finished,
+      onDeferred: () => undefined,
+      onError: error => { throw error; },
+      graceMs: 25,
+    });
+    assert.equal(shutdown, 'deferred');
+    assert.equal(storeClosed, false);
+    assert.equal(ownershipReleased, false);
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 60));
+    assert.equal(storeClosed, false, 'unknown is not treated as an empty activity snapshot');
+    assert.equal(ownershipReleased, false);
+    unknown = false;
+    await Promise.race([
+      shutdownFinished,
+      new Promise<never>((_resolvePromise, rejectPromise) => setTimeout(() => rejectPromise(new Error('shutdown did not complete after activity became known idle')), 5_000)),
+    ]);
+    assert.equal(storeClosed, true);
+    assert.equal(ownershipReleased, true);
+  } finally {
+    unknown = false;
+    if (!storeClosed) fx.store.close();
+    rmSync(fx.root, { recursive: true, force: true, maxRetries: 10 });
   }
 });

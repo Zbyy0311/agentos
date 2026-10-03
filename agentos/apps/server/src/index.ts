@@ -71,8 +71,10 @@ import { createMaintenanceRoutes, createMaintenanceWriteBarrier } from './routes
 import { createReadinessRoutes } from './routes/readiness.js';
 import { MaintenanceBarrier } from './services/MaintenanceBarrier.js';
 import { MaintenanceCoordinator, MaintenanceError } from './services/MaintenanceCoordinator.js';
+import { shutdownMaintenanceRuntime } from './services/MaintenanceShutdown.js';
 import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './services/MaintenanceDiagnosticsService.js';
 import { MaintenanceService } from './services/MaintenanceService.js';
+import { closeLocalShutdownControl, startLocalShutdownControl } from './services/LocalShutdownControl.js';
 import { WorkspaceGitRootRegistry } from './services/WorkspaceGitRootRegistry.js';
 import { createDiagnosticLogger } from './services/DiagnosticLogger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -104,10 +106,12 @@ type StableStartupCode =
   | 'STARTUP_RECOVERY_FAILED'
   | 'STARTUP_ADMISSION_RECONCILIATION_FAILED'
   | 'SERVER_LISTEN_FAILED'
+  | 'LOCAL_SHUTDOWN_CONTROL_INVALID'
+  | 'LOCAL_SHUTDOWN_CONTROL_UNAVAILABLE'
   | 'SERVER_STARTUP_FAILED';
 
 class StartupFailure extends Error {
-  constructor(readonly stableCode: 'STARTUP_RECOVERY_FAILED' | 'SERVER_LISTEN_FAILED') {
+  constructor(readonly stableCode: StableStartupCode) {
     super(stableCode);
     this.name = 'StartupFailure';
   }
@@ -171,6 +175,8 @@ let maintenancePaused = false;
 let startBackgroundWorkers: (() => void) | undefined;
 let resumeBackgroundQueueWorkers: (() => void) | undefined;
 let worktreeReconcile: Promise<void> | undefined;
+let maintenanceCoordinator: MaintenanceCoordinator | undefined;
+let localShutdownControl: import('node:net').Server | undefined;
 const maintenanceBarrier = new MaintenanceBarrier();
 const dispatchPermitContext = new AsyncLocalStorage<boolean>();
 
@@ -244,6 +250,7 @@ async function bootstrap(): Promise<void> {
       onPauseBackground: pauseBackgroundWorkers,
       onResumeBackground: resumeBackgroundWorkers,
     });
+    maintenanceCoordinator = maintenance;
     await maintenance.initialize();
     maintenance.assertStartupWritable();
 
@@ -524,6 +531,22 @@ async function bootstrap(): Promise<void> {
 
     phase = 'listen';
     httpServer = await listenHttpServer(app, PORT, security.host);
+    const localControlNonce = process.env.AGENTOS_LOCAL_SHUTDOWN_NONCE;
+    const localControlPipe = process.env.AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE;
+    const localControlInstance = process.env.AGENTOS_LOCAL_INSTANCE_ID;
+    if (localControlNonce || localControlPipe || localControlInstance) {
+      if (!localControlNonce || !localControlPipe || !localControlInstance || localControlInstance !== serverInstanceId) {
+        throw new StartupFailure('LOCAL_SHUTDOWN_CONTROL_INVALID');
+      }
+      try {
+        localShutdownControl = await startLocalShutdownControl({
+          pipePath: localControlPipe,
+          instanceId: localControlInstance,
+          nonce: localControlNonce,
+          onShutdown: () => { void shutdown('LOCAL_CONTROL', 0); },
+        });
+      } catch { throw new StartupFailure('LOCAL_SHUTDOWN_CONTROL_UNAVAILABLE'); }
+    }
 
     phase = 'running';
     console.log(`[AgentOS Server] running on http://${security.host}:${PORT}`);
@@ -607,22 +630,43 @@ async function shutdown(signal: string, exitCode: number): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   diagLog(`SIGNAL=${signal} pid=${process.pid} instanceId=${serverInstanceId}`);
-  if (stopOutboxPublisher) {
-    try { stopOutboxPublisher(); } catch { /* best effort */ }
-  }
-  if (stopRetention) {
-    try { stopRetention(); } catch { /* best effort */ }
-  }
-  if (httpServer) {
-    try { await closeHttpServer(httpServer); } catch { /* best effort */ }
-  }
-  if (store) {
-    try { store.close(); } catch { /* best effort */ }
-  }
-  if (ownership) {
-    try { await ownership.release(); } catch { /* best effort */ }
-  }
-  process.exit(exitCode);
+  await shutdownMaintenanceRuntime({
+    barrier: maintenanceBarrier,
+    coordinator: maintenanceCoordinator,
+    inspectActivity: () => store
+      ? inspectMaintenanceActivity(store.getDatabase() as any)
+      : { counts: {}, unknown: true },
+    server: httpServer,
+    stopBackgroundWorkers: async () => {
+      try { await closeLocalShutdownControl(localShutdownControl); }
+      catch (error) { diagLog(`SHUTDOWN_CONTROL_CLOSE_FAILED error=${String(error)}`); }
+      localShutdownControl = undefined;
+      if (stopOutboxPublisher) {
+        try { stopOutboxPublisher(); } catch (error) { diagLog(`SHUTDOWN_OUTBOX_STOP_FAILED error=${String(error)}`); }
+        stopOutboxPublisher = undefined;
+      }
+      if (stopRetention) {
+        try { stopRetention(); } catch (error) { diagLog(`SHUTDOWN_RETENTION_STOP_FAILED error=${String(error)}`); }
+        stopRetention = undefined;
+      }
+      await worktreeReconcile?.catch(error => {
+        diagLog(`SHUTDOWN_WORKTREE_RECONCILE_FAILED error=${String(error)}`);
+      });
+    },
+    closeStore: () => {
+      if (!store) return;
+      try { store.close(); } catch (error) { diagLog(`SHUTDOWN_STORE_CLOSE_FAILED error=${String(error)}`); }
+    },
+    releaseOwnership: async () => {
+      if (!ownership) return;
+      try { await ownership.release(); } catch (error) { diagLog(`SHUTDOWN_OWNERSHIP_RELEASE_FAILED error=${String(error)}`); }
+    },
+    onFinished: () => process.exit(exitCode),
+    onDeferred: () => diagLog(`STOP_DEFERRED pid=${process.pid} instanceId=${serverInstanceId} reason=runtime-or-maintenance-drain; store-and-ownership-retained`),
+    onError: error => diagLog(`SHUTDOWN_DRAIN_ERROR pid=${process.pid} instanceId=${serverInstanceId} error=${String(error)}`),
+  }).catch(error => {
+    diagLog(`SHUTDOWN_FAILED_CLOSED pid=${process.pid} instanceId=${serverInstanceId} error=${String(error)}`);
+  });
 }
 
 process.on('SIGINT',  () => { void shutdown('SIGINT', getSignalExitCode('SIGINT')); });
