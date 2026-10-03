@@ -63,6 +63,21 @@ test('an already exited Windows child still needs clean authenticated shutdown e
     { platform: 'win32' }), /did not exit cleanly/u);
 });
 
+test('POSIX simulation shuts down only its owned child with SIGTERM', async () => {
+  const child = childFixture();
+  child.kill = signal => {
+    child.kills.push(signal);
+    setTimeout(() => { child.signalCode = signal; child.emit('exit', null, signal); }, 5);
+    return true;
+  };
+  const server = { child };
+  await stopAcceptanceServer(server, { platform: 'linux', requestShutdown: async () => {
+    throw new Error('Windows control must not be requested for POSIX');
+  } });
+  assert.deepEqual(child.kills, ['SIGTERM']);
+  assert.equal(server.shutdownMechanism, 'owned-child-signal');
+});
+
 test('runtime receipt rejects forced exits, foreign identity and missing Windows shutdown proof', () => {
   const evidence = { serverPid: 1234, serverProcess: { pid: 1234, stopped: true,
     exitCode: 0, signalCode: null, shutdownMechanism: 'authenticated-windows-named-pipe' } };

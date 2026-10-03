@@ -477,7 +477,7 @@ function resolveExecutablePath(value) {
 async function startServer(runRoot, projectRoot, { requireP2Ready = false, worktreeRoot } = {}) {
   invariant(worktreeRoot, 'isolated runtime worktree root is required');
   const port = await reservePort();
-  const shutdownControl = createAcceptanceServerControl();
+  const shutdownControl = process.platform === 'win32' ? createAcceptanceServerControl() : undefined;
   const child = spawn(process.execPath, [join(scriptRoot, 'apps/server/dist/index.js')], {
     cwd: scriptRoot,
     env: {
@@ -487,10 +487,12 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
       AGENTOS_SERVER_HOST: '127.0.0.1',
       AGENTOS_RUNTIME_DISPATCH_ENABLED: 'true',
       AGENTOS_FORCE_MOCK: 'false',
-      AGENTOS_SERVER_INSTANCE_ID: shutdownControl.instanceId,
-      AGENTOS_LOCAL_INSTANCE_ID: shutdownControl.instanceId,
-      AGENTOS_LOCAL_SHUTDOWN_NONCE: shutdownControl.nonce,
-      AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE: shutdownControl.pipePath,
+      ...(shutdownControl ? {
+        AGENTOS_SERVER_INSTANCE_ID: shutdownControl.instanceId,
+        AGENTOS_LOCAL_INSTANCE_ID: shutdownControl.instanceId,
+        AGENTOS_LOCAL_SHUTDOWN_NONCE: shutdownControl.nonce,
+        AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE: shutdownControl.pipePath,
+      } : {}),
       PORT: String(port),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
