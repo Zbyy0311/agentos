@@ -8,9 +8,14 @@ import { fileURLToPath } from 'node:url';
 const args = process.argv.slice(2);
 const evidenceIndex = args.indexOf('--evidence-dir');
 const shaIndex = args.indexOf('--expected-sha');
+const projectIndex = args.indexOf('--project-sha');
 if (evidenceIndex < 0 || shaIndex < 0 || !args[evidenceIndex + 1] || !/^[a-f0-9]{40}$/iu.test(args[shaIndex + 1] ?? '')) {
   throw new Error('captured acceptance requires --evidence-dir and --expected-sha');
 }
+if (projectIndex >= 0 && !/^[a-f0-9]{40}$/iu.test(args[projectIndex + 1] ?? '')) {
+  throw new Error('captured acceptance requires a full --project-sha when provided');
+}
+const projectArguments = projectIndex < 0 ? [] : ['--project-sha', args[projectIndex + 1]];
 const evidenceRoot = resolve(args[evidenceIndex + 1]);
 mkdirSync(evidenceRoot, { recursive: true });
 const runner = fileURLToPath(new URL('./verify-existing-project-acceptance.mjs', import.meta.url));
@@ -45,7 +50,7 @@ writeFileSync(join(evidenceRoot, 'runner-outcome.json'), `${JSON.stringify({
 }, null, 2)}\n`, { flag: 'wx' });
 if (outcome.exitCode === 0 && outcome.signal === null && outcome.spawnError === null) {
   const verification = spawnSync(process.execPath, [runner, '--verify-receipt', join(evidenceRoot, 'receipt.json'),
-    '--expected-sha', args[shaIndex + 1], '--evidence-dir', evidenceRoot],
+    '--expected-sha', args[shaIndex + 1], '--evidence-dir', evidenceRoot, ...projectArguments],
   { cwd: packageRoot, windowsHide: true, shell: false, encoding: 'utf8', timeout: 30_000 });
   process.stdout.write(sanitize(verification.stdout));
   process.stderr.write(sanitize(verification.stderr));
