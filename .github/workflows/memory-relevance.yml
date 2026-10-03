@@ -36,7 +36,7 @@ jobs:
       - name: Build memory contract dependencies
         run: pnpm --filter @agentos/server run build:workspace-deps
       - name: Fixed corpus, exact version isolation and snapshot replay
-        run: node scripts/capture-lite-verification.mjs p1-memory-relevance apps/server -- node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/MemoryRelevancePolicy.test.ts src/services/MemoryRetrievalEvaluation.test.ts src/services/MemoryFeedbackService.test.ts src/services/MemorySemanticQualityGate.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryRetriever.test.ts src/services/RunContextBuilder.test.ts src/services/ConversationService.memory.test.ts src/routes/memoryActions.test.ts src/migrations/__tests__/p1-memory-lexical-index.test.ts
+        run: node scripts/capture-lite-verification.mjs p1-memory-relevance apps/server -- node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/MemoryLexicalIndex.test.ts src/services/MemoryRelevancePolicy.test.ts src/services/MemoryRetrievalEvaluation.test.ts src/services/MemoryFeedbackService.test.ts src/services/MemorySemanticQualityGate.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryRetriever.test.ts src/services/RunContextBuilder.test.ts src/services/ConversationService.memory.test.ts src/routes/memoryActions.test.ts src/migrations/__tests__/p1-memory-lexical-index.test.ts
       - name: Preserve exact commit receipts
         if: always()
         uses: actions/upload-artifact@v4

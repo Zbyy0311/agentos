@@ -7,6 +7,10 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { getAgentOsBuildIdentity } from './BuildIdentity.js';
 import { MaintenanceDiagnosticsService } from './MaintenanceDiagnosticsService.js';
+import { inTransaction } from '../store/Transaction.js';
+import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
+import { createHash } from 'node:crypto';
+import { MaintenanceBarrier } from './MaintenanceBarrier.js';
 
 test('readiness separates database, migration, recovery, Provider state and maintenance without exposing probe secrets', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-readiness-test-'));
@@ -75,6 +79,78 @@ test('readiness separates database, migration, recovery, Provider state and main
     const fenced = await diagnostics.readiness();
     assert.equal(fenced.maintenance.active, true);
     assert.equal(fenced.ok, false, 'an active maintenance lease is not reported ready');
+
+    const db = store.getDatabase();
+    const now = new Date().toISOString();
+    const conversationId = 'conv_' + 'd'.repeat(26);
+    const workspaceId = workspaces.list()[0]!.id;
+    const conversations = store.conversationRepository();
+    conversations.createConversation({ id: conversationId, workspaceId, kind: 'group', title: 'active group work', createdAt: now });
+    const source = conversations.appendMessage({
+      id: 'msg_' + 'd'.repeat(26), conversationId, workspaceId, senderType: 'user',
+      kind: 'text', status: 'final', content: 'maintenance source', createdAt: now,
+    });
+    const groups = store.groupInteractionRepository();
+    const interaction = groups.createInteraction({
+      id: 'group_maintenance_owner', conversationId, workspaceId, sourceMessageId: source.id, createdAt: now,
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 1 },
+    });
+    const owner = groups.claimExecution({
+      workspaceId, conversationId, interactionId: interaction.id, sourceMessageId: source.id,
+      participantAgentIds: ['agent_maintenance_fixture'], ownerId: 'owner_fixture', createdAt: now,
+    });
+    inTransaction(db, () => groups.transitionExecutionWithinTransaction({
+      workspaceId, interactionId: interaction.id, ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch,
+      status: 'running', eventType: 'group.turn.start', updatedAt: now,
+    }));
+    const activityWithGroup = diagnostics.inspectActivity();
+    assert.equal(activityWithGroup.counts.cr_group_interaction_executions, 1,
+      'an active group provider owner remains visible after its HTTP request ends');
+
+    const policies = new CompactionPolicyRepository(db);
+    const compactions = new CompactionRepository(db);
+    const policy = inTransaction(db, () => policies.createWithinTransaction({
+      id: 'policy_maintenance_fixture', policyVersion: 'maintenance-fixture', triggerRatio: 0.7, targetRatio: 0.5,
+      minRecentMessages: 1, summaryMaxTokens: 20, timeoutMs: 1000, maxAutomaticRetries: 1,
+      fallbackApplicationBudgetTokens: 100, parametersJson: '{}',
+      checksum: createHash('sha256').update('maintenance-policy').digest('hex'), createdAt: now,
+    }));
+    const compaction = inTransaction(db, () => compactions.createTaskWithinTransaction({
+      id: 'compaction_maintenance_fixture', workspaceId: workspaces.list()[0]!.id, conversationId,
+      policyId: policy.id, sourceStartMessageId: null, sourceEndMessageId: null,
+      sourceMessageCount: 0, sourceHash: createHash('sha256').update('empty-source').digest('hex'),
+      priorSummaryId: null, budgetJson: '{}', providerConfigId: null, providerType: null,
+      adapterId: null, adapterVersion: null, model: null, estimatorVersion: 'maintenance-test', createdAt: now,
+    }));
+    inTransaction(db, () => compactions.claimRunningWithinTransaction({
+      workspaceId: workspaces.list()[0]!.id, id: compaction.id, expectedVersion: compaction.version,
+      leaseOwner: 'summarizer-fixture', leaseExpiresAt: new Date(Date.parse(now) + 60_000).toISOString(), now,
+    }));
+    const activityWithSummarizer = diagnostics.inspectActivity();
+    assert.equal(activityWithSummarizer.counts.conversation_compactions, 1,
+      'active provider summarization is included in maintenance drain status');
+
+    const barrier = new MaintenanceBarrier();
+    assert.equal(barrier.begin(), true);
+    let drainFinished = false;
+    const drain = barrier.waitForDrain(() => diagnostics.inspectActivity(), 1_000, 5)
+      .then(snapshot => { drainFinished = true; return snapshot; });
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 30));
+    assert.equal(drainFinished, false, 'active group and summarizer Provider work must hold maintenance drain');
+
+    inTransaction(db, () => compactions.reconcileInterruptedOnStartupWithinTransaction(new Date().toISOString()));
+    const afterRestart = diagnostics.inspectActivity();
+    assert.equal(afterRestart.counts.conversation_compactions, 0,
+      'a durable lease proven interrupted by restart no longer blocks maintenance indefinitely');
+    assert.equal(afterRestart.counts.cr_group_interaction_executions, 1,
+      'unresolved group owners still hold maintenance until the startup reconciler marks them interrupted');
+    assert.equal(groups.reconcileInterruptedOnStartup(new Date().toISOString()), 1);
+    const drained = await drain;
+    assert.equal(drained.activity.counts.cr_group_interaction_executions, 0);
+    assert.equal(drained.activity.counts.conversation_compactions, 0);
+    assert.equal(diagnostics.inspectActivity().counts.cr_group_interaction_executions, 0,
+      'startup-reconciled group owner no longer blocks a new maintenance operation');
+    barrier.end();
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true, maxRetries: 10 });

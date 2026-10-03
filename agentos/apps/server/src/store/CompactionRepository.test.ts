@@ -99,6 +99,37 @@ test('S6/029: a reclaimed lease cannot publish from the old holder or version', 
   } finally { fx.close(); }
 });
 
+test('S6/029 startup recovery releases an exited summarizer lease without admitting its stale result', () => {
+  const fx = fixture();
+  try {
+    const created = inTransaction(fx.db, () => fx.compactions.createTaskWithinTransaction(task({ id: 'comp_restart' }) as never));
+    const running = inTransaction(fx.db, () => fx.compactions.claimRunningWithinTransaction({
+      workspaceId: WS, id: created.id, expectedVersion: created.version, leaseOwner: 'old-server-instance',
+      leaseExpiresAt: '2026-09-12T18:00:00.000Z', now: NOW,
+    }));
+
+    const recoveredCount = inTransaction(fx.db, () => fx.compactions.reconcileInterruptedOnStartupWithinTransaction(LATER));
+    assert.equal(recoveredCount, 1);
+    const recovered = fx.compactions.findById(WS, running.id)!;
+    assert.equal(recovered.status, 'retry-pending');
+    assert.equal(recovered.failureCode, 'COMPACTION_SERVER_RESTARTED');
+    assert.equal(recovered.leaseOwner, null);
+    assert.equal(recovered.leaseExpiresAt, null);
+    assert.equal(recovered.version, running.version + 1);
+    assert.throws(() => inTransaction(fx.db, () => fx.compactions.publishWithinTransaction({
+      workspaceId: WS, id: running.id, expectedVersion: running.version, leaseOwner: 'old-server-instance',
+      summary: 'stale summary', summaryHash: hash('stale summary'), summaryTokenEstimate: 2,
+      candidateId: 'cand_1', publishedAt: LATER,
+    })), /COMPACTION_CONFLICT/);
+    assert.equal(inTransaction(fx.db, () => fx.compactions.reconcileInterruptedOnStartupWithinTransaction(LATER)), 0,
+      'startup recovery is idempotent');
+    assert.equal(inTransaction(fx.db, () => fx.compactions.failWithinTransaction({
+      workspaceId: WS, id: recovered.id, expectedVersion: recovered.version,
+      failureCode: 'COMPACTION_RETRIES_EXHAUSTED', failureMessage: 'attempt budget spent', now: LATER,
+    })).status, 'failed', 'an exhausted recovered attempt can reach its terminal state');
+  } finally { fx.close(); }
+});
+
 test('S6/029: one compaction task moves pending -> running -> published under version CAS', () => {
   const fx = fixture();
   try {
