@@ -13,7 +13,14 @@ import {
   captureCandidateProbeOverlayIdentity, createCandidateProbeCheckout,
   verifyCandidateReviewSequence, frozenCandidateContentHash,
   observeOwnedProviderProcesses, verifyCapturedRunnerOutcome,
+  setupWorkspaceClone, parseAcceptanceArguments, verifyRuntimeDatabaseEvidence,
 } from './verify-existing-project-acceptance.mjs';
+
+function git(root, args) {
+  const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true, shell: false });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result.stdout.trim();
+}
 
 test('captured exit binds the receipt actually passed for verification', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-external-exit-'));
@@ -229,6 +236,190 @@ test('real plan accepts existing AgentOS production paths with exact repository-
   try {
     const { plans, sourceCommit } = realPlans(root);
     assert.equal(validateRealPlanPaths(plans, root, sourceCommit), plans);
+  } finally { removeRealPlanFixture(root); }
+});
+
+test('project-sha is explicit when supplied, defaults only to expected-sha, and rejects malformed or repeated values', () => {
+  const runtimeSha = 'a'.repeat(40);
+  const projectSha = 'b'.repeat(40);
+  const args = ['--mode', 'simulated-provider', '--expected-sha', runtimeSha];
+  assert.equal(parseAcceptanceArguments(args).projectSha, runtimeSha);
+  assert.equal(parseAcceptanceArguments([...args, '--project-sha', projectSha]).projectSha, projectSha);
+  assert.throws(() => parseAcceptanceArguments([...args, '--project-sha', 'main']), /full commit SHA/u);
+  assert.throws(() => parseAcceptanceArguments([...args, '--project-sha']), /requires a value/u);
+  assert.throws(() => parseAcceptanceArguments([...args, '--project-sha', projectSha, '--project-sha', projectSha]),
+    /repeated/u);
+});
+
+test('execution cannot bind a foreign repository snapshot while building the current runtime runner', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-foreign-runtime-root-'));
+  try {
+    const { sourceCommit } = realPlans(root);
+    const runner = fileURLToPath(new URL('./verify-existing-project-acceptance.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [runner, '--mode', 'simulated-provider',
+      '--expected-sha', sourceCommit, '--repository-root', root], {
+      encoding: 'utf8', windowsHide: true, timeout: 15_000,
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /execution --repository-root must be the runtime runner checkout/u);
+  } finally { removeRealPlanFixture(root); }
+});
+
+test('real historical plans and isolated workspaces use project blobs while source HEAD, index and config stay at runtime', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-historical-workspace-'));
+  const runRoot = mkdtempSync(join(tmpdir(), 'p4-historical-run-'));
+  try {
+    const { plans, sourceCommit } = realPlans(root);
+    const sourcePath = plans[0].scope[0];
+    const projectTree = git(root, ['rev-parse', `${sourceCommit}^{tree}`]);
+    const projectProbe = readFileSync(join(root, plans[0].baselineProbe.sourcePath));
+    git(root, ['rm', '--', sourcePath, plans[0].baselineProbe.sourcePath]);
+    git(root, ['commit', '-q', '-m', 'runtime no longer has the historical source path']);
+    git(root, ['config', 'core.longpaths', 'false']);
+    const runtimeSha = git(root, ['rev-parse', 'HEAD']);
+    const runtimeIndex = readFileSync(join(root, '.git', 'index'));
+    const runtimeConfig = readFileSync(join(root, '.git', 'config'));
+    const planBytes = JSON.stringify(plans);
+    assert.equal(validateRealPlanPaths(plans, root, sourceCommit), plans);
+    const workspace = setupWorkspaceClone(root, runRoot, 'defect', sourceCommit, 'real-windows-acceptance');
+    assert.equal(workspace.sourceCommitSha, sourceCommit);
+    assert.equal(workspace.baseCommit, sourceCommit);
+    assert.equal(workspace.baseParentCommitSha, sourceCommit);
+    assert.equal(workspace.baseTreeSha, projectTree);
+    assert.equal(git(workspace.root, ['rev-parse', 'HEAD']), sourceCommit);
+    assert.equal(readFileSync(join(workspace.root, sourcePath), 'utf8'), 'export {}\n');
+    assert.deepEqual(readFileSync(join(workspace.root, plans[0].baselineProbe.sourcePath)), projectProbe);
+    assert.equal(JSON.stringify(plans), planBytes);
+    assert.equal(git(root, ['rev-parse', 'HEAD']), runtimeSha);
+    assert.deepEqual(readFileSync(join(root, '.git', 'index')), runtimeIndex);
+    assert.deepEqual(readFileSync(join(root, '.git', 'config')), runtimeConfig);
+    assert.equal(git(root, ['config', '--get', 'core.longpaths']), 'false');
+    assert.equal(git(root, ['status', '--porcelain=v1']), '');
+    const wrongPlan = structuredClone(plans);
+    wrongPlan[0].baselineProbe.sourceCommitSha = runtimeSha;
+    assert.throws(() => validateRealPlanPaths(wrongPlan, root, sourceCommit), /sourceCommitSha must equal/u);
+    const runtimeOnlyScope = structuredClone(plans);
+    runtimeOnlyScope[0].scope = ['agentos/apps/server/src/not-in-project.ts'];
+    assert.throws(() => validateRealPlanPaths(runtimeOnlyScope, root, sourceCommit), /existing frozen AgentOS source path/u);
+  } finally { removeRealPlanFixture(runRoot); removeRealPlanFixture(root); }
+});
+
+test('runtime database verifier independently requires an explicit project commit/tree before trusting database evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-database-project-binding-'));
+  try {
+    const { sourceCommit } = realPlans(root);
+    const projectTree = git(root, ['rev-parse', `${sourceCommit}^{tree}`]);
+    writeFileSync(join(root, 'agentos/apps/server/src/routes/collaborations.ts'), 'export const newRuntime = true;\n');
+    git(root, ['add', '--', 'agentos']);
+    git(root, ['commit', '-q', '-m', 'later runtime']);
+    const runtimeSha = git(root, ['rev-parse', 'HEAD']);
+    const receipt = { repository: { commitSha: runtimeSha, treeSha: git(root, ['rev-parse', 'HEAD^{tree}']) },
+      projectRepository: { commitSha: sourceCommit, treeSha: projectTree } };
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root }),
+      /projectRepository commit\/tree do not match --project-sha/u);
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root, projectSha: sourceCommit }),
+      /runtime database evidence reference is required/u);
+    receipt.projectRepository.treeSha = receipt.repository.treeSha;
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root, projectSha: sourceCommit }),
+      /projectRepository commit\/tree/u);
+    delete receipt.projectRepository;
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root, projectSha: sourceCommit }),
+      /requires receipt.projectRepository/u);
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root }),
+      /runtime database evidence reference is required/u);
+  } finally { removeRealPlanFixture(root); }
+});
+
+test('offline database checks bind persisted candidate bases and baseline artifacts to project rather than runtime SHA', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-project-database-records-'));
+  try {
+    const { sourceCommit, plans } = realPlans(root);
+    const projectTree = git(root, ['rev-parse', `${sourceCommit}^{tree}`]);
+    writeFileSync(join(root, 'agentos/apps/server/src/routes/collaborations.ts'), 'export const newRuntime = true;\n');
+    git(root, ['add', '--', 'agentos']);
+    git(root, ['commit', '-q', '-m', 'new runtime for historical project']);
+    const runtimeSha = git(root, ['rev-parse', 'HEAD']);
+    const runtimeTree = git(root, ['rev-parse', 'HEAD^{tree}']);
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    const artifact = (artifactPath, value) => {
+      const bytes = Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
+      writeFileSync(join(root, artifactPath), bytes);
+      return { artifactPath, sha256: digest(bytes) };
+    };
+    const dbPath = join(root, 'database.sqlite');
+    const db = new DatabaseSync(dbPath);
+    const acceptanceCommands = ['node --test project.test.mjs'];
+    const candidate = { id: 'candidate', canonical_run_id: 'run', round: 0, base_commit: sourceCommit,
+      head_commit: sourceCommit, diff_text: 'project frozen patch\n', test_status: 'passed',
+      test_command: acceptanceCommands[0], test_exit_code: 0, test_output: 'passed', status: 'applied',
+      review_conclusion: 'approved', review_summary: 'review', created_at: '2026-10-03T00:00:00.000Z',
+      manifest_json: '[]', snapshot_version: 1, manifest_version: 1 };
+    candidate.diff_hash = digest(candidate.diff_text);
+    candidate.content_hash = frozenCandidateContentHash(candidate);
+    try {
+      db.exec(`CREATE TABLE collaboration_tasks (
+        id TEXT, workspace_id TEXT, status TEXT, planner_agent_id TEXT, implementer_agent_id TEXT,
+        reviewer_agent_id TEXT, current_candidate_id TEXT, canonical_run_id TEXT, canonical_task_id TEXT,
+        base_commit TEXT, applied_at TEXT, acceptance_commands_json TEXT, title TEXT, objective TEXT, scope_json TEXT);
+        CREATE TABLE workspaces (id TEXT, root_path TEXT);
+        CREATE TABLE collaboration_candidates (
+        collaboration_task_id TEXT, workspace_id TEXT, id TEXT, canonical_run_id TEXT, round INTEGER,
+        base_commit TEXT, head_commit TEXT, diff_hash TEXT, content_hash TEXT, diff_text TEXT,
+        test_status TEXT, test_command TEXT, test_exit_code INTEGER, test_output TEXT, status TEXT,
+        review_conclusion TEXT, review_summary TEXT, created_at TEXT, manifest_json TEXT,
+        snapshot_version INTEGER, manifest_version INTEGER);`);
+      db.prepare('INSERT INTO collaboration_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
+        'task', 'workspace', 'applied', 'planner', 'implementer', 'reviewer', 'candidate', 'run', 'canonical-task',
+        sourceCommit, '2026-10-03T00:00:00.000Z', JSON.stringify(acceptanceCommands), 'title', 'objective', '[]');
+      db.prepare('INSERT INTO workspaces VALUES (?,?)').run('workspace', root);
+      const fields = Object.keys(candidate);
+      db.prepare(`INSERT INTO collaboration_candidates (collaboration_task_id,workspace_id,${fields.join(',')})
+        VALUES (${Array(fields.length + 2).fill('?').join(',')})`).run('task', 'workspace', ...Object.values(candidate));
+    } finally { db.close(); }
+    const command = 'node --test project.test.mjs';
+    const record = { command, cwd: root, expectedFailurePattern: 'project baseline failure',
+      workspaceBaseCommit: sourceCommit, workspaceBaseTreeSha: projectTree, sourceCommitSha: sourceCommit,
+      baseParentCommitSha: sourceCommit, rawExitCode: 1,
+      stdout: artifact('baseline.stdout.txt', 'project baseline failure\n'), stderr: artifact('baseline.stderr.txt', '') };
+    const baselineCommand = { command, artifact: artifact('baseline.json', record) };
+    const scenario = { kind: 'defect', ids: { projectId: 'workspace', taskId: 'task', candidateId: 'candidate' },
+      runtimeEvidence: { workspaceId: 'workspace', collaborationTaskId: 'task' },
+      roles: { planner: 'planner', implementer: 'implementer', reviewer: 'reviewer' },
+      acceptanceCommands, baselineCommands: [command], workspaceBaseCommit: sourceCommit, workspaceBaseTreeSha: projectTree,
+      commands: [{ argv: acceptanceCommands, cwd: root }],
+      baselineReproduction: { status: 'reproduced', baseCommit: sourceCommit, baseTreeSha: projectTree,
+        sourceCommitSha: sourceCommit, baseParentCommitSha: sourceCommit, expectedFailurePattern: record.expectedFailurePattern,
+        commands: [baselineCommand] } };
+    const receipt = { mode: 'simulated-provider', repository: { commitSha: runtimeSha, treeSha: runtimeTree },
+      projectRepository: { commitSha: sourceCommit, treeSha: projectTree }, scenarios: [scenario],
+      runtimeEvidence: { database: { artifactPath: 'database.sqlite', sha256: digest(readFileSync(dbPath)) },
+        serverPid: 1, port: 8080, readinessPath: '/api/runtime/ready',
+        serverProcess: { pid: 1, stopped: true, exitCode: 0, signalCode: null } } };
+    const options = { repositoryRoot: root, projectSha: sourceCommit };
+    // Deliberately incomplete review evidence must fail only after the real DB base/baseline checks pass.
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /no such table: collaboration_reviews/u);
+    receipt.mode = 'real-windows-acceptance';
+    scenario.baselineProbe = plans[0].baselineProbe;
+    Object.assign(scenario, { title: 'altered title', objective: 'objective', scope: [] });
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /real plan fields differ from the persisted project task/u);
+    Object.assign(scenario, { title: 'title', scope: ['agentos/apps/server/src/other-project.ts'] });
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /real plan fields differ from the persisted project task/u);
+    receipt.mode = 'simulated-provider';
+    delete scenario.baselineProbe;
+    scenario.baselineReproduction.sourceCommitSha = runtimeSha;
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /baseline failure evidence is incomplete/u);
+    scenario.baselineReproduction.sourceCommitSha = sourceCommit;
+    baselineCommand.artifact = artifact('baseline.json', { ...record, sourceCommitSha: runtimeSha });
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /baseline command is not bound to its frozen workspace/u);
+    baselineCommand.artifact = artifact('baseline.json', record);
+    scenario.workspaceBaseCommit = runtimeSha;
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, options), /candidate base does not match the frozen workspace/u);
+    scenario.workspaceBaseCommit = sourceCommit;
+    git(root, ['checkout', '--detach', sourceCommit]);
+    receipt.repository = { commitSha: sourceCommit, treeSha: projectTree };
+    delete receipt.projectRepository;
+    assert.throws(() => verifyRuntimeDatabaseEvidence(root, receipt, { repositoryRoot: root }),
+      /no such table: collaboration_reviews/u);
   } finally { removeRealPlanFixture(root); }
 });
 

@@ -9,6 +9,7 @@ import test from 'node:test';
 import {
   verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateOutput,
   verifyProbeCandidateRecord, verifyRealPlanReceiptBinding,
+  resolveProjectSnapshot, verifyProjectPath, verifyProjectRepositoryBinding,
 } from './p4-plan-bindings.mjs';
 
 const sourceFixtureRoot = fileURLToPath(new URL('./fixtures/p4-memory-source-probes/', import.meta.url));
@@ -166,6 +167,96 @@ test('an external TypeScript loader is allowed only when its exact argv path and
     writeFileSync(loaderPath, 'export const changed = true;\n');
     assert.throws(() => verifyPlanProbeSource(plan, fixture.root, fixture.sourceCommit), /argv file SHA-256 changed/u);
   } finally { rmSync(loaderPath, { force: true }); }
+}));
+
+test('historical project probes are verified from their committed blobs without rewriting the runtime checkout', () => withPlanFixture(fixture => {
+  const plan = fixture.plans[0];
+  const frozenPlanBytes = JSON.stringify(plan);
+  git(fixture.root, ['rm', '--', memoryModulePath, plan.baselineProbe.sourcePath]);
+  git(fixture.root, ['commit', '-q', '-m', 'runtime moves beyond the frozen project']);
+  const runtimeSha = git(fixture.root, ['rev-parse', 'HEAD']);
+  const runtimeIndex = readFileSync(join(fixture.root, '.git', 'index'));
+  assert.throws(() => verifyPlanProbeSource(plan, fixture.root, fixture.sourceCommit),
+    /not the current frozen checkout/u);
+  const binding = verifyPlanProbeSource(plan, fixture.root, fixture.sourceCommit, { allowHistoricalCommit: true });
+  assert.equal(binding.sourceBlobSha, plan.baselineProbe.sourceBlobSha);
+  assert.equal(JSON.stringify(plan), frozenPlanBytes, 'historical plan/probe bindings remain unchanged');
+  assert.equal(git(fixture.root, ['rev-parse', 'HEAD']), runtimeSha);
+  assert.deepEqual(readFileSync(join(fixture.root, '.git', 'index')), runtimeIndex);
+  assert.equal(git(fixture.root, ['status', '--porcelain=v1']), '');
+
+  const wrongBlob = structuredClone(plan);
+  wrongBlob.baselineProbe.sourceBlobSha = 'f'.repeat(40);
+  assert.throws(() => verifyPlanProbeSource(wrongBlob, fixture.root, fixture.sourceCommit,
+    { allowHistoricalCommit: true }), /Git blob SHA differs/u);
+  assert.throws(() => verifyPlanProbeSource(plan, fixture.root, runtimeSha,
+    { allowHistoricalCommit: true }), /sourceCommitSha must equal/u);
+}));
+
+test('project receipt binding requires an explicit actual commit/tree and preserves the same-SHA legacy contract', () => withPlanFixture(fixture => {
+  const project = resolveProjectSnapshot(fixture.root, fixture.sourceCommit);
+  const legacy = { repository: { commitSha: project.commitSha, treeSha: project.treeSha } };
+  assert.deepEqual(verifyProjectRepositoryBinding(legacy, fixture.root, fixture.sourceCommit), project);
+  writeFileSync(join(fixture.root, memoryModulePath), 'export function memoryLexicalTerms() { return ["fixed"]; }\n');
+  git(fixture.root, ['add', '--', memoryModulePath]);
+  git(fixture.root, ['commit', '-q', '-m', 'new runtime source']);
+  const runtime = resolveProjectSnapshot(fixture.root, git(fixture.root, ['rev-parse', 'HEAD']));
+  const receipt = {
+    repository: { commitSha: runtime.commitSha, treeSha: runtime.treeSha },
+    projectRepository: { commitSha: project.commitSha, treeSha: project.treeSha },
+  };
+  assert.deepEqual(verifyProjectRepositoryBinding(receipt, fixture.root, project.commitSha), project);
+  assert.throws(() => verifyProjectRepositoryBinding(receipt, fixture.root, runtime.commitSha),
+    /projectRepository commit\/tree do not match --project-sha/u);
+  const missing = structuredClone(receipt);
+  delete missing.projectRepository;
+  assert.throws(() => verifyProjectRepositoryBinding(missing, fixture.root, project.commitSha),
+    /requires receipt.projectRepository/u);
+  for (const replacement of [null, [], { commitSha: project.commitSha },
+    { commitSha: project.commitSha, treeSha: runtime.treeSha }]) {
+    assert.throws(() => verifyProjectRepositoryBinding({ ...receipt, projectRepository: replacement },
+      fixture.root, project.commitSha), /projectRepository commit\/tree/u);
+  }
+  assert.throws(() => resolveProjectSnapshot(fixture.root, project.treeSha), /actual Git commit/u);
+  assert.throws(() => resolveProjectSnapshot(fixture.root, project.commitSha.slice(0, 8)), /full 40-character/u);
+  assert.throws(() => resolveProjectSnapshot(fixture.root, '0'.repeat(40)), /git cat-file failed/u);
+  git(fixture.root, ['tag', '-a', 'project-tag', '-m', 'tag is not a project commit', project.commitSha]);
+  assert.throws(() => resolveProjectSnapshot(fixture.root, git(fixture.root, ['rev-parse', 'project-tag'])),
+    /actual Git commit/u);
+}));
+
+test('Git replacements cannot rewrite the historical project tree or its reviewed probe blobs', () => withPlanFixture(fixture => {
+  const project = resolveProjectSnapshot(fixture.root, fixture.sourceCommit);
+  const probePath = fixture.plans[0].baselineProbe.sourcePath;
+  writeFileSync(join(fixture.root, probePath), '// rewritten probe in a later runtime commit\n');
+  git(fixture.root, ['add', '--', probePath]);
+  git(fixture.root, ['commit', '-q', '-m', 'replacement has different probe bytes']);
+  const runtimeSha = git(fixture.root, ['rev-parse', 'HEAD']);
+  const runtimeTree = git(fixture.root, ['rev-parse', 'HEAD^{tree}']);
+  git(fixture.root, ['replace', fixture.sourceCommit, runtimeSha]);
+  assert.equal(git(fixture.root, ['rev-parse', `${fixture.sourceCommit}^{tree}`]), runtimeTree);
+  assert.equal(resolveProjectSnapshot(fixture.root, fixture.sourceCommit).treeSha, project.treeSha);
+  assert.doesNotThrow(() => verifyPlanProbeSource(fixture.plans[0], fixture.root, fixture.sourceCommit,
+    { allowHistoricalCommit: true }));
+  const receipt = { repository: { commitSha: runtimeSha, treeSha: runtimeTree },
+    projectRepository: { commitSha: fixture.sourceCommit, treeSha: runtimeTree } };
+  assert.throws(() => verifyProjectRepositoryBinding(receipt, fixture.root, fixture.sourceCommit),
+    /projectRepository commit\/tree/u);
+}));
+
+test('historical source anchors reject committed symbolic links and Gitlinks, including missing child paths', () => withPlanFixture(fixture => {
+  assert.equal(verifyProjectPath(fixture.root, fixture.sourceCommit, memoryModulePath).type, 'blob');
+  const blob = fixture.plans[0].baselineProbe.sourceBlobSha;
+  const sourceRoot = 'agentos/apps/server/src/unsafe';
+  git(fixture.root, ['update-index', '--add', '--cacheinfo', `120000,${blob},${sourceRoot}`]);
+  git(fixture.root, ['commit', '-q', '-m', 'symbolic source anchor']);
+  const linkedCommit = git(fixture.root, ['rev-parse', 'HEAD']);
+  assert.throws(() => verifyProjectPath(fixture.root, linkedCommit, `${sourceRoot}/new.ts`),
+    /symbolic link or Gitlink/u);
+  git(fixture.root, ['update-index', '--add', '--cacheinfo', `160000,${fixture.sourceCommit},${sourceRoot}`]);
+  git(fixture.root, ['commit', '-q', '-m', 'Gitlink source anchor']);
+  assert.throws(() => verifyProjectPath(fixture.root, git(fixture.root, ['rev-parse', 'HEAD']), sourceRoot),
+    /symbolic link or Gitlink/u);
 }));
 
 test('raw plan hash and every consumed scenario field are replay-bound', () => withPlanFixture(fixture => {

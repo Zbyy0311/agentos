@@ -19,6 +19,7 @@ import {
 const manifestPath = new URL('./p4-existing-project-acceptance.manifest.json', import.meta.url);
 const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
 const validatorPath = fileURLToPath(new URL('./validate-existing-project-acceptance.mjs', import.meta.url));
+const verifierPath = fileURLToPath(new URL('./verify-existing-project-acceptance.mjs', import.meta.url));
 const manifest = validateManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
 
 test('manifest binds the project baseline separately from the immutable runtime checkout', () => {
@@ -262,6 +263,117 @@ function validate(item) {
     expectedSha: item.commitSha,
   });
 }
+
+function advanceRuntime(item) {
+  const project = { commitSha: item.commitSha, treeSha: item.treeSha };
+  const sourcePath = 'agentos/apps/server/src/tracked-build-input.ts';
+  writeFileSync(resolve(item.root, sourcePath), 'export const trackedBuildInput = "new runtime";\n');
+  git(item.root, ['add', '--', sourcePath]);
+  git(item.root, ['commit', '-q', '-m', 'runtime advances beyond the frozen project']);
+  item.commitSha = git(item.root, ['rev-parse', 'HEAD']);
+  item.treeSha = git(item.root, ['rev-parse', 'HEAD^{tree}']);
+  Object.assign(item.receipt.repository, {
+    commitSha: item.commitSha, treeSha: item.treeSha,
+    commitShaAtStart: item.commitSha, commitShaAtEnd: item.commitSha,
+    treeShaAtStart: item.treeSha, treeShaAtEnd: item.treeSha,
+  });
+  item.receipt.projectRepository = project;
+  for (const scenario of item.receipt.scenarios) {
+    scenario.frozenCandidate.commitSha = item.commitSha;
+    scenario.frozenCandidate.treeSha = item.treeSha;
+    scenario.workspaceBaseCommit = project.commitSha;
+    scenario.workspaceBaseTreeSha = project.treeSha;
+  }
+  return project;
+}
+
+test('a distinct project receipt requires explicit project-sha while candidates and checkout remain bound to runtime', () => withFixture(item => {
+  const project = advanceRuntime(item);
+  const options = { repositoryRoot: item.root, expectedSha: item.commitSha, projectSha: project.commitSha };
+  const result = validateReceipt(manifest, item.receipt, options);
+  assert.equal(result.commitSha, item.commitSha);
+  assert.equal(result.treeSha, item.treeSha);
+  assert.equal(result.projectCommitSha, project.commitSha);
+  assert.equal(result.projectTreeSha, project.treeSha);
+  assert.equal(result.runtimeEvidenceStatus, 'not-checked');
+  assert.throws(() => validate(item), /projectRepository commit\/tree do not match --project-sha/u);
+  assert.throws(() => validateReceipt(manifest, item.receipt, { ...options, projectSha: item.commitSha }),
+    /projectRepository commit\/tree/u);
+
+  const validReceipt = structuredClone(item.receipt);
+  delete item.receipt.projectRepository;
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /requires receipt.projectRepository/u);
+  item.receipt = structuredClone(validReceipt);
+  item.receipt.projectRepository.treeSha = item.treeSha;
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /projectRepository commit\/tree/u);
+  item.receipt = structuredClone(validReceipt);
+  item.receipt.scenarios[0].frozenCandidate.commitSha = project.commitSha;
+  item.receipt.scenarios[0].frozenCandidate.treeSha = project.treeSha;
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /frozen candidate must name the actual checkout/u);
+  item.receipt = structuredClone(validReceipt);
+  item.receipt.scenarios[0].baselineReproduction.sourceCommitSha = item.commitSha;
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /baseline failure on a workspace/u);
+  item.receipt = structuredClone(validReceipt);
+  const baseline = item.receipt.scenarios[0].baselineReproduction;
+  const record = JSON.parse(readFileSync(resolve(item.root, baseline.commands[0].artifact.artifactPath), 'utf8'));
+  record.sourceCommitSha = item.commitSha;
+  baseline.commands[0].artifact = item.addArtifact('evidence/defect/forged-runtime-baseline.json', JSON.stringify(record));
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /baseline command artifact does not match/u);
+  item.receipt = structuredClone(validReceipt);
+  writeFileSync(resolve(item.root, 'agentos/apps/server/src/tracked-build-input.ts'), 'export const dirtyRuntime = true;\n');
+  assert.throws(() => validateReceipt(manifest, item.receipt, options), /tracked checkout files differ/u);
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
+
+test('historical offline overlay and source scope derive from the project tree while preserving runtime HEAD and index', () => withFixture(item => {
+  const sourcePath = 'agentos/apps/server/src/tracked-build-input.ts';
+  const projectSha = item.commitSha;
+  const projectTree = item.treeSha;
+  writeFileSync(resolve(item.root, sourcePath), 'export const trackedBuildInput = false;\n');
+  const patch = execFileSync('git', ['-C', item.root, 'diff', '--binary', '--', sourcePath]);
+  git(item.root, ['add', '--', sourcePath]);
+  git(item.root, ['commit', '-q', '-m', 'independent expected candidate tree']);
+  const expectedOverlayTree = git(item.root, ['rev-parse', 'HEAD^{tree}']);
+  git(item.root, ['rm', '--', sourcePath]);
+  git(item.root, ['commit', '-q', '-m', 'new runtime removes the historical project path']);
+  const runtimeSha = git(item.root, ['rev-parse', 'HEAD']);
+  const runtimeTree = git(item.root, ['rev-parse', 'HEAD^{tree}']);
+  const indexPath = resolve(item.root, '.git/index');
+  const frozenIndex = readFileSync(indexPath);
+  const frozenStatus = git(item.root, ['status', '--porcelain=v1', '--untracked-files=all']);
+  const scenario = {
+    kind: 'defect', workspaceBaseCommit: projectSha, workspaceBaseTreeSha: projectTree,
+    baselineReproduction: { sourceCommitSha: projectSha, baseParentCommitSha: projectSha,
+      baseCommit: projectSha, baseTreeSha: projectTree, excludedGitlinkPaths: [] },
+    candidateProbe: { executionRoot: realpathSync(item.root), workspaceBaseCommit: projectSha,
+      workspaceBaseTreeSha: projectTree, candidateOverlayTreeSha: expectedOverlayTree },
+  };
+  const snapshots = { runtimeSha, projectSha };
+  const record = { ...scenario.candidateProbe, cwd: scenario.candidateProbe.executionRoot };
+  assert.equal(deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch, snapshots), expectedOverlayTree);
+  assert.doesNotThrow(() => verifyCandidateProbeExecutionBinding(scenario, record, item.root, patch, snapshots));
+  assert.deepEqual(verifyFinalCandidateScope(item.root, [sourcePath], patch, projectSha), [sourcePath]);
+  assert.throws(() => verifyFinalCandidateScope(item.root, [sourcePath], patch), /anchor to an existing AgentOS source path/u);
+  assert.throws(() => deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch), /frozen runtime HEAD changed/u);
+  assert.throws(() => deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch, { runtimeSha, projectSha: runtimeSha }),
+    /base source differs from --project-sha/u);
+  assert.throws(() => deriveCandidateProbeOverlayTreeSha(item.root, scenario, patch, { runtimeSha: projectSha, projectSha }),
+    /frozen runtime HEAD changed/u);
+  const forged = structuredClone(scenario);
+  forged.workspaceBaseCommit = runtimeSha;
+  forged.workspaceBaseTreeSha = runtimeTree;
+  forged.baselineReproduction.baseCommit = runtimeSha;
+  forged.baselineReproduction.baseTreeSha = runtimeTree;
+  assert.throws(() => deriveCandidateProbeOverlayTreeSha(item.root, forged, patch, snapshots),
+    /base commit differs from its frozen source/u);
+  scenario.candidateProbe.candidateOverlayTreeSha = runtimeTree;
+  record.candidateOverlayTreeSha = runtimeTree;
+  assert.throws(() => verifyCandidateProbeExecutionBinding(scenario, record, item.root, patch, snapshots),
+    /independently derived frozen candidate/u);
+  assert.equal(git(item.root, ['rev-parse', 'HEAD']), runtimeSha);
+  assert.equal(git(item.root, ['rev-parse', 'HEAD^{tree}']), runtimeTree);
+  assert.deepEqual(readFileSync(indexPath), frozenIndex);
+  assert.equal(git(item.root, ['status', '--porcelain=v1', '--untracked-files=all']), frozenStatus);
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
 
 test('offline candidate probe independently derives overlay tree and rejects matching forged tree claims', () => withFixture(item => {
   const sourcePath = 'agentos/apps/server/src/tracked-build-input.ts';
@@ -620,6 +732,42 @@ test('receipt CLI exits successfully for structure and does not claim runtime ac
   assert.match(result.stdout, /"status": "structurally-verified"/);
   assert.match(result.stdout, /"acceptanceStatus": "runtime-database-verification-required"/);
 }));
+
+test('validator and verify-receipt CLIs reject omitted project-sha for distinct receipts and accept its explicit binding', () => withFixture(item => {
+  const project = advanceRuntime(item);
+  const receiptPath = resolve(item.root, 'receipt.json');
+  writeFileSync(receiptPath, JSON.stringify(item.receipt));
+  const commonArgs = ['--expected-sha', item.commitSha, '--repository-root', item.root];
+  const validatorArgs = [validatorPath, '--receipt', receiptPath, ...commonArgs];
+  const missing = spawnSync(process.execPath, validatorArgs, { cwd: agentosRoot, encoding: 'utf8' });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /projectRepository commit\/tree do not match --project-sha/u);
+  const explicit = spawnSync(process.execPath, [...validatorArgs, '--project-sha', project.commitSha],
+    { cwd: agentosRoot, encoding: 'utf8' });
+  assert.equal(explicit.status, 0, explicit.stderr);
+  const result = JSON.parse(explicit.stdout);
+  assert.equal(result.commitSha, item.commitSha);
+  assert.equal(result.projectCommitSha, project.commitSha);
+
+  const verifierArgs = [verifierPath, '--verify-receipt', receiptPath, '--evidence-dir', item.root, ...commonArgs];
+  const missingVerify = spawnSync(process.execPath, verifierArgs, { cwd: agentosRoot, encoding: 'utf8' });
+  assert.equal(missingVerify.status, 1);
+  assert.match(missingVerify.stderr, /projectRepository commit\/tree do not match --project-sha/u);
+  const runnerLogs = {};
+  for (const stream of ['stdout', 'stderr']) {
+    runnerLogs[stream] = item.addArtifact(`runner-${stream}.log`, `fixture ${stream}\n`);
+  }
+  item.addArtifact('runner-outcome.json', JSON.stringify({
+    schemaVersion: 1, source: 'parent-child-process-close', commitSha: item.commitSha,
+    result: { exitCode: 0, signal: null, spawnError: null }, receiptSha256: hash(readFileSync(receiptPath)),
+    logs: runnerLogs,
+  }));
+  const boundVerify = spawnSync(process.execPath, [...verifierArgs, '--project-sha', project.commitSha],
+    { cwd: agentosRoot, encoding: 'utf8' });
+  assert.equal(boundVerify.status, 1, 'structural verification cannot replace a runtime database');
+  assert.match(boundVerify.stderr, /runtime database evidence reference is required/u);
+  assert.doesNotMatch(boundVerify.stderr, /projectRepository commit\/tree|frozen Git checkout/u);
+}, 'simulated-provider', { sourceLayout: 'agentos' }));
 
 test('receipt CLI rejects omitted receipts and expected SHA instead of inferring success', () => {
   const missingReceipt = spawnSync(process.execPath, [validatorPath], { cwd: agentosRoot, encoding: 'utf8' });

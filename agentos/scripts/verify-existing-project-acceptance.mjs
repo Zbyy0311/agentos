@@ -20,10 +20,11 @@ import { copyStoppedAcceptanceDatabase, createAcceptanceServerControl, stopAccep
 import {
   verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateOutput,
   verifyProbeCandidateRecord, verifyProbeWorkspaceSource, verifyRealPlanReceiptBinding,
+  frozenGitEnvironment, resolveProjectSnapshot, verifyProjectPath, verifyProjectRepositoryBinding,
 } from './p4-plan-bindings.mjs';
 
 const scriptRoot = fileURLToPath(new URL('../', import.meta.url));
-const repoRoot = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: scriptRoot, encoding: 'utf8' }).stdout.trim();
+const repoRoot = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: scriptRoot, env: frozenGitEnvironment(), encoding: 'utf8' }).stdout.trim();
 const manifest = validateManifest(JSON.parse(readFileSync(new URL('./p4-existing-project-acceptance.manifest.json', import.meta.url), 'utf8')));
 const shaPattern = /^[0-9a-f]{40}$/i;
 const hashPattern = /^[0-9a-f]{64}$/;
@@ -42,7 +43,7 @@ function invariant(ok, message) { if (!ok) throw new Error(message); }
 function sha256(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
 function hashFile(path) { return sha256(readFileSync(path)); }
 function git(root, args) {
-  const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const result = spawnSync('git', ['-C', root, ...args], { env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error(`git ${args[0]} failed (${result.status}): ${safeText(result.stderr || result.stdout)}`);
   return result.stdout.trim();
 }
@@ -374,6 +375,7 @@ function validatePlan(value) {
 
 function validateRealPlanPaths(plans, repositoryRoot, sourceCommitSha) {
   const root = realpathSync(repositoryRoot);
+  const project = resolveProjectSnapshot(root, sourceCommitSha);
   for (const plan of plans) {
     const existing = [];
     for (const rawPath of plan.scope) {
@@ -384,37 +386,31 @@ function validateRealPlanPaths(plans, repositoryRoot, sourceCommitSha) {
       invariant(/^agentos\/(?:apps|packages)\//iu.test(scopedPath)
         && !/fixtures\/p4-existing-project-acceptance/iu.test(scopedPath),
       `${plan.kind} real scope must target actual AgentOS application/package files, not runner fixtures`);
-      const absolute = resolve(root, scopedPath);
-      const relativePath = relative(root, absolute);
-      invariant(relativePath && relativePath !== '..' && !relativePath.startsWith(`..${sep}`), `${plan.kind} scope escapes the frozen repository`);
-      if (!existsSync(absolute)) continue; // A scoped feature file may be new; another existing source path must anchor it.
-      invariant(!lstatSync(absolute).isSymbolicLink(), `${plan.kind} scope cannot traverse a symbolic link`);
-      const actual = realpathSync(absolute);
-      const actualRelative = relative(root, actual);
-      invariant(actualRelative !== '..' && !actualRelative.startsWith(`..${sep}`), `${plan.kind} scope resolves outside the frozen repository`);
-      existing.push(scopedPath);
+      // A new feature path needs another anchor in the committed project tree.
+      if (verifyProjectPath(root, project.commitSha, scopedPath)) existing.push(scopedPath);
     }
     invariant(existing.length > 0, `${plan.kind} real plan must anchor its scope to at least one existing frozen AgentOS source path`);
     invariant(plan.baselineCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
       `${plan.kind} real baseline commands cannot execute the deterministic runner fixture`);
     invariant(plan.acceptanceCommands.every(command => !/p4-existing-project-acceptance/iu.test(command)),
       `${plan.kind} real acceptance commands cannot execute the deterministic runner fixture`);
-    verifyPlanProbeSource(plan, root, sourceCommitSha);
+    verifyPlanProbeSource(plan, root, project.commitSha, { allowHistoricalCommit: true });
   }
   return plans;
 }
 
 function parseArguments(argv) {
-  const options = { mode: undefined, expectedSha: undefined, repositoryRoot: repoRoot, evidenceDir: undefined, receiptPath: undefined, planPath: undefined, model: undefined, runReal: false };
+  const options = { mode: undefined, expectedSha: undefined, projectSha: undefined, repositoryRoot: repoRoot, evidenceDir: undefined, receiptPath: undefined, planPath: undefined, model: undefined, runReal: false };
   const seen = new Set();
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--run-real-provider') { invariant(!seen.has(arg), `${arg} repeated`); seen.add(arg); options.runReal = true; continue; }
-    if (!['--mode', '--expected-sha', '--repository-root', '--evidence-dir', '--verify-receipt', '--plan', '--model'].includes(arg)) throw new Error(`unknown argument: ${arg}`);
+    if (!['--mode', '--expected-sha', '--project-sha', '--repository-root', '--evidence-dir', '--verify-receipt', '--plan', '--model'].includes(arg)) throw new Error(`unknown argument: ${arg}`);
     invariant(!seen.has(arg), `${arg} repeated`); seen.add(arg);
     const value = argv[++i]; invariant(value && !value.startsWith('--'), `${arg} requires a value`);
     if (arg === '--mode') options.mode = value;
     else if (arg === '--expected-sha') options.expectedSha = value;
+    else if (arg === '--project-sha') options.projectSha = value;
     else if (arg === '--repository-root') options.repositoryRoot = resolve(value);
     else if (arg === '--evidence-dir') options.evidenceDir = resolve(value);
     else if (arg === '--verify-receipt') options.receiptPath = resolve(value);
@@ -422,6 +418,8 @@ function parseArguments(argv) {
     else options.model = value;
   }
   invariant(options.expectedSha && shaPattern.test(options.expectedSha), '--expected-sha must be a full commit SHA');
+  options.projectSha ??= options.expectedSha;
+  invariant(shaPattern.test(options.projectSha), '--project-sha must be a full commit SHA');
   if (options.receiptPath) {
     invariant(!options.mode && !options.runReal, '--verify-receipt cannot be combined with execution mode options');
     invariant(existsSync(options.receiptPath), '--verify-receipt path does not exist');
@@ -601,7 +599,7 @@ async function approveOwnedProviderStages(server, workspaceId, runId, implemente
 function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePath) {
   const target = join(runRoot, 'workspaces', kind);
   mkdirSync(dirname(target), { recursive: true });
-  const clone = spawnSync('git', ['clone', '--shared', '--no-checkout', sourceRoot, target], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
+  const clone = spawnSync('git', ['clone', '--shared', '--no-checkout', sourceRoot, target], { env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
   invariant(clone.status === 0, `could not make isolated ${kind} repository: ${safeText(clone.stderr)}`);
   // Configure only the disposable clone before materializing the frozen source.
   // Git for Windows can otherwise leave deep tracked cache paths absent.
@@ -653,7 +651,7 @@ function setupWorkspaceClone(sourceRoot, runRoot, kind, sourceSha, mode, statePa
 
 function captureBaselineReproduction(evidenceRoot, plan, workspace, sourceRoot) {
   if (plan.baselineProbe) {
-    verifyPlanProbeSource(plan, sourceRoot, workspace.sourceCommitSha);
+    verifyPlanProbeSource(plan, sourceRoot, workspace.sourceCommitSha, { allowHistoricalCommit: true });
     verifyProbeWorkspaceSource(plan, workspace.root);
   }
   const commands = plan.baselineCommands.map((command, index) => {
@@ -715,7 +713,7 @@ function captureBaselineReproduction(evidenceRoot, plan, workspace, sourceRoot) 
 
 function gitApplyPatch(root, patch, args) {
   const result = spawnSync('git', ['-C', root, ...args, '-'], {
-    input: patch, encoding: 'utf8', windowsHide: true, shell: false,
+    input: patch, env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, shell: false,
     timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
   });
   invariant(!result.error && result.status === 0,
@@ -762,7 +760,7 @@ export function captureCandidateProbeOverlayIdentity(rootPath, workspace, candid
 export function createCandidateProbeCheckout(workspaceRoot, target, baseCommit) {
   mkdirSync(dirname(target), { recursive: true });
   const cloned = spawnSync('git', ['clone', '--shared', '--no-checkout', workspaceRoot, target], {
-    encoding: 'utf8', windowsHide: true, shell: false, timeout: 90_000,
+    env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, shell: false, timeout: 90_000,
   });
   invariant(!cloned.error && cloned.status === 0,
     `could not create isolated candidate probe checkout: ${safeText(cloned.stderr || cloned.error?.message)}`);
@@ -869,7 +867,7 @@ export function acceptanceCodexArguments(mode, permissions) {
 
 async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidence, mode, model, executable, evidenceRoot, runRoot, sourceRoot) {
   if (plan.baselineProbe) {
-    verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha);
+    verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha, { allowHistoricalCommit: true });
     verifyProbeWorkspaceSource(plan, workspaceRoot.root);
   }
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: creating isolated workspace and task`);
@@ -986,7 +984,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
   const finalPatch = Buffer.from(finalCandidate.diffText, 'utf8');
   assertCandidateChangesStayInScope(plan, changedPathsFromPatch(finalCandidate.diffText));
   const candidateProbe = captureCandidateProbe(evidenceRoot, plan, workspaceRoot, finalCandidate, runRoot);
-  if (plan.baselineProbe) verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha);
+  if (plan.baselineProbe) verifyPlanProbeSource(plan, sourceRoot, workspaceRoot.sourceCommitSha, { allowHistoricalCommit: true });
   assertNoSecretLikeDiff(initialPatch.toString('utf8'));
   assertNoSecretLikeDiff(finalPatch.toString('utf8'));
   const priorRef = reworked ? writeArtifact(evidenceRoot, `scenarios/${plan.kind}/prior.patch`, initialPatch) : undefined;
@@ -1134,7 +1132,10 @@ export function verifyCapturedRunnerOutcome(evidenceRoot, receiptPath, commitSha
   }
 }
 
-function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptPath } = {}) {
+function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, {
+  capturedReceiptPath, repositoryRoot = repoRoot, projectSha = receipt.repository.commitSha,
+} = {}) {
+  const project = verifyProjectRepositoryBinding(receipt, repositoryRoot, projectSha);
   if (capturedReceiptPath) verifyCapturedRunnerOutcome(evidenceRoot, capturedReceiptPath, receipt.repository.commitSha);
   const databaseRef = receipt.runtimeEvidence?.database;
   invariant(databaseRef && typeof databaseRef.artifactPath === 'string' && hashPattern.test(databaseRef.sha256), 'runtime database evidence reference is required');
@@ -1184,7 +1185,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
       invariant(evidence && evidence.workspaceId === scenario.ids.projectId && evidence.collaborationTaskId === scenario.ids.taskId,
         `${scenario.kind} runtime identifiers are missing or inconsistent`);
       const task = db.prepare(`SELECT id,workspace_id,status,planner_agent_id,implementer_agent_id,reviewer_agent_id,
-        current_candidate_id,canonical_run_id,canonical_task_id,base_commit,applied_at,acceptance_commands_json
+        current_candidate_id,canonical_run_id,canonical_task_id,base_commit,applied_at,acceptance_commands_json,
+        title,objective,scope_json
         FROM collaboration_tasks WHERE id=? AND workspace_id=?`).get(evidence.collaborationTaskId, evidence.workspaceId);
       invariant(task && task.status === 'applied' && task.applied_at && task.current_candidate_id === scenario.ids.candidateId,
         `${scenario.kind} database does not record the reviewed candidate as applied`);
@@ -1193,6 +1195,11 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
       const acceptanceCommands = JSON.parse(task.acceptance_commands_json);
       invariant(JSON.stringify(acceptanceCommands) === JSON.stringify(scenario.acceptanceCommands),
         `${scenario.kind} acceptance commands differ from the persisted task plan`);
+      if (scenario.baselineProbe) {
+        invariant(task.title === scenario.title && task.objective === scenario.objective
+          && JSON.stringify(JSON.parse(task.scope_json)) === JSON.stringify(scenario.scope),
+        `${scenario.kind} real plan fields differ from the persisted project task`);
+      }
       invariant(Array.isArray(scenario.baselineCommands) && scenario.baselineCommands.length > 0
         && scenario.baselineReproduction?.commands?.length === scenario.baselineCommands.length
         && scenario.baselineReproduction.commands.every((command, index) => command.command === scenario.baselineCommands[index]),
@@ -1223,8 +1230,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
       `${scenario.kind} candidate base does not match the frozen workspace base`);
       invariant(scenario.baselineReproduction.status === 'reproduced'
         && scenario.baselineReproduction.baseCommit === task.base_commit
-        && scenario.baselineReproduction.sourceCommitSha === receipt.repository.commitSha
-        && scenario.baselineReproduction.baseParentCommitSha === receipt.repository.commitSha,
+        && scenario.baselineReproduction.sourceCommitSha === project.commitSha
+        && scenario.baselineReproduction.baseParentCommitSha === project.commitSha,
       `${scenario.kind} baseline failure evidence is incomplete`);
       const baselineFailures = [];
       for (const baselineCommand of scenario.baselineReproduction.commands) {
@@ -1237,7 +1244,8 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
           `${scenario.kind} baseline output artifact hash mismatch`);
         invariant(record.command === baselineCommand.command && record.cwd === workspace.root_path
           && record.expectedFailurePattern === scenario.baselineReproduction.expectedFailurePattern
-          && record.workspaceBaseCommit === task.base_commit && record.workspaceBaseTreeSha === scenario.workspaceBaseTreeSha,
+          && record.workspaceBaseCommit === task.base_commit && record.workspaceBaseTreeSha === scenario.workspaceBaseTreeSha
+          && record.sourceCommitSha === project.commitSha && record.baseParentCommitSha === project.commitSha,
         `${scenario.kind} baseline command is not bound to its frozen workspace`);
         const combinedOutput = `${readFileSync(stdoutPath, 'utf8')}\n${readFileSync(stderrPath, 'utf8')}`;
         if (scenario.baselineProbe && record.command === scenario.baselineProbe.command) {
@@ -1408,20 +1416,28 @@ async function main() {
     const receipt = JSON.parse(readFileSync(options.receiptPath, 'utf8'));
     const realPlanBytes = options.planPath ? readFileSync(options.planPath) : undefined;
     const structure = validateReceipt(manifest, receipt, {
-      expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot: options.evidenceDir,
+      expectedSha: options.expectedSha, projectSha: options.projectSha,
+      repositoryRoot: sourceRoot, evidenceRoot: options.evidenceDir,
       realPlanBytes,
     });
-    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, { capturedReceiptPath: options.receiptPath });
+    const runtime = verifyRuntimeDatabaseEvidence(options.evidenceDir, receipt, {
+      capturedReceiptPath: options.receiptPath, repositoryRoot: sourceRoot, projectSha: options.projectSha,
+    });
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: receipt.providerEvidence.invocationCount, receiptPath: options.receiptPath };
     console.log(JSON.stringify(report, null, 2));
     return;
   }
+  const runtimeRoot = realpathSync(repoRoot);
+  invariant(process.platform === 'win32'
+    ? sourceRoot.toLowerCase() === runtimeRoot.toLowerCase() : sourceRoot === runtimeRoot,
+  'execution --repository-root must be the runtime runner checkout; use --project-sha for a historical project');
   const sourceSnapshot = gitSnapshot(sourceRoot, options.expectedSha);
+  const projectSnapshot = resolveProjectSnapshot(sourceRoot, options.projectSha);
   const realPlanBytes = options.mode === 'real-windows-acceptance' ? readFileSync(options.planPath) : undefined;
   const plans = options.mode === 'simulated-provider'
     ? ['defect', 'feature'].map(simulationPlan)
     : validatePlan(JSON.parse(realPlanBytes.toString('utf8')));
-  if (options.mode === 'real-windows-acceptance') validateRealPlanPaths(plans, sourceRoot, sourceSnapshot.commitSha);
+  if (options.mode === 'real-windows-acceptance') validateRealPlanPaths(plans, sourceRoot, projectSnapshot.commitSha);
   const runId = `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`;
   const evidenceRoot = options.evidenceDir ?? (options.mode === 'real-windows-acceptance'
     ? join(homedir(), 'Documents', 'AgentOS', 'existing-project-acceptance', runId)
@@ -1478,7 +1494,7 @@ async function main() {
     const workspaces = [];
     const baselineResults = [];
     for (const plan of plans) {
-      const workspace = setupWorkspaceClone(sourceRoot, runRoot, plan.kind, sourceSnapshot.commitSha, options.mode, statePath);
+      const workspace = setupWorkspaceClone(sourceRoot, runRoot, plan.kind, projectSnapshot.commitSha, options.mode, statePath);
       workspaceRoots.push(workspace.root);
       workspaces.push(workspace);
       baselineResults.push(captureBaselineReproduction(evidenceRoot, plan, workspace, sourceRoot));
@@ -1492,7 +1508,7 @@ async function main() {
     invariant(scenarioResults.some(result => result.scenario.reviewHistory.some(event => event.transition === 'revision-submitted')),
       'acceptance requires at least one real changes-requested -> revision -> approval cycle across its scenarios');
     if (realPlanBytes) {
-      for (const plan of plans) verifyPlanProbeSource(plan, sourceRoot, sourceSnapshot.commitSha);
+      for (const plan of plans) verifyPlanProbeSource(plan, sourceRoot, projectSnapshot.commitSha, { allowHistoricalCommit: true });
     }
     const serverIdentity = { pid: server.child.pid, port: server.port, readinessPath: server.readinessPath };
     const serverNativeObservations = server.nativeObservations ?? new Map();
@@ -1552,6 +1568,7 @@ async function main() {
         commitShaAtStart: sourceSnapshot.commitSha, commitShaAtEnd: git(sourceRoot, ['rev-parse', 'HEAD']),
         treeShaAtStart: sourceSnapshot.treeSha, treeShaAtEnd: git(sourceRoot, ['rev-parse', 'HEAD^{tree}']),
       },
+      projectRepository: { commitSha: projectSnapshot.commitSha, treeSha: projectSnapshot.treeSha },
       model: { provider: options.mode === 'simulated-provider' ? 'fixture-provider' : 'codex', id: model },
       providerEvidence,
       ...(realPlanArtifact ? {
@@ -1571,9 +1588,12 @@ async function main() {
       scenarios: scenarioResults.map(item => item.scenario),
     };
     const structure = validateReceipt(manifest, receipt, {
-      expectedSha: options.expectedSha, repositoryRoot: sourceRoot, evidenceRoot, realPlanBytes,
+      expectedSha: options.expectedSha, projectSha: options.projectSha,
+      repositoryRoot: sourceRoot, evidenceRoot, realPlanBytes,
     });
-    const runtime = verifyRuntimeDatabaseEvidence(evidenceRoot, receipt);
+    const runtime = verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, {
+      repositoryRoot: sourceRoot, projectSha: options.projectSha,
+    });
     const report = { ...structure, acceptanceStatus: runtime.status, runtimeEvidenceStatus: 'verified', providerCalls: providerEvidence.invocationCount, receiptPath: join(evidenceRoot, 'receipt.json') };
     writeJsonArtifact(evidenceRoot, 'receipt.json', receipt);
     writeJsonArtifact(evidenceRoot, 'verification.json', report);
@@ -1637,5 +1657,5 @@ if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
 
 export {
   verifyRuntimeDatabaseEvidence, validatePlan, validateRealPlanPaths, simulationPlan,
-  createSimulationExecutable,
+  createSimulationExecutable, setupWorkspaceClone, parseArguments as parseAcceptanceArguments,
 };

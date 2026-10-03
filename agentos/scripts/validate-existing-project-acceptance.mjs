@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
-import { delimiter as pathDelimiter, isAbsolute, join, relative, sep, resolve } from 'node:path';
+import { isAbsolute, join, relative, sep, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -16,10 +16,12 @@ import {
 import {
   verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateRecord,
   verifyProbeCandidateOutput, verifyRealPlanReceiptBinding,
+  frozenGitEnvironment, resolveProjectSnapshot, verifyProjectPath, verifyProjectRepositoryBinding,
 } from './p4-plan-bindings.mjs';
 
 const agentosRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+  env: frozenGitEnvironment(),
   cwd: agentosRoot,
   encoding: 'utf8',
 }).trim();
@@ -57,6 +59,7 @@ function sha256(bytes) {
 function git(root, args, encoding = 'utf8') {
   return execFileSync('git', args, {
     cwd: root,
+    env: frozenGitEnvironment(),
     encoding,
     maxBuffer: 32 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -64,10 +67,8 @@ function git(root, args, encoding = 'utf8') {
 }
 
 function frozenAcceptanceGitlinkPaths(root, sourceCommitSha) {
-  const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
-  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_NAMESPACE']) delete env[key];
   const entries = execFileSync('git', ['-C', root, 'ls-tree', '-r', '--full-tree', '-z', sourceCommitSha], {
-    env, encoding: 'buffer', windowsHide: true, timeout: 30_000, maxBuffer: 32 * 1024 * 1024,
+    env: frozenGitEnvironment(), encoding: 'buffer', windowsHide: true, timeout: 30_000, maxBuffer: 32 * 1024 * 1024,
   })
     .toString('utf8').split('\0').filter(Boolean);
   return entries.flatMap(entry => {
@@ -563,13 +564,14 @@ function validateRealPlanEvidence(root, receipt, snapshot, usedPaths, suppliedPl
     'captured real plan must contain exactly two defect/feature scenarios');
   for (const planned of parsedPlan.scenarios) {
     requireCondition(scenarioKinds.includes(planned.kind), 'captured real plan contains an unsupported scenario kind');
-    verifyPlanProbeSource(planned, snapshot.root, snapshot.commitSha);
+    verifyPlanProbeSource(planned, snapshot.root, snapshot.commitSha, { allowHistoricalCommit: true });
   }
 }
 
 /** Recompute the final candidate path inventory during offline receipt validation. */
-export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes) {
+export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes, projectSha) {
   const root = realpathSync(repositoryRootPath);
+  const project = resolveProjectSnapshot(root, projectSha ?? git(root, ['rev-parse', 'HEAD']).trim());
   const candidatePatchBytes = Buffer.isBuffer(patchBytes) ? patchBytes : Buffer.from(patchBytes ?? '');
   requireCondition(Array.isArray(scope) && scope.length > 0,
     'frozen real plan must declare a nonempty candidate scope');
@@ -587,19 +589,7 @@ export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes)
       && /^agentos\/(?:apps|packages)\//iu.test(scopedPath)
       && !/(?:^|\/)fixtures\/p4-existing-project-acceptance(?:\/|$)/iu.test(scopedPath),
     'frozen candidate scope must use safe repository-relative AgentOS source paths');
-    const absolute = resolve(root, scopedPath);
-    const lexicalRelative = relative(root, absolute);
-    requireCondition(lexicalRelative !== '..' && !lexicalRelative.startsWith(`..${sep}`)
-      && !isAbsolute(lexicalRelative), 'frozen candidate scope escapes the repository');
-    if (existsSync(absolute)) {
-      requireCondition(!lstatSync(absolute).isSymbolicLink(),
-        'frozen candidate scope cannot traverse a symbolic link');
-      const actual = realpathSync(absolute);
-      const actualRelative = relative(root, actual);
-      requireCondition(actualRelative !== '..' && !actualRelative.startsWith(`..${sep}`)
-        && !isAbsolute(actualRelative), 'frozen candidate scope resolves outside the repository');
-      existingAnchor = true;
-    }
+    if (verifyProjectPath(root, project.commitSha, scopedPath)) existingAnchor = true;
     normalizedScopes.push(scopedPath.replace(/\/$/u, ''));
   }
   requireCondition(existingAnchor,
@@ -609,6 +599,7 @@ export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes)
   try {
     numstat = execFileSync('git', ['-C', root, 'apply', '--numstat', '-'], {
       input: candidatePatchBytes,
+      env: frozenGitEnvironment(),
       encoding: 'utf8', windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024,
     });
   } catch (error) {
@@ -629,7 +620,10 @@ export function verifyFinalCandidateScope(repositoryRootPath, scope, patchBytes)
 }
 
 /** Independently derive the candidate tree from the frozen source and patch using a disposable index. */
-export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes) {
+export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes, {
+  runtimeSha = scenario?.baselineReproduction?.sourceCommitSha,
+  projectSha = runtimeSha,
+} = {}) {
   const root = realpathSync(repositoryRootPath);
   const baseline = scenario?.baselineReproduction;
   const patch = Buffer.isBuffer(patchBytes) ? patchBytes : Buffer.from(patchBytes ?? '');
@@ -642,6 +636,11 @@ export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario,
     && baseline.baseCommit.toLowerCase() === scenario.workspaceBaseCommit.toLowerCase()
     && baseline.baseTreeSha.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
   `real ${scenario?.kind ?? 'scenario'} candidate base is not bound to its frozen source snapshot`);
+  const project = resolveProjectSnapshot(root, projectSha);
+  requireCondition(baseline.sourceCommitSha.toLowerCase() === project.commitSha,
+    `real ${scenario.kind} candidate base source differs from --project-sha`);
+  requireCondition(typeof runtimeSha === 'string' && shaPattern.test(runtimeSha),
+    'candidate overlay derivation requires the frozen runtime commit SHA');
   const excludedGitlinks = baseline.excludedGitlinkPaths;
   const actualGitlinks = frozenAcceptanceGitlinkPaths(root, baseline.sourceCommitSha);
   requireCondition(Array.isArray(excludedGitlinks)
@@ -665,9 +664,7 @@ export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario,
       env: discoveryEnv, encoding: 'utf8', windowsHide: true, timeout: 15_000,
     }).trim();
     const absoluteRepositoryObjects = isAbsolute(repositoryObjects) ? repositoryObjects : resolve(root, repositoryObjects);
-    const inheritedAlternates = process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
-    const alternates = [realpathSync(absoluteRepositoryObjects), inheritedAlternates]
-      .filter(Boolean).join(pathDelimiter);
+    const alternates = realpathSync(absoluteRepositoryObjects);
     const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
     for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
       'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_NAMESPACE']) delete env[key];
@@ -690,9 +687,9 @@ export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario,
       }
     };
     const frozenSourceHead = runGit(['rev-parse', 'HEAD']);
-    requireCondition(frozenSourceHead.toLowerCase() === baseline.sourceCommitSha.toLowerCase(),
-      `real ${scenario.kind} frozen source HEAD changed before overlay derivation`);
-    runGit(['read-tree', baseline.sourceCommitSha]);
+    requireCondition(frozenSourceHead.toLowerCase() === runtimeSha.toLowerCase(),
+      `real ${scenario.kind} frozen runtime HEAD changed before overlay derivation`);
+    runGit(['read-tree', project.commitSha]);
     if (excludedGitlinks.length) runGit(['update-index', '--force-remove', '--', ...excludedGitlinks]);
     const derivedBaseTreeSha = runGit(['write-tree']);
     requireCondition(derivedBaseTreeSha.toLowerCase() === scenario.workspaceBaseTreeSha.toLowerCase(),
@@ -738,7 +735,7 @@ export function deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario,
 }
 
 /** Cross-bind the candidate probe cwd and independently derived overlay tree to its receipt entry. */
-export function verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes) {
+export function verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes, snapshots) {
   const binding = scenario?.candidateProbe;
   requireCondition(binding && typeof binding === 'object' && !Array.isArray(binding),
     `real ${scenario?.kind ?? 'scenario'} candidate probe execution identity is required`);
@@ -756,17 +753,17 @@ export function verifyCandidateProbeExecutionBinding(scenario, record, repositor
   requireCondition(shaPattern.test(binding.candidateOverlayTreeSha ?? '')
     && record.candidateOverlayTreeSha?.toLowerCase() === binding.candidateOverlayTreeSha.toLowerCase(),
   `real ${scenario.kind} candidate probe overlay tree differs from its captured execution`);
-  const independentlyDerivedTreeSha = deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes);
+  const independentlyDerivedTreeSha = deriveCandidateProbeOverlayTreeSha(repositoryRootPath, scenario, patchBytes, snapshots);
   requireCondition(binding.candidateOverlayTreeSha.toLowerCase() === independentlyDerivedTreeSha.toLowerCase()
     && record.candidateOverlayTreeSha.toLowerCase() === independentlyDerivedTreeSha.toLowerCase(),
   `real ${scenario.kind} candidate probe overlay tree differs from the independently derived frozen candidate`);
 }
 
-function validateCandidateProbeEvidence(root, repositoryRootPath, receipt, scenario, usedPaths, patchBytes) {
+function validateCandidateProbeEvidence(root, repositoryRootPath, receipt, projectSnapshot, scenario, usedPaths, patchBytes) {
   requireCondition(scenario.baselineProbe && scenario.candidateProbe,
     `real ${scenario.kind} scenario requires source-bound baseline and candidate probe evidence`);
-  requireCondition(scenario.baselineProbe.sourceCommitSha?.toLowerCase() === receipt.repository.commitSha.toLowerCase(),
-    `real ${scenario.kind} baseline probe sourceCommit must match the receipt frozen SHA`);
+  requireCondition(scenario.baselineProbe.sourceCommitSha?.toLowerCase() === projectSnapshot.commitSha,
+    `real ${scenario.kind} baseline probe sourceCommit must match --project-sha`);
   const candidateEvidence = scenario.candidateProbe;
   requireCondition(nonEmpty(candidateEvidence.commandId) && candidateEvidence.artifact,
     `real ${scenario.kind} candidate probe command and artifact are required`);
@@ -789,7 +786,9 @@ function validateCandidateProbeEvidence(root, repositoryRootPath, receipt, scena
     && record.workspaceKind === 'frozen-candidate-overlay'
     && isIsoDate(record.observedAt),
   `real ${scenario.kind} candidate probe artifact differs from its receipt binding`);
-  verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes);
+  verifyCandidateProbeExecutionBinding(scenario, record, repositoryRootPath, patchBytes, {
+    runtimeSha: receipt.repository.commitSha, projectSha: projectSnapshot.commitSha,
+  });
   const stdout = verifyEvidenceArtifact(root, record.stdout,
     `real ${scenario.kind} candidate probe stdout`, usedPaths, true).toString('utf8');
   verifyEvidenceArtifact(root, record.stderr,
@@ -833,6 +832,8 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const expectedSha = options.expectedSha;
   const root = options.repositoryRoot ?? repositoryRoot;
   const snapshot = verifyRepositorySnapshot(root, receipt, expectedSha);
+  // Never infer a different project from a receipt: it requires an explicit CLI/API SHA.
+  const projectSnapshot = verifyProjectRepositoryBinding(receipt, root, options.projectSha ?? expectedSha);
   if (receipt.mode === 'real-windows-acceptance') {
     requireCondition(options.evidenceRoot, 'real acceptance receipt validation requires its evidence directory');
   } else {
@@ -854,7 +855,7 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const usedPaths = new Set();
   const evidenceRoot = options.evidenceRoot ?? root;
   if (receipt.mode === 'real-windows-acceptance') {
-    validateRealPlanEvidence(evidenceRoot, receipt, snapshot, usedPaths, options.realPlanBytes);
+    validateRealPlanEvidence(evidenceRoot, receipt, projectSnapshot, usedPaths, options.realPlanBytes);
   }
   let reworkScenarioCount = 0;
 
@@ -890,13 +891,13 @@ export function validateReceipt(manifest, receipt, options = {}) {
     const finalCandidateSha = sha256(candidateBytes);
 
     if (receipt.mode === 'real-windows-acceptance') {
-      verifyFinalCandidateScope(root, scenario.scope, candidateBytes);
-      validateCandidateProbeEvidence(evidenceRoot, root, receipt, scenario, usedPaths, candidateBytes);
+      verifyFinalCandidateScope(root, scenario.scope, candidateBytes, projectSnapshot.commitSha);
+      validateCandidateProbeEvidence(evidenceRoot, root, receipt, projectSnapshot, scenario, usedPaths, candidateBytes);
     } else {
       requireCondition(scenario.baselineProbe === undefined && scenario.candidateProbe === undefined,
         'simulated-provider scenarios cannot claim real source-probe evidence');
     }
-    validateBaselineReproduction(evidenceRoot, scenario, snapshot.commitSha, usedPaths, root);
+    validateBaselineReproduction(evidenceRoot, scenario, projectSnapshot.commitSha, usedPaths, root);
 
     const directApproval = Array.isArray(scenario.reviewHistory) && scenario.reviewHistory.length === 1;
     const directApprovalAllowed = scenarios.directApprovalAllowed === true;
@@ -924,6 +925,9 @@ export function validateReceipt(manifest, receipt, options = {}) {
   const minimumReworkScenarios = scenarios.minimumReworkScenarios ?? scenarios.exactCount;
   requireCondition(reworkScenarioCount >= minimumReworkScenarios,
     `receipt must contain at least ${minimumReworkScenarios} scenario with the complete three-step rework history`);
+  const finalSnapshot = verifySourceSnapshot(root);
+  requireCondition(finalSnapshot.commitSha === snapshot.commitSha && finalSnapshot.treeSha === snapshot.treeSha,
+    'frozen runtime checkout changed during receipt validation');
 
   return {
     status: 'structurally-verified',
@@ -933,6 +937,8 @@ export function validateReceipt(manifest, receipt, options = {}) {
     verificationBoundary: 'structure-and-hashes-only; run the local verifier for runtime acceptance',
     commitSha: snapshot.commitSha,
     treeSha: snapshot.treeSha,
+    projectCommitSha: projectSnapshot.commitSha,
+    projectTreeSha: projectSnapshot.treeSha,
     scenarioKinds: scenarioKinds,
   };
 }
@@ -942,6 +948,7 @@ function parseArguments(argv) {
     manifestPath: defaultManifestPath,
     receiptPath: undefined,
     expectedSha: undefined,
+    projectSha: undefined,
     repositoryRoot: repositoryRoot,
     evidenceRoot: undefined,
     planPath: undefined,
@@ -950,7 +957,7 @@ function parseArguments(argv) {
   const seen = new Set();
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (['--manifest', '--receipt', '--expected-sha', '--repository-root', '--evidence-root', '--plan'].includes(argument)) {
+    if (['--manifest', '--receipt', '--expected-sha', '--project-sha', '--repository-root', '--evidence-root', '--plan'].includes(argument)) {
       requireCondition(!seen.has(argument), `${argument} may only be specified once`);
       seen.add(argument);
       const value = argv[index + 1];
@@ -959,6 +966,7 @@ function parseArguments(argv) {
       if (argument === '--manifest') result.manifestPath = resolve(process.cwd(), value);
       else if (argument === '--receipt') result.receiptPath = resolve(process.cwd(), value);
       else if (argument === '--expected-sha') result.expectedSha = value;
+      else if (argument === '--project-sha') result.projectSha = value;
       else if (argument === '--repository-root') result.repositoryRoot = resolve(process.cwd(), value);
       else if (argument === '--evidence-root') result.evidenceRoot = resolve(process.cwd(), value);
       else result.planPath = resolve(process.cwd(), value);
@@ -984,6 +992,7 @@ async function main() {
   const receipt = JSON.parse(readFileSync(options.receiptPath, 'utf8'));
   const result = validateReceipt(manifest, receipt, {
     expectedSha: options.expectedSha,
+    projectSha: options.projectSha,
     repositoryRoot: options.repositoryRoot,
     evidenceRoot: options.evidenceRoot,
     realPlanBytes: options.planPath ? readFileSync(options.planPath) : undefined,

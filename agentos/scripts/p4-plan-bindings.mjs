@@ -32,7 +32,7 @@ export function sha256Hex(bytes) {
 
 function gitText(root, args) {
   const result = spawnSync('git', ['-C', root, ...args], {
-    encoding: 'utf8', windowsHide: true, shell: false, timeout: 15_000,
+    env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, shell: false, timeout: 15_000,
   });
   requireCondition(!result.error && result.status === 0,
     `git ${args[0]} failed (${result.status}): ${String(result.stderr || result.stdout).slice(0, 2000)}`);
@@ -42,11 +42,76 @@ function gitText(root, args) {
 function gitBlob(root, ref) {
   try {
     return execFileSync('git', ['-C', root, 'cat-file', 'blob', ref], {
-      windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024,
+      env: frozenGitEnvironment(), windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024,
     });
   } catch (error) {
     throw new Error(`probe source is not a committed Git blob: ${String(error?.message || error).slice(0, 2000)}`);
   }
+}
+
+export function frozenGitEnvironment() {
+  const env = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' };
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_NAMESPACE']) delete env[key];
+  return env;
+}
+
+/** Resolve a project commit in this repository without peeling tags or replacing history. */
+export function resolveProjectSnapshot(repositoryRoot, projectSha) {
+  requireCondition(typeof projectSha === 'string' && gitShaPattern.test(projectSha),
+    '--project-sha must be a full 40-character Git commit SHA');
+  const root = realpathSync(repositoryRoot);
+  const commitSha = projectSha.toLowerCase();
+  requireCondition(gitText(root, ['cat-file', '-t', commitSha]) === 'commit',
+    '--project-sha must identify an actual Git commit in the runtime repository');
+  const treeSha = gitText(root, ['rev-parse', '--verify', `${commitSha}^{tree}`]);
+  requireCondition(gitShaPattern.test(treeSha), 'could not resolve the frozen project tree');
+  return { root, commitSha, treeSha };
+}
+
+/** Missing projectRepository is supported only for legacy receipts using the runtime commit. */
+export function verifyProjectRepositoryBinding(receipt, repositoryRoot, projectSha) {
+  const snapshot = resolveProjectSnapshot(repositoryRoot, projectSha);
+  const project = receipt?.projectRepository;
+  if (project === undefined) {
+    requireCondition(snapshot.commitSha === receipt?.repository?.commitSha?.toLowerCase()
+      && snapshot.treeSha === receipt?.repository?.treeSha?.toLowerCase(),
+      'a distinct --project-sha requires receipt.projectRepository');
+  } else {
+    requireCondition(project && typeof project === 'object' && !Array.isArray(project)
+      && typeof project.commitSha === 'string' && gitShaPattern.test(project.commitSha)
+      && typeof project.treeSha === 'string' && gitShaPattern.test(project.treeSha)
+      && project.commitSha.toLowerCase() === snapshot.commitSha
+      && project.treeSha.toLowerCase() === snapshot.treeSha.toLowerCase(),
+    'receipt.projectRepository commit/tree do not match --project-sha in the runtime repository');
+  }
+  return snapshot;
+}
+
+/** Inspect committed path ancestors; historical scope never depends on runtime checkout files. */
+export function verifyProjectPath(repositoryRoot, projectSha, sourcePath) {
+  requireCondition(typeof sourcePath === 'string' && sourcePath.length > 0
+    && !isAbsolute(sourcePath) && !/^[a-z]:/iu.test(sourcePath) && !sourcePath.includes('\\')
+    && !/[\u0000-\u001f\u007f]/u.test(sourcePath)
+    && !sourcePath.split('/').some(part => !part || part === '.' || part === '..'),
+  'project source must be a safe repository-relative path');
+  const parts = sourcePath.split('/');
+  let entry;
+  for (let index = 1; index <= parts.length; index++) {
+    const prefix = parts.slice(0, index).join('/');
+    const text = gitText(repositoryRoot, ['ls-tree', '-z', projectSha, '--', prefix]);
+    if (!text) return undefined;
+    const entries = text.split('\0').filter(Boolean);
+    requireCondition(entries.length === 1, 'project source path is ambiguous in its frozen tree');
+    const match = /^([0-9]{6}) (blob|tree|commit) ([0-9a-f]{40})\t(.+)$/u.exec(entries[0]);
+    requireCondition(match && match[4] === prefix, 'project source path differs from its frozen tree');
+    entry = { mode: match[1], type: match[2], objectSha: match[3] };
+    requireCondition(['100644', '100755', '040000'].includes(entry.mode),
+      'project source cannot traverse a symbolic link or Gitlink');
+    requireCondition(index === parts.length || entry.type === 'tree',
+      'project source cannot traverse a committed regular file');
+  }
+  return entry;
 }
 
 function pathInside(root, target) {
@@ -125,23 +190,20 @@ function assertAbsoluteFile(value, message) {
   return actual;
 }
 
-/** Verify the probe source is committed at the frozen source commit and still clean on disk. */
-export function verifyPlanProbeSource(plan, repositoryRoot, sourceCommitSha) {
+/** Verify the reviewed probe blob at the project commit; current-checkout probes must also be clean. */
+export function verifyPlanProbeSource(plan, repositoryRoot, sourceCommitSha, { allowHistoricalCommit = false } = {}) {
   const root = realpathSync(repositoryRoot);
   const probe = assertProbeCommandShape(plan.baselineProbe, plan);
   requireCondition(gitShaPattern.test(sourceCommitSha ?? '')
     && probe.sourceCommitSha.toLowerCase() === sourceCommitSha.toLowerCase(),
   `${plan.kind} baselineProbe sourceCommitSha must equal the frozen source commit`);
-  requireCondition(gitText(root, ['rev-parse', 'HEAD']).toLowerCase() === sourceCommitSha.toLowerCase(),
+  resolveProjectSnapshot(root, sourceCommitSha);
+  const isCurrentCheckout = gitText(root, ['rev-parse', 'HEAD']).toLowerCase() === sourceCommitSha.toLowerCase();
+  requireCondition(isCurrentCheckout || allowHistoricalCommit,
     `${plan.kind} baselineProbe source commit is not the current frozen checkout`);
-
-  const absoluteSource = resolve(root, probe.sourcePath);
-  requireCondition(pathInside(root, absoluteSource), `${plan.kind} baselineProbe source path escapes the repository`);
-  const realSource = realpathSync(absoluteSource);
-  requireCondition(pathInside(root, realSource) && resolve(realSource).toLowerCase() === resolve(absoluteSource).toLowerCase()
-    && !lstatSync(absoluteSource).isSymbolicLink(),
-  `${plan.kind} baselineProbe source cannot be outside the repository or traverse a symbolic link`);
-  gitText(root, ['ls-files', '--error-unmatch', '--', probe.sourcePath]);
+  const committedPath = verifyProjectPath(root, sourceCommitSha, probe.sourcePath);
+  requireCondition(committedPath?.type === 'blob' && ['100644', '100755'].includes(committedPath.mode),
+    `${plan.kind} baselineProbe must be a committed regular file in the project tree`);
   const sourceRef = `${sourceCommitSha}:${probe.sourcePath}`;
   const committedBytes = gitBlob(root, sourceRef);
   const committedBlobSha = gitText(root, ['rev-parse', sourceRef]);
@@ -149,10 +211,19 @@ export function verifyPlanProbeSource(plan, repositoryRoot, sourceCommitSha) {
     `${plan.kind} baselineProbe Git blob SHA differs from its committed source`);
   requireCondition(sha256Hex(committedBytes) === probe.sourceSha256,
     `${plan.kind} baselineProbe source SHA-256 differs from the committed source`);
-  requireCondition(sha256Hex(readFileSync(absoluteSource)) === probe.sourceSha256,
-    `${plan.kind} baselineProbe source file changed from its committed SHA-256`);
-  requireCondition(gitText(root, ['status', '--porcelain=v1', '--untracked-files=all', '--', probe.sourcePath]) === '',
-    `${plan.kind} baselineProbe source file is dirty`);
+  if (isCurrentCheckout) {
+    const absoluteSource = resolve(root, probe.sourcePath);
+    requireCondition(pathInside(root, absoluteSource), `${plan.kind} baselineProbe source path escapes the repository`);
+    const realSource = realpathSync(absoluteSource);
+    requireCondition(pathInside(root, realSource) && resolve(realSource).toLowerCase() === resolve(absoluteSource).toLowerCase()
+      && !lstatSync(absoluteSource).isSymbolicLink(),
+    `${plan.kind} baselineProbe source cannot be outside the repository or traverse a symbolic link`);
+    gitText(root, ['ls-files', '--error-unmatch', '--', probe.sourcePath]);
+    requireCondition(sha256Hex(readFileSync(absoluteSource)) === probe.sourceSha256,
+      `${plan.kind} baselineProbe source file changed from its committed SHA-256`);
+    requireCondition(gitText(root, ['status', '--porcelain=v1', '--untracked-files=all', '--', probe.sourcePath]) === '',
+      `${plan.kind} baselineProbe source file is dirty`);
+  }
 
   for (const binding of probe.argvFileBindings) {
     const actual = assertAbsoluteFile(binding.path,
