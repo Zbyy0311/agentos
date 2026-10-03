@@ -327,6 +327,13 @@ export function inspectMaintenanceActivity(database: Database): MaintenanceActiv
     { table: 'agent_runs', statuses: ['running'] },
     { table: 'executions', statuses: ['running'] },
     { table: 'cr_agent_turns', statuses: ['streaming'] },
+    // Group provider work can outlive the HTTP response that dispatched it.
+    // Interrupted owners are reconciled during startup and are deliberately
+    // not active after that durable recovery boundary.
+    { table: 'cr_group_interaction_executions', statuses: ['claimed', 'running', 'stop_requested'] },
+    // A running summarizer is an independent provider call; queued work has not
+    // crossed the provider boundary and does not hold maintenance.
+    { table: 'conversation_compactions', statuses: ['running'] },
     { table: 'runtime_processes', statuses: ['created', 'starting', 'running', 'waiting', 'stopping'] },
     { table: 'processes', statuses: ['starting', 'running'] },
   ];

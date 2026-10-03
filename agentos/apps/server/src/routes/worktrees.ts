@@ -6,7 +6,13 @@ import type { RuntimeArtifactService } from '../services/RuntimeArtifactService.
 
 type RunLookup = { getRun(workspaceId: string, runId: string): { status: string } | undefined };
 
-export function createWorktreeRoutes(workspaceManager: WorkspaceManager, manager: WorktreeManager, artifactService?: RuntimeArtifactService, runLookup?: RunLookup): Router {
+export function createWorktreeRoutes(
+  workspaceManager: WorkspaceManager,
+  manager: WorktreeManager,
+  artifactService?: RuntimeArtifactService,
+  runLookup?: RunLookup,
+  workspaceRootFor: (workspaceId: string) => string | undefined = workspaceId => workspaceManager.get(workspaceId)?.rootPath,
+): Router {
   const router = Router({ mergeParams: true });
   router.get('/worktrees', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId); if (!workspace) return res.status(404).json({ error:'Workspace not found' });
@@ -24,7 +30,9 @@ export function createWorktreeRoutes(workspaceManager: WorkspaceManager, manager
   });
   router.post('/runs/:runId/worktrees', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId); if (!workspace) return res.status(404).json({ error:'Workspace not found' });
-    try { const lease = await manager.createLease({ workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId:req.params.runId, executionId:String(req.body?.executionId ?? ''), agentId:String(req.body?.agentId ?? '') }); return res.status(201).json({ lease }); }
+    const workspaceRoot = workspaceRootFor(workspace.id);
+    if (!workspaceRoot) return res.status(409).json({ error: 'workspace_git_reconnect_required', code: 'WORKSPACE_GIT_ROOT_UNAVAILABLE' });
+    try { const lease = await manager.createLease({ workspaceId: workspace.id, workspaceRoot, runId:req.params.runId, executionId:String(req.body?.executionId ?? ''), agentId:String(req.body?.agentId ?? '') }); return res.status(201).json({ lease }); }
     catch (error) { const code = error instanceof Error && 'code' in error ? (error as {code:string}).code : 'worktree_error'; return res.status(code === 'workspace_dirty' ? 409 : 400).json({ error: error instanceof Error ? error.message : String(error), code }); }
   });
   return router;

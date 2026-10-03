@@ -21,14 +21,16 @@ const executeGitFile: GitCommandExecutor = async (cwd, args) => {
 export function createGitRoutes(
   workspaceManager: WorkspaceManager,
   executeGit: GitCommandExecutor = executeGitFile,
+  workspaceRootFor: (workspaceId: string) => string | undefined = workspaceId => workspaceManager.get(workspaceId)?.rootPath,
 ): Router {
   const router = Router({ mergeParams: true });
 
   async function runGit(workspaceId: string, args: string[]): Promise<string> {
     const workspace = workspaceManager.get(workspaceId);
     if (!workspace) throw new Error('Workspace not found');
-    if (!existsSync(workspace.rootPath)) throw new Error('Workspace path does not exist');
-    return executeGit(workspace.rootPath, args);
+    const root = workspaceRootFor(workspaceId);
+    if (!root || !existsSync(root)) throw new Error('Workspace path does not exist');
+    return executeGit(root, args);
   }
 
   router.get('/diff', async (req: Request, res: Response) => {
