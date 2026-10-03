@@ -78,6 +78,11 @@ export class WorkspaceGitRootRegistry {
     return this.mappings.get(workspaceId) ?? this.workspaces.get(workspaceId)?.rootPath;
   }
 
+  /** True only for a host-local root recorded after a successful check/reconnect. */
+  isExplicitlyReconnected(workspaceId: string): boolean {
+    return !this.invalidMapping && this.mappings.has(workspaceId);
+  }
+
   async status(workspaceId: string): Promise<WorkspaceGitRootStatus> {
     const workspace = this.workspaces.get(workspaceId);
     if (!workspace) throw new WorkspaceGitRootError('WORKSPACE_NOT_FOUND');

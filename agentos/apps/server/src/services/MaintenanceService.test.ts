@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { getWorkflowTemplate } from '@agentos/shared';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { realpath } from 'node:fs/promises';
 import { closeSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -354,6 +355,9 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
   const fx = createFixture(true);
   const collaboration = seedBinaryCollaborationCandidate(fx);
   const feedback = seedMemoryFeedbackProof(fx);
+  // The portable restored workspace is intentionally Git-disabled until its
+  // user explicitly reconnects a checked host-local project root.
+  fx.store.getDatabase().prepare('UPDATE workspaces SET git_enabled = 0 WHERE id = ?').run(fx.workspace.id);
   const barrier = new MaintenanceBarrier();
   const coordinator = new MaintenanceCoordinator(fx.dataRoot, 'http-e2e-instance', barrier, {
     inspectActivity: () => ({ counts: {} }),
@@ -408,6 +412,8 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
     ]), 0);
 
     const isolatedWorkspaceRoot = join(restoredRoot, 'workspace-roots', fx.workspace.id);
+    const portableRootPayload = Buffer.from([9, 8, 7]);
+    writeFileSync(join(isolatedWorkspaceRoot, 'payload.bin'), portableRootPayload);
     assert.equal(readFileSync(join(isolatedWorkspaceRoot, 'agent-memory', 'records', 'knowledge', 'memory_fixture.md'), 'utf8')
       .includes('Durable memory evidence'), true);
     assert.equal(readFileSync(join(isolatedWorkspaceRoot, '.agentos', 'attachments', 'conv_fixture', 'attachment.png')).byteLength, 9);
@@ -451,26 +457,22 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
     const restoredWorktrees = new WorktreeManager(join(restoredRoot, '.agentos', 'worktrees'));
     const gitRoots = new WorkspaceGitRootRegistry(restoredRoot, restoredStore, restoredWorkspaces, restoredWorktrees);
     try {
+      assert.equal(restoredWorkspaces.get(fx.workspace.id)?.gitEnabled, false,
+        'the portable workspace stays non-Git after restore');
       const beforeReconnect = await gitRoots.status(fx.workspace.id);
       assert.equal(beforeReconnect.canReview, false, 'the isolated non-Git workspace is never presented as review-ready');
       assert.equal(beforeReconnect.canApply, false, 'the isolated non-Git workspace is never presented as applicable');
       assert.equal(beforeReconnect.reasonCode, 'WORKSPACE_GIT_ROOT_UNAVAILABLE');
-      const reconnectedRoot = join(fx.root, 'reconnected-project');
-      execFileSync('git', ['-c', 'core.symlinks=false', 'clone', '--quiet', fx.workspaceRoot, reconnectedRoot], {
-        stdio: 'pipe', windowsHide: true,
-      });
-      execFileSync('git', ['config', 'core.symlinks', 'false'], { cwd: reconnectedRoot, stdio: 'pipe', windowsHide: true });
-      const checked = await gitRoots.check(fx.workspace.id, reconnectedRoot);
-      assert.equal(checked.canReview, true);
-      assert.equal(checked.canApply, true);
-      assert.equal(checked.activeCandidateCount, 1);
-      assert.equal((await gitRoots.reconnect(fx.workspace.id, reconnectedRoot)).explicitlyReconnected, true);
+      assert.equal(gitRoots.isExplicitlyReconnected(fx.workspace.id), false);
+      assert.equal(gitRoots.rootPathFor(fx.workspace.id), isolatedWorkspaceRoot,
+        'without an explicit mapping Git resolution remains on the isolated portable root');
 
       const restoredService = new CollaborationWorkflowService({
         store: restoredStore,
         workspaces: restoredWorkspaces,
         worktrees: restoredWorktrees,
         workspaceGitRootFor: id => gitRoots.rootPathFor(id),
+        workspaceGitRootIsExplicitlyReconnected: id => gitRoots.isExplicitlyReconnected(id),
         dispatchRun: async () => undefined,
         requestRunAdmission: async () => false,
         releaseRunAdmission: async () => undefined,
@@ -503,6 +505,44 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
           candidateBaseCommit: details.task.baseCommit,
           candidateContentHash: candidate.contentHash,
         });
+        const blockedPreview = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}`
+          + `/collaboration/tasks/${collaboration.taskId}/candidates/${candidate.id}/preview?${previewIdentity}`);
+        assert.equal(blockedPreview.status, 409);
+        assert.equal((await blockedPreview.json() as { code?: string }).code, 'COLLABORATION_REQUIRES_GIT',
+          'the isolated portable root is not treated as Git before explicit reconnection');
+        const blockedApply = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}`
+          + `/collaboration/tasks/${collaboration.taskId}/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'unreconnected-candidate-apply' },
+          body: JSON.stringify({
+            expectedVersion: details.task.version,
+            candidateId: candidate.id,
+            candidateBaseCommit: details.task.baseCommit,
+            candidateContentHash: candidate.contentHash,
+          }),
+        });
+        assert.equal(blockedApply.status, 409);
+        assert.equal((await blockedApply.json() as { code?: string }).code, 'COLLABORATION_REQUIRES_GIT',
+          'candidate application is fenced until the host-local Git root is explicitly reconnected');
+
+        const reconnectedRoot = join(fx.root, 'reconnected-project');
+        execFileSync('git', ['-c', 'core.symlinks=false', 'clone', '--quiet', fx.workspaceRoot, reconnectedRoot], {
+          stdio: 'pipe', windowsHide: true,
+        });
+        execFileSync('git', ['config', 'core.symlinks', 'false'], { cwd: reconnectedRoot, stdio: 'pipe', windowsHide: true });
+        const checked = await gitRoots.check(fx.workspace.id, reconnectedRoot);
+        assert.equal(checked.canReview, true);
+        assert.equal(checked.canApply, true);
+        assert.equal(checked.activeCandidateCount, 1);
+        assert.equal((await gitRoots.reconnect(fx.workspace.id, reconnectedRoot)).explicitlyReconnected, true);
+        assert.equal(gitRoots.isExplicitlyReconnected(fx.workspace.id), true);
+        assert.equal(restoredWorkspaces.get(fx.workspace.id)?.gitEnabled, false,
+          'reconnection grants Git operations without changing portable workspace metadata');
+        assert.equal(restoredWorkspaces.get(fx.workspace.id)?.rootPath, isolatedWorkspaceRoot,
+          'reconnection does not rewrite the portable workspace content root');
+        assert.equal(gitRoots.rootPathFor(fx.workspace.id), await realpath(reconnectedRoot),
+          'Git operations resolve only to the explicitly checked clone');
+
         const previewResponse = await fetch(`http://127.0.0.1:${collaborationAddress.port}/api/workspaces/${fx.workspace.id}`
           + `/collaboration/tasks/${collaboration.taskId}/candidates/${candidate.id}/preview?${previewIdentity}`);
         assert.equal(previewResponse.status, 200, await previewResponse.clone().text());
@@ -554,6 +594,8 @@ test('HTTP backup route and offline CLI restore preserve referenced files in an 
         assert.equal(applied.task.status, 'applied');
         assert.deepEqual(readFileSync(join(reconnectedRoot, 'payload.bin')), collaboration.candidateBytes,
           'the restored frozen candidate applies through the real collaboration route after explicit Git reconnection');
+        assert.deepEqual(readFileSync(join(isolatedWorkspaceRoot, 'payload.bin')), portableRootPayload,
+          'apply leaves the portable restored content root untouched');
         assert.deepEqual(readFileSync(join(fx.workspaceRoot, 'payload.bin')), Buffer.from([0, 1, 2, 3, 4]),
           'apply changes only the explicitly reconnected isolated project');
       } finally {

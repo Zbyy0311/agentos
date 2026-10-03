@@ -317,6 +317,7 @@ async function bootstrap(): Promise<void> {
       workspaces: workspaceManager,
       worktrees: worktreeManager,
       workspaceGitRootFor: workspaceId => workspaceGitRoots.rootPathFor(workspaceId),
+      workspaceGitRootIsExplicitlyReconnected: workspaceId => workspaceGitRoots.isExplicitlyReconnected(workspaceId),
       dispatchRun: async (workspaceId, runId) => {
         await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },

@@ -96,6 +96,8 @@ export interface CollaborationWorkflowServiceOptions {
   readonly worktrees: WorktreeManager;
   /** Host-local explicit reconnect mapping; memory/evidence paths keep Workspace.rootPath. */
   readonly workspaceGitRootFor?: (workspaceId: string) => string | undefined;
+  /** Explicit host-local Git reconnect proof; portable restored roots do not qualify by fallback. */
+  readonly workspaceGitRootIsExplicitlyReconnected?: (workspaceId: string) => boolean;
   readonly dispatchRun: (workspaceId: string, runId: string) => Promise<void>;
   readonly requestRunAdmission: (input: { workspaceId: string; runId: string }) => Promise<boolean>;
   readonly releaseRunAdmission: (input: { workspaceId: string; runId: string }) => Promise<void>;
@@ -2149,7 +2151,11 @@ export class CollaborationWorkflowService {
   private requireWorkspace(workspaceId: string): Workspace {
     const workspace = this.options.workspaces.get(workspaceId);
     if (!workspace) throw new CollaborationWorkflowError('WORKSPACE_NOT_FOUND', 'Workspace not found');
-    if (!workspace.gitEnabled) throw new CollaborationWorkflowError('COLLABORATION_REQUIRES_GIT', 'Collaboration tasks require a Git workspace');
+    const explicitlyReconnected = this.options.workspaceGitRootIsExplicitlyReconnected?.(workspaceId) === true
+      && Boolean(this.options.workspaceGitRootFor?.(workspaceId));
+    if (!workspace.gitEnabled && !explicitlyReconnected) {
+      throw new CollaborationWorkflowError('COLLABORATION_REQUIRES_GIT', 'Collaboration tasks require a Git workspace');
+    }
     return workspace;
   }
 
