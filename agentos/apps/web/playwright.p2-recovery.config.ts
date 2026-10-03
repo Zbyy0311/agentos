@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 const serverPort = process.env.P2_RECOVERY_SERVER_PORT ?? '3240';
 const webPort = process.env.P2_RECOVERY_WEB_PORT ?? '3241';
 const serverBaseURL = `http://127.0.0.1:${serverPort}`;
+const recoveryFixtureWorkspaceId = 'p2-browser-fixture';
 const webRoot = resolve(process.cwd());
 const nextConfigPath = resolve(webRoot, 'tsconfig.json');
 const nextDistDir = process.env.P2_RECOVERY_NEXT_DIST_DIR ?? '.next-p2-group-recovery-e2e';
@@ -87,7 +88,7 @@ export default defineConfig({
     },
     {
       command: `pnpm.cmd --filter @agentos/web exec next dev -p ${webPort}`,
-      url: `http://127.0.0.1:${webPort}`,
+      url: `http://127.0.0.1:${webPort}/workspace/${recoveryFixtureWorkspaceId}`,
       reuseExistingServer: false,
       timeout: 180_000,
       env: {
