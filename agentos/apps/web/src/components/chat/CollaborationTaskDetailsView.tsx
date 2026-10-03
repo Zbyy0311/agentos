@@ -229,9 +229,10 @@ export function CollaborationTaskDetailsView(props: {
     })}</div></section>}
 
     {error && <div role="alert" className="ui-error mt-4 rounded-xl border px-3 py-2 text-sm">{error}</div>}
-    {(task.status === 'failed' || task.status === 'blocked') && <CollaborationRecoveryPanel
+    {(['failed', 'blocked', 'queued'].includes(task.status)) && <CollaborationRecoveryPanel
       workspaceId={props.workspaceId}
       taskId={task.id}
+      taskStatus={task.status}
       refreshRevision={props.state.refreshRevision}
       onRecovered={result => {
         if (result.action === 'new-linked-task') props.state.selectTask(result.task.id);
