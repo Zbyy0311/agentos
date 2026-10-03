@@ -23,7 +23,13 @@ function Write-Utf8NoBom([string] $Path, [string] $Value) {
   [System.IO.File]::WriteAllText($Path, $Value, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Clear-FixtureApiToken {
+  [Environment]::SetEnvironmentVariable('AGENTOS_API_TOKEN', $null, 'Process')
+  Remove-Item -LiteralPath 'Env:AGENTOS_API_TOKEN' -ErrorAction SilentlyContinue
+}
+
 function Invoke-LauncherJson([string] $Path, [string[]] $ExtraArguments) {
+  Clear-FixtureApiToken
   $callArguments = @{ Json = $true }
   for ($index = 0; $index -lt $ExtraArguments.Count; $index++) {
     $argument = [string]$ExtraArguments[$index]
@@ -161,6 +167,12 @@ const server = http.createServer((req, res) => {
   if (req.url === '/api/secret-check') {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end(process.env.AGENTOS_API_TOKEN || '');
+    return;
+  }
+  if (req.url === '/api/secret-check-state') {
+    const secret = process.env.AGENTOS_API_TOKEN || '';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ length: secret.length, leadingSpaces: (secret.match(/^ */) || [''])[0].length, trailingSpaces: (secret.match(/ *$/) || [''])[0].length }));
     return;
   }
   res.writeHead(404);
@@ -331,7 +343,26 @@ http.createServer((_req, res) => {
     Assert-True (@($record.portOwners).Count -gt 0 -and @($record.portOwners | Where-Object { $_.pid -gt 0 -and -not [string]::IsNullOrWhiteSpace($_.createdAt) -and -not [string]::IsNullOrWhiteSpace($_.executable) }).Count -eq @($record.portOwners).Count) ("Manifest did not persist verified port-owner identity for " + $role + '.')
   }
   $secretResponse = Invoke-WebRequest -UseBasicParsing -Uri ('http://127.0.0.1:' + $serverPort + '/api/secret-check') -TimeoutSec 3
-  Assert-True ($secretResponse.Content -ceq $fixtureSecret) '.env parsing changed a quoted value or truncated its equals/whitespace content.'
+  $secretContentStream = $secretResponse.RawContentStream
+  if ($secretContentStream.CanSeek) { $secretContentStream.Position = 0 }
+  $secretBuffer = [System.IO.MemoryStream]::new()
+  $secretContentStream.CopyTo($secretBuffer)
+  $actualSecretBytes = $secretBuffer.ToArray()
+  $secretBuffer.Dispose()
+  $secretStateResponse = Invoke-RestMethod -Method Get -Uri ('http://127.0.0.1:' + $serverPort + '/api/secret-check-state') -TimeoutSec 3
+  $expectedSecretBytes = [System.Text.Encoding]::UTF8.GetBytes($fixtureSecret)
+  $secretMatches = $actualSecretBytes.Length -eq $expectedSecretBytes.Length
+  if ($secretMatches) {
+    for ($byteIndex = 0; $byteIndex -lt $expectedSecretBytes.Length; $byteIndex++) {
+      if ($actualSecretBytes[$byteIndex] -ne $expectedSecretBytes[$byteIndex]) { $secretMatches = $false; break }
+    }
+  }
+  $secretEvidence = [pscustomobject]@{
+    expectedLength = $expectedSecretBytes.Length
+    responseLength = $actualSecretBytes.Length
+    serverReceivedLength = $secretStateResponse.length
+  } | ConvertTo-Json -Compress
+  Assert-True ($secretMatches -and $secretStateResponse.length -eq $fixtureSecret.Length -and $secretStateResponse.leadingSpaces -eq [regex]::Match($fixtureSecret, '^ *').Length -and $secretStateResponse.trailingSpaces -eq [regex]::Match($fixtureSecret, ' *$').Length) ('.env fixture response did not preserve its expected byte length or surrounding whitespace. Safe evidence: ' + $secretEvidence)
 
   $stdoutLog = Join-Path $dataRoot '.agentos/local-runtime/server.stdout.log'
   $stderrLog = Join-Path $dataRoot '.agentos/local-runtime/server.stderr.log'
