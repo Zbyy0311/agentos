@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
 import { captureOfficialCodexIdentity, verifyOfficialCodexIdentity } from './acceptance-provider-identity.mjs';
+import { createAcceptanceServerControl, stopAcceptanceServer, verifyAcceptanceServerStopEvidence } from './acceptance-server-shutdown.mjs';
 import {
   verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateOutput,
   verifyProbeCandidateRecord, verifyProbeWorkspaceSource, verifyRealPlanReceiptBinding,
@@ -476,6 +477,7 @@ function resolveExecutablePath(value) {
 async function startServer(runRoot, projectRoot, { requireP2Ready = false, worktreeRoot } = {}) {
   invariant(worktreeRoot, 'isolated runtime worktree root is required');
   const port = await reservePort();
+  const shutdownControl = createAcceptanceServerControl();
   const child = spawn(process.execPath, [join(scriptRoot, 'apps/server/dist/index.js')], {
     cwd: scriptRoot,
     env: {
@@ -485,6 +487,10 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
       AGENTOS_SERVER_HOST: '127.0.0.1',
       AGENTOS_RUNTIME_DISPATCH_ENABLED: 'true',
       AGENTOS_FORCE_MOCK: 'false',
+      AGENTOS_SERVER_INSTANCE_ID: shutdownControl.instanceId,
+      AGENTOS_LOCAL_INSTANCE_ID: shutdownControl.instanceId,
+      AGENTOS_LOCAL_SHUTDOWN_NONCE: shutdownControl.nonce,
+      AGENTOS_LOCAL_SERVER_SHUTDOWN_PIPE: shutdownControl.pipePath,
       PORT: String(port),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -527,25 +533,16 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
     await delay(250);
   }
   invariant(readinessPath && ready, `isolated AgentOS server did not become ready: ${output.text}`);
-  return { child, output, baseUrl, port, readinessPath, worktreeRoot,
+  return { child, output, baseUrl, port, readinessPath, worktreeRoot, shutdownControl,
     databasePath: join(projectRoot, '.agentos', 'agentos.sqlite') };
   } catch (error) {
-    await stopServer({ child }).catch(() => undefined);
+    await stopServer({ child, shutdownControl }).catch(() => undefined);
     throw new Error(`${error instanceof Error ? error.message : String(error)}; server output: ${output.text}`);
   }
 }
 
 async function stopServer(server) {
-  const hasExited = child => child.exitCode !== null || child.signalCode !== null;
-  if (!server?.child || hasExited(server.child)) return;
-  const exited = new Promise(resolvePromise => server.child.once('exit', resolvePromise));
-  server.child.kill('SIGTERM');
-  await Promise.race([exited, delay(10_000)]);
-  if (!hasExited(server.child)) {
-    server.child.kill('SIGKILL');
-    await Promise.race([exited, delay(3000)]);
-  }
-  invariant(hasExited(server.child), 'isolated AgentOS server did not stop through its owned child handle');
+  await stopAcceptanceServer(server);
 }
 
 async function request(baseUrl, route, { method = 'GET', body, headers = {}, timeoutMs = 30_000 } = {}) {
@@ -1134,10 +1131,7 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, { capturedReceiptP
   invariant(Number.isSafeInteger(receipt.runtimeEvidence.serverPid) && receipt.runtimeEvidence.serverPid > 0
     && Number.isInteger(receipt.runtimeEvidence.port) && receipt.runtimeEvidence.port > 0 && receipt.runtimeEvidence.port < 65536
     && typeof receipt.runtimeEvidence.readinessPath === 'string', 'isolated production server identity is incomplete');
-  const serverProcess = receipt.runtimeEvidence.serverProcess;
-  invariant(serverProcess?.pid === receipt.runtimeEvidence.serverPid && serverProcess.stopped === true
-    && (Number.isInteger(serverProcess.exitCode) || typeof serverProcess.signalCode === 'string'),
-  'isolated production server stop is not proven through its owned child process handle');
+  verifyAcceptanceServerStopEvidence(receipt.runtimeEvidence, receipt.platform);
   if (receipt.mode === 'real-windows-acceptance') {
     invariant(receipt.runtimeEvidence.readinessPath !== '/api/health (legacy liveness fallback; simulated mode only)',
       'real acceptance cannot use liveness as readiness');
@@ -1489,6 +1483,7 @@ async function main() {
     await stopServer(server);
     serverIdentity.exitCode = server.child.exitCode;
     serverIdentity.signalCode = server.child.signalCode;
+    serverIdentity.shutdownMechanism = server.shutdownMechanism;
     console.error(`P4_ACCEPTANCE_PROGRESS=server: owned server stopped pid=${serverIdentity.pid} exit=${serverIdentity.exitCode ?? 'signal'} signal=${serverIdentity.signalCode ?? 'none'}`);
     server = undefined;
     const databaseSource = join(serverProjectRoot, '.agentos', 'agentos.sqlite');
@@ -1552,6 +1547,7 @@ async function main() {
         serverProcess: {
           pid: serverIdentity.pid, exitCode: serverIdentity.exitCode,
           signalCode: serverIdentity.signalCode, stopped: true,
+          shutdownMechanism: serverIdentity.shutdownMechanism,
         },
         scenarios: runtimeScenarios,
       },
@@ -1571,7 +1567,12 @@ async function main() {
     runFailure = error;
     throw error;
   } finally {
-    if (server) await stopServer(server).catch(() => undefined);
+    if (server) {
+      try { await stopServer(server); }
+      catch (error) {
+        console.error(`P4_ACCEPTANCE_SHUTDOWN_DEFERRED=${safeText(error instanceof Error ? error.message : String(error))}; pid=${server.child.pid}; temporaryRunRoot=${runRoot}; process and data ownership retained`);
+      }
+    }
     if (runFailure && serverProjectRoot) {
       try {
         const diagnostics = join(evidenceRoot, 'diagnostics');

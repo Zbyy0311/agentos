@@ -62,7 +62,7 @@ jobs:
         run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
 
       - name: P4 acceptance receipt contract tests
-        run: node --test --test-reporter=tap scripts/p4-plan-bindings.test.mjs scripts/validate-existing-project-acceptance.test.mjs scripts/verify-existing-project-acceptance.test.mjs scripts/acceptance-provider-identity.test.mjs
+        run: node --test --test-reporter=tap scripts/p4-plan-bindings.test.mjs scripts/validate-existing-project-acceptance.test.mjs scripts/verify-existing-project-acceptance.test.mjs scripts/acceptance-provider-identity.test.mjs scripts/acceptance-server-shutdown.test.mjs
 
       - name: Validate P4 acceptance manifest without claiming a run
         run: node scripts/validate-existing-project-acceptance.mjs --check-manifest
@@ -113,7 +113,7 @@ jobs:
 
   server-shard:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -318,4 +318,38 @@ jobs:
         with:
           name: p4-browser-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+
+  p2-group-recovery-browser:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chrome
+        run: pnpm --filter @agentos/web exec playwright install chrome
+      - name: Default workspace group recovery
+        run: node scripts/run-p4-ci-gate.mjs group-recovery-browser --mode no-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web exec playwright test --config=playwright.p2-recovery.config.ts --project=p2-recovery-desktop --output=../../logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/group-recovery-browser/playwright-results; exit $LASTEXITCODE'
+      - name: Preserve group recovery browser receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-group-recovery-browser-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/group-recovery-browser/
           if-no-files-found: error

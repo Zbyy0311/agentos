@@ -38,6 +38,7 @@ if (expectedCommitSha !== null
 
 const generatedPathsExcludedFromCandidateHash = [
   'agentos/apps/web/test-results/',
+  'agentos/apps/web/.next-p2-group-recovery-e2e/',
   'agentos/logs/p4-ci-gates/',
 ];
 function candidateSourceHash() {
