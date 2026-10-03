@@ -47,6 +47,7 @@ export type BoundedGroupErrorCode =
   | 'GROUP_REPLY_ASSOCIATION_INVALID'
   | 'GROUP_EXECUTION_ALREADY_OWNED'
   | 'GROUP_EXECUTION_INTERRUPTED'
+  | 'GROUP_DISCUSSION_ACTIVE'
   | 'GROUP_SOURCE_MISMATCH'
   | 'GROUP_CONVERSATION_NOT_ACTIVE';
 
@@ -418,6 +419,17 @@ export class BoundedGroupService {
     return inTransaction(this.db, () => {
       let interaction = this.interactions.findInteractionById(input.workspaceId, input.interactionId);
       if (interaction === undefined) throw new BoundedGroupError('GROUP_INTERACTION_NOT_FOUND');
+      const owner = this.interactions.findExecutionOwner(input.workspaceId, input.interactionId);
+      if (owner === undefined || owner.ownerId !== input.ownerId || owner.ownerEpoch !== input.ownerEpoch) {
+        throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
+      // Finalizing the last reply may already have completed the owner in the
+      // same transaction. Treat the driver's follow-up completion as a read,
+      // not a second stale-owner write/event.
+      if (owner.status === 'completed') return interaction;
+      if (owner.status === 'failed' || owner.status === 'interrupted' || owner.status === 'abandoned') {
+        throw new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
+      }
       if (interaction.status === 'active') {
         interaction = this.interactions.advanceInteractionWithinTransaction({
           workspaceId: input.workspaceId,
@@ -733,6 +745,7 @@ export class BoundedGroupService {
       if (error.code === 'INTERACTION_NOT_TRANSITIONABLE') return new BoundedGroupError('GROUP_BUDGET_EXCEEDED');
       if (error.code === 'GROUP_REPLY_ASSOCIATION_INVALID') return new BoundedGroupError('GROUP_REPLY_ASSOCIATION_INVALID');
       if (error.code === 'EXECUTION_ALREADY_OWNED') return new BoundedGroupError('GROUP_EXECUTION_ALREADY_OWNED');
+      if (error.code === 'ACTIVE_INTERACTION_EXISTS') return new BoundedGroupError('GROUP_DISCUSSION_ACTIVE');
       if (error.code === 'EXECUTION_INTERRUPTED' || error.code === 'EXECUTION_STALE_OWNER' || error.code === 'INTERACTION_UNUSABLE') {
         return new BoundedGroupError('GROUP_EXECUTION_INTERRUPTED');
       }

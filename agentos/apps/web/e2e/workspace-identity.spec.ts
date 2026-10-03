@@ -436,8 +436,8 @@ test('frozen candidate preview renders lazy text and binary metadata, pages on d
   await expect(preview.getByText('c'.repeat(64), { exact: true })).toBeVisible();
   await expect(preview.getByText('已加载 50/52 个文件')).toBeVisible();
   await expect(applyBeforePreview).toBeDisabled();
-  expect(model.requests.some(item => item.path.includes('/candidates/candidate-preview/preview/files/0'))).toBe(false,
-    'the text body must remain lazy until its file is expanded');
+  expect(model.requests.some(item => item.path.includes('/candidates/candidate-preview/preview/files/0')),
+    'the text body must remain lazy until its file is expanded').toBe(false);
 
   await preview.getByRole('listitem').filter({ hasText: 'src/frozen.ts' })
     .getByRole('button', { name: '按需加载文本差异' }).click();

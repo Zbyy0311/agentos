@@ -55,7 +55,8 @@ test('controlled clean and lease preserve normal CRLF semantics and the source i
   fx.git(['add', '.gitattributes']); fx.git(['commit', '-qm', 'standard attributes']);
   writeFileSync(join(fx.root, 'README.md'), 'base\r\n');
   const index = readFileSync(join(fx.root, '.git', 'index'));
-  await fx.manager.preflight(fx.root, { controlledGitContent: true });
+  const checkedBaseCommit = await fx.manager.preflight(fx.root, { controlledGitContent: true });
+  assert.equal(checkedBaseCommit, fx.git(['rev-parse', 'HEAD']).trim(), 'preflight returns the exact clean HEAD it validated');
   const lease = await fx.manager.createLease({ workspaceId: 'w', workspaceRoot: fx.root, runId: 'r', executionId: 'e', agentId: 'a', controlledGitContent: true });
   const record = fx.manager.getRecord(lease.id); assert.ok(record);
   assert.equal(readFileSync(join(record.absolutePath, 'README.md'), 'utf8'), 'base\r\n');

@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 import { cp, writeFile, mkdir, mkdtemp, open, rm, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,6 +21,8 @@ import type { AgentProvider, CliInvocationObservation, TaskLog, AgentStage, Thin
 import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
 import { removeArgPair, replaceConfigArg, replaceOrAppendArg } from './runtimeArgs.js';
 import { diffOpenCodeUsage, readOpenCodeUsageSnapshot, type OpenCodeUsageSnapshot } from './opencodeUsage.js';
+import { NodeProcessDriver } from '@agentos/process-runtime';
+import type { NativeProcessHandle, ValidatedLaunch } from '@agentos/process-runtime';
 
 const DIAG_LOG_DIR = process.env.AGENTOS_DIAG_LOG_DIR
   ?? join(process.env.AGENTOS_WORKSPACE_ROOT ?? process.cwd(), '.agentos', 'logs', 'diagnostics');
@@ -196,11 +200,54 @@ export interface ExecuteContext {
   onActivity?: ActivityCallback;
   signal?: AbortSignal;
   onInvocationStarted?: (observation: CliInvocationObservation) => void;
+  /** Refuse a group Provider call unless native server-exit ownership is established. */
+  requireOwnedProcess?: boolean;
+  /** Called once native process identity and OS ownership are both established. */
+  onNativeProcessStarted?: (process: { readonly invocationId: string; readonly pid: number; readonly nativeBirthIdentity: string }) => void;
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'configuredProvider' | 'detectedProvider' | 'providerMismatch' | 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   onRuntimeEvent?: RuntimeEventCallback;
   /** Read-only executions must not mutate tracked agent-memory files in the workspace. */
   persistWorkspaceLog?: boolean;
+}
+
+function createOwnedSpawnChildFacade(
+  owned: NativeProcessHandle,
+  driver: NodeProcessDriver,
+): ChildProcess {
+  const events = new EventEmitter();
+  let terminationRequested = false;
+  const facade = Object.assign(events, {
+    pid: owned.identity.pid,
+    stdout: Readable.from(owned.streams.stdout),
+    stderr: Readable.from(owned.streams.stderr),
+    stdin: null,
+    kill: () => {
+      if (!terminationRequested) {
+        terminationRequested = true;
+        void driver.terminateTree(owned).catch(error => events.emit('error', error));
+      }
+      return true;
+    },
+  }) as unknown as ChildProcess;
+  void owned.waitExit().then(async evidence => {
+    try { await driver.dispose(owned); }
+    catch (error) { events.emit('error', error); }
+    events.emit('close', evidence.exitCode, evidence.signal as NodeJS.Signals | null);
+  }, error => {
+    events.emit('error', error instanceof Error ? error : new Error(String(error)));
+    events.emit('close', null, null);
+  });
+  return facade;
+}
+
+async function disposeFailedOwnedSpawn(
+  driver: NodeProcessDriver,
+  owned: NativeProcessHandle,
+): Promise<void> {
+  try { await driver.terminateTree(owned); } catch { /* preserve the launch/persistence error */ }
+  try { await driver.verifySurvivors(owned); } catch { /* preserve the launch/persistence error */ }
+  try { await driver.dispose(owned); } catch { /* preserve the launch/persistence error */ }
 }
 
 export interface CommandInvocation {
@@ -454,6 +501,8 @@ export class CLIExecutor {
     }
 
     let child: ChildProcess;
+    let ownedSpawn: NativeProcessHandle | undefined;
+    let ownedProcessDriver: NodeProcessDriver | undefined;
     try {
       ctx.onInvocationStarted?.({
         invocationId, cliKind: runtimeCliKind, commandLabel: toCommandLabel(runtimeCliKind),
@@ -472,16 +521,59 @@ export class CLIExecutor {
         ? (childEnv.KIMI_MODEL_API_KEY ? 'api_key' : 'oauth')
         : 'n/a';
       diagLog(`CLI_ENV_RESOLUTION executionId=${executionId} taskId=${taskId} agent=${config.role} command=${config.cliCommand} kimiAuth=${kimiAuth} CODEX_HOME=${childEnv.CODEX_HOME ?? 'undefined'} HOME=${childEnv.HOME ?? 'undefined'} USERPROFILE=${childEnv.USERPROFILE ?? 'undefined'}`);
-      child = spawn(invocation.command, invocation.args, {
-        shell: false,
-        cwd: workspaceRoot,
-        env: childEnv,
-        windowsHide: true,
-        stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      });
-      if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
-      diagLog(`CHILD_SPAWN executionId=${executionId} taskId=${taskId} childPid=${child.pid} parentPid=${process.pid} command=${invocation.command} cwd=${workspaceRoot}`);
+      if (ctx.requireOwnedProcess) {
+        if (ctx.onNativeProcessStarted === undefined) throw new Error('group-provider-process-owner-binding-required');
+        if (process.platform !== 'win32') {
+          throw new Error('group-provider-process-ownership-unavailable');
+        }
+        const processDriver = new NodeProcessDriver();
+        ownedProcessDriver = processDriver;
+        const ownedEnvironment: Record<string, string> = {};
+        for (const [key, value] of Object.entries(childEnv)) {
+          if (typeof value === 'string') ownedEnvironment[key] = value;
+        }
+        const launch: ValidatedLaunch = {
+          executable: invocation.command,
+          args: invocation.args,
+          cwd: workspaceRoot,
+          env: ownedEnvironment,
+          envDiagnostics: [],
+          shell: false,
+        };
+        ownedSpawn = await processDriver.spawn(launch);
+        if (invocation.stdin !== undefined) {
+          await disposeFailedOwnedSpawn(processDriver, ownedSpawn);
+          ownedSpawn = undefined;
+          throw new Error('group-provider-owned-stdin-unsupported');
+        }
+        if (!ownedSpawn.identity.nativeBirthIdentity) {
+          await disposeFailedOwnedSpawn(processDriver, ownedSpawn);
+          ownedSpawn = undefined;
+          throw new Error('group-provider-native-identity-unavailable');
+        }
+        try {
+          ctx.onNativeProcessStarted({ invocationId, pid: ownedSpawn.identity.pid, nativeBirthIdentity: ownedSpawn.identity.nativeBirthIdentity });
+        } catch (error) {
+          await disposeFailedOwnedSpawn(processDriver, ownedSpawn);
+          ownedSpawn = undefined;
+          throw error;
+        }
+        child = createOwnedSpawnChildFacade(ownedSpawn, processDriver);
+      } else {
+        child = spawn(invocation.command, invocation.args, {
+          shell: false,
+          cwd: workspaceRoot,
+          env: childEnv,
+          windowsHide: true,
+          stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+        });
+        if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
+      }
+      diagLog(`CHILD_SPAWN executionId=${executionId} taskId=${taskId} childPid=${child.pid} parentPid=${process.pid} command=${invocation.command} cwd=${workspaceRoot} owned=${ownedSpawn !== undefined}`);
     } catch (err) {
+      if (ownedSpawn !== undefined && ownedProcessDriver !== undefined) {
+        await disposeFailedOwnedSpawn(ownedProcessDriver, ownedSpawn);
+      }
       await safeCleanup(invocation.cleanup);
       const message = `Agent process failed to start: ${err instanceof Error ? err.message : String(err)}`;
       diagLog(`CHILD_SPAWN_FAIL executionId=${executionId} taskId=${taskId} reason=${message}`);

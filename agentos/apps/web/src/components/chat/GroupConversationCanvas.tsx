@@ -3,7 +3,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { directConversationClient, type ForwardMessage } from '../../lib/directConversationClient';
 import { useGroupConversation } from '../../lib/useGroupConversation';
 import type { GroupInteractionBudgetInput } from '../../lib/groupConversationClient';
+import { isGroupRecoveryDispatchCurrent } from '../../lib/groupConversationScope';
 import { BoundedGroupView } from './BoundedGroupView';
+import { GroupInteractionRecoveryPanel } from './GroupInteractionRecoveryPanel';
 import { MentionPicker, type MentionAgent } from './MentionPicker';
 import { handleComposerKeyDown, submitComposer } from '../../lib/composerKeyboard';
 import {
@@ -74,52 +76,58 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshMessages = useCallback(async () => {
-    if (!props.conversationId) return;
+    const expected = group.scope;
+    if (!expected.conversationId || !group.isCurrentScope(expected)) return;
     setLoadingMessages(true);
     try {
-      const result = await direct.listMessages(props.conversationId);
-      setMessages(result.messages);
+      const result = await direct.listMessages(expected.conversationId);
+      if (group.isCurrentScope(expected)) setMessages(result.messages);
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : String(error));
+      if (group.isCurrentScope(expected)) setSendError(error instanceof Error ? error.message : String(error));
     } finally {
-      setLoadingMessages(false);
+      if (group.isCurrentScope(expected)) setLoadingMessages(false);
     }
-  }, [direct, props.conversationId]);
+  }, [direct, group.scope, group.isCurrentScope]);
 
   useEffect(() => {
+    setLoadingMessages(false);
     setContent('');
     setMessages([]);
     setMentionedAgentIds([]);
     setSendError(undefined);
     void refreshMessages();
-  }, [props.conversationId, refreshMessages]);
+  }, [props.workspaceId, props.apiBase, props.conversationId, refreshMessages]);
 
   const updateBudget = (key: keyof GroupInteractionBudgetInput) => (value: number) =>
     setBudget(current => ({ ...current, [key]: value }));
 
-  const canSend = content.trim().length > 0 && !group.busy;
+  const interaction = group.scopeReady ? group.interaction : null;
+  const ownerUnknownForUnusableInteraction = interaction?.integrityStatus === 'unusable'
+    && (group.executionOwner?.status !== 'interrupted' || !Number.isSafeInteger(group.executionOwner.ownerEpoch) || group.executionOwner.ownerEpoch < 1);
+  const canSend = group.scopeReady && content.trim().length > 0 && !group.busy && interaction?.status !== 'active';
 
   const send = async () => {
-    if (!canSend) return;
+    const expected = group.scope;
+    if (!canSend || !group.isCurrentScope(expected) || !expected.conversationId) return;
     setSendError(undefined);
     const selectedMentions = [...mentionedAgentIds];
     try {
       // Persist the user Message first, then open the bounded interaction and run
       // the walk against exactly that Message.
-      const { message } = await direct.sendMessage(props.conversationId, content.trim());
+      const { message } = await direct.sendMessage(expected.conversationId, content.trim());
+      if (!group.isCurrentScope(expected)) return;
       setMessages(current => [...current, message]);
       setContent('');
       setMentionedAgentIds([]);
       const created = await group.start(budget);
-      if (created === null) return;
+      if (created === null || !group.isCurrentScope(expected)) return;
       await group.run(created.id, message.id, selectedMentions);
-      await refreshMessages();
+      if (group.isCurrentScope(expected)) await refreshMessages();
     } catch (sendErr) {
-      setSendError(sendErr instanceof Error ? sendErr.message : String(sendErr));
+      if (group.isCurrentScope(expected)) setSendError(sendErr instanceof Error ? sendErr.message : String(sendErr));
     }
   };
 
-  const interaction = group.interaction;
   const walking = group.walk.phase === 'walking';
 
   return (
@@ -141,8 +149,8 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
       </header>
       <div style={{ flex: 1, overflow: 'auto', padding: UI_SPACING_BASE_PX * 2 }}>
         <section data-agentos="group-message-history" aria-label="群聊消息" style={{ marginBottom: UI_SPACING_BASE_PX * 2 }}>
-          {loadingMessages ? <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading messages…</div> : null}
-          {messages.map(message => {
+          {group.scopeReady && loadingMessages ? <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading messages…</div> : null}
+          {(group.scopeReady ? messages : []).map(message => {
             const sender = message.senderAgentId === null
               ? 'You'
               : props.agents?.find(agent => agent.id === message.senderAgentId)?.name ?? message.senderAgentId;
@@ -164,7 +172,7 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
               theme={props.theme}
               interaction={{
                 id: interaction.id,
-                status: interaction.status,
+                status: interaction.integrityStatus === 'unusable' ? 'interrupted' : interaction.status,
                 stopReason: interaction.stopReason,
                 loopGuardSignal: interaction.loopGuardSignal,
               }}
@@ -177,10 +185,43 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
                 agentsRemaining: group.budget?.agentsRemaining ?? 0,
               }}
               replies={[...group.replies]}
-              stopping={group.busy}
+              stopping={group.busy || ownerUnknownForUnusableInteraction}
               {...(group.error === undefined ? {} : { error: group.error })}
               onStop={() => { void group.stop(); }}
             />
+
+            {group.scopeReady && interaction.status === 'active' && interaction.integrityStatus === 'unusable'
+              && group.executionOwner?.status === 'interrupted' && group.executionOwner.ownerEpoch > 0 ? (
+                <GroupInteractionRecoveryPanel
+                  workspaceId={props.workspaceId}
+                  apiBase={props.apiBase}
+                  identityKey={JSON.stringify([props.workspaceId, props.conversationId])}
+                  conversationId={props.conversationId}
+                  generation={group.scope.generation}
+                  interactionId={interaction.id}
+                  interactionVersion={interaction.version}
+                  ownerEpoch={group.executionOwner.ownerEpoch}
+                  dispatchManagedByCaller
+                  canDispatch={identity => isGroupRecoveryDispatchCurrent(identity, group.scope, interaction.id)
+                    && group.isCurrentScope(group.scope)}
+                  onRecovered={async (result, dispatch, identity) => {
+                    const expected = group.scope;
+                    const sourceMessageId = result.message.id;
+                    if (!isGroupRecoveryDispatchCurrent(identity, expected, interaction.id)
+                      || result.interaction.id === interaction.id
+                      || result.interaction.conversationId !== expected.conversationId
+                      || result.interaction.sourceMessageId !== sourceMessageId
+                      || !group.isCurrentScope(expected)) return;
+                    if (!dispatch.markResponding()) return;
+                    await group.run(result.interaction.id, sourceMessageId, result.participantAgentIds, result.message.clientMessageId);
+                    if (group.isCurrentScope(expected)) await refreshMessages();
+                  }}
+                />
+              ) : null}
+
+            {ownerUnknownForUnusableInteraction && <div role="status" style={{ marginTop: UI_SPACING_BASE_PX, fontSize: 12, color: 'var(--text-tertiary)' }}>
+              执行 owner 状态未知或未确认中断；已保留历史，恢复和停止操作均已禁用。
+            </div>}
 
             {group.walk.speakers.length === 0 && group.walk.skipped.length === 0 ? null : (
               <section data-agentos="group-walk" style={{ marginTop: UI_SPACING_BASE_PX * 2, fontSize: 12 }}>
@@ -236,7 +277,7 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
               onSend: () => { void send(); },
               focus: () => composerRef.current?.focus(),
             })}
-            placeholder="Message the group…"
+            placeholder={interaction?.status === 'active' ? 'Finish or recover the active round above before sending another message…' : 'Message the group…'}
             data-agentos="group-composer"
             rows={1}
             style={{

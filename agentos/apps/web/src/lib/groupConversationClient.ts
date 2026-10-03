@@ -63,6 +63,22 @@ export interface GroupInteractionDetail {
   readonly interaction: GroupInteraction;
   readonly replies: readonly GroupReply[];
   readonly budget: GroupBudgetStatus;
+  readonly executionOwner?: {
+    readonly status: 'claimed' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'interrupted' | 'abandoned';
+    readonly ownerEpoch: number;
+  } | null;
+}
+
+export interface GroupInteractionRecoveryResult {
+  readonly interaction: GroupInteraction;
+  readonly message: {
+    readonly id: string;
+    readonly conversationId?: string;
+    readonly clientMessageId?: string;
+    readonly content: string;
+  };
+  readonly participantAgentIds?: readonly string[];
+  readonly replayed: boolean;
 }
 
 export interface GroupConversationRequestError extends ConversationRuntimeError {

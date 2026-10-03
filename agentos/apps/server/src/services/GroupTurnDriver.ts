@@ -297,6 +297,21 @@ export class GroupTurnDriver {
               options.onSpeakerDelta?.(speaker.agentId, turnId, responseMessageId, delta, checkpointCursor, event.cursor);
             },
             signal: ownerController.signal,
+            requireOwnedProcess: process.platform === 'win32',
+            onNativeProcessStarted: ({ invocationId, pid, nativeBirthIdentity }) => {
+              this.interactions.recordProviderProcessStarted({
+                workspaceId: input.workspaceId,
+                interactionId: input.interactionId,
+                ownerId: owner.ownerId,
+                ownerEpoch: owner.ownerEpoch,
+                turnId,
+                agentId: speaker.agentId,
+                invocationId,
+                pid,
+                nativeBirthIdentity,
+                startedAt: new Date().toISOString(),
+              });
+            },
             groupFinalizer: (finalization: FinalizeStreamInput, finalize: (input: FinalizeStreamInput) => FinalizeStreamResult) => {
               if (finalization.outcome === 'final') {
                 const atomic = this.boundedGroups.finalizeExecutionReply({

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   groupConversationClient,
@@ -7,20 +7,18 @@ import {
   type GroupInteraction,
   type GroupInteractionBudgetInput,
   type GroupReply,
+  type GroupInteractionDetail,
 } from './groupConversationClient';
 import { applyGroupWalkEvent, emptyGroupWalk, type GroupWalkStreamState } from './groupWalkStream';
 import { consumeSseResponse } from './streamReconnect';
-
-/**
- * Controlled Group Conversation — the canvas state for one group Conversation.
- *
- * Owns the active interaction and the live walk. Sending a user Message creates
- * one bounded interaction and runs the walk against it: the runtime selects the
- * speakers, never the caller. The walk is chat-class; no Task or Run is made.
- */
+import { nextGroupConversationScope, type GroupConversationScope } from './groupConversationScope';
 
 export interface GroupCanvasState {
+  readonly scopeReady: boolean;
+  readonly scope: GroupConversationScope;
+  readonly isCurrentScope: (scope: GroupConversationScope) => boolean;
   readonly interaction: GroupInteraction | null;
+  readonly executionOwner: GroupInteractionDetail['executionOwner'];
   readonly budget: GroupBudgetStatus | null;
   readonly replies: readonly GroupReply[];
   readonly walk: GroupWalkStreamState;
@@ -30,9 +28,10 @@ export interface GroupCanvasState {
 
 export interface GroupCanvasActions {
   readonly start: (budget: GroupInteractionBudgetInput) => Promise<GroupInteraction | null>;
-  readonly run: (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[]) => Promise<void>;
+  readonly run: (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[], clientMessageId?: string) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly refresh: () => Promise<void>;
+  readonly loadInteraction: (interactionId: string) => Promise<void>;
 }
 
 function describeError(error: unknown): string {
@@ -44,145 +43,216 @@ export function useGroupConversation(
   apiBase: string,
   conversationId: string | null,
 ): GroupCanvasState & GroupCanvasActions {
-  const clientRef = useRef(groupConversationClient({ workspaceId, apiBase }));
-  clientRef.current = groupConversationClient({ workspaceId, apiBase });
+  const scopeRef = useRef<GroupConversationScope>({ workspaceId, apiBase, conversationId, generation: 0 });
+  scopeRef.current = nextGroupConversationScope(scopeRef.current, workspaceId, apiBase, conversationId);
+  const scope = scopeRef.current;
+  const client = useMemo(() => groupConversationClient({ workspaceId, apiBase }), [workspaceId, apiBase]);
   const [interaction, setInteraction] = useState<GroupInteraction | null>(null);
+  const [executionOwner, setExecutionOwner] = useState<GroupInteractionDetail['executionOwner']>(null);
   const [budget, setBudget] = useState<GroupBudgetStatus | null>(null);
   const [replies, setReplies] = useState<readonly GroupReply[]>([]);
   const [walk, setWalk] = useState<GroupWalkStreamState>(emptyGroupWalk);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
-  // The walk's SSE keeps its own AbortController so a stop can cut the stream
-  // without tearing down the page.
+  const [stateGeneration, setStateGeneration] = useState(scope.generation);
   const walkAbortRef = useRef<AbortController | null>(null);
 
-  // Switching conversations resets the whole canvas.
-  useEffect(() => {
-    walkAbortRef.current?.abort();
-    setInteraction(null);
-    setBudget(null);
-    setReplies([]);
-    setWalk(emptyGroupWalk);
-    setError(undefined);
-    setBusy(false);
-  }, [conversationId]);
+  const isCurrentScope = useCallback((expected: GroupConversationScope) => {
+    const current = scopeRef.current;
+    return current.workspaceId === expected.workspaceId
+      && current.apiBase === expected.apiBase
+      && current.conversationId === expected.conversationId
+      && current.generation === expected.generation;
+  }, []);
 
   const applyDetail = useCallback((detail: {
     interaction: GroupInteraction;
     budget: GroupBudgetStatus;
     replies: readonly GroupReply[];
-  }) => {
+    executionOwner?: GroupInteractionDetail['executionOwner'];
+  }, expected: GroupConversationScope) => {
+    if (!isCurrentScope(expected)) return;
     setInteraction(detail.interaction);
+    setExecutionOwner(detail.executionOwner ?? null);
     setBudget(detail.budget);
     setReplies(detail.replies);
-  }, []);
+  }, [isCurrentScope]);
+
+  // Identity changes synchronously advance scopeRef during render; this effect
+  // then clears the old canvas and aborts only its observer.
+  useEffect(() => {
+    walkAbortRef.current?.abort();
+    setInteraction(null);
+    setExecutionOwner(null);
+    setBudget(null);
+    setReplies([]);
+    setWalk(emptyGroupWalk);
+    setError(undefined);
+    setBusy(false);
+    setStateGeneration(scope.generation);
+    return () => walkAbortRef.current?.abort();
+  }, [scope.workspaceId, scope.apiBase, scope.conversationId, scope.generation]);
+
+  const loadInteraction = useCallback(async (interactionId: string) => {
+    const expected = scope;
+    if (!isCurrentScope(expected)) return;
+    setError(undefined);
+    setWalk(emptyGroupWalk());
+    try {
+      const detail = await client.getInteraction(interactionId);
+      if (detail.interaction.id !== interactionId || detail.interaction.conversationId !== expected.conversationId) return;
+      applyDetail(detail, expected);
+    } catch (loadError) {
+      if (isCurrentScope(expected)) setError(describeError(loadError));
+    }
+  }, [applyDetail, client, isCurrentScope, scope]);
+
+  useEffect(() => {
+    const expected = scope;
+    let current = true;
+    if (!expected.conversationId) return () => { current = false; };
+    void client.listInteractions(expected.conversationId).then(async ({ interactions }) => {
+      const latestActive = [...interactions].reverse().find(item => item.status === 'active');
+      if (!latestActive) return;
+      const detail = await client.getInteraction(latestActive.id);
+      if (current && isCurrentScope(expected) && detail.interaction.conversationId === expected.conversationId) {
+        applyDetail(detail, expected);
+      }
+    }).catch(loadError => {
+      if (current && isCurrentScope(expected)) setError(describeError(loadError));
+    });
+    return () => { current = false; };
+  }, [applyDetail, client, isCurrentScope, scope]);
 
   const refresh = useCallback(async () => {
-    if (!conversationId) return;
-    setInteraction(current => current);
+    const expected = scope;
+    if (!expected.conversationId || !isCurrentScope(expected)) return;
     const currentId = interaction?.id;
     if (!currentId) return;
-    applyDetail(await clientRef.current.getInteraction(currentId));
-  }, [conversationId, interaction?.id, applyDetail]);
+    const detail = await client.getInteraction(currentId);
+    if (detail.interaction.id === currentId && detail.interaction.conversationId === expected.conversationId) applyDetail(detail, expected);
+  }, [applyDetail, client, interaction?.id, isCurrentScope, scope]);
 
   const start = useCallback(async (input: GroupInteractionBudgetInput) => {
-    if (!conversationId) return null;
+    const expected = scope;
+    if (!expected.conversationId || !isCurrentScope(expected)) return null;
     setBusy(true);
     setError(undefined);
     try {
-      const created = await clientRef.current.createInteraction(conversationId, input);
+      const created = await client.createInteraction(expected.conversationId, input);
+      if (!isCurrentScope(expected) || created.interaction.conversationId !== expected.conversationId) return null;
       setWalk(emptyGroupWalk);
-      applyDetail(await clientRef.current.getInteraction(created.interaction.id));
+      const detail = await client.getInteraction(created.interaction.id);
+      if (!isCurrentScope(expected) || detail.interaction.conversationId !== expected.conversationId) return null;
+      applyDetail(detail, expected);
       return created.interaction;
     } catch (createError) {
-      setError(describeError(createError));
+      if (isCurrentScope(expected)) setError(describeError(createError));
       return null;
     } finally {
-      setBusy(false);
+      if (isCurrentScope(expected)) setBusy(false);
     }
-  }, [conversationId, applyDetail]);
+  }, [applyDetail, client, isCurrentScope, scope]);
 
-  const run = useCallback(async (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[]) => {
-    if (!conversationId) return;
+  const run = useCallback(async (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[], clientMessageId?: string) => {
+    const expected = scope;
+    if (!expected.conversationId || !isCurrentScope(expected)) return;
     setBusy(true);
     setError(undefined);
     setWalk(emptyGroupWalk());
     const abort = new AbortController();
+    walkAbortRef.current?.abort();
     walkAbortRef.current = abort;
     try {
-      const startResponse = await clientRef.current.respond(interactionId, conversationId, {
+      // The guard is immediately before dispatch; a stale callback cannot use
+      // a newly rendered workspace client with an old conversation id.
+      if (!isCurrentScope(expected)) return;
+      const startResponse = await client.respond(interactionId, expected.conversationId, {
         sourceMessageId,
+        ...(clientMessageId ? { clientMessageId } : {}),
         ...(mentionedAgentIds === undefined || mentionedAgentIds.length === 0 ? {} : { mentionedAgentIds: [...mentionedAgentIds] }),
       });
       await startResponse.body?.cancel().catch(() => undefined);
       let cursor = 0;
       let attempts = 0;
-      while (!abort.signal.aborted) {
+      while (!abort.signal.aborted && isCurrentScope(expected)) {
         try {
-          const response = await clientRef.current.observeEvents(conversationId, interactionId, cursor, abort.signal);
+          const response = await client.observeEvents(expected.conversationId, interactionId, cursor, abort.signal);
           await consumeSseResponse(response, (event, data) => {
+            if (!isCurrentScope(expected)) return;
             cursor = Math.max(cursor, typeof data.cursor === 'number' ? data.cursor : Number(event.id) || 0);
             setInteraction(current => mergeGroupInteractionVersionEvent(current, data));
             setWalk(current => applyGroupWalkEvent(current, event.event, data));
           }, { terminalEvents: ['group.done', 'group.stopped', 'group.interrupted'] });
           attempts = 0;
         } catch (observationError) {
-          if (abort.signal.aborted) throw observationError;
-          const latest = await clientRef.current.getInteraction(interactionId);
-          applyDetail(latest);
+          if (abort.signal.aborted || !isCurrentScope(expected)) break;
+          const latest = await client.getInteraction(interactionId);
+          if (!isCurrentScope(expected) || latest.interaction.conversationId !== expected.conversationId) break;
+          applyDetail(latest, expected);
           if (latest.interaction.status !== 'active') break;
           attempts += 1;
           if (attempts > 5) throw observationError;
           await new Promise(resolve => window.setTimeout(resolve, Math.min(1000 * (2 ** (attempts - 1)), 8000)));
         }
-        const latest = await clientRef.current.getInteraction(interactionId);
-        applyDetail(latest);
+        if (abort.signal.aborted || !isCurrentScope(expected)) break;
+        const latest = await client.getInteraction(interactionId);
+        if (!isCurrentScope(expected) || latest.interaction.conversationId !== expected.conversationId) break;
+        applyDetail(latest, expected);
         if (latest.interaction.status !== 'active') break;
       }
-      // Re-read the interaction so the budget, hop chain, and terminal state the
-      // view shows are the committed ones, not the stream's view.
-      applyDetail(await clientRef.current.getInteraction(interactionId));
-    } catch (runError) {
-      if (!(runError instanceof DOMException && runError.name === 'AbortError')) {
-        setError(describeError(runError));
+      if (!abort.signal.aborted && isCurrentScope(expected)) {
+        const latest = await client.getInteraction(interactionId);
+        if (latest.interaction.conversationId === expected.conversationId) applyDetail(latest, expected);
       }
-      try {
-        applyDetail(await clientRef.current.getInteraction(interactionId));
-      } catch {
-        // Best-effort re-read after a failed walk; the stream already ended.
+    } catch (runError) {
+      if (isCurrentScope(expected) && !(runError instanceof DOMException && runError.name === 'AbortError')) setError(describeError(runError));
+      if (isCurrentScope(expected)) {
+        try {
+          const detail = await client.getInteraction(interactionId);
+          if (detail.interaction.conversationId === expected.conversationId) applyDetail(detail, expected);
+        } catch { /* Keep the last current-scope snapshot. */ }
       }
     } finally {
-      walkAbortRef.current = null;
-      setBusy(false);
+      if (walkAbortRef.current === abort) walkAbortRef.current = null;
+      if (isCurrentScope(expected)) setBusy(false);
     }
-  }, [conversationId, applyDetail]);
+  }, [applyDetail, client, isCurrentScope, scope]);
 
   const stop = useCallback(async () => {
+    const expected = scope;
     const currentInteraction = interaction;
-    if (!currentInteraction) return;
+    if (!expected.conversationId || !currentInteraction || !isCurrentScope(expected)) return;
     setBusy(true);
     setError(undefined);
     try {
-      const latest = await clientRef.current.getInteraction(currentInteraction.id);
+      const latest = await client.getInteraction(currentInteraction.id);
+      if (!isCurrentScope(expected) || latest.interaction.conversationId !== expected.conversationId) return;
       setInteraction(latest.interaction);
-      const result = await clientRef.current.stopInteraction(
+      const result = await client.stopInteraction(
         latest.interaction.id,
         latest.interaction.version,
         `group-ui-stop-${latest.interaction.id}-${latest.interaction.version}`,
       );
+      if (!isCurrentScope(expected)) return;
       setInteraction(result.interaction);
-      applyDetail(await clientRef.current.getInteraction(currentInteraction.id));
+      const detail = await client.getInteraction(currentInteraction.id);
+      if (detail.interaction.conversationId === expected.conversationId) applyDetail(detail, expected);
     } catch (stopError) {
+      if (!isCurrentScope(expected)) return;
       if ((stopError as { code?: string })?.code === 'GROUP_VERSION_CONFLICT') {
-        try { applyDetail(await clientRef.current.getInteraction(currentInteraction.id)); } catch { /* keep the last confirmed snapshot */ }
-        setError('群聊版本已变化，已刷新状态；未自动重试停止操作，请确认后再点击。');
+        try {
+          const detail = await client.getInteraction(currentInteraction.id);
+          if (isCurrentScope(expected) && detail.interaction.conversationId === expected.conversationId) applyDetail(detail, expected);
+        } catch { /* keep last confirmed snapshot */ }
+        if (isCurrentScope(expected)) setError('群聊版本已变化，已刷新状态；未自动重试停止操作，请确认后再点击。');
         return;
       }
       setError(describeError(stopError));
     } finally {
-      setBusy(false);
+      if (isCurrentScope(expected)) setBusy(false);
     }
-  }, [interaction, applyDetail]);
+  }, [applyDetail, client, interaction, isCurrentScope, scope]);
 
-  return { interaction, budget, replies, walk, busy, error, start, run, stop, refresh };
+  return { interaction, executionOwner, budget, replies, walk, busy, error, scopeReady: stateGeneration === scope.generation, scope, isCurrentScope, start, run, stop, refresh, loadInteraction };
 }

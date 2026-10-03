@@ -49,6 +49,10 @@ export interface ConversationAgentRunnerOptions {
   signal?: AbortSignal;
   onEvent?: (event: ConversationExecutionEvent) => void;
   onInvocationStarted?: (observation: CliInvocationObservation) => void;
+  /** Group recovery requires an atomic process tree that dies with its owning server. */
+  requireOwnedProcess?: boolean;
+  /** Durable owner binding called with the native identity after the process is owned. */
+  onNativeProcessStarted?: (process: { readonly invocationId: string; readonly pid: number; readonly nativeBirthIdentity: string }) => void;
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   onRuntimeEvent?: (event: NormalizedCliEvent) => void;
@@ -79,6 +83,8 @@ export class ConversationAgentRunner {
       taskId: this.options.executionId,
       signal: this.options.signal,
       onInvocationStarted: this.options.onInvocationStarted,
+      requireOwnedProcess: this.options.requireOwnedProcess,
+      onNativeProcessStarted: this.options.onNativeProcessStarted,
       onInvocationCompleted: this.options.onInvocationCompleted,
       onFileChanges: this.options.onFileChanges,
       onRuntimeEvent: this.options.onRuntimeEvent,
