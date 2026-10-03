@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { createConnection } from 'node:net';
+import { copyFileSync, existsSync } from 'node:fs';
 
 export function createAcceptanceServerControl() {
   const instanceId = randomBytes(16).toString('hex');
@@ -94,4 +95,16 @@ export function verifyAcceptanceServerStopEvidence(runtimeEvidence, platform) {
     || processEvidence.shutdownMechanism !== 'authenticated-windows-named-pipe')) {
     throw new Error('isolated Windows production server lacks clean authenticated shutdown evidence');
   }
+}
+
+/** Diagnostic byte copies are safe only after the actual writer has exited. */
+export function copyStoppedAcceptanceDatabase(server, source, destination) {
+  const child = server?.child;
+  if (!child || (child.exitCode === null && child.signalCode === null)) return 'deferred-live-writer';
+  if (!existsSync(source)) return 'unavailable';
+  copyFileSync(source, destination);
+  for (const suffix of ['-wal', '-shm']) {
+    if (existsSync(`${source}${suffix}`)) copyFileSync(`${source}${suffix}`, `${destination}${suffix}`);
+  }
+  return 'copied-after-process-exit';
 }

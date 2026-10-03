@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateManifest, validateReceipt, verifySourceSnapshot } from './validate-existing-project-acceptance.mjs';
 import { captureOfficialCodexIdentity, verifyOfficialCodexIdentity } from './acceptance-provider-identity.mjs';
-import { createAcceptanceServerControl, stopAcceptanceServer, verifyAcceptanceServerStopEvidence } from './acceptance-server-shutdown.mjs';
+import { copyStoppedAcceptanceDatabase, createAcceptanceServerControl, stopAcceptanceServer, verifyAcceptanceServerStopEvidence } from './acceptance-server-shutdown.mjs';
 import {
   verifyPlanProbeSource, verifyProbeBaselineRecord, verifyProbeCandidateOutput,
   verifyProbeCandidateRecord, verifyProbeWorkspaceSource, verifyRealPlanReceiptBinding,
@@ -474,7 +474,7 @@ function resolveExecutablePath(value) {
   return realpathSync(resolved);
 }
 
-async function startServer(runRoot, projectRoot, { requireP2Ready = false, worktreeRoot } = {}) {
+async function startServer(runRoot, projectRoot, { requireP2Ready = false, worktreeRoot, onCreated } = {}) {
   invariant(worktreeRoot, 'isolated runtime worktree root is required');
   const port = await reservePort();
   const shutdownControl = process.platform === 'win32' ? createAcceptanceServerControl() : undefined;
@@ -505,6 +505,10 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
   child.stderr.on('data', collect);
   child.on('error', error => { output.text = safeText(`${output.text}\n${error.message}`); });
   const baseUrl = `http://127.0.0.1:${port}`;
+  const server = { child, output, baseUrl, port, worktreeRoot, shutdownControl,
+    databasePath: join(projectRoot, '.agentos', 'agentos.sqlite') };
+  // Publish ownership before any awaited readiness work can fail.
+  onCreated?.(server);
   let readinessPath;
   let ready = false;
   try {
@@ -535,10 +539,11 @@ async function startServer(runRoot, projectRoot, { requireP2Ready = false, workt
     await delay(250);
   }
   invariant(readinessPath && ready, `isolated AgentOS server did not become ready: ${output.text}`);
-  return { child, output, baseUrl, port, readinessPath, worktreeRoot, shutdownControl,
-    databasePath: join(projectRoot, '.agentos', 'agentos.sqlite') };
+  server.readinessPath = readinessPath;
+  return server;
   } catch (error) {
-    await stopServer({ child, shutdownControl }).catch(() => undefined);
+    server.readinessPath = readinessPath;
+    // The outer finally retains this handle and owns all drain/diagnostics.
     throw new Error(`${error instanceof Error ? error.message : String(error)}; server output: ${output.text}`);
   }
 }
@@ -1422,6 +1427,7 @@ async function main() {
   const statePath = join(runRoot, 'simulator-state.json');
   writeFileSync(statePath, JSON.stringify({ defect: { implementations: 0, reviews: 0 }, feature: { implementations: 0, reviews: 0 } }));
   let server;
+  let serverOwner;
   let serverProjectRoot;
   let workspaceRoots = [];
   let scenarioResults = [];
@@ -1433,6 +1439,7 @@ async function main() {
     server = await startServer(runRoot, serverProjectRoot, {
       requireP2Ready: options.mode === 'real-windows-acceptance',
       worktreeRoot: join(runRoot, 'runtime-worktrees'),
+      onCreated: owner => { server = owner; serverOwner = owner; },
     });
     const collaborationRoutesSource = readFileSync(join(scriptRoot, 'apps/server/src/routes/collaborations.ts'), 'utf8');
     invariant(/router\.get\(['"`]\/collaboration\/tasks\/:collaborationId\/candidates\/:candidateId\/preview['"`]/u.test(collaborationRoutesSource),
@@ -1580,18 +1587,16 @@ async function main() {
         const diagnostics = join(evidenceRoot, 'diagnostics');
         mkdirSync(diagnostics, { recursive: true });
         const databaseSource = join(serverProjectRoot, '.agentos', 'agentos.sqlite');
-        if (existsSync(databaseSource)) {
-          const databaseDestination = join(diagnostics, 'failed-runtime.sqlite');
-          copyFileSync(databaseSource, databaseDestination);
-          for (const suffix of ['-wal', '-shm']) {
-            if (existsSync(`${databaseSource}${suffix}`)) copyFileSync(`${databaseSource}${suffix}`, `${databaseDestination}${suffix}`);
-          }
-        }
+        const databaseCapture = copyStoppedAcceptanceDatabase(serverOwner, databaseSource,
+          join(diagnostics, 'failed-runtime.sqlite'));
         writeJsonArtifact(evidenceRoot, 'diagnostics/failure.json', {
           schemaVersion: 1, error: safeText(runFailure instanceof Error ? runFailure.message : String(runFailure)),
-          serverPid: server?.child.pid, port: server?.port, readinessPath: server?.readinessPath,
+          serverPid: serverOwner?.child.pid, port: serverOwner?.port, readinessPath: serverOwner?.readinessPath,
+          serverProcess: serverOwner ? { exitCode: serverOwner.child.exitCode, signalCode: serverOwner.child.signalCode,
+            shutdownMechanism: serverOwner.shutdownMechanism, shutdownState: serverOwner.shutdownState } : undefined,
+          databaseCapture,
           temporaryRunRoot: runRoot,
-          serverOutput: options.mode === 'simulated-provider' ? server?.output.text : '[omitted for real-provider privacy]',
+          serverOutput: options.mode === 'simulated-provider' ? serverOwner?.output.text : '[omitted for real-provider privacy]',
         });
       } catch { /* keep the original runner failure as the user-facing result */ }
     }

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { createServer } from 'node:net';
-import { createAcceptanceServerControl, requestAcceptanceServerShutdown, stopAcceptanceServer, verifyAcceptanceServerStopEvidence } from './acceptance-server-shutdown.mjs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { copyStoppedAcceptanceDatabase, createAcceptanceServerControl, requestAcceptanceServerShutdown, stopAcceptanceServer, verifyAcceptanceServerStopEvidence } from './acceptance-server-shutdown.mjs';
 
 function childFixture() {
   const child = new EventEmitter();
@@ -89,6 +92,28 @@ test('runtime receipt rejects forced exits, foreign identity and missing Windows
   }
   assert.throws(() => verifyAcceptanceServerStopEvidence({ ...evidence,
     serverProcess: { ...evidence.serverProcess, pid: 1235 } }, 'win32'), /owned child/u);
+});
+
+test('failed readiness retains the writer handle and never copies live SQLite diagnostic bytes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'p4-stopped-database-'));
+  const child = childFixture();
+  const source = join(root, 'source.sqlite'), destination = join(root, 'failed.sqlite');
+  const server = { child, shutdownControl: createAcceptanceServerControl() };
+  try {
+    writeFileSync(source, 'database');
+    writeFileSync(`${source}-wal`, 'wal');
+    await assert.rejects(stopAcceptanceServer(server, { platform: 'win32', requestShutdown: async () => {
+      throw new Error('bootstrap did not bind the control pipe');
+    } }), /did not bind/u);
+    assert.equal(copyStoppedAcceptanceDatabase(server, source, destination), 'deferred-live-writer');
+    assert.equal(existsSync(destination), false);
+    assert.equal(existsSync(`${destination}-wal`), false);
+    assert.deepEqual(child.kills, []);
+    child.exitCode = 1;
+    assert.equal(copyStoppedAcceptanceDatabase(server, source, destination), 'copied-after-process-exit');
+    assert.equal(readFileSync(destination, 'utf8'), 'database');
+    assert.equal(readFileSync(`${destination}-wal`, 'utf8'), 'wal');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('Windows pipe transport sends the exact instance nonce and rejects malformed responses',
