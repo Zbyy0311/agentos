@@ -705,7 +705,8 @@ export class CollaborationWorkflowService {
         let checkedBaseCommit: string;
         try {
           const workspace = this.requireWorkspace(workspaceId);
-          checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+          const workspaceRoot = this.gitRoot(workspace.id);
+          checkedBaseCommit = await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
         } catch {
           return unavailableRetry(proof.linkedTaskOnly
             ? '子 Run 已有 Start 授权；请先恢复干净、可检查的源基线，再创建关联任务'
@@ -785,7 +786,8 @@ export class CollaborationWorkflowService {
     let checkedBaseCommit: string;
     try {
       const workspace = this.requireWorkspace(workspaceId);
-      checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      const workspaceRoot = this.gitRoot(workspace.id);
+      checkedBaseCommit = await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
     } catch {
       return unavailable('当前源工作区不是干净且可检查的基线');
     }
@@ -1039,7 +1041,8 @@ export class CollaborationWorkflowService {
     try {
       const task = claim.task;
       const workspace = this.requireWorkspace(input.workspaceId);
-      const checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      const workspaceRoot = this.gitRoot(workspace.id);
+      const checkedBaseCommit = await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
       if (checkedBaseCommit !== task.baseCommit || (claim.expectedBaseCommit !== undefined
         && checkedBaseCommit !== claim.expectedBaseCommit)) {
         throw new CollaborationWorkflowError('COLLABORATION_BASE_CHANGED', 'The checked source baseline changed; no retry Run was started');
@@ -1086,7 +1089,7 @@ export class CollaborationWorkflowService {
       if (!lease) {
         try {
           lease = await this.options.worktrees.createLease({
-            workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: newRunId,
+            workspaceId: workspace.id, workspaceRoot, runId: newRunId,
             executionId: `collaboration-${task.id}`, agentId: implementer.id, controlledGitContent: true,
             expectedBaseCommit: checkedBaseCommit,
           });
@@ -1125,7 +1128,7 @@ export class CollaborationWorkflowService {
         throw new CollaborationWorkflowError('COLLABORATION_RECOVERY_REQUIRED', 'New Run is not safely startable');
       }
       const [sourceBaseCommit, leaseBaseCommit] = await Promise.all([
-        this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true }),
+        this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true }),
         this.options.worktrees.preflight(leaseRecord.absolutePath, { controlledGitContent: true }),
       ]);
       if (sourceBaseCommit !== checkedBaseCommit || leaseBaseCommit !== checkedBaseCommit) {
@@ -1258,9 +1261,10 @@ export class CollaborationWorkflowService {
     }
 
     const workspace = this.requireWorkspace(input.workspaceId);
+    const workspaceRoot = this.gitRoot(workspace.id);
     let checkedBaseCommit: string;
     try {
-      checkedBaseCommit = await this.options.worktrees.preflight(workspace.rootPath, { controlledGitContent: true });
+      checkedBaseCommit = await this.options.worktrees.preflight(workspaceRoot, { controlledGitContent: true });
     } catch {
       // A dirty/uninspectable baseline must not consume the unique recovery
       // action. The caller may repair the workspace and retry the same intent.

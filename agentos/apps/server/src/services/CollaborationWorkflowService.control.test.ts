@@ -203,6 +203,23 @@ function fixture(overrides: CollaborationWorkflowTestOverrides = {}, settings: C
     } };
 }
 
+function preparePortableWorkspace(fx: ReturnType<typeof fixture>): { portableRoot: string; markerPath: string } {
+  const portableRoot = join(fx.root, 'portable-restored-workspace');
+  mkdirSync(portableRoot);
+  const markerPath = join(portableRoot, 'restored-content.txt');
+  writeFileSync(markerPath, 'portable restored content must remain untouched\n');
+  const workspace = fx.workspaces.get('workspace-a');
+  assert.ok(workspace);
+  fx.store.workspaceRepo.update({ ...workspace, rootPath: portableRoot });
+  return { portableRoot, markerPath };
+}
+
+function createMappedCleanClone(fx: ReturnType<typeof fixture>): string {
+  const cloneRoot = join(fx.root, 'mapped-clean-clone');
+  execFileSync('git', ['clone', '--quiet', '--no-hardlinks', fx.repositoryRoot, cloneRoot], { windowsHide: true });
+  return cloneRoot;
+}
+
 function grantRecoveryFixturePermissions(fx: ReturnType<typeof fixture>): void {
   const db = fx.store.getDatabase();
   db.prepare('UPDATE agent_profiles SET permissions_json = ? WHERE workspace_id = ? AND id = ?')
@@ -448,6 +465,130 @@ test('P2 recovery review: deterministic failure duplicate continue creates one c
       idempotencyKey: 'p2-known-failure-stale-01' }), error =>
       (error as { code?: string }).code === 'COLLABORATION_RECOVERY_STALE');
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ?').get('workspace-a') as { n: number }).n, 2);
+  } finally { await fx.close(); }
+});
+
+test('P2 retry recovery uses one mapped clean Git root while preserving portable workspace content', async () => {
+  let mappedGitRoot: string | undefined;
+  let dispatchCalls = 0;
+  const fx = fixture({
+    runtimeDispatchEnabled: false,
+    workspaceGitRootFor: workspaceId => workspaceId === 'workspace-a' ? mappedGitRoot : undefined,
+    dispatchRun: async () => { dispatchCalls++; },
+  });
+  try {
+    const { portableRoot, markerPath } = preparePortableWorkspace(fx);
+    const cleanClone = createMappedCleanClone(fx);
+    mappedGitRoot = cleanClone;
+    let switchMappingAfterNextPreflight = false;
+    assert.throws(() => execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: portableRoot, encoding: 'utf8', windowsHide: true, stdio: 'ignore',
+    }), 'the restored workspace root is portable content, not a Git repository');
+    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: cleanClone, encoding: 'utf8', windowsHide: true,
+    }).trim(), fx.plan.baseCommit);
+
+    const checkedRoots: string[] = [];
+    const leaseRoots: string[] = [];
+    const realPreflight = fx.worktrees.preflight.bind(fx.worktrees);
+    const realCreateLease = fx.worktrees.createLease.bind(fx.worktrees);
+    fx.worktrees.preflight = async (workspaceRoot, options) => {
+      const checked = await realPreflight(workspaceRoot, options);
+      checkedRoots.push(workspaceRoot);
+      if (switchMappingAfterNextPreflight) {
+        switchMappingAfterNextPreflight = false;
+        mappedGitRoot = join(fx.root, 'mapping-changed-during-retry');
+      }
+      return checked;
+    };
+    fx.worktrees.createLease = async leaseInput => {
+      leaseRoots.push(leaseInput.workspaceRoot);
+      return realCreateLease(leaseInput);
+    };
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+      failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Deterministic pre-Provider configuration rejection',
+    });
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+      idempotencyKey: 'p2-retry-mapped-git-root-01', action: 'retry-known-failure' as const,
+    };
+
+    const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.retryKnownFailure, true, 'recovery inspection must check the mapped clean clone');
+    assert.equal(options.checkedBaseCommit, fx.plan.baseCommit);
+    assert.deepEqual(checkedRoots, [cleanClone]);
+
+    checkedRoots.length = 0;
+    switchMappingAfterNextPreflight = true;
+    const retried = await fx.service.recover(input);
+    assert.ok(retried.newRunId);
+    assert.equal(retried.checkedBaseCommit, fx.plan.baseCommit);
+    assert.deepEqual(leaseRoots, [cleanClone], 'the retry lease must be created from the captured mapped root');
+    assert.ok(checkedRoots.includes(cleanClone), 'retry preflight rechecks the captured clone before Start authorization');
+    assert.ok(!checkedRoots.includes(portableRoot));
+    assert.ok(!checkedRoots.includes(join(fx.root, 'mapping-changed-during-retry')),
+      'a mapping change during the action does not redirect later Git checks');
+    assert.equal(fx.store.runRepository().findById('workspace-a', retried.newRunId)?.parentRunId, failed.id);
+    const replay = await fx.service.recover(input);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.newRunId, retried.newRunId, 'the same body-bound idempotency key reuses the canonical child');
+    assert.equal((fx.store.getDatabase().prepare('SELECT checked_base_commit FROM p2_collaboration_recoveries WHERE idempotency_key = ?')
+      .get(input.idempotencyKey) as { checked_base_commit: string }).checked_base_commit, fx.plan.baseCommit);
+    assert.equal(dispatchCalls, 0, 'the fixture never invokes a Provider');
+    assert.equal(fx.workspaces.get('workspace-a')?.rootPath, portableRoot);
+    assert.equal(readFileSync(markerPath, 'utf8'), 'portable restored content must remain untouched\n');
+    assert.equal(execFileSync('git', ['status', '--porcelain'], {
+      cwd: cleanClone, encoding: 'utf8', windowsHide: true,
+    }), '', 'recovery checks do not change the mapped clean clone');
+  } finally { await fx.close(); }
+});
+
+test('P2 linked recovery preflights the mapped clone and preserves restored workspace content', async () => {
+  let mappedGitRoot: string | undefined;
+  const fx = fixture({
+    runtimeDispatchEnabled: false,
+    workspaceGitRootFor: workspaceId => workspaceId === 'workspace-a' ? mappedGitRoot : undefined,
+  });
+  try {
+    const { portableRoot, markerPath } = preparePortableWorkspace(fx);
+    const cleanClone = createMappedCleanClone(fx);
+    mappedGitRoot = cleanClone;
+    const checkedRoots: string[] = [];
+    const realPreflight = fx.worktrees.preflight.bind(fx.worktrees);
+    fx.worktrees.preflight = async (workspaceRoot, options) => {
+      checkedRoots.push(workspaceRoot);
+      return realPreflight(workspaceRoot, options);
+    };
+
+    grantRecoveryFixturePermissions(fx);
+    const { run, collaboration } = fx.runningWithCompletedStart();
+    const unresolved = fx.store.runInTransaction(() => fx.store.runRepository().markRecoveryRequiredWithinTransaction({
+      workspaceId: 'workspace-a', runId: run.id, expectedStatus: 'running', expectedVersion: run.version, timestamp: NOW,
+    }));
+    const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+      expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+    const input = {
+      workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+      expectedTaskVersion: blocked.version, expectedRunId: unresolved.id, expectedRunVersion: unresolved.version,
+      idempotencyKey: 'p2-linked-mapped-git-root-01', action: 'new-linked-task' as const,
+    };
+
+    const options = await fx.service.getRecoveryOptions('workspace-a', fx.plan.id);
+    assert.equal(options.actions.newLinkedTask, true, 'unknown effects can only create a separately confirmed linked task');
+    assert.equal(options.checkedBaseCommit, fx.plan.baseCommit);
+    const linked = await fx.service.recover(input);
+    assert.equal(linked.checkedBaseCommit, fx.plan.baseCommit);
+    assert.equal(linked.task.baseCommit, fx.plan.baseCommit);
+    assert.equal(linked.task.status, 'awaiting_confirmation');
+    assert.deepEqual(checkedRoots, [cleanClone, cleanClone], 'inspection and linked-task creation both use the mapped clone');
+    assert.ok(!checkedRoots.includes(portableRoot));
+    assert.equal(fx.workspaces.get('workspace-a')?.rootPath, portableRoot);
+    assert.equal(readFileSync(markerPath, 'utf8'), 'portable restored content must remain untouched\n');
   } finally { await fx.close(); }
 });
 
