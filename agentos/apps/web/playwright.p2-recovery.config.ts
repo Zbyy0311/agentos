@@ -19,6 +19,7 @@ const resultsRoot = mkdtempSync(join(tmpdir(), 'agentos-p2-group-recovery-result
 const tsconfigRootPrefix = 'agentos-p2-group-recovery-tsconfig-';
 const tsconfigRoot = mkdtempSync(join(tmpdir(), tsconfigRootPrefix));
 const tempTsconfigPath = resolve(tsconfigRoot, 'tsconfig.json');
+const nextTsconfigPath = relative(webRoot, tempTsconfigPath);
 writeFileSync(tempTsconfigPath, JSON.stringify({
   extends: nextConfigPath,
   include: [
@@ -77,7 +78,7 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         AGENTOS_NEXT_DIST_DIR: relativeNextDistPath,
-        AGENTOS_NEXT_TSCONFIG_PATH: tempTsconfigPath,
+        AGENTOS_NEXT_TSCONFIG_PATH: nextTsconfigPath,
         NEXT_PUBLIC_API_URL: serverBaseURL,
       },
     },
