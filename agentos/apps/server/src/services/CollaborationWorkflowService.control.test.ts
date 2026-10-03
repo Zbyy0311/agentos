@@ -1844,7 +1844,10 @@ for (let repetition = 1; repetition <= 3; repetition++) {
       const fx = fixture();
       const dispatches: string[] = [];
       try {
-        const production = productionServiceFor(fx, runtimeValue, async (_workspaceId, runId) => { dispatches.push(runId); });
+        const production = productionServiceFor(fx, runtimeValue, async (workspaceId, runId) => {
+          dispatches.push(runId);
+          admitFollowerToApproval(fx.store, workspaceId, runId);
+        });
         const task = await production.service.confirm({ workspaceId: fx.plan.workspaceId, collaborationId: fx.plan.id,
           expectedVersion: fx.plan.version, idempotencyKey: `F24-production-flag-${repetition}` });
         assert.ok(task.canonicalRunId);
@@ -1853,10 +1856,26 @@ for (let repetition = 1; repetition <= 3; repetition++) {
           .get(runId) as { state: string }).state, 'GRANTED');
         assert.equal(task.status, runtimeValue === 'true' ? 'running' : 'queued');
         assert.equal(production.service.canDispatch(task.workspaceId, runId), runtimeValue === 'true');
+        const expectedRunStatus = runtimeValue === 'true' ? 'waiting_approval' : 'queued';
+        assert.equal(fx.store.runRepository().findById(task.workspaceId, runId)?.status, expectedRunStatus);
+        const starts = fx.store.operationService().listByRun(task.workspaceId, runId)
+          .filter(operation => operation.type === 'run.start');
+        assert.equal(starts.length, 1);
+        assert.equal(starts[0].status, runtimeValue === 'true' ? 'completed' : 'queued');
+        const attempts = fx.store.runStageRepository().listByRun(task.workspaceId, runId)
+          .map(stage => ({ id: stage.id, attempt: stage.attempt, status: stage.status }));
         if (runtimeValue !== 'true') await production.service.resumeRun(task.workspaceId, runId);
         await production.startProductionBackground();
         assert.deepEqual(dispatches, runtimeValue === 'true' ? [runId] : []);
         assert.equal(production.approvalResumes(), runtimeValue === 'true' ? 1 : 0, 'the real post-listen approval entry must share the runtime switch');
+        await production.startProductionBackground();
+        await production.service.resumeGrantedQueuedRuns(task.workspaceId);
+        assert.deepEqual(dispatches, runtimeValue === 'true' ? [runId] : [],
+          'repeated production queue scans must not dispatch the already-started Run again');
+        assert.equal(fx.store.runRepository().findById(task.workspaceId, runId)?.status, expectedRunStatus);
+        assert.deepEqual(fx.store.runStageRepository().listByRun(task.workspaceId, runId)
+          .map(stage => ({ id: stage.id, attempt: stage.attempt, status: stage.status })), attempts,
+        'repeated production queue scans must preserve the existing stage attempts');
         assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n, 1);
       } finally { await fx.close(); }
     });
