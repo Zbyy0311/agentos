@@ -217,11 +217,6 @@ async function installFixture(page: Page, model: Fixture, configuredBase: Return
     if (request.method() === 'GET' && interactionDetail) {
       const detail = model.details.get(decodeURIComponent(interactionDetail[1]!));
       if (!detail) { await route.fulfill({ status: 404, json: { error: 'fixture interaction missing' } }); return; }
-      if (decodeURIComponent(interactionDetail[1]!) === 'interaction-recovered-a'
-        && model.recoveredDetailEntered && model.deferRecoveredDetail) {
-        model.recoveredDetailEntered.resolve();
-        await model.deferRecoveredDetail.promise;
-      }
       await json(route, detail); return;
     }
     const conversationInteractions = path.match(new RegExp(`^/api/workspaces/${workspaceId}/runtime/conversations/([^/]+)/interactions$`, 'u'));
