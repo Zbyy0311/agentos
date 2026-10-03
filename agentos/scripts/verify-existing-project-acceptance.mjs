@@ -42,6 +42,22 @@ export function acceptanceWaitBudget(mode) {
 function invariant(ok, message) { if (!ok) throw new Error(message); }
 function sha256(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
 function hashFile(path) { return sha256(readFileSync(path)); }
+
+/** Check the saved task before any Provider starts, and again in the offline audit. */
+export function verifyPersistedScenarioPlanFields(plan, task) {
+  const uniquePaths = paths => Array.isArray(paths) && paths.length > 0
+    && paths.every(path => typeof path === 'string' && path.length > 0)
+    && new Set(paths).size === paths.length;
+  invariant(task?.title === plan.title && task.objective === plan.objective
+    && uniquePaths(plan.scope) && uniquePaths(task.scope)
+    // The production scope policy sorts paths. Membership remains exact and
+    // case-sensitive; sorting copies preserves the original frozen plan bytes.
+    && JSON.stringify([...task.scope].sort()) === JSON.stringify([...plan.scope].sort()),
+  `${plan.kind} real plan fields differ from the persisted project task`);
+  invariant(JSON.stringify(task.acceptanceCommands) === JSON.stringify(plan.acceptanceCommands),
+    `${plan.kind} acceptance commands differ from the persisted task plan`);
+}
+
 function git(root, args) {
   const result = spawnSync('git', ['-C', root, ...args], { env: frozenGitEnvironment(), encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error(`git ${args[0]} failed (${result.status}): ${safeText(result.stderr || result.stdout)}`);
@@ -899,6 +915,7 @@ async function createAndRunScenario(server, plan, workspaceRoot, baselineEvidenc
       maxReworkRounds: 1,
     },
   });
+  verifyPersistedScenarioPlanFields(plan, created.body.task);
   console.error(`P4_ACCEPTANCE_PROGRESS=${plan.kind}: task created; confirming bounded run`);
   let task = created.body.task;
   const taskId = task.id;
@@ -1201,9 +1218,9 @@ function verifyRuntimeDatabaseEvidence(evidenceRoot, receipt, {
       invariant(JSON.stringify(acceptanceCommands) === JSON.stringify(scenario.acceptanceCommands),
         `${scenario.kind} acceptance commands differ from the persisted task plan`);
       if (scenario.baselineProbe) {
-        invariant(task.title === scenario.title && task.objective === scenario.objective
-          && JSON.stringify(JSON.parse(task.scope_json)) === JSON.stringify(scenario.scope),
-        `${scenario.kind} real plan fields differ from the persisted project task`);
+        verifyPersistedScenarioPlanFields(scenario, {
+          title: task.title, objective: task.objective, scope: JSON.parse(task.scope_json), acceptanceCommands,
+        });
       }
       invariant(Array.isArray(scenario.baselineCommands) && scenario.baselineCommands.length > 0
         && scenario.baselineReproduction?.commands?.length === scenario.baselineCommands.length

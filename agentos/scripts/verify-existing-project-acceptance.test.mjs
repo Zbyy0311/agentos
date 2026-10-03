@@ -14,6 +14,7 @@ import {
   verifyCandidateReviewSequence, frozenCandidateContentHash,
   observeOwnedProviderProcesses, verifyCapturedRunnerOutcome,
   setupWorkspaceClone, parseAcceptanceArguments, verifyRuntimeDatabaseEvidence,
+  verifyPersistedScenarioPlanFields,
 } from './verify-existing-project-acceptance.mjs';
 
 function git(root, args) {
@@ -21,6 +22,45 @@ function git(root, args) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout.trim();
 }
+
+const persistedPlanFixture = () => ({
+  kind: 'defect', title: 'Fix lexical constructor term normalization in AgentOS',
+  objective: 'Preserve string terms and prove inherited-key behavior.',
+  scope: [
+    'agentos/apps/server/src/services/MemoryLexicalIndex.ts',
+    'agentos/apps/server/src/services/MemoryLexicalIndex.prototype-acceptance.test.ts',
+  ],
+  acceptanceCommands: ['node --test baseline.mjs', 'node --test acceptance.mjs'],
+});
+
+test('persisted real plan accepts the API sorted scope without changing frozen plan bytes', () => {
+  const plan = persistedPlanFixture();
+  const frozenPlan = JSON.stringify(plan);
+  const task = { ...plan, scope: [...plan.scope].sort() };
+  assert.notDeepEqual(task.scope, plan.scope);
+  assert.doesNotThrow(() => verifyPersistedScenarioPlanFields(plan, task));
+  assert.equal(JSON.stringify(plan), frozenPlan);
+});
+
+test('persisted real plan rejects scope drift, duplicate paths and malformed identity fields', () => {
+  const plan = persistedPlanFixture();
+  for (const scope of [[], [plan.scope[0]], [...plan.scope, 'agentos/other.ts'],
+    [plan.scope[0], plan.scope[0]], [plan.scope[0].toUpperCase(), plan.scope[1]], null]) {
+    assert.throws(() => verifyPersistedScenarioPlanFields(plan, { ...plan, scope }), /real plan fields differ/u);
+  }
+  for (const field of ['title', 'objective']) {
+    assert.throws(() => verifyPersistedScenarioPlanFields(plan, { ...plan, [field]: plan[field] + ' changed' }), /real plan fields differ/u);
+  }
+  assert.throws(() => verifyPersistedScenarioPlanFields({ ...plan, scope: [plan.scope[0], plan.scope[0]] }, plan), /real plan fields differ/u);
+});
+
+test('persisted real plan keeps acceptance command bytes and order authoritative', () => {
+  const plan = persistedPlanFixture();
+  for (const acceptanceCommands of [[...plan.acceptanceCommands].reverse(),
+    [...plan.acceptanceCommands, 'node --test extra.mjs'], ['node --test changed.mjs'], undefined]) {
+    assert.throws(() => verifyPersistedScenarioPlanFields(plan, { ...plan, acceptanceCommands }), /acceptance commands differ/u);
+  }
+});
 
 test('captured exit binds the receipt actually passed for verification', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-external-exit-'));
