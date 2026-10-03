@@ -121,39 +121,32 @@ export function GroupInteractionRecoveryPanel(props: {
       setError('当前浏览器不支持跨标签页安全锁；为避免同一恢复意图重复启动 Provider，本次没有提交。');
       return;
     }
-    let intent = pendingIntentRef.current ?? readStoredIntent(key, identityKey, context);
-    if (intent) {
-      pendingIntentRef.current = intent;
-      setPendingIntent(intent);
-      setContent(intent.content);
-    }
-    if (intent?.phase === 'responding' || intent?.phase === 'dispatched') {
-      setError('新轮次的启动请求已经发送或结果未确认；为避免重复调用 Provider，系统不会再次启动。');
-      return;
-    }
-    if (!intent) {
-      const normalized = content.trim();
-      if (!normalized) return;
-      const request = groupInteractionRecoveryRequest(context, normalized);
-      intent = {
-        identityKey,
-        context,
-        content: normalized,
-        idempotencyKey: request.headers['Idempotency-Key'],
-        phase: 'prepared',
-      };
-      try {
-        intent = updateIntent(intent);
-      } catch {
-        setError('无法保存恢复意图；为避免丢失幂等键，本次没有请求服务器。');
-        return;
-      }
-    }
-
     busyRef.current = true;
     setBusy(true);
     setError('');
     try {
+      const lockName = `agentos-group-recovery:${key}`;
+      let intent = await navigator.locks.request(lockName, (): StoredRecoveryIntent | null => {
+        const stored = readStoredIntent(key, identityKey, context);
+        if (stored) {
+          pendingIntentRef.current = stored;
+          setPendingIntent(stored);
+          setContent(stored.content);
+          if (stored.phase === 'responding' || stored.phase === 'dispatched') {
+            setError('新轮次的启动请求已经发送或结果未确认；为避免重复调用 Provider，系统不会再次启动。');
+            return null;
+          }
+          return stored;
+        }
+        const normalized = content.trim();
+        if (!normalized) return null;
+        const request = groupInteractionRecoveryRequest(context, normalized);
+        return updateIntent({
+          identityKey, context, content: normalized,
+          idempotencyKey: request.headers['Idempotency-Key'], phase: 'prepared',
+        });
+      });
+      if (!intent) return;
       let result = intent.result;
       if (!result) {
         const request = groupInteractionRecoveryRequest(context, intent.content);
@@ -168,11 +161,16 @@ export function GroupInteractionRecoveryPanel(props: {
           throw new Error('恢复响应缺少新轮次或源消息；意图已保留，未启动 Provider。');
         }
         result = payload;
-        intent = updateIntent({ ...intent, phase: 'ready', result });
       }
 
       const dispatchRecoveredResult = async () => {
-        const current = readStoredIntent(key, identityKey, context);
+        let current = readStoredIntent(key, identityKey, context);
+        // A delayed/replayed response must merge its result under the same
+        // lock as dispatch. A ready write outside this lock can overwrite a
+        // different tab's responding/dispatched fence before lock acquisition.
+        if (current?.phase === 'prepared') {
+          current = updateIntent({ ...current, phase: 'ready', result });
+        }
         if (!current || current.phase !== 'ready') {
           setError('该恢复意图已由另一个页面实例启动或锁定；为避免重复调用 Provider，本页不会再次启动。');
           return;
@@ -221,7 +219,7 @@ export function GroupInteractionRecoveryPanel(props: {
       // The durable phase remains the crash/reload fence; the Web Lock closes
       // the cross-tab race where two pages read `ready` before either writes
       // `responding`. Without Web Locks, submit exits before making requests.
-      await navigator.locks.request(`agentos-group-recovery:${key}`, dispatchRecoveredResult);
+      await navigator.locks.request(lockName, dispatchRecoveredResult);
       if (pendingIntentRef.current?.phase === 'prepared') {
         setError('恢复结果已收到，但恢复意图状态无法确认；请勿重复启动 Provider。');
       } else {

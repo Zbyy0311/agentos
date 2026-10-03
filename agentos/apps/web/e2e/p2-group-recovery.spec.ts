@@ -457,7 +457,8 @@ test('a pending recovery CAS cannot dispatch after switching away from Group A',
   await expect(page.getByText('只属于 A 的续办指令')).toHaveCount(0);
 });
 
-test('two open tabs for the same recovery intent create only one respond call', async ({ page }, testInfo) => {
+for (const responseOrder of ['simultaneous', 'delayed-replay'] as const) {
+test(`two open tabs create only one respond call with ${responseOrder} recovery responses`, async ({ page }, testInfo) => {
   const model = fixture();
   model.recoveryEntered = deferred<void>();
   model.deferFirstRecoveryResponse = deferred<void>();
@@ -484,6 +485,10 @@ test('two open tabs for the same recovery intent create only one respond call', 
   expect(model.requests.filter(item => item.method === 'POST' && item.path.endsWith('/respond'))).toHaveLength(0);
 
   model.deferFirstRecoveryResponse.resolve();
+  if (responseOrder === 'delayed-replay') {
+    await expect.poll(() => model.requests.filter(item => item.method === 'POST' && item.path.endsWith('/respond')).length).toBe(1);
+    await expect.poll(() => model.providerStartCount).toBe(1);
+  }
   model.deferReplayRecoveryResponse.resolve();
   await expect.poll(() => model.requests.filter(item => item.method === 'POST' && item.path.endsWith('/respond')).length).toBe(1);
   expect(model.providerStartCount).toBe(1);
@@ -505,6 +510,7 @@ test('two open tabs for the same recovery intent create only one respond call', 
   expect(model.duplicateOwnerRefusalCount).toBe(2);
   await secondTab.close();
 });
+}
 
 test('an uncertain respond stays locked after reload and is never blindly repeated', async ({ page }, testInfo) => {
   const model = fixture();
