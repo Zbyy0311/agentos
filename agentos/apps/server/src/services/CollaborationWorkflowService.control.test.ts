@@ -863,7 +863,7 @@ test('P2 startup resumes a running collaboration task after its queued child Sta
 
     reopened = new SqliteStore(fx.dataRoot);
     const activeStore = reopened;
-    const production = productionServiceFor({ root: fx.root, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
+    const production = productionServiceFor({ root: fx.root, dataRoot: fx.dataRoot, store: activeStore }, 'true', async (workspaceId, resumedRunId) => {
       dispatches.push(resumedRunId);
       admitFollowerToApproval(activeStore, workspaceId, resumedRunId);
     });

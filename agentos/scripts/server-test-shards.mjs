@@ -17,7 +17,12 @@ export function serverTestArguments(files, perTestTimeoutMs = SERVER_TEST_CASE_T
   if (!Array.isArray(files) || !files.length || !Number.isSafeInteger(perTestTimeoutMs) || perTestTimeoutMs < 1) {
     throw new Error('Invalid bounded server test command');
   }
-  return ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap',
+  // Each inventory file already owns a separate OS child. Disable the nested
+  // test-runner file process so Node 22 does not apply the case timeout to
+  // the accumulated duration of the whole file.
+  const isolationArgument = Number(process.versions.node.split('.')[0]) >= 23
+    ? '--test-isolation=none' : '--experimental-test-isolation=none';
+  return ['--import', 'tsx', '--test', isolationArgument, '--test-concurrency=1', '--test-reporter=tap',
     `--test-timeout=${perTestTimeoutMs}`, ...files];
 }
 
@@ -138,8 +143,15 @@ export async function runTestFile(file, {
       done({ rawExitCode, signal });
     });
     timeoutHandle = setTimeout(() => {
-      if (child.exitCode !== null || child.signalCode !== null) return;
       timedOut = true;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        // An exited root can still have pipe handles inherited by a child.
+        // Fail the file without killing a PID that could already be reused.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        done({ rawExitCode: child.exitCode, signal: child.signalCode });
+        return;
+      }
       terminateOwnedProcessTree(child);
     }, perFileTimeoutMs);
   });
