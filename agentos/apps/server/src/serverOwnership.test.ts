@@ -149,8 +149,6 @@ function observeR39ParentProbes(): {
   const observations: Array<{
     socket: net.Socket;
     timer: NodeJS.Timeout;
-    startedAt: number;
-    evidence: R39CandidateEvidence;
     onConnect: () => void;
     onData: (chunk: Buffer) => void;
     onEnd: () => void;
@@ -209,7 +207,7 @@ function observeR39ParentProbes(): {
     socket.once('end', onEnd);
     socket.once('error', onError);
     attempts.push(evidence);
-    observations.push({ socket, timer, startedAt, evidence, onConnect, onData, onEnd, onError });
+    observations.push({ socket, timer, onConnect, onData, onEnd, onError });
     return socket;
   }) as typeof net.connect;
 
@@ -219,7 +217,6 @@ function observeR39ParentProbes(): {
       mutableNet.connect = originalConnect;
       for (const observation of observations) {
         clearTimeout(observation.timer);
-        observation.evidence.elapsedMs = Date.now() - observation.startedAt;
         observation.socket.removeListener('connect', observation.onConnect);
         observation.socket.removeListener('data', observation.onData);
         observation.socket.removeListener('end', observation.onEnd);
@@ -668,8 +665,8 @@ test('R38 loopback ownership is released automatically after a subprocess crash'
   let phase = 'child-acquire';
   try {
     const outcome = await waitForOutcomeLine(spawned);
-    r38Timeline.acquiredAt = Date.now();
     assert.ok(outcome.startsWith('ACQUIRED tcp://127.0.0.1:'), `child should acquire loopback ownership: ${outcome}`);
+    r38Timeline.acquiredAt = Date.now();
 
     phase = 'post-kill';
     r38Timeline.sigkillAt = Date.now();
