@@ -86,9 +86,10 @@ function describeWindowsProcesses(pids: readonly number[]): readonly WindowsProc
   const wanted = '@(' + [...new Set(pids)].join(',') + ')';
   const script = [
     '$wanted = ' + wanted,
-    'Get-CimInstance Win32_Process | Where-Object { $wanted -contains [int]$_.ProcessId -or $wanted -contains [int]$_.ParentProcessId } | ForEach-Object {',
+    '$observed = @(Get-CimInstance Win32_Process | Where-Object { $wanted -contains [int]$_.ProcessId -or $wanted -contains [int]$_.ParentProcessId } | ForEach-Object {',
     '  [pscustomobject]@{ pid = [int]$_.ProcessId; parentPid = [int]$_.ParentProcessId; name = $_.Name; creationTimeUtc = $_.CreationDate.ToUniversalTime().ToString("o"); commandLine = $_.CommandLine }',
-    '} | ConvertTo-Json -Compress',
+    '})',
+    '[pscustomobject]@{ observerPid = [int]$PID; processes = $observed } | ConvertTo-Json -Depth 3 -Compress',
   ].join('; ');
   try {
     const output = execFileSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
@@ -97,11 +98,21 @@ function describeWindowsProcesses(pids: readonly number[]): readonly WindowsProc
       encoding: 'utf8',
     }).trim();
     if (output.length === 0) return [];
-    const parsed = JSON.parse(output) as WindowsProcessObservation | WindowsProcessObservation[];
-    return Array.isArray(parsed) ? parsed : [parsed];
+    const parsed = JSON.parse(output) as { observerPid: number; processes: WindowsProcessObservation[] };
+    return excludeSnapshotObserver(parsed.processes, parsed.observerPid);
   } catch (error) {
     return 'identity-query-failed: ' + (error instanceof Error ? error.message : String(error));
   }
+}
+
+function excludeSnapshotObserver(
+  observed: readonly WindowsProcessObservation[],
+  observerPid: number,
+): readonly WindowsProcessObservation[] {
+  // This query can reuse an exited provider's PID and see itself in CIM.
+  // It exits before the native probes run, so its missing birth identity
+  // must not become an owned survivor. Other unreadable PIDs still fail closed.
+  return observed.filter(item => item.pid !== observerPid);
 }
 
 /** AgentOS Job server helper processes owned by this Vitest worker. */
@@ -283,6 +294,57 @@ class ExitObservationController implements ProcessTreeController {
 }
 
 describe('NodeProcessDriver', () => {
+  it('W12 snapshot excludes its own observer after tracked PID reuse', () => {
+    const record: AuditRecord = {
+      pid: 3_524,
+      ownership: 'driver-owned-job',
+      trackedAtMs: Date.parse('2026-10-08T08:41:30.076Z'),
+      origin: 'snapshot-observer-reuse-fixture',
+      nativeBirthIdentityAtTrack: 'win32:filetime:134359224900710306',
+    };
+    const observer: WindowsProcessObservation = {
+      pid: record.pid,
+      parentPid: 8_472,
+      name: 'powershell.exe',
+      creationTimeUtc: '2026-10-08T08:41:44.1585980Z',
+      commandLine: 'powershell.exe -Command Get-CimInstance Win32_Process',
+      nativeBirthIdentity: null,
+    };
+    // The original audit counted its already-exited query as a survivor.
+    expect(findTrackedSurvivors([record], [observer])).toEqual([record]);
+    expect(findTrackedSurvivors([record], excludeSnapshotObserver([observer], observer.pid))).toEqual([]);
+  });
+
+  it('W12 snapshot retains unreadable processes sharing the observer parent PID', () => {
+    const record: AuditRecord = {
+      pid: 6_020,
+      ownership: 'test-owned-control',
+      trackedAtMs: Date.now(),
+      origin: 'observer-parent-reuse-fixture',
+      nativeBirthIdentityAtTrack: 'win32:filetime:134359224900710306',
+    };
+    const survivor: WindowsProcessObservation = {
+      pid: record.pid,
+      parentPid: 3_524,
+      name: 'conhost.exe',
+      creationTimeUtc: '2026-10-08T08:41:30.0800000Z',
+      commandLine: null,
+      nativeBirthIdentity: null,
+    };
+    // Windows retains the original numeric parent PID even after reuse.
+    // Excluding all children of the new query would hide this real survivor.
+    expect(findTrackedSurvivors([record], excludeSnapshotObserver([survivor], survivor.parentPid))).toEqual([record]);
+  });
+
+  it.skipIf(process.platform !== 'win32')('W12 real snapshot excludes the CIM query observing its parent', () => {
+    const observed = describeWindowsProcesses([process.pid]);
+    if (typeof observed === 'string') throw new Error(observed);
+    expect(observed.some(item => item.pid === process.pid)).toBe(true);
+    expect(observed.some(item => item.parentPid === process.pid
+      && item.name.toLowerCase() === 'powershell.exe'
+      && (item.commandLine ?? '').includes('$observed = @(Get-CimInstance Win32_Process'))).toBe(false);
+  });
+
   it('W12 identity audit distinguishes PID reuse and preserves same-instance survivors', () => {
     const trackedIdentity: WindowsProcessObservation = {
       pid: 73_421,
