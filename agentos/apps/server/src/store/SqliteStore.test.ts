@@ -10,6 +10,7 @@ import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createEntityId } from './Identity.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import type { MigrationContext } from '../migrations/types.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
@@ -50,12 +51,19 @@ test('new Workspace assigns kimicode provider type to Kimi agent', () => {
     });
     const db = store.getDatabase();
     const pcRows = db.prepare(
-      'SELECT provider_type FROM provider_configurations WHERE workspace_id = ?',
-    ).all(created.id) as Array<{ provider_type: string }>;
+      'SELECT provider_type, adapter_id FROM provider_configurations WHERE workspace_id = ?',
+    ).all(created.id) as Array<{ provider_type: string; adapter_id: string }>;
     const kimiConfig = pcRows.find(pc => pc.provider_type === 'kimicode');
     assert.ok(kimiConfig, 'Kimi agent should get provider_type kimicode, not custom-cli');
+    assert.equal(kimiConfig.adapter_id, 'builtin.kimicode');
     const legacyConfig = pcRows.find(pc => pc.provider_type === 'custom-cli');
     assert.equal(legacyConfig, undefined, 'No agent should fall through to custom-cli for known roles');
+
+    const profiles = store.listAgentProfiles(created.id);
+    assert.equal(profiles.find(agent => agent.id === 'codex')?.roleTitle, '首席协作顾问');
+    assert.equal(profiles.find(agent => agent.id === 'kimi')?.roleTitle, '分析与执行顾问');
+    assert.equal(profiles.find(agent => agent.id === 'opencode')?.roleTitle, '独立评审顾问');
+    assert.match(profiles.find(agent => agent.id === 'kimi')?.systemPrompt ?? '', /用户真实需求/);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -91,6 +99,58 @@ test('Workspace.agents projected fields match Provider Configuration after updat
     assert.equal(codexAgent.cliCommand, 'ws-projected-cli');
     assert.deepEqual(codexAgent.cliArgs, ['--from-provider']);
     assert.equal(codexAgent.model, 'ws-projected-model');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LITE-04-004 switching a Provider preserves the Agent identity and durable History', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('Provider switch history', join(root, 'provider-switch-history'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const conversations = store.conversationRepository();
+    const conversationId = createEntityId('conversation');
+    const messageId = createEntityId('message');
+    const turnId = createEntityId('turn');
+    const now = '2026-09-16T00:00:00.000Z';
+    conversations.createConversation({
+      id: conversationId, workspaceId: created.id, kind: 'direct', title: 'Provider switch', createdAt: now,
+    });
+    conversations.addMember({
+      id: createEntityId('conversation'), conversationId, workspaceId: created.id,
+      subjectType: 'agent', subjectId: 'codex', displayNameSnapshot: 'Codex',
+      role: 'participant', replyMode: 'always', joinedAt: now,
+    });
+    conversations.appendMessage({
+      id: messageId, conversationId, workspaceId: created.id, senderType: 'agent', senderAgentId: 'codex',
+      kind: 'text', status: 'final', content: 'history survives provider switch', createdAt: now,
+    });
+    store.agentTurnRepository().createTurn({
+      id: turnId, conversationId, workspaceId: created.id, agentId: 'codex', sourceMessageId: messageId, createdAt: now,
+    });
+
+    const before = store.agentHistoryService().history(created.id, 'codex')
+      .filter(entry => entry.id === conversationId || entry.id === messageId || entry.id === turnId)
+      .map(entry => `${entry.kind}:${entry.id}`);
+    const current = store.listAgentProfiles(created.id).find(agent => agent.id === 'codex');
+    assert.ok(current);
+    store.updateAgentProfile(created.id, 'codex', {
+      name: current.name, provider: 'opencode', model: 'switched-model', thinkingEffort: current.thinkingEffort,
+      roleTitle: current.roleTitle, systemPrompt: current.systemPrompt, permissions: current.permissions, enabled: current.enabled,
+    });
+    const after = store.agentHistoryService().history(created.id, 'codex')
+      .filter(entry => entry.id === conversationId || entry.id === messageId || entry.id === turnId)
+      .map(entry => `${entry.kind}:${entry.id}`);
+
+    assert.deepEqual(after, before, 'Provider selection must not rewrite or hide Agent history');
+    assert.equal(store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')?.id, 'codex');
+    assert.equal(store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')?.provider, 'opencode');
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -415,7 +475,9 @@ test('records the tombstone schema through MigrationRunner and keeps it after re
     const migrations = store.getDatabase().prepare(
       'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
     ).all() as Array<{ migration_id: string }>;
-    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
+    const appliedMigrationIds = migrations.map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
     store.deleteWorkspace('workspace-a');
     store.close();
     store = new SqliteStore(root);
@@ -784,6 +846,14 @@ test('migrates legacy executions without reducing historical row counts', () => 
     database.exec('PRAGMA foreign_keys = OFF');
     database.exec('DELETE FROM run_steps');
     database.exec('DELETE FROM agent_runs');
+    // Drop the 016 tables that hold FK references INTO agent_runs before dropping
+    // it; the test then rebuilds a legacy agent_runs WITHOUT the composite
+    // (id, workspace_id) index those FKs require. Leaving them behind would
+    // surface a foreign key mismatch at the next startup integrity check.
+    database.exec('DELETE FROM workspace_git_observations');
+    database.exec('DELETE FROM workspace_admissions');
+    database.exec('DROP TABLE IF EXISTS workspace_git_observations');
+    database.exec('DROP TABLE IF EXISTS workspace_admissions');
     database.exec('DROP TABLE run_steps');
     database.exec('DROP TABLE agent_runs');
     database.exec(`CREATE TABLE agent_runs (

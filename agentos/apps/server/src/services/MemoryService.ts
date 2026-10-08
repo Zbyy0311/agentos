@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promis
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import type { MemoryRecord, MemoryStatus, MemoryType } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
 
 const TYPE_DIRECTORIES: Record<MemoryType, string> = {
   overview: 'overview', convention: 'conventions', decision: 'decisions', experience: 'experiences',
@@ -45,12 +46,15 @@ export class MemoryService {
   async get(workspaceId: string, workspaceRoot: string, memoryId: string): Promise<MemoryDetails | undefined> {
     const memory = this.store.getMemory(workspaceId, memoryId);
     if (!memory) return undefined;
-    return { ...memory, content: await readMemoryFile(workspaceRoot, memory.contentPath) };
+    const content = await readMemoryFile(workspaceRoot, memory.contentPath);
+    if (!areMemoryTextFieldsSafe([memory.title, memory.summary, content, ...memory.tags])) return undefined;
+    return { ...memory, content };
   }
 
   async create(input: MemoryInput): Promise<MemoryDetails> {
     assertMemoryEnabled(input.memoryEnabled);
     const normalized = normalizeMemoryInput(input);
+    assertMemoryTextSafety(normalized);
     if (this.store.listMemories(input.workspaceId, { status: 'all', limit: 100 }).some(memory => memory.title.toLocaleLowerCase() === normalized.title.toLocaleLowerCase())) {
       throw new Error('Memory title already exists');
     }
@@ -79,6 +83,7 @@ export class MemoryService {
       content: input.content ?? currentContent, tags: input.tags ?? current.tags, relatedFiles: input.relatedFiles ?? current.relatedFiles,
       sourceRunIds: input.sourceRunIds ?? current.sourceRunIds, importance: input.importance ?? current.importance, confidence: input.confidence ?? current.confidence,
     });
+    assertMemoryTextSafety(normalized);
     if (this.store.listMemories(workspaceId, { status: 'all', limit: 100 }).some(memory => memory.id !== memoryId && memory.title.toLocaleLowerCase() === normalized.title.toLocaleLowerCase())) {
       throw new Error('Memory title already exists');
     }
@@ -172,4 +177,10 @@ async function readMemoryFile(workspaceRoot: string, contentPath: string): Promi
 
 function assertMemoryEnabled(enabled: boolean): void {
   if (!enabled) throw new Error('Workspace memory is disabled');
+}
+
+function assertMemoryTextSafety(input: Pick<MemoryRecord, 'title' | 'summary' | 'tags'> & { content: string }): void {
+  if (!areMemoryTextFieldsSafe([input.title, input.summary, input.content, ...input.tags])) {
+    throw new Error('Memory content is unsafe to persist');
+  }
 }

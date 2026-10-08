@@ -1,0 +1,1322 @@
+{
+  "generatedAt": "2026-09-30T20:08:28.836Z",
+  "repository": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos",
+  "branch": "codex/collaboration-workflow-closure",
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "fingerprint": {
+    "method": "Sorted dirty and untracked non-doc files relative to this agentos checkout plus HEAD for unchanged tracked content; not a whole-disk hash",
+    "files": [
+      {
+        "path": ".gitignore",
+        "sha256": "3f47ddf6977ac3dfa73d0153c39081e1b4c1ba6c1e2aa75f3fd91775fc4dc67b"
+      },
+      {
+        "path": "apps/server/src/index.ts",
+        "sha256": "a9bbd52629461587eefd58fff833be60fdf6c7f278d8af690fffa7dcd960670c"
+      },
+      {
+        "path": "apps/server/src/managers/WorkspaceManager.ts",
+        "sha256": "83ed45f9fb81790ef9f0c73cef0de21f508519d6c93ec568c6c61d42a9eb291e"
+      },
+      {
+        "path": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+        "sha256": "9f70204f912d20515a5f1827c7f402445589ab59971e925c7f96ac8e22b156e5"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/integration.test.ts",
+        "sha256": "eb872156a1daf890da942978daf36c32966239f781d7abf9eef52c2eaa99ed68"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+        "sha256": "274a7a9b97984a9ecfbd217819b44cad5e1ea1ecf631302b1a2a18de6bec5d4b"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+        "sha256": "81dd828e4087604683dcc04fe50f2a556c2729ffa9615d077670dac4e3f18c02"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-6-idempotency-schema.test.ts",
+        "sha256": "309c3fc0148a42acf868b280cbfad12605f67aac8629fcebbfe11aac8ee189bf"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-8-p3-migration-restore-rehearsal.test.ts",
+        "sha256": "f5d10d0af6fdd7ea574690d749f127f4d5ba98133773da8db19264d4b6aec3b0"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+        "sha256": "3c01bfa8bc1adf2cf87d99e0717b20ad391674116e5f93bc256db03a54808393"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+        "sha256": "52b4533b373b5d6d214e0b84fc61a68dd98e7326e1e62da01366f60d03983492"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "sha256": "512834ebd3c41bf4278255226e623ca023ad5b42c232433da96449c2960105ab"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-040-collaboration-application-admission.test.ts",
+        "sha256": "7623a5e77100dd75ae11d6aa14ddb8be18d3e6473523187848a8cdfbcbba8b1f"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-041-group-execution-ownership.test.ts",
+        "sha256": "ce14a1dad31b81aaeb0d7847c678dc350755378cd79d16afda0dae64892e7eee"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration.test.ts",
+        "sha256": "3f567a86e967dfb6a54b3b04ba0fcf87ed7517a93ab9d42098b5ecce23e7b1bd"
+      },
+      {
+        "path": "apps/server/src/migrations/default-registry.ts",
+        "sha256": "374b819effa5e2ee4220123866313c684bb941ed88b7622c2e7661ae8f753dc3"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/035-collaboration-workflow.ts",
+        "sha256": "0f7778318d4ab38dcb26e938793871555da887efec0791ac97fc7fb1d8a5cd0d"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/036-group-discussion-idempotency.ts",
+        "sha256": "9db4bd5d306b23a9b8b545b66cf41aa778da125066adbfd0e52e7a91ebfa627b"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/037-canonical-message-attachments.ts",
+        "sha256": "4906d761fe806e57cab6d8b9feab1e910b2391d15147f4e3c2a2653a80dafda9"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/038-collaboration-candidate-evidence.ts",
+        "sha256": "18435fd945de333f23b66d0fa3cf70dd7bc24927764086cb991e08b670ebef1a"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/039-collaboration-control.ts",
+        "sha256": "aaf7410f69c5883f34b9754f31b9224c7f44a36ec92aee0e4ee2a48a67d3dc59"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/040-collaboration-application-admission.ts",
+        "sha256": "743b272f30a9986d8bd46fced56f16750bb825ad913edd5f472be7840c2bbffd"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/041-group-execution-ownership.ts",
+        "sha256": "6fa082de30dbcc8672417d7c7f268f428f0a652c5f386ec2e25a1dcbd31760b0"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.control.test.ts",
+        "sha256": "57e5561d39d85164c84313c06804d2d7f754d568746e5b9d531db5e596c8d3dd"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.ts",
+        "sha256": "d10b5b89c2a2c7fea763d3502a982c6a6cee95e8045510ea66ef205e02c69b75"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.group.test.ts",
+        "sha256": "bccf2b15d9f066fadecc0a35203c633132d1521dd42b7723d3fde610cc02fd0f"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.test.ts",
+        "sha256": "0a087aa49a94fb474f650d4250c9d16be79b58b120a37b154e7209ad848dcebf"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.ts",
+        "sha256": "1d0c72ecb7688117cdc157e5b3a1eccc35342af48c80d39a2762d2b9ad5baf41"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.test.ts",
+        "sha256": "a825ceaf383758e9766b80f631172a2e219ed56bd048d2e46b0fab419f4e7e97"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.ts",
+        "sha256": "f21d8cbab9dcaf8cf31cb14527b7ccca461789b182390d9a416aac9b693c44ac"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.test.ts",
+        "sha256": "09815d5397ed630ad4de4a9af279096c1078c8ae421b8b2ffb31dd0f33766b26"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.ts",
+        "sha256": "4201f841aa30ac2e0a4999a68c67835ad3e81479f90ffe426df453e72ca3b812"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.test.ts",
+        "sha256": "10e4ceb9aced955c3ee70342e67e11491dd8e308d8a8034f789d33802c79cc99"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.ts",
+        "sha256": "84fd2b54c9f96ef2ceb6f9154d729420ffe0ebb4b316ad2eb30af82c4d6cbcc5"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.test.ts",
+        "sha256": "287f039851f7873ebe32c06f606115eb064f7a0e9ec4b92ebc4dd0c1f5439b46"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.ts",
+        "sha256": "8812955936d9c2fa81aaea9e15530f47863b6182911905638f9c93303887a9ac"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.test.ts",
+        "sha256": "be3c19dee419e034b4a2e221d5d5c45a130dca440f55aa3615e25cac1015b709"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.ts",
+        "sha256": "317e582a40c46cafcd2e6cf5d5da1265d82a191037f60feb7f3cd5c9aa946acd"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.test.ts",
+        "sha256": "92fa475fe8c90f96b12c9f3d39432cb23e8697656e0f4627e5da66096feca499"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.ts",
+        "sha256": "60ffee25520a245701d840ef982533c4ce69e8336c6643942af761ef0a35195e"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.test.ts",
+        "sha256": "b3d9428f0a49d53c6be57faac88ee9358bce5d9c7b435eb759cfa51886a78ccd"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.ts",
+        "sha256": "b6db1bab87d783e23b3cb6c566f7aa4c7da604ee6f2f7e7ecf0b6aad7d3d38e0"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationSnapshotGitContext.ts",
+        "sha256": "a92818d5131f2da55b9b863876c4b1914df0856c5e89bd8285f4c9c31ddb3f26"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationStageHooks.ts",
+        "sha256": "30f60ec12276b22d5c49052db8979c657958356f85e74fb906f9c988064bf5c7"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.control.test.ts",
+        "sha256": "093c6080ca1d2010fa6c88d3b00db574e6dd9cf9a87edd29b036d935877f559c"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.ts",
+        "sha256": "44ccb3fb9f77df553cd77e9e2ec0708ac33e6f428380320cb70185d11448c0f0"
+      },
+      {
+        "path": "apps/server/src/services/ConversationAttachmentService.ts",
+        "sha256": "eaa61c9c0c33ad2f60cdd5f692b31bc49a84a818a23402abca1eeeec67dd9c32"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "sha256": "50517d501ed5518d74d07a1054730a96e79db17310d59d5deb814e20c10cc7d1"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.ts",
+        "sha256": "738f13ad6490d5c581fb19f2edeb3fa88d7f694b7592c66fae17a6f762f5169f"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.test.ts",
+        "sha256": "691708810d57eb4d25f7c06497b3dada1f58bdc9fb6336f45629c7b7bc91a820"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.ts",
+        "sha256": "5a0d2ea95e4a23bde064ad025c14f4840417aca8968af72b394b559db1d2ccdb"
+      },
+      {
+        "path": "apps/server/src/services/M2CoreAcceptance.test.ts",
+        "sha256": "dd95f3d6e6d6aab77b7e42d8196f9afb5db81980e7a35d08cf9b76d6051356a8"
+      },
+      {
+        "path": "apps/server/src/services/SnapshotService.ts",
+        "sha256": "784b5af9f7bd6aa8ea4a6f7ad41c29792457994cf520e6b4d682c2e25a52648a"
+      },
+      {
+        "path": "apps/server/src/services/TaskRunService.test.ts",
+        "sha256": "c5bab252c779b1729fb478a00914f64a68c9d7cff7f0b0ca5aa1160b3ce1ab4a"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.test.ts",
+        "sha256": "1088b8a8e0708dbd8b6eaa8cbb35811eca33d6888ebf150d1f45219a173d527e"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.ts",
+        "sha256": "e8dbfbcee59bdd27285097ba399efc274a8542b9b23d3ce2a08f236a03606030"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "sha256": "eb0a5a092dbcdfe1f290c0fd423af8169bad901b91c94a3e208cfa3339a4fdf3"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.ts",
+        "sha256": "bb7a445227f6ce7f67a4d081d278fc6e6ff84644106b2a3f5fe3b57f99fdccda"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.test.ts",
+        "sha256": "26109ae9fc3fea751ff01f0484275836798340784f3c6c7fd6598d8aa8b297a8"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.ts",
+        "sha256": "a6fbfbf4150dc661fc0c2d37a1842e4eb10d4feb2fd5e791d28d3bb44dc1b28d"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceCompatibilityMigrationService.ts",
+        "sha256": "488917a734ce8594272d62fd93e1cb0ca7ff454a48edb57d6cc8cf5e4e9cbbd2"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.controlled.test.ts",
+        "sha256": "0922852bd210832941297726bfbb09725188b3eb4fd2142c815eb80a3197266b"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.test.ts",
+        "sha256": "3ab3604c1ef3c50ea5aaaeb1752bce83a2ad848b86ecd979b02e63bcca5707f8"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.ts",
+        "sha256": "a7f0037eb1ae757cc59de804919c52a6bea4a5fcd3d038edabeb996c177989a2"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "sha256": "6ec8b58346449cc60bb939c3ce1f7c626fe1145ef4f38ae864d33af2ccf2095f"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+        "sha256": "018b9e741e306e45cf57ead7eaa1aacf71bbb7cc18d494b3f91e085a5bb0223c"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "sha256": "5be11cbab8bd24e7705e32a90798a0ee4e665eacfdd0f07ff5fb89ce188cd1cc"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "sha256": "ab2e95fc1aeceb5126a236a9f5be4bb5133478939605b6e931c47e25e5379ffe"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationApplicationTerminalState.test.ts",
+        "sha256": "0854b3b260f71b549b71e266b4a7e62611b60e08feda5fb2b0e16bb16b837525"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationApplicationTerminalState.ts",
+        "sha256": "a3234003e1d96fc64310c06ebd8fbb46e90c93d96bf78649b5b1c6ee7c680d7e"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationControlRepository.ts",
+        "sha256": "0b02af84742d2ec25e066ef47a54d7772f03c411cb99bc4ac09bd233feef08e6"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.test.ts",
+        "sha256": "5c5737c366e9f5ca2d28f6585e674ff55417edadc8522446ad3a60c959c90ece"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.ts",
+        "sha256": "9f8eeaaac0093dc1498a9b11200b67480acbbaf0b8c0c26da98b50da974e69ea"
+      },
+      {
+        "path": "apps/server/src/store/ConversationRepository.ts",
+        "sha256": "06d2bf0b9e2c3ab47654eff6d72e36401f6e2839a8d978300df640a97c741788"
+      },
+      {
+        "path": "apps/server/src/store/GroupInteractionRepository.ts",
+        "sha256": "dcfcdafdca5dbda4cb38d6f73b702067267832831a57526ab8d5d6dc752b6986"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.test.ts",
+        "sha256": "98c727cfa5f95fe68a0e0d21a956605aa10e5e284f8f89002d51c256cade6491"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.ts",
+        "sha256": "695653cc093af010e955f7b57de2ecc71e6ff02f805c8b490dd2d185357cd6f0"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.test.ts",
+        "sha256": "d284eef96358a832fb2a650099a98313bf9b11a73833f65aa0c2e5ee123f2e94"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.ts",
+        "sha256": "ff2def92b1ec190e2fb9d23dcdd9798793fb5fa56f5b5a38fc506b5c42b1ed4c"
+      },
+      {
+        "path": "apps/web/e2e/collaboration-workbench.spec.ts",
+        "sha256": "7e1778816b9dc5e5d90700dc002dd2ba487dea9d77840bf19859b62fb02f2fe2"
+      },
+      {
+        "path": "apps/web/e2e/workspace-identity.spec.ts",
+        "sha256": "dd154fd631c67b66d935a952834fc27afc8617860361a5d7461e344569fbb2bc"
+      },
+      {
+        "path": "apps/web/playwright.phase-e.config.ts",
+        "sha256": "55e905dc017ff59922a38a2ea44f31603bc61c03488c81a827f5039a9a653a25"
+      },
+      {
+        "path": "apps/web/src/app/globals.css",
+        "sha256": "ca61580764b40f3770f6c6aa5a5fd40932b11c80bbca64ebea090f508cee73ec"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/page.tsx",
+        "sha256": "d7e8f53c3d0a9c1420acd779e89a265ac6187902d44e851d25ff246cb6e74d0b"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/runtime/page.tsx",
+        "sha256": "8f51d771e4ac667ee26ef884b6ea25ee03b9fd1cdc06ab4171ff344caf42c04b"
+      },
+      {
+        "path": "apps/web/src/app/workspace/pageIntegration.test.ts",
+        "sha256": "075ab640cfcb4991609c47e634822e8f6552a4a526ecd52be30720b791093bd6"
+      },
+      {
+        "path": "apps/web/src/components/chat/AgentList.tsx",
+        "sha256": "54feaba5ea4b2e594f8c7173dd4be3f686fe0a9dcaf1495c90abc881de7b5e0d"
+      },
+      {
+        "path": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+        "sha256": "424156685ef679bf8fa7f4e6899dcecf723d6272a0d891eee306144b02c56ca7"
+      },
+      {
+        "path": "apps/web/src/components/chat/ChatPanel.tsx",
+        "sha256": "258eb8adc22e5038b99a6a04b2753ad0de983f2ce93f56ca860ec67d55b482c9"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskDetailsView.tsx",
+        "sha256": "d38d4db4d343348d8b830f0a5db8981a207bd3dc6a69992fa71507b90f827dfd"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskPanel.tsx",
+        "sha256": "6080cda53f92fb8611b6ec1fc96ab90535dafbbe032ad29cacf6bcd15d50b1b5"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskProgressCard.tsx",
+        "sha256": "ab839ae74124dc43c478cae47e958b3f80a80a7805c9e5aca780931fc996a31a"
+      },
+      {
+        "path": "apps/web/src/components/chat/GroupCreator.tsx",
+        "sha256": "c0d8f495856dd1028f01ddd12a38471af2b938075cf155d9336719db3ab4cfb0"
+      },
+      {
+        "path": "apps/web/src/components/chat/RunInspectorPanel.tsx",
+        "sha256": "83af3a6f0475bb83d504af7aa7b00a905d6b2fd41acb9451e4a8175343358db3"
+      },
+      {
+        "path": "apps/web/src/components/chat/RuntimeConversationCreator.tsx",
+        "sha256": "ea99ba1232e1cf0cd7bd5945b0eef464644504ea8e2284fd527eca57e6a36bee"
+      },
+      {
+        "path": "apps/web/src/components/chat/UnifiedRuntimeConversationSurface.tsx",
+        "sha256": "812c506d749efcde24deabbd6aa8bf2999ef405f52fd1f41867aa06761786a8a"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.test.ts",
+        "sha256": "43a4988b184a7a400b9d1615fdf2b4208f9fe534c4c9974f1a2d05cc85c3dcd2"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.ts",
+        "sha256": "eca95488e06ef6de09b990c01503db52728648714499f04a86d845659892935f"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.test.ts",
+        "sha256": "464f14fd0550f4012c14e4daba2756cf6b0ad01349ccb6df149974ca13a6e169"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.ts",
+        "sha256": "f71dd542187d07386c74438108d5f7def92dbc968db7913b6a6fc5bae13a6953"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.test.ts",
+        "sha256": "4060f733ecef2ad2b4a5240215b338d178cbcd5202a46d747c875184cca959aa"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.ts",
+        "sha256": "d5774be56bd29b1054da59a9a65abd2642996bd30b66f30886068bbb258f34c9"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftController.test.ts",
+        "sha256": "3db169c77f92788990e777810d794a04cfc43756694d63acc7a4bbd8f4ab22f4"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftController.ts",
+        "sha256": "6d83d5e51001fc1d46f0d8d4ae7e95b1034209fe24bdadad3c60cb479694a308"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftLifecycle.ts",
+        "sha256": "f0e2b11bc59fe538e4437f8e4dece864d8a0bb2f15f9dea03dd3c36a9febba8f"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftRepository.ts",
+        "sha256": "102af15d5652bb58649d6d594f6696430f3c21b58a8986b27b1175bc4610effa"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.test.ts",
+        "sha256": "f2b6c896dbe49e84f238681c7ca7fb31fbb2eac6d04e9a489fb4c366001b598b"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.ts",
+        "sha256": "87bc509bd527f17de9581da8d0b67cf4daca1a88ae67df33b356e908e34dc775"
+      },
+      {
+        "path": "apps/web/src/lib/directConversationClient.ts",
+        "sha256": "494f55c53602616cec7c22175f740e5208e58aa0a20ff9c156abd2355d3c7043"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.test.ts",
+        "sha256": "92657045188ed0040d41093e74bf93edf8f34820b3a3d72b17ce6495e17bfbb3"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.ts",
+        "sha256": "a01b936b94d45705080ed2d4cd6d514912b85da10d4e3b25c45d794c2674f292"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.test.ts",
+        "sha256": "5bb21c8fc285b9a741ca9f8586d454eb942b640f23e610ab53ce26d80a8adb2e"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.ts",
+        "sha256": "e0a2f87bd7476aca6b34ce5770c09eef6bdd3219ebfe433fb1310358bd1a74c5"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.test.ts",
+        "sha256": "f21203074185512263c4ae82edd6b32527594ee14b4f28cb09fbe202a174faac"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.ts",
+        "sha256": "3b86a07826e3254686e32aabfac095411d5da206bc47ffd4895b7a94d9c0b427"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.test.ts",
+        "sha256": "e9dfa77e1ef81018fd1882e4f04c4ecd1a76baf4514b69436ddb86a6bbae825c"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.ts",
+        "sha256": "68756a5040af168177d96b371dd9b850db64c017ce7bfab7ae67d47d30df8cd3"
+      },
+      {
+        "path": "apps/web/src/lib/sse.test.ts",
+        "sha256": "eabcb19e926ef287b6371e5b2addb12cb7b7414e90638c67a8f1c2be3afc1608"
+      },
+      {
+        "path": "apps/web/src/lib/sse.ts",
+        "sha256": "d2738a50d0eaa16390dcd8f0765b9bc97ec0d8efc00c628fcd27ebef2f65868e"
+      },
+      {
+        "path": "apps/web/src/lib/streamReconnect.ts",
+        "sha256": "ac4bbd29e112f698e9106788c1590e9dd09956c5aa9b9ade9469186e5e86a51d"
+      },
+      {
+        "path": "apps/web/src/lib/useApi.ts",
+        "sha256": "cfd72d139bcbc8e0e03fd7992845e73b488016a5f7929b29e200c3f6feb9de08"
+      },
+      {
+        "path": "apps/web/src/lib/useCollaborationProgress.ts",
+        "sha256": "cdf3de59a8f74ad1c81c364ad6be18060e85b4bcc33d581e9f3cf95a75fa1341"
+      },
+      {
+        "path": "apps/web/src/lib/useConversationDraft.ts",
+        "sha256": "7bbc2b72f3a66923ac00e5bd247d0c4e8aee15ea9fde9e9bfaaf01991b87ed92"
+      },
+      {
+        "path": "apps/web/src/lib/useDirectConversation.ts",
+        "sha256": "cdf3242edf1f47ef54b6b50b5961a4e714d2fc23ff96dcc980f594a53782bd7f"
+      },
+      {
+        "path": "apps/web/src/lib/useGroupConversation.ts",
+        "sha256": "ec36ed166b5c65681d6c90d05a0e9d1b8dfad80919537cc172a329b37bf84a21"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "sha256": "0c0625cf0a88ddaeea59a1a08ba912acf4fa0c0cdbb1d77ee387c867f6d6cdbe"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "sha256": "2252afc0a60a1ba921917752983bb2db61bacc8f24d448e4f1a4c51b98e624c9"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "sha256": "ebe4652b8905017754da43024fb0cf1d16e40bae7895950b6b2b3b603a980ace"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "sha256": "c9b9262ac4bbfeaf5d7821909dc6f5ea469cba866fea2ac33dc6b4b03bc741df"
+      },
+      {
+        "path": "packages/agent-core/src/providers/types.ts",
+        "sha256": "6a5d0bf54205c5e6c38189cffca905bcf111ca9dc47c6601621fd694ea32009e"
+      },
+      {
+        "path": "packages/agent-core/src/providers/validation.test.ts",
+        "sha256": "2ada8852b9cd8eab77c8041bf250fc6034d151556cedcf8a209ae1d1e3909718"
+      },
+      {
+        "path": "packages/process-runtime/src/node-driver.test.ts",
+        "sha256": "dcf00ad1de3c4169fc2e4070cb245a87ad85ee8d6506c59a3810d191525be482"
+      },
+      {
+        "path": "packages/shared/p6-l1a-admission.test.ts",
+        "sha256": "ac5a3eb2be028ee5de3f321baa50fd593ee931006b66a38905d0927362f06a0e"
+      },
+      {
+        "path": "packages/shared/src/types/collaboration.ts",
+        "sha256": "4c62771c088a148384fccbf5930ae4db8ef746ad13640bf8e09ca45c7ba6b77e"
+      },
+      {
+        "path": "packages/shared/src/types/index.ts",
+        "sha256": "471a10c8c0f36d1eaa6b455ee90508b7346bbead22d87314e287562fa9d899a9"
+      },
+      {
+        "path": "packages/shared/src/types/p6-l1a-admission.ts",
+        "sha256": "134f668ac04be60db4b9e9a2339d7f829b5984dea4a3fc0304a1041ebc7698eb"
+      }
+    ],
+    "digest": "4e32b9fd8d7272ff90b45d5732514c5361aa2088a3080b452f80e987a9baec33"
+  },
+  "validations": [
+    {
+      "label": "server-2026-09-30T18-59-42-734Z",
+      "command": "pnpm --filter @agentos/server test",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T18:59:42.875Z",
+      "completedAt": "2026-09-30T19:46:25.130Z",
+      "counts": {
+        "tests": 3421,
+        "passed": 3413,
+        "failed": 0,
+        "skipped": 8
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\server-2026-09-30T18-59-42-734Z.result.json",
+      "resultSHA256": "af436afdcc7dd8cb4702dc16a430fd19b0051db166123d6e71d8fbe89a8bccd2",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\server-2026-09-30T18-59-42-734Z.log",
+      "logSHA256": "811a27dd4d856017e90ac62c11928f17ea55887317b0875affaa70cc5eeab0f6",
+      "reportedWholeTreeStable": false,
+      "wholeTreeChangesDuringRun": [
+        "apps/web/e2e/workspace-identity.spec.ts",
+        "apps/web/src/components/chat/ChatPanel.tsx"
+      ],
+      "validatedSourceScope": "All recorded non-Web source, including Server, shared/core/runtime and root tooling",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": [
+        "﹣ LITE-07-104 a real Provider drives the canonical chain from review work to an accepted Memory Entry (0.4038ms) # SKIP",
+        "﹣ current-machine Kimi gate: real kimi drives the full chain to completion (env-gated) (0.0499ms) # SKIP",
+        "﹣ LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated) (0.0292ms) # SKIP",
+        "﹣ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (0.0206ms) # SKIP",
+        "﹣ LITE-04-101: real OpenCode completes the canonical production chain (env-gated) (0.0175ms) # SKIP",
+        "﹣ LITE-08-005/006/007 + LITE-07-103 a real Provider runs only after a persisted approval decision (0.4562ms) # SKIP"
+      ],
+      "evidenceCaution": "One old failedLines regex falsely classified a passed test named failed 016. Actual fail count and exit code are authoritative."
+    },
+    {
+      "label": "web-2026-09-30T19-46-51-657Z",
+      "command": "pnpm --filter @agentos/web test",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:46:51.809Z",
+      "completedAt": "2026-09-30T19:46:55.620Z",
+      "counts": {
+        "tests": 270,
+        "passed": 270,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\web-2026-09-30T19-46-51-657Z.result.json",
+      "resultSHA256": "ea6670a870e20c69ed915091af8acc5df9caa0960346d697ee416835108594a8",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\web-2026-09-30T19-46-51-657Z.log",
+      "logSHA256": "1815e5cb6af3f1707bf9645dc4a89101330548df0a0d49a0e0c340ffe1f4d088",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "types-2026-09-30T19-46-51-657Z",
+      "command": "pnpm --filter @agentos/server exec tsc --noEmit",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:46:51.809Z",
+      "completedAt": "2026-09-30T19:46:58.296Z",
+      "counts": null,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\types-2026-09-30T19-46-51-657Z.result.json",
+      "resultSHA256": "8af4b2bc2926cd9570a2cc0b3cdb15677e1357693820edd1f2a0d8a043d7912c",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\types-2026-09-30T19-46-51-657Z.log",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "webtypes-2026-09-30T19-36-00-307Z",
+      "command": "pnpm --filter @agentos/web exec tsc --noEmit --incremental false",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:36:00.471Z",
+      "completedAt": "2026-09-30T19:36:04.988Z",
+      "counts": null,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\webtypes-2026-09-30T19-36-00-307Z.result.json",
+      "resultSHA256": "b607cf2817b885a5bc671b834629af5eb661ee49a2c5eb35dfc66306dd28e432",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\webtypes-2026-09-30T19-36-00-307Z.log",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "build-2026-09-30T19-36-06-623Z",
+      "command": "pnpm -r run build",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:36:06.779Z",
+      "completedAt": "2026-09-30T19:36:39.420Z",
+      "counts": null,
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\build-2026-09-30T19-36-06-623Z.result.json",
+      "resultSHA256": "dac2750ed1206d1b3a8546b7c66e9f88235a871f2e96d38c01e5af3afd45c914",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\build-2026-09-30T19-36-06-623Z.log",
+      "logSHA256": "787f52ef18b378b35ec107f79c248f06fc46e3420c164202787f44028ef61985",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source; build skips lint",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "browser-2026-09-30T19-35-49-980Z",
+      "command": "pnpm --filter @agentos/web exec playwright test --config playwright.phase-e.config.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:35:50.120Z",
+      "completedAt": "2026-09-30T19:36:43.334Z",
+      "counts": {
+        "tests": 16,
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\browser-2026-09-30T19-35-49-980Z.result.json",
+      "resultSHA256": "28670e797d0c4c92f7cac205a5b41a75b9a9a29775675f6ae735837d69b7b454",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\browser-2026-09-30T19-35-49-980Z.log",
+      "logSHA256": "4f8ce7d5578e5ec1742566cbbcc064237013fc1dfbf79dcce1cc2f160d68ac64",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source; isolated Chrome with intercepted API fixture",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "shared-2026-09-30T19-37-43-854Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/*.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:37:44.036Z",
+      "completedAt": "2026-09-30T19:37:45.551Z",
+      "counts": {
+        "tests": 186,
+        "passed": 186,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\shared-2026-09-30T19-37-43-854Z.result.json",
+      "resultSHA256": "d455e69ddeea590e2b9324870e5641c1a43d91d149b33dd625b12c6422029f49",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\shared-2026-09-30T19-37-43-854Z.log",
+      "logSHA256": "774d6c545cf9c76ee1d4e133bd7cf42ac6a6dc764b8fc41d7fe781ba1791dfd8",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "core-2026-09-30T19-37-43-801Z",
+      "command": "pnpm --filter @agentos/agent-core test",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:37:43.974Z",
+      "completedAt": "2026-09-30T19:37:53.044Z",
+      "counts": {
+        "tests": 199,
+        "passed": 199,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\core-2026-09-30T19-37-43-801Z.result.json",
+      "resultSHA256": "b2e2168bbbe4ecd18e5cf0e8509308a9e1d786b91bc97e46e8c07da08501ef4f",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\core-2026-09-30T19-37-43-801Z.log",
+      "logSHA256": "ac2045da49da897c9e2f16b7ea8a87e9c0bd18b1f93a2efc33c722e27dea8f5e",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "runtime-2026-09-30T19-37-43-840Z",
+      "command": "pnpm --filter @agentos/process-runtime test",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:37:44.023Z",
+      "completedAt": "2026-09-30T19:38:04.061Z",
+      "counts": {
+        "tests": 243,
+        "passed": 243,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\runtime-2026-09-30T19-37-43-840Z.result.json",
+      "resultSHA256": "bb0325c468b2bb7482707e33c04e97993f0fcc61e2328975e2b5af9981f12d2f",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\runtime-2026-09-30T19-37-43-840Z.log",
+      "logSHA256": "32d4dec5a5783fbdb8ba52500840a037ef757cdfd8494bd5972b68970f1a93b7",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "groups-2026-09-30T19-37-53-995Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/GroupTurnDriver.test.ts src/services/BoundedGroupService.test.ts src/services/GroupSpeakerResolver.test.ts src/routes/conversationRuntime.group.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:37:54.148Z",
+      "completedAt": "2026-09-30T19:38:45.525Z",
+      "counts": {
+        "tests": 63,
+        "passed": 63,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-37-53-995Z.result.json",
+      "resultSHA256": "85963b6925bbf4833b55f74c82cabcf67614d1409657246bf64edf68fe151847",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-37-53-995Z.log",
+      "logSHA256": "7c48c728c320d0a5b09ac7f92f222a2bab356f6d2a640f0f9a13a6bd9450014d",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source; fresh four-file formal group suite",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "groups-2026-09-30T19-41-05-236Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/GroupTurnDriver.test.ts src/services/BoundedGroupService.test.ts src/services/GroupSpeakerResolver.test.ts src/routes/conversationRuntime.group.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:41:05.390Z",
+      "completedAt": "2026-09-30T19:41:26.490Z",
+      "counts": {
+        "tests": 63,
+        "passed": 63,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-41-05-236Z.result.json",
+      "resultSHA256": "4eba4e4ce35be5b1e27705b5bcdd16743b7b2b2f8fdaba4710029e6b7fa0e154",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-41-05-236Z.log",
+      "logSHA256": "0e34bec9f17cc32fc2fc5f4c684baa830064fcd139499683b823d82d4413170a",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source; independent fresh fixtures",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "groups-2026-09-30T19-41-05-253Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-concurrency=1 src/services/GroupTurnDriver.test.ts src/services/BoundedGroupService.test.ts src/services/GroupSpeakerResolver.test.ts src/routes/conversationRuntime.group.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:41:05.407Z",
+      "completedAt": "2026-09-30T19:41:26.503Z",
+      "counts": {
+        "tests": 63,
+        "passed": 63,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-41-05-253Z.result.json",
+      "resultSHA256": "afa8f5aecf39c4f2f935c6b567d48eed89d2b84b71697064ece189673b0254cd",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\groups-2026-09-30T19-41-05-253Z.log",
+      "logSHA256": "3685fa1f274b2119da0c79325fa07bce65eba53ec03937df8fbb5fe65ecc1736",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-document source; independent fresh fixtures",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "native-2026-09-30T18-33-07-016Z",
+      "command": "pnpm --filter @agentos/process-runtime exec vitest run src/node-driver.test.ts --maxWorkers=1",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T18:33:07.205Z",
+      "completedAt": "2026-09-30T18:33:31.660Z",
+      "counts": {
+        "tests": 19,
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-33-07-016Z.result.json",
+      "resultSHA256": "1ba84851cd07488d8df2cc958c43eec805c90ee85c27aee0cb7ba19309be9328",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-33-07-016Z.log",
+      "logSHA256": "fe8df8e25b5687c913cefe3ec34ca382abe18dc14d35d587a68652c3bddb473e",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "Recorded Process Runtime package and root tooling only",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "native-2026-09-30T18-40-39-184Z",
+      "command": "pnpm --filter @agentos/process-runtime exec vitest run src/node-driver.test.ts --maxWorkers=1",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T18:40:39.328Z",
+      "completedAt": "2026-09-30T18:40:56.274Z",
+      "counts": {
+        "tests": 19,
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-40-39-184Z.result.json",
+      "resultSHA256": "2e1b975aa504bfb06af33ca89527348bc47ca85f8e1d4024ed04dfc4555127f0",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-40-39-184Z.log",
+      "logSHA256": "0e2950d39f912695568bef9bec5d06bb999d0aaba4d979af308473f0a5b716f3",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "Recorded Process Runtime package and root tooling only",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "native-2026-09-30T18-40-56-327Z",
+      "command": "pnpm --filter @agentos/process-runtime exec vitest run src/node-driver.test.ts --maxWorkers=1",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T18:40:56.472Z",
+      "completedAt": "2026-09-30T18:41:15.358Z",
+      "counts": {
+        "tests": 19,
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-40-56-327Z.result.json",
+      "resultSHA256": "d1b723667e89703c92a578827bd3ae75a2e85c8c48dc26d4abedf5759e14bb2b",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\native-2026-09-30T18-40-56-327Z.log",
+      "logSHA256": "1a7bbfd2c23976f418f93cb56c38dd53aeac0c8f5e57a3f419affd19b00053dd",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "Recorded Process Runtime package and root tooling only",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "startup-2026-09-30T19-01-49-882Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test src/p6-l1e-startup-admission-reconciliation.integration.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:01:50.026Z",
+      "completedAt": "2026-09-30T19:01:58.838Z",
+      "counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-01-49-882Z.result.json",
+      "resultSHA256": "6bdd63db13ff7fdb1cea7dfbf5876e8abb15bd19b30413412b413d1f90f185c4",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-01-49-882Z.log",
+      "logSHA256": "8a64f533f3fb80b1db856aaa7b23393ef251d9c19b45451fbfaba0555a4bf287",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-Web source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "startup-2026-09-30T19-03-15-175Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test src/p6-l1e-startup-admission-reconciliation.integration.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:03:15.360Z",
+      "completedAt": "2026-09-30T19:03:25.336Z",
+      "counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-03-15-175Z.result.json",
+      "resultSHA256": "e580f11618a5660870807e2e7f66881116e94843569d7c168ddea44dc288e1a3",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-03-15-175Z.log",
+      "logSHA256": "b598dc61f78061f39bba737b7d4b976b67d27ab541b3e2ec3f2330a613c2b4bf",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-Web source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    },
+    {
+      "label": "startup-2026-09-30T19-03-25-476Z",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test src/p6-l1e-startup-admission-reconciliation.integration.test.ts",
+      "exitCode": 0,
+      "startedAt": "2026-09-30T19:03:25.646Z",
+      "completedAt": "2026-09-30T19:03:34.667Z",
+      "counts": {
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "resultPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-03-25-476Z.result.json",
+      "resultSHA256": "1b73c9e2dc8f023115b7e1a2708788b6f92bca738024c59c7f6c553112d9c7ea",
+      "logPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\startup-2026-09-30T19-03-25-476Z.log",
+      "logSHA256": "009eb270f3ac4e6d2edc9b59890c252062233427037a3d317ce4502f2335ae5c",
+      "reportedWholeTreeStable": true,
+      "wholeTreeChangesDuringRun": [],
+      "validatedSourceScope": "All recorded non-Web source",
+      "changedInScopeDuringRun": [],
+      "changedInScopeSinceRun": [],
+      "skipDescriptions": []
+    }
+  ],
+  "browserRepeated": {
+    "commandRecords": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/command-records.json",
+    "commandRecordsSHA256": "368d5e99dcf5f73dd7865ac0961069ccde0f8c61a0b0f67203245d5d59f46a94",
+    "workspace": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos",
+    "branch": "codex/collaboration-workflow-closure",
+    "baseURL": "http://localhost:3101",
+    "browserPlugin": "Browser plugin not available; authorized installed Chrome channel fallback",
+    "browserChannel": "chrome",
+    "isolation": "Playwright creates a new nonpersistent context per test; no CDP or user storageState",
+    "testFile": "apps/web/e2e/workspace-identity.spec.ts",
+    "finalTestSHA256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC",
+    "configuration": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-scroll-interrupted-20261001/playwright.config.mjs",
+    "configurationSnapshot": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/playwright.config.snapshot.mjs",
+    "workers": 1,
+    "retries": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "width": 617,
+        "height": 900,
+        "startedAt": "2026-09-30T19:44:33.2714038Z",
+        "finishedAt": "2026-09-30T19:45:18.6664215Z",
+        "command": "pnpm.cmd exec playwright test --config 'C:/Users/Administrator/AppData/Local/Temp/agentos-web-scroll-interrupted-20261001/playwright.config.mjs'",
+        "cwd": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos/apps/web",
+        "outputDir": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round1-chrome-617",
+        "log": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round1-chrome-617.log",
+        "exitCode": 0,
+        "before": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "after": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "fiveFilesStable": true,
+        "passed": 15,
+        "failed": 0,
+        "reportedDurationSeconds": 44.5,
+        "environment": {
+          "AGENTOS_FIXTURE_WIDTH": "617",
+          "AGENTOS_FIXTURE_OUTPUT": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round1-chrome-617"
+        }
+      },
+      {
+        "round": 2,
+        "width": 1440,
+        "height": 900,
+        "startedAt": "2026-09-30T19:47:03.1387173Z",
+        "finishedAt": "2026-09-30T19:47:48.5690903Z",
+        "command": "pnpm.cmd exec playwright test --config 'C:/Users/Administrator/AppData/Local/Temp/agentos-web-scroll-interrupted-20261001/playwright.config.mjs'",
+        "cwd": "C:/Users/Administrator/.codex/worktrees/collaboration-workflow/Multi-Agent/agentos/apps/web",
+        "outputDir": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round2-chrome-1440",
+        "log": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round2-chrome-1440.log",
+        "exitCode": 0,
+        "before": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "after": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "fiveFilesStable": true,
+        "passed": 15,
+        "failed": 0,
+        "reportedDurationSeconds": 44.5,
+        "environment": {
+          "AGENTOS_FIXTURE_WIDTH": "1440",
+          "AGENTOS_FIXTURE_OUTPUT": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round2-chrome-1440"
+        }
+      },
+      {
+        "round": 3,
+        "width": 617,
+        "height": 900,
+        "startedAt": "2026-09-30T19:49:24.2445834Z",
+        "finishedAt": "2026-09-30T19:50:08.1925496Z",
+        "command": "pnpm.cmd exec playwright test --config 'C:/Users/Administrator/AppData/Local/Temp/agentos-web-scroll-interrupted-20261001/playwright.config.mjs'",
+        "cwd": "C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web",
+        "outputDir": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round3-chrome-617",
+        "log": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round3-chrome-617.log",
+        "exitCode": 0,
+        "before": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "after": [
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.tsx",
+            "sha256": "258EB8ADC22E5038B99A6A04B2753AD0DE983F2CE93F56CA860EC67D55B482C9"
+          },
+          {
+            "file": "apps/web/src/components/chat/ChatPanel.draft.test.tsx",
+            "sha256": "424156685EF679BF8FA7F4E6899DCECF723D6272A0D891EEE306144B02C56CA7"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.ts",
+            "sha256": "A01B936B94D45705080ED2D4CD6D514912B85DA10D4E3B25C45D794C2674F292"
+          },
+          {
+            "file": "apps/web/src/lib/groupConversationClient.test.ts",
+            "sha256": "92657045188ED0040D41093E74BF93EDF8F34820B3A3D72B17CE6495E17BFBB3"
+          },
+          {
+            "file": "apps/web/e2e/workspace-identity.spec.ts",
+            "sha256": "DD154FD631C67B66D935A952834FC27AFC8617860361A5D7461E344569FBB2BC"
+          }
+        ],
+        "fiveFilesStable": true,
+        "passed": 15,
+        "failed": 0,
+        "reportedDurationSeconds": 43.1,
+        "environment": {
+          "AGENTOS_FIXTURE_WIDTH": "617",
+          "AGENTOS_FIXTURE_OUTPUT": "C:/Users/Administrator/AppData/Local/Temp/agentos-web-final-repeat-20260930-194242-934e9d24/round3-chrome-617"
+        }
+      }
+    ],
+    "totalPassed": 45,
+    "totalFailed": 0,
+    "totalSkipped": 0,
+    "stabilityScope": "Only the five listed owned Web files; no assertion about repository-wide source stability",
+    "sourceFilesEditedThisValidation": [],
+    "unitTypecheckBuildRerunThisValidation": false,
+    "serviceStartedOrRestarted": false,
+    "providerInvoked": false,
+    "artifactHashes": {
+      "hashes": [
+        {
+          "file": "round1-chrome-617.log",
+          "sha256": "1B4E8AC031713A087D9237572F5BBEDACAF5F1FC8A682F18A84FD854A6EFA132"
+        },
+        {
+          "file": "round2-chrome-1440.log",
+          "sha256": "0AB3B1564CC4C668D568130E0CC3F3518A047BAA0FFB67CB842B6E21622E3D35"
+        },
+        {
+          "file": "round3-chrome-617.log",
+          "sha256": "7F1732C11EF61E0F4EA25C70084DDD5855682E675AF4CE8159DCA146528F7C0B"
+        },
+        {
+          "file": "playwright.config.snapshot.mjs",
+          "sha256": "3B09F7231F357B9035A1EEE26AA5E7F2E6E81696C8BFA13EE8F30ED8797A0E74"
+        },
+        {
+          "file": "matrix-1916-results.snapshot.json",
+          "sha256": "024C88D88CA5B581A932D875503F5343E975ABF88DA6AAB6FA8CA6A80B34B24A"
+        },
+        {
+          "file": "interrupted-6of6-results.snapshot.json",
+          "sha256": "019657EE732060386EDCED515E5A09DF4AEB7103CC6050A3B09CDFA559BE088E"
+        }
+      ],
+      "traces": [
+        {
+          "roundDirectory": "round1-chrome-617",
+          "traceCount": 15
+        },
+        {
+          "roundDirectory": "round2-chrome-1440",
+          "traceCount": 15
+        },
+        {
+          "roundDirectory": "round3-chrome-617",
+          "traceCount": 15
+        }
+      ]
+    }
+  },
+  "realCandidate": {
+    "taskId": "collab_01M3SQNAQHNHQYCD3B12R3KVV3",
+    "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+    "candidateId": "artifact_01M3SQWFFM7R6ZQJQKXTM90WT6",
+    "hash": "ef5b879f4d1f8dcd297dd5268eb29bb5f1d9d13031a0c49f2ea6bbf54725141f",
+    "status": "awaiting_application",
+    "files": [
+      "src/task-service.js"
+    ],
+    "testCommand": "node --test test/*.test.js",
+    "testExitCode": 0,
+    "reviewId": "review_edbf6fef-abea-40cb-b852-6fb93809e0ce",
+    "attempt": 1,
+    "approvals": [
+      {
+        "id": "approval_01M3SQTD3TC2BJKM2FF8ZCBZ6V",
+        "runId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+        "stageId": "stage_01M3SQNDA779HFJBHTXTN66YXJ",
+        "attempt": 1,
+        "version": 2,
+        "status": 201,
+        "at": "2026-09-30T18:04:24.370Z"
+      }
+    ],
+    "consoleEvents": [],
+    "evidence": "C:/Users/Administrator/AppData/Local/Temp/agentos-audit-live-20260930-9a853e6a/vertical-2026-09-30T18-01-35-146Z",
+    "snapshotVersion": 2,
+    "patchSHA256Recomputed": "ef5b879f4d1f8dcd297dd5268eb29bb5f1d9d13031a0c49f2ea6bbf54725141f",
+    "patchBytes": 3295,
+    "testStatus": "passed",
+    "reviewedCandidateHash": "ef5b879f4d1f8dcd297dd5268eb29bb5f1d9d13031a0c49f2ea6bbf54725141f",
+    "reviewedCanonicalRunId": "run_01M3SQNDA46BSKEDJS0ZX4H1CC",
+    "reviewStageId": "stage_01M3SQNDA779HFJBHTXTN66YXK",
+    "reviewStageAttempt": 1,
+    "reviewAgentId": "opencode",
+    "conclusion": "approved"
+  },
+  "safety": {
+    "checkedAt": "2026-09-30T20:08:28.761Z",
+    "readOnly": true,
+    "liveRuns": [],
+    "owners": [
+      {
+        "status": "completed",
+        "n": 17
+      },
+      {
+        "status": "interrupted",
+        "n": 1
+      }
+    ],
+    "tasks": [
+      {
+        "id": "collab_01M3SK701AVA49F56QGAB7VW76",
+        "status": "awaiting_application"
+      },
+      {
+        "id": "collab_01M3SQNAQHNHQYCD3B12R3KVV3",
+        "status": "awaiting_application"
+      }
+    ],
+    "integrity": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeys": []
+  },
+  "project": {
+    "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-audit-live-20260930-9a853e6a\\project",
+    "head": "8117d2ae378cd0be17ef3edfc3a21ab2c1904a00",
+    "checkedPaths": [
+      "src",
+      "test",
+      "README.md"
+    ],
+    "changes": ""
+  },
+  "publication": {
+    "committed": false,
+    "pushed": false,
+    "merged": false,
+    "deployed": false,
+    "actualCandidateApplied": false
+  },
+  "limitations": [
+    "Eight official Server test cases are conditional skips; the real three-role task is separate evidence, not proof those six Provider gates ran.",
+    "Native IME was confirmed manually by the human; automation only tests composition signals.",
+    "Historical W12 PID identity was not captured; no retrospective universal root cause or cleanup proof is claimed.",
+    "Unknown pre-restart discussion native process exit was not proved; owner is interrupted/unusable and replay is rejected.",
+    "Image persistence is local unsent Blob evidence, not proof of Provider vision.",
+    "Codex planner reports terminal unavailable; its final answer does not prove file inspection.",
+    "Next production build skips lint; build success is not a lint result."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts|LITE-04-002 Mock Provider auth failure fails closed before claim|LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice|LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence|LITE-04-002 Mock Provider process crash \\(non-zero termination\\) maps to failed Session and exited Process evidence)",
+      "src/services/run-engine/StageExecutionCoordinator.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

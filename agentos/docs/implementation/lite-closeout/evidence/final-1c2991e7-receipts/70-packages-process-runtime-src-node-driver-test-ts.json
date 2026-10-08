@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/node-driver.test.ts"
+    ]
+  },
+  "cwd": "packages/process-runtime",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/70-packages-process-runtime-src-node-driver-test-ts/assertions.json",
+      "sha256": "cb23f85b209961260d881195bbb23c4f9aab7d98af741a47b7435d2ef078fd23"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/70-packages-process-runtime-src-node-driver-test-ts/execution.json",
+      "sha256": "d6eee802f9474c0737684ff5843b8252471d63df8ae0ceacc30c8a77f67f8cbc"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/70-packages-process-runtime-src-node-driver-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/70-packages-process-runtime-src-node-driver-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/70-packages-process-runtime-src-node-driver-test-ts/stdout.txt",
+      "sha256": "72664e3eaff00bb3df12508c3c2781735b1ac4366339747718bb941bd69d9694"
+    }
+  ],
+  "counts": {
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "total": 16
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-006-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-423",
+      "requirementId": "LITE-00-006",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(control.pid).toBeDefined();",
+      "clause": "Windows cancellation handles the owned process tree;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-007-inspectidentity-matches-a-live-pid-and-reports-missing-for-esrch-424",
+      "requirementId": "LITE-01-007",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "inspectIdentity matches a live pid and reports missing for ESRCH",
+      "line": 448,
+      "expression": "expect(match.kind).toBe('match');",
+      "clause": "Process ID and native PID cannot be confused by API or UI labels;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-011-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-425",
+      "requirementId": "LITE-02-011",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(control.pid).toBeDefined();",
+      "clause": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-013-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-426",
+      "requirementId": "LITE-02-013",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(control.pid).toBeDefined();",
+      "clause": "Process exit does not falsely complete a Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-001-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-427",
+      "requirementId": "LITE-05-001",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-002-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-428",
+      "requirementId": "LITE-05-002",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-003-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-429",
+      "requirementId": "LITE-05-003",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-004-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-430",
+      "requirementId": "LITE-05-004",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-005-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-431",
+      "requirementId": "LITE-05-005",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-006-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-432",
+      "requirementId": "LITE-05-006",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-433",
+      "requirementId": "LITE-05-007",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(control.pid).toBeDefined();",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-434",
+      "requirementId": "LITE-05-007",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-009-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-435",
+      "requirementId": "LITE-05-009",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-012-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-436",
+      "requirementId": "LITE-05-012",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-003-inspectidentity-matches-a-live-pid-and-reports-missing-for-esrch-437",
+      "requirementId": "LITE-10-003",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "inspectIdentity matches a live pid and reports missing for ESRCH",
+      "line": 448,
+      "expression": "expect(match.kind).toBe('match');",
+      "clause": "opaque IDs and Process ID/PID distinction;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-010-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-438",
+      "requirementId": "LITE-10-010",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "Process reserve-before-spawn;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-012-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-439",
+      "requirementId": "LITE-10-012",
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');",
+      "clause": "fail-closed recovery evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

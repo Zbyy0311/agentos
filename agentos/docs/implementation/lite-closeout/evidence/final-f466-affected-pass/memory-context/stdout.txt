@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: MF4I-01 resolve persists a snapshot and returns bounded context
+ok 1 - MF4I-01 resolve persists a snapshot and returns bounded context
+  ---
+  duration_ms: 259.468
+  type: 'test'
+  ...
+# Subtest: MF4I-02 resolve is idempotent per run scope
+ok 2 - MF4I-02 resolve is idempotent per run scope
+  ---
+  duration_ms: 1074.0781
+  type: 'test'
+  ...
+# Subtest: MF4I-03 stage scope is distinct from run scope
+ok 3 - MF4I-03 stage scope is distinct from run scope
+  ---
+  duration_ms: 207.2163
+  type: 'test'
+  ...
+# Subtest: replaying an earlier scope after a later Stage does not recreate its snapshot
+ok 4 - replaying an earlier scope after a later Stage does not recreate its snapshot
+  ---
+  duration_ms: 174.4779
+  type: 'test'
+  ...
+# Subtest: MF4I-04 snapshot failure blocks injection
+ok 5 - MF4I-04 snapshot failure blocks injection
+  ---
+  duration_ms: 145.0754
+  type: 'test'
+  ...
+# Subtest: MF4I-05 invalid input fails closed
+ok 6 - MF4I-05 invalid input fails closed
+  ---
+  duration_ms: 129.7878
+  type: 'test'
+  ...
+# Subtest: MF4I-06 injection gate rejects absent snapshot
+ok 7 - MF4I-06 injection gate rejects absent snapshot
+  ---
+  duration_ms: 134.9281
+  type: 'test'
+  ...
+# Subtest: MF4I-07 later entry edits do not rewrite the snapshot
+ok 8 - MF4I-07 later entry edits do not rewrite the snapshot
+  ---
+  duration_ms: 142.7568
+  type: 'test'
+  ...
+# Subtest: frozen injection survives content edits and logical deletion of its Entry
+ok 9 - frozen injection survives content edits and logical deletion of its Entry
+  ---
+  duration_ms: 143.6826
+  type: 'test'
+  ...
+# Subtest: historical metadata-only snapshot is inspectable but blocks injection
+ok 10 - historical metadata-only snapshot is inspectable but blocks injection
+  ---
+  duration_ms: 132.2724
+  type: 'test'
+  ...
+# Subtest: payload failure rolls back the snapshot and its selections
+ok 11 - payload failure rolls back the snapshot and its selections
+  ---
+  duration_ms: 138.2765
+  type: 'test'
+  ...
+# Subtest: corrupt frozen payload blocks replay
+ok 12 - corrupt frozen payload blocks replay
+  ---
+  duration_ms: 136.6526
+  type: 'test'
+  ...
+# Subtest: MF4I-08 empty store still persists a snapshot
+ok 13 - MF4I-08 empty store still persists a snapshot
+  ---
+  duration_ms: 138.1418
+  type: 'test'
+  ...
+# Subtest: MF4I-09 default budget is frozen and valid
+ok 14 - MF4I-09 default budget is frozen and valid
+  ---
+  duration_ms: 156.9388
+  type: 'test'
+  ...
+# Subtest: MF4I-10 workspace isolation
+ok 15 - MF4I-10 workspace isolation
+  ---
+  duration_ms: 156.409
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen
+ok 16 - LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen
+  ---
+  duration_ms: 164.4287
+  type: 'test'
+  ...
+# Subtest: LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation
+ok 17 - LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation
+  ---
+  duration_ms: 156.4728
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3788.5129

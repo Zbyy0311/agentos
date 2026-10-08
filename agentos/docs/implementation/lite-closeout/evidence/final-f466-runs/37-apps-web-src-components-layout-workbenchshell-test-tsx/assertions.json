@@ -1,0 +1,167 @@
+[
+  {
+    "id": "LITE-00-012-shell-01-wide-mode-renders-all-four-columns-with-landmarks-279",
+    "requirementId": "LITE-00-012",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('data-layout-mode=\"wide\"'));",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-012-shell-05-reduced-motion-collapses-panel-transitions-to-zero-280",
+    "requirementId": "LITE-00-012",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(markup.includes('width 0ms'));",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-012-shell-07-dark-and-light-themes-emit-their-own-token-values-281",
+    "requirementId": "LITE-00-012",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(dark.includes('data-theme=\"dark\"'));",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-01-wide-mode-renders-all-four-columns-with-landmarks-282",
+    "requirementId": "LITE-12-001",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('data-layout-mode=\"wide\"'));",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-05-reduced-motion-collapses-panel-transitions-to-zero-283",
+    "requirementId": "LITE-12-001",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(markup.includes('width 0ms'));",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-07-dark-and-light-themes-emit-their-own-token-values-284",
+    "requirementId": "LITE-12-001",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(dark.includes('data-theme=\"dark\"'));",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-01-wide-mode-renders-all-four-columns-with-landmarks-285",
+    "requirementId": "LITE-12-002",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('data-layout-mode=\"wide\"'));",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-05-reduced-motion-collapses-panel-transitions-to-zero-286",
+    "requirementId": "LITE-12-002",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(markup.includes('width 0ms'));",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-07-dark-and-light-themes-emit-their-own-token-values-287",
+    "requirementId": "LITE-12-002",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(dark.includes('data-theme=\"dark\"'));",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-01-wide-mode-renders-all-four-columns-with-landmarks-288",
+    "requirementId": "LITE-12-003",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('data-layout-mode=\"wide\"'));",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-05-reduced-motion-collapses-panel-transitions-to-zero-289",
+    "requirementId": "LITE-12-003",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(markup.includes('width 0ms'));",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-07-dark-and-light-themes-emit-their-own-token-values-290",
+    "requirementId": "LITE-12-003",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(dark.includes('data-theme=\"dark\"'));",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-01-wide-mode-renders-all-four-columns-with-landmarks-291",
+    "requirementId": "LITE-12-004",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('data-layout-mode=\"wide\"'));",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-05-reduced-motion-collapses-panel-transitions-to-zero-292",
+    "requirementId": "LITE-12-004",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(markup.includes('width 0ms'));",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-07-dark-and-light-themes-emit-their-own-token-values-293",
+    "requirementId": "LITE-12-004",
+    "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(dark.includes('data-theme=\"dark\"'));",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

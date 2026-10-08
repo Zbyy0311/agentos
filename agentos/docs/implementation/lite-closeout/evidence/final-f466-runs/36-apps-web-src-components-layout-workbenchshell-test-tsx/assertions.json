@@ -1,0 +1,152 @@
+[
+  {
+    "id": "LITE-00-012-shell-01-wide-mode-renders-all-four-columns-with-landmarks-274",
+    "requirementId": "LITE-00-012",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-012-shell-05-reduced-motion-collapses-panel-transitions-to-zero-275",
+    "requirementId": "LITE-00-012",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-012-shell-07-dark-and-light-themes-emit-their-own-token-values-276",
+    "requirementId": "LITE-00-012",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(",
+    "clause": "the UI presents the four-column engineering workbench with a focused Inspector;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-01-wide-mode-renders-all-four-columns-with-landmarks-277",
+    "requirementId": "LITE-12-001",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-05-reduced-motion-collapses-panel-transitions-to-zero-278",
+    "requirementId": "LITE-12-001",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-001-shell-07-dark-and-light-themes-emit-their-own-token-values-279",
+    "requirementId": "LITE-12-001",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(",
+    "clause": "four-column layout and adaptive collapse;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-01-wide-mode-renders-all-four-columns-with-landmarks-280",
+    "requirementId": "LITE-12-002",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-05-reduced-motion-collapses-panel-transitions-to-zero-281",
+    "requirementId": "LITE-12-002",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-002-shell-07-dark-and-light-themes-emit-their-own-token-values-282",
+    "requirementId": "LITE-12-002",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(",
+    "clause": "shared semantic token coverage;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-01-wide-mode-renders-all-four-columns-with-landmarks-283",
+    "requirementId": "LITE-12-003",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-05-reduced-motion-collapses-panel-transitions-to-zero-284",
+    "requirementId": "LITE-12-003",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-003-shell-07-dark-and-light-themes-emit-their-own-token-values-285",
+    "requirementId": "LITE-12-003",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(",
+    "clause": "dark/light contrast;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-01-wide-mode-renders-all-four-columns-with-landmarks-286",
+    "requirementId": "LITE-12-004",
+    "name": "SHELL-01 wide mode renders all four columns with landmarks",
+    "line": 30,
+    "expression": "assert.ok(",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-05-reduced-motion-collapses-panel-transitions-to-zero-287",
+    "requirementId": "LITE-12-004",
+    "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+    "line": 79,
+    "expression": "assert.ok(",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-004-shell-07-dark-and-light-themes-emit-their-own-token-values-288",
+    "requirementId": "LITE-12-004",
+    "name": "SHELL-07 dark and light themes emit their own token values",
+    "line": 96,
+    "expression": "assert.ok(",
+    "clause": "reduced-motion behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

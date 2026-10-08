@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "baseline": "a3ff3d2d44828f2f19fb43feda7c4cffa92b8c00",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:11:54.597Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 3,
+    "passed": 3,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1393,
+      "sourceSha256": "e35fe2bcab3e60a34d383f7e3de482047a0e311bfd2e4a3243158706eb472dd4",
+      "rawLogSha256": "bb57a988ac452a0259797380e168427b3d409eb403350cd70b67257931e142da",
+      "rawOutput": "▶ M2.4 migration 005/006 schema\n  ✔ T01 records 005/006 id, name and checksum in _schema_migrations (66.8498ms)\n  ✔ T02 second MigrationRunner run skips 005/006 without re-applying DDL (65.1903ms)\n  ✔ T03 failed migration rolls back DDL and leaves no _schema_migrations record (3.6372ms)\n  ✔ T04 tasks table columns, defaults, CHECK constraints and workspace FK are enforced (63.7557ms)\n  ✔ T05 runs table columns, defaults and CHECK constraints are enforced (68.1383ms)\n  ✔ T06 partial unique index rejects a second active Run per Task and allows it after terminal (63.5408ms)\n  ✔ T07 partial unique index rejects duplicate legacy_task_id per workspace and ignores NULL (64.2351ms)\n  ✔ T08 deleting a workspace cascades its tasks and runs (66.7099ms)\n  ✔ T09 deleting a task cascades its runs (67.548ms)\n  ✔ T10 composite FK rejects a Run whose workspace does not match the Task workspace (73.6759ms)\n  ✔ T11 composite self FK rejects parent_run_id pointing at another Task (97.4356ms)\n  ✔ T12 composite self FK rejects root_run_id pointing at another Task (98.806ms)\n  ✔ T13 real node:sqlite accepts an initial Run with parent NULL and root_run_id = self (93.0499ms)\n  ✔ T14 PRAGMA integrity_check returns ok after 005/006 (70.055ms)\n  ✔ T15 PRAGMA foreign_key_check reports no violations after 005/006 (67.5271ms)\n  ✔ migrations 005/006 remain registered after 004 as later migrations are appended (0.2631ms)\n✔ M2.4 migration 005/006 schema (1031.8481ms)\nℹ tests 16\nℹ suites 1\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1318.0178\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "  ✔ T14 PRAGMA integrity_check returns ok after 005/006 (70.055ms)\n  ✔ T15 PRAGMA foreign_key_check reports no violations after 005/006 (67.5271ms)\n  ✔ migrations 005/006 remain registered after 004 as later migrations are appended (0.2631ms)\n✔ M2.4 migration 005/006 schema (1031.8481ms)\nℹ tests 16\nℹ suites 1\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1318.0178",
+      "baseline": "a3ff3d2d44828f2f19fb43feda7c4cffa92b8c00",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/migrations/__tests__/m2-4-task-run-schema.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ M2.4 migration 005/006 schema\n  ✔ T01 records 005/006 id, name and checksum in _schema_migrations (66.8498ms)\n  ✔ T02 second MigrationRunner run skips 005/006 without re-applying DDL (65.1903ms)\n  ✔ T03 failed migration rolls back DDL and leaves no _schema_migrations record (3.6372ms)\n  ✔ T04 tasks table columns, defaults, CHECK constraints and workspace FK are enforced (63.7557ms)\n  ✔ T05 runs table columns, defaults and CHECK constraints are enforced (68.1383ms)\n  ✔ T06 partial unique index rejects a second active Run per Task and allows it after terminal (63.5408ms)\n  ✔ T07 partial unique index rejects duplicate legacy_task_id per workspace and ignores NULL (64.2351ms)\n  ✔ T08 deleting a workspace cascades its tasks and runs (66.7099ms)\n  ✔ T09 deleting a task cascades its runs (67.548ms)\n  ✔ T10 composite FK rejects a Run whose workspace does not match the Task workspace (73.6759ms)\n  ✔ T11 composite self FK rejects parent_run_id pointing at another Task (97.4356ms)\n  ✔ T12 composite self FK rejects root_run_id pointing at another Task (98.806ms)\n  ✔ T13 real node:sqlite accepts an initial Run with parent NULL and root_run_id = self (93.0499ms)\n  ✔ T14 PRAGMA integrity_check returns ok after 005/006 (70.055ms)\n  ✔ T15 PRAGMA foreign_key_check reports no violations after 005/006 (67.5271ms)\n  ✔ migrations 005/006 remain registered after 004 as later migrations are appended (0.2631ms)\n✔ M2.4 migration 005/006 schema (1031.8481ms)\nℹ tests 16\nℹ suites 1\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1318.0178\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3783,
+      "sourceSha256": "043f9072aa95ea4584a31f9720251d877c434ce710bdd6fcb7d658e77dab540e",
+      "rawLogSha256": "0896cdadcfc0a6443c39067dab935ecc207fc388f460a1a5b863f5875c1cdc73",
+      "rawOutput": "▶ M2.5 schema — table existence\n  ✔ Migration 007 creates workflow_definitions (90.1399ms)\n  ✔ Migration 008 creates run_snapshots (76.0352ms)\n  ✔ Migration 009 creates run_stages (66.0851ms)\n✔ M2.5 schema — table existence (233.153ms)\n▶ M2.5 — Migration 007 workflow_definitions\n  ✔ 007-01 fresh DB creates workflow_definitions with exact columns (58.5744ms)\n  ✔ 007-02 existing 006 DB upgrades to 007 keeping prior data (7.3328ms)\n  ✔ 007-03 built-in row count is exactly 2 (63.5871ms)\n  ✔ 007-04/05 built-in rows have exact IDs, keys, versions and names (58.3407ms)\n  ✔ 007-06/07 built-in rows carry the exact frozen JSON and frozen hashes (59.3376ms)\n  ✔ 007-08 utility recomputation matches the seed hashes (0.4843ms)\n  ✔ 007-09 frozen JSON parses to the WorkflowDefinitionPayloadV1 structure (0.2041ms)\n  ✔ 007-10 duplicate definition_key/version is rejected (59.2603ms)\n  ✔ 007-11/12 seed conflict rolls back the whole migration (no table, no partial seed, no record) (7.2152ms)\n  ✔ 007-13 corrected 007 retries successfully after a rolled-back attempt (5.8268ms)\n  ✔ 007-14 immutable content fields are rejected by the trigger (56.1155ms)\n  ✔ 007-15 metadata updates (enabled, archived_at, updated_at) are allowed (62.1622ms)\n  ✔ 007-16 archived_at non-null with enabled=1 is rejected by CHECK (58.3754ms)\n  ✔ 007-17 enabled=0 with archived_at non-null is allowed (56.657ms)\n  ✔ 007-18 seed hashes match the full lowercase hex regex (0.1667ms)\n  ✔ 007-19 workflow_definitions has no workspace_id column (55.4917ms)\n  ✔ 007-20 migration record checksum equals migration007Checksum (61.0242ms)\n  ✔ 007-21 DDL and seed sources are frozen and reject mutation (55.9038ms)\n✔ M2.5 — Migration 007 workflow_definitions (726.8881ms)\n▶ M2.5 — Migration 008 run_snapshots\n  ✔ 008-01 existing 006 Task/Run data is preserved after upgrade (8.1854ms)\n  ✔ 008-02 idx_runs_id_workspace exists and is unique (65.3655ms)\n  ✔ 008-03 run_snapshots has exact columns (67.5117ms)\n  ✔ 008-04 one snapshot per Run is enforced (64.7669ms)\n  ✔ 008-05 workspace mismatch on (run_id, workspace_id) is rejected (65.9199ms)\n  ✔ 008-06 invalid workflow_definition_id is rejected (57.6032ms)\n  ✔ 008-07 invalid snapshot_json is rejected (60.5791ms)\n  ✔ 008-08 snapshot_schema_version < 1 is rejected (57.0991ms)\n  ✔ 008-09 invalid redaction_applied is rejected (101.1861ms)\n  ✔ 008-10 content_hash with length other than 64 is rejected (56.5867ms)\n  ✔ 008-11 full hash format is verified by test regex (55.3928ms)\n  ✔ 008-12 snapshot UPDATE is rejected by the trigger (61.6109ms)\n  ✔ 008-13 snapshot DELETE is not blocked by any trigger (54.6583ms)\n  ✔ 008-14 deleting a Run cascades to its Snapshot (54.5425ms)\n  ✔ 008-15 a pre-M2.5 Run without a Snapshot row is a legal state (53.1037ms)\n  ✔ 008-16 UNIQUE(id, run_id) works as a composite parent key (proven via 009 FK) (55.8848ms)\n  ✔ 008-17 apply failure leaves no index, table, trigger or record (5.429ms)\n  ✔ 008-18 corrected 008 retries successfully after a rolled-back attempt (6.947ms)\n  ✔ 008-19 DDL source is frozen and rejects mutation (55.7031ms)\n✔ M2.5 — Migration 008 run_snapshots (1008.8772ms)\n▶ M2.5 — Migration 009 run_stages\n  ✔ 009-01 run_stages has the M3 lifecycle columns and one version column (56.2962ms)\n  ✔ 009-02 Run workspace mismatch is rejected (62.577ms)\n  ✔ 009-03 binding Run A stage to Run B snapshot is rejected (58.7027ms)\n  ✔ 009-04 duplicate (run_id, sequence) is rejected (55.3727ms)\n  ✔ 009-05 duplicate (run_id, workflow_stage_key, attempt) is rejected (63.6055ms)\n  ✔ 009-06 duplicate (id, run_id) pair is rejected by uniqueness (63.1685ms)\n  ✔ 009-07 sequence = 0 is rejected (61.414ms)\n  ✔ 009-08 attempt = 0 is rejected (55.1784ms)\n  ✔ 009-09 canonical lifecycle statuses are accepted and legacy statuses are rejected (60.4753ms)\n  ✔ 009-10 version = 0 is rejected (56.3006ms)\n  ✔ 009-11/12 valid pending Stage inserts and name may equal workflowStageKey (57.6654ms)\n  ✔ 009-13 deleting a Run cascades to Snapshot and Stages (56.6803ms)\n  ✔ 009-14 deleting a Snapshot cascades to Stages (54.674ms)\n  ✔ 009-15 snapshot cascade does not block Run cascade (54.2573ms)\n  ✔ 009-16 Conversation run_steps table and rows are unchanged (50.0566ms)\n  ✔ 009-17 apply failure leaves no table or record (8.5608ms)\n  ✔ 009-18 corrected 009 retries successfully after a rolled-back attempt (8.6901ms)\n✔ M2.5 — Migration 009 run_stages (884.4973ms)\n▶ M2.5 — Registry and integrity\n  ✔ REG-01 registry IDs are exactly 001-016 in order with no duplicates (0.2387ms)\n  ✔ REG-02 fresh full migration passes integrity_check and foreign_key_check (60.2462ms)\n  ✔ REG-03 migration records are exactly 001-014 (61.8385ms)\n  ✔ REG-04 reopening a migrated DB does not re-seed or modify built-in rows (194.156ms)\n  ✔ REG-05 migration checksum mismatch still fails closed (80.0557ms)\n✔ M2.5 — Registry and integrity (396.9937ms)\nℹ tests 62\nℹ suites 5\nℹ pass 62\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3689.7306\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 62,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 62,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "  ✔ REG-03 migration records are exactly 001-014 (61.8385ms)\n  ✔ REG-04 reopening a migrated DB does not re-seed or modify built-in rows (194.156ms)\n  ✔ REG-05 migration checksum mismatch still fails closed (80.0557ms)\n✔ M2.5 — Registry and integrity (396.9937ms)\nℹ tests 62\nℹ suites 5\nℹ pass 62\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3689.7306",
+      "baseline": "a3ff3d2d44828f2f19fb43feda7c4cffa92b8c00",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ M2.5 schema — table existence\n  ✔ Migration 007 creates workflow_definitions (90.1399ms)\n  ✔ Migration 008 creates run_snapshots (76.0352ms)\n  ✔ Migration 009 creates run_stages (66.0851ms)\n✔ M2.5 schema — table existence (233.153ms)\n▶ M2.5 — Migration 007 workflow_definitions\n  ✔ 007-01 fresh DB creates workflow_definitions with exact columns (58.5744ms)\n  ✔ 007-02 existing 006 DB upgrades to 007 keeping prior data (7.3328ms)\n  ✔ 007-03 built-in row count is exactly 2 (63.5871ms)\n  ✔ 007-04/05 built-in rows have exact IDs, keys, versions and names (58.3407ms)\n  ✔ 007-06/07 built-in rows carry the exact frozen JSON and frozen hashes (59.3376ms)\n  ✔ 007-08 utility recomputation matches the seed hashes (0.4843ms)\n  ✔ 007-09 frozen JSON parses to the WorkflowDefinitionPayloadV1 structure (0.2041ms)\n  ✔ 007-10 duplicate definition_key/version is rejected (59.2603ms)\n  ✔ 007-11/12 seed conflict rolls back the whole migration (no table, no partial seed, no record) (7.2152ms)\n  ✔ 007-13 corrected 007 retries successfully after a rolled-back attempt (5.8268ms)\n  ✔ 007-14 immutable content fields are rejected by the trigger (56.1155ms)\n  ✔ 007-15 metadata updates (enabled, archived_at, updated_at) are allowed (62.1622ms)\n  ✔ 007-16 archived_at non-null with enabled=1 is rejected by CHECK (58.3754ms)\n  ✔ 007-17 enabled=0 with archived_at non-null is allowed (56.657ms)\n  ✔ 007-18 seed hashes match the full lowercase hex regex (0.1667ms)\n  ✔ 007-19 workflow_definitions has no workspace_id column (55.4917ms)\n  ✔ 007-20 migration record checksum equals migration007Checksum (61.0242ms)\n  ✔ 007-21 DDL and seed sources are frozen and reject mutation (55.9038ms)\n✔ M2.5 — Migration 007 workflow_definitions (726.8881ms)\n▶ M2.5 — Migration 008 run_snapshots\n  ✔ 008-01 existing 006 Task/Run data is preserved after upgrade (8.1854ms)\n  ✔ 008-02 idx_runs_id_workspace exists and is unique (65.3655ms)\n  ✔ 008-03 run_snapshots has exact columns (67.5117ms)\n  ✔ 008-04 one snapshot per Run is enforced (64.7669ms)\n  ✔ 008-05 workspace mismatch on (run_id, workspace_id) is rejected (65.9199ms)\n  ✔ 008-06 invalid workflow_definition_id is rejected (57.6032ms)\n  ✔ 008-07 invalid snapshot_json is rejected (60.5791ms)\n  ✔ 008-08 snapshot_schema_version < 1 is rejected (57.0991ms)\n  ✔ 008-09 invalid redaction_applied is rejected (101.1861ms)\n  ✔ 008-10 content_hash with length other than 64 is rejected (56.5867ms)\n  ✔ 008-11 full hash format is verified by test regex (55.3928ms)\n  ✔ 008-12 snapshot UPDATE is rejected by the trigger (61.6109ms)\n  ✔ 008-13 snapshot DELETE is not blocked by any trigger (54.6583ms)\n  ✔ 008-14 deleting a Run cascades to its Snapshot (54.5425ms)\n  ✔ 008-15 a pre-M2.5 Run without a Snapshot row is a legal state (53.1037ms)\n  ✔ 008-16 UNIQUE(id, run_id) works as a composite parent key (proven via 009 FK) (55.8848ms)\n  ✔ 008-17 apply failure leaves no index, table, trigger or record (5.429ms)\n  ✔ 008-18 corrected 008 retries successfully after a rolled-back attempt (6.947ms)\n  ✔ 008-19 DDL source is frozen and rejects mutation (55.7031ms)\n✔ M2.5 — Migration 008 run_snapshots (1008.8772ms)\n▶ M2.5 — Migration 009 run_stages\n  ✔ 009-01 run_stages has the M3 lifecycle columns and one version column (56.2962ms)\n  ✔ 009-02 Run workspace mismatch is rejected (62.577ms)\n  ✔ 009-03 binding Run A stage to Run B snapshot is rejected (58.7027ms)\n  ✔ 009-04 duplicate (run_id, sequence) is rejected (55.3727ms)\n  ✔ 009-05 duplicate (run_id, workflow_stage_key, attempt) is rejected (63.6055ms)\n  ✔ 009-06 duplicate (id, run_id) pair is rejected by uniqueness (63.1685ms)\n  ✔ 009-07 sequence = 0 is rejected (61.414ms)\n  ✔ 009-08 attempt = 0 is rejected (55.1784ms)\n  ✔ 009-09 canonical lifecycle statuses are accepted and legacy statuses are rejected (60.4753ms)\n  ✔ 009-10 version = 0 is rejected (56.3006ms)\n  ✔ 009-11/12 valid pending Stage inserts and name may equal workflowStageKey (57.6654ms)\n  ✔ 009-13 deleting a Run cascades to Snapshot and Stages (56.6803ms)\n  ✔ 009-14 deleting a Snapshot cascades to Stages (54.674ms)\n  ✔ 009-15 snapshot cascade does not block Run cascade (54.2573ms)\n  ✔ 009-16 Conversation run_steps table and rows are unchanged (50.0566ms)\n  ✔ 009-17 apply failure leaves no table or record (8.5608ms)\n  ✔ 009-18 corrected 009 retries successfully after a rolled-back attempt (8.6901ms)\n✔ M2.5 — Migration 009 run_stages (884.4973ms)\n▶ M2.5 — Registry and integrity\n  ✔ REG-01 registry IDs are exactly 001-016 in order with no duplicates (0.2387ms)\n  ✔ REG-02 fresh full migration passes integrity_check and foreign_key_check (60.2462ms)\n  ✔ REG-03 migration records are exactly 001-014 (61.8385ms)\n  ✔ REG-04 reopening a migrated DB does not re-seed or modify built-in rows (194.156ms)\n  ✔ REG-05 migration checksum mismatch still fails closed (80.0557ms)\n✔ M2.5 — Registry and integrity (396.9937ms)\nℹ tests 62\nℹ suites 5\nℹ pass 62\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3689.7306\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1928,
+      "sourceSha256": "31d0d659a13c4e96a9a752d561103c884a095a550fc7f8fd73c59cd62f28eaee",
+      "rawLogSha256": "042676d35ff924b15f8f3ec9d779a88f066cec334abc231075993b528d9cfc92",
+      "rawOutput": "✔ CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts (215.9112ms)\n✔ CR6-A2 History entries are durable references, never content-bearing (198.0752ms)\n✔ CR6-A3 the q filter never searches message bodies (secrets excluded from search) (223.1626ms)\n✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (216.1107ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (223.4934ms)\n✔ CR6-A6 the limit is bounded and deterministic (262.3357ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (274.8981ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1834.0732\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (216.1107ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (223.4934ms)\n✔ CR6-A6 the limit is bounded and deterministic (262.3357ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (274.8981ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1834.0732",
+      "baseline": "a3ff3d2d44828f2f19fb43feda7c4cffa92b8c00",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/AgentHistoryService.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts (215.9112ms)\n✔ CR6-A2 History entries are durable references, never content-bearing (198.0752ms)\n✔ CR6-A3 the q filter never searches message bodies (secrets excluded from search) (223.1626ms)\n✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (216.1107ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (223.4934ms)\n✔ CR6-A6 the limit is bounded and deterministic (262.3357ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (274.8981ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1834.0732\n",
+      "stderr": ""
+    }
+  ]
+}

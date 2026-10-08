@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:L1D-U09 an active MODIFYING admission blocks every later request|LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial)",
+      "src/services/WorkspaceAdmissionAuthority.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/assertions.json",
+      "sha256": "5528c163c7380ba93fc5f00f2976ff47ae3b5428267dd3f60a356e02b864d6b7"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/execution.json",
+      "sha256": "da868c74ed9c0e3d275a8b0a08dc4aa0b105920f5a323a7e581e28051f2398ba"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/stdout.txt",
+      "sha256": "6b53beef133dc82f2072e5711ecec76c6508e8cca94a7cd03e044f1238091ddb"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-290",
+      "requirementId": "LITE-00-008",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-009-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-291",
+      "requirementId": "LITE-00-009",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-292",
+      "requirementId": "LITE-01-008",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "one Workspace cannot admit two modifying Runs;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-010-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-293",
+      "requirementId": "LITE-01-010",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-003-l1d-u09-an-active-modifying-admission-blocks-every-later-request-294",
+      "requirementId": "LITE-02-003",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "modifying admission never permits two active modifying Runs in one Workspace;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-004-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-295",
+      "requirementId": "LITE-02-004",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-008-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-296",
+      "requirementId": "LITE-04-008",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-001-l1d-u09-an-active-modifying-admission-blocks-every-later-request-297",
+      "requirementId": "LITE-06-001",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "one Workspace never admits two AgentOS modifying Runs concurrently;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-002-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-298",
+      "requirementId": "LITE-06-002",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-003-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-299",
+      "requirementId": "LITE-06-003",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "unknown classification is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-004-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-300",
+      "requirementId": "LITE-06-004",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-013-l1d-u09-an-active-modifying-admission-blocks-every-later-request-301",
+      "requirementId": "LITE-08-013",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "no policy path bypasses single-writer admission;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-003-l1d-u09-an-active-modifying-admission-blocks-every-later-request-302",
+      "requirementId": "LITE-09-003",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "Run start passes Workspace admission;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-011-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-303",
+      "requirementId": "LITE-09-011",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-014-l1d-u09-an-active-modifying-admission-blocks-every-later-request-304",
+      "requirementId": "LITE-09-014",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "no Workspace has two AgentOS modifying Runs;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-009-l1d-u09-an-active-modifying-admission-blocks-every-later-request-305",
+      "requirementId": "LITE-10-009",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "optimistic race winner;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-011-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-306",
+      "requirementId": "LITE-10-011",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-307",
+      "requirementId": "LITE-11-008",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "one Workspace never admits two modifying Runs;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-011-l1d-u09-an-active-modifying-admission-blocks-every-later-request-308",
+      "requirementId": "LITE-13-011",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+      "line": 455,
+      "expression": "assert.deepEqual(granted, []);",
+      "clause": "no two modifying Runs in one Workspace;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-309",
+      "requirementId": "LITE-13-012",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-009-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-310",
+      "requirementId": "LITE-01-009",
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+      "line": 826,
+      "expression": "assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');",
+      "clause": "read-only concurrency requires tested technical Workspace write denial and does not bypass Provider or resource limits;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

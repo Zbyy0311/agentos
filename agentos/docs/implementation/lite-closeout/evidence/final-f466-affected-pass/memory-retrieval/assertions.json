@@ -1,0 +1,13 @@
+[
+  {
+    "id": "MEM-SCOPE-01",
+    "requirementId": "LITE-07-001",
+    "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+    "name": "MF3-01 reach resolution is owner-bounded",
+    "line": 94,
+    "expression": "assert.deepEqual(reach, [{ scope: 'global', ownerId: null }, { scope: 'workspace', ownerId: null }]);",
+    "clause": "Valid reachability uses the permitted Scope/owner pairs.",
+    "whyDirect": "The production reach resolver is called with a Workspace-only context and its exact valid global/workspace pairs are asserted.",
+    "outcome": "passed"
+  }
+]

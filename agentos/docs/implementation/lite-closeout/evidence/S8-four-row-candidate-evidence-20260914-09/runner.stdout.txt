@@ -1,0 +1,11 @@
+Candidate route model: codex=deepseek/deepseek-flash
+Candidate route model: kimi=opencodex/deepseek/deepseek-flash
+Candidate route model: opencode=deepseek/deepseek-v4-flash
+Server started: label=pre pid=86224 port=3201
+Node command exit=0 stdout=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\prepare.stdout.txt stderr=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\prepare.stderr.txt
+Node command exit=0 stdout=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\pre.stdout.txt stderr=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\pre.stderr.txt
+Candidate pre phase raw exit code: 0
+Server started: label=recovery pid=92492 port=3201
+Node command exit=0 stdout=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\recovery.stdout.txt stderr=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\recovery.stderr.txt
+Candidate recovery phase raw exit code: 0
+Node command exit=0 stdout=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\assemble.stdout.txt stderr=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-09\candidate-evidence\assemble.stderr.txt

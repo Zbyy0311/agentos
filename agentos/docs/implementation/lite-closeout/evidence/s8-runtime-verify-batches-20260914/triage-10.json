@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:19:33.419Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 10,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "scope": "LITE-10 数据模型组（15 行，全部指向只有 2 条断言的 M2MigrationRegistryAcceptance.test.ts —— 本轮为其重新指定真实覆盖断言）＋ 两条无点名可运行文件的行",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次或 covering-batches*.json）。",
+    "复合条款缺任一分项的具名断言即记驳回。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-10-003",
+      "clause": "opaque IDs and Process ID/PID distinction;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/store/Identity.test.ts",
+          "name": "createEntityId produces prefix_ulid format"
+        }
+      ],
+      "rationale": "不透明 ID —— Identity 套件断言 ID 形如 prefix_ulid 且各类前缀互不混淆；Process ID/PID 区分 —— INSP-04 断言投影同时给出独立 processId 与 nativePidEvidenceOnly。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（仅注册顺序，不覆盖）"
+    },
+    {
+      "id": "LITE-10-004",
+      "clause": "Task zero/many Runs and retry child lineage;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/TaskRunService.test.ts",
+          "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically"
+        }
+      ],
+      "rationale": "与 LITE-01-004/02-012 同源证据：零 Run（失败回滚后 listByTask 为 0）与多 Run（同一 Task 下 initial+retry 两条），加上 retry 断言 child.parentRunId===parent.id 的谱系。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches.json（92 passed）"
+    },
+    {
+      "id": "LITE-10-005",
+      "clause": "Snapshot immutability and child remapping;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "candidateAssertion": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "partialCoverage": [
+        {
+          "item": "快照不可变",
+          "file": "packages/shared/mf0-memory-contracts.test.ts",
+          "name": "MF0-19 snapshot immutability and event payload rules are frozen（mutable=false、rewrittenByLaterEntryEdits=false）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "child remapping",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ],
+      "rationale": "不可变性有两条具名断言（契约冻结 + resolver 的不改写断言）；但「child remapping」（子实体在迁移/复述时的 ID 重映射）在全仓检索（child.*remap / remaps / 重映射断言）无命中。按复合条款口径记驳回。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-10.json（mf0 20 passed / exit 0）"
+    },
+    {
+      "id": "LITE-10-006",
+      "clause": "Event append-only and per-Run ordering;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "coveringAssertion": "runtime Events are append-only and preserve Run correlation constraints",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+          "name": "Task-domain parent deletes are rejected without modifying the append-only Event"
+        },
+        {
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-05 events are ordered and bounded（sequence 严格升序）"
+        }
+      ],
+      "rationale": "append-only —— DDL 层断言事件行不可改、父实体删除被拒且事件未被修改；per-Run ordering —— INSP-05 断言同一 Run 的投影事件 sequence 恰为 [1,2,3] 升序。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-10.json（14 passed / exit 0）"
+    },
+    {
+      "id": "LITE-10-007",
+      "clause": "Event/Outbox atomicity and replay;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "coveringAssertion": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/OutboxPublisher.test.ts",
+          "name": "M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acceptance"
+        }
+      ],
+      "rationale": "原子性 —— 逐位置注入失败并断言整笔复合事务回滚（Event 与 Outbox 同生共死）；重放 —— Outbox 发布器断言只在被接受之后标记 published，重放不重复投递。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-10-008",
+      "clause": "idempotency convergence;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "coveringAssertion": "P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "name": "MF2R-G2 replay converges on the existing Candidate"
+        }
+      ],
+      "rationale": "并发无键竞争收敛为「一个 live、一个稳定 409」（同输入同结果）；带键路径由 RY-C03 断言恰好一条幂等记录；记忆侧重放断言返回既有候选 id。三处均为具名断言。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-7.json（55 passed）"
+    },
+    {
+      "id": "LITE-10-009",
+      "clause": "optimistic race winner;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/store/__tests__/RunRepository.test.ts",
+      "coveringAssertion": "T48 concurrent transitions produce exactly one winner",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY-C03 … one 201 and one RUN_ACTIVE_EXISTS 409"
+        }
+      ],
+      "rationale": "与 LITE-11-010 同源：repository 层断言并发迁移恰一个胜者、败者失败；路由层断言并发竞争的 201/409 组合与存活 Run 数为 1。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-10-010",
+      "clause": "Process reserve-before-spawn;",
+      "verdict": "accepted",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "only the winning created->starting CAS calls spawn; losers join without spawning",
+      "supportiveAssertions": [
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "Process reservation failure rolls back the pair atomically (Session=0, Process=0)"
+        }
+      ],
+      "rationale": "与 LITE-05-001 同一断言：先耗尽 spawn 权的 CAS、胜者才 spawn；预留失败原子回滚为零行，即不会「先 spawn 再补记录」。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-4.json（34 passed）"
+    },
+    {
+      "id": "LITE-10-011",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "coveringAssertion": "L1D-U03 frozen classifier, not requested class, is effective authority",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn"
+        },
+        {
+          "file": "packages/shared/p6-l1a-admission.test.ts",
+          "name": "L1A-R09 verified with missing boundaryId -> MODIFYING（缺证明字段即为 MODIFYING）"
+        }
+      ],
+      "rationale": "分类不可变 —— L1D-U03 断言生效分类取自冻结分类器而非请求方声明；逐 Run 只读证据 —— L1A-R09..R12 断言缺任一证明字段即降级 MODIFYING；L1D-I17 断言陈旧只读授权无法到达执行侧（零副作用）。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-10-012",
+      "clause": "fail-closed recovery evidence;",
+      "verdict": "accepted",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "cleanup terminateTree throw fails closed as unknown platform uncertainty",
+      "supportiveAssertions": [
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "cleanup verifySurvivors throw fails closed as unknown platform uncertainty"
+        },
+        {
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded"
+        }
+      ],
+      "rationale": "两处都断言「证据不可得时失败关闭为 unknown/uncertainty」而不是猜测：清理原语抛错 → unknown platform uncertainty；进程身份 mismatch → uncertainty-marked 且 Run 保持 running。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-4.json（34 passed）＋ covering-batches.json（67 passed）"
+    },
+    {
+      "id": "LITE-10-013",
+      "clause": "bounded finalized output references;",
+      "verdict": "accepted",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "retained cap fails closed BEFORE any byte commit",
+      "supportiveAssertions": [
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "truncate marks the reference with a bounded reason and source counts continue"
+        },
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "segment count derives from the frozen 8 MiB rolling segment cap"
+        }
+      ],
+      "rationale": "有界性 —— 保留上限在任何字节提交**之前**失败关闭；截断 —— 截断以有界原因标记，且源计数继续推进；分段 —— 段数由冻结的 8 MiB 滚动上限推导。三条都是对输出引用有界性的具名断言。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-4.json（34 passed）"
+    },
+    {
+      "id": "LITE-10-014",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/store/SqliteStore.test.ts",
+      "coveringAssertion": "records the tombstone schema through MigrationRunner and keeps it after restart",
+      "rationale": "断言体：通过 MigrationRunner 记录 tombstone 结构并在**重启后仍然保留** —— 即删除留下墓碑且历史不被级联抹除。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-10-015",
+      "clause": "compatibility reads without data loss;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+      "coveringAssertion": "[M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records",
+      "rationale": "断言体：兼容模式只做复制、**逐字节保留源数据**且不写 Task 域记录 —— 即兼容读取路径不丢数据、不产生副作用。",
+      "limits": "覆盖 Workspace 兼容复制路径；其他兼容读取面（如 legacy task 读取）由 m2-7 其它套件覆盖，本包未逐条重放。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-10.json（2 passed / exit 0）"
+    },
+    {
+      "id": "LITE-10-016",
+      "clause": "no secret persistence;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/store/MemoryEntryRepository.test.ts",
+      "coveringAssertion": "MF1R-15 record exposes no secret value field",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-11 record exposes no secret value field"
+        },
+        {
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-02 secret content rejects"
+        }
+      ],
+      "rationale": "两条记录形状断言（Entry 与 Candidate）分别断言持久化记录**不暴露秘密值字段**；另有一条断言秘密内容被直接拒绝写入。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "receipt": "covering-batches-10.json（16 passed）"
+    },
+    {
+      "id": "LITE-10-017",
+      "clause": "no clean-sheet schema replacement;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "coveringAssertion": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "rationale": "该文件虽只两条断言，但正是本条条款的正面证据：注册表按契约顺序逐项包含 001..031（无替换、无重排），配合各迁移测试中的「001-0xx 保持不变」与各 slice 的「additive only」声明（例如 029/030/031 的迁移注释与各自的 upgrade 对比断言），即增量而非推倒重建。",
+      "limits": "「无 clean-sheet 替换」由注册表顺序 + 各迁移的增量对比断言共同支撑；没有一条单独的「禁止重写历史迁移」断言。",
+      "currentPointer": "同一文件（本条是唯一指针正确的行）"
+    },
+    {
+      "id": "LITE-00-003",
+      "clause": "Task, Run, Process, and Event remain distinct and traceable;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+          "name": "INS-01 the Run overview is distinct from Task/Process and shows duration"
+        }
+      ],
+      "rationale": "两条具名断言分别在后端投影与前端视图两个层面断言 Run/Stage/Provider/Process/Task 的身份互不混淆且可追溯。",
+      "currentPointer": "（未记录可运行测试文件）"
+    },
+    {
+      "id": "LITE-00-009",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "L1D-I18 freshly revalidated GRANTED READ_ONLY authority may pass the dispatcher gate"
+        },
+        {
+          "file": "packages/shared/p6-l1a-admission.test.ts",
+          "name": "L1A-R09 verified with missing boundaryId -> MODIFYING"
+        }
+      ],
+      "rationale": "断言体：陈旧的 GRANTED READ_ONLY 授权**无法**到达 RunEngine/Provider/Process/spawn（零副作用）；只有重新校验过的授权才能通过闸门；缺证明字段即降级 MODIFYING。三句合起来覆盖「只读并发准入必须有被验证的 enforcedWorkspaceReadOnly 证据」。",
+      "currentPointer": "（未记录可运行测试文件）"
+    }
+  ],
+  "summary": {
+    "judged": 17,
+    "accepted": 15,
+    "rejected": 2,
+    "cumulativeJudged": 94,
+    "cumulativeAccepted": 64,
+    "cumulativeRejected": 30,
+    "remaining": 12
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+

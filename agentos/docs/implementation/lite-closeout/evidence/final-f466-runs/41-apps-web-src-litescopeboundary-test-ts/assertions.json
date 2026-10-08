@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-12-016-lite-12-016-no-web-module-implements-a-deferred-product-surface-302",
+    "requirementId": "LITE-12-016",
+    "name": "LITE-12-016 no web module implements a deferred product surface",
+    "line": 61,
+    "expression": "assert.deepEqual(",
+    "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-016-lite-12-016-the-workspace-shells-expose-no-deferred-product-entry-point-303",
+    "requirementId": "LITE-12-016",
+    "name": "LITE-12-016 the workspace shells expose no deferred product entry point",
+    "line": 73,
+    "expression": "assert.equal(",
+    "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

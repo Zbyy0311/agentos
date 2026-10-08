@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:HS-05 only labelled entries are searchable \\(no content search, secrets excluded\\)|HS-V01 the view renders the filter set, grouped results, and canonical links)",
+      "src/lib/historySearch.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/assertions.json",
+      "sha256": "c19fe1566887824ee3dce5600bcf14b9fc6180738aec5b81e95b3934862185d6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/execution.json",
+      "sha256": "d219f65d6238a1c819f7c8cad60aa7045cbbdf7f9ae84474c0e93a85561f9c2b"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/59-apps-web-src-lib-historysearch-test-tsx/stdout.txt",
+      "sha256": "46c25d3e84d3c2f61010e40f3eb5d141d26fd00cbb9d5fc1e19507429569caa4"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-013-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-377",
+      "requirementId": "LITE-01-013",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+      "line": 78,
+      "expression": "assert.equal(isLabelSearchable(ENTRY), true);",
+      "clause": "Agent History links canonical records rather than provider-native history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-013-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-378",
+      "requirementId": "LITE-01-013",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+      "line": 103,
+      "expression": "assert.ok(markup.includes('data-agentos=\"history-search-view\"'));",
+      "clause": "Agent History links canonical records rather than provider-native history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-011-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-379",
+      "requirementId": "LITE-11-011",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+      "line": 78,
+      "expression": "assert.equal(isLabelSearchable(ENTRY), true);",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-011-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-380",
+      "requirementId": "LITE-11-011",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+      "line": 103,
+      "expression": "assert.ok(markup.includes('data-agentos=\"history-search-view\"'));",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-013-hs-05-only-labelled-entries-are-searchable-no-content-search-secrets-excluded-381",
+      "requirementId": "LITE-12-013",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)",
+      "line": 78,
+      "expression": "assert.equal(isLabelSearchable(ENTRY), true);",
+      "clause": "Agent-unified History and secret-free Search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-013-hs-v01-the-view-renders-the-filter-set-grouped-results-and-canonical-links-382",
+      "requirementId": "LITE-12-013",
+      "file": "apps/web/src/lib/historySearch.test.tsx",
+      "name": "HS-V01 the view renders the filter set, grouped results, and canonical links",
+      "line": 103,
+      "expression": "assert.ok(markup.includes('data-agentos=\"history-search-view\"'));",
+      "clause": "Agent-unified History and secret-free Search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -47,7 +47,7 @@ import {
 
 type Db = InstanceType<typeof DatabaseSync>;
 
-const EXPECTED_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
+const EXPECTED_MIGRATION_PREFIX = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
 const NOW = '2026-08-03T00:00:00.000Z';
 
 function migratedDb(registry = DEFAULT_REGISTRY_MIGRATIONS): Db {
@@ -101,7 +101,11 @@ function assertIntegrity(fn: () => unknown): void {
 }
 
 test('Migration 013 is non-destructive, canonical, and preserves the frozen 007/012 checksums', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_IDS);
+  const registryIds = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  assert.deepEqual(registryIds.slice(0, EXPECTED_MIGRATION_PREFIX.length), EXPECTED_MIGRATION_PREFIX);
+  assert.equal(registryIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.ok(registryIds.includes('052'), 'P1 source bindings migration 052 must be registered');
+  assert.ok(registryIds.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
   assert.equal(migration013.id, '013');
   assert.equal(migration013.destructive, false);
   assert.equal(migration007Checksum, '2bf9edb75204d05e');
@@ -128,24 +132,28 @@ test('fresh DB keeps Workflow V1 and adds both Workflow V2 definitions through M
       [M3_013_LEGACY_DEFINITION_JSON, M3_013_LEGACY_DEFINITION_HASH, M3_013_SEED_TIMESTAMP, M3_013_SEED_TIMESTAMP],
       [M3_013_UNBOUND_DEFINITION_JSON, M3_013_UNBOUND_DEFINITION_HASH, M3_013_SEED_TIMESTAMP, M3_013_SEED_TIMESTAMP],
     ]);
-    assert.deepEqual(
-      (db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id),
-      EXPECTED_IDS,
-    );
+    const appliedMigrationIds = (db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
   } finally {
     db.close();
   }
 });
 
 test('001–012 DB upgrade adds only the two V2 rows and leaves both V1 rows byte-for-byte unchanged', () => {
-  const through012 = DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '013');
+  const through012 = DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id <= '012');
   const db = migratedDb(through012);
   try {
     const before = db.prepare(`
       SELECT id, definition_key, version, name, definition_json, definition_hash, created_at, updated_at
       FROM workflow_definitions WHERE version = 1 ORDER BY id
     `).all();
-    new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+    // This test proves Migration 013 upgrade semantics only; Migration 014 is
+    // destructive and requires the backup gate, which an in-memory upgrade DB
+    // cannot satisfy (covered by m4-p2-migration-014.test.ts), and migration
+    // 015 requires 014's runtime_processes, so the intended subset stops at
+    // 013 and excludes 015 as well (015 never silently no-ops without 014).
+    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id <= '013'))).run();
     const after = db.prepare(`
       SELECT id, definition_key, version, name, definition_json, definition_hash, created_at, updated_at
       FROM workflow_definitions WHERE version = 1 ORDER BY id

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 27,
+    "expression": "assert.ok(markup.includes('data-agentos=\"bounded-group-view\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

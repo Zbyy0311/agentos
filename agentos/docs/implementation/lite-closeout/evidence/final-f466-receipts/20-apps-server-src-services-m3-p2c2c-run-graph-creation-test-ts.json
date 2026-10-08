@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:N=0 writes only run\\.created with sequence 1 and next sequence 2|N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event|idempotency replay returns the stored result without adding Events or Outboxes)",
+      "src/services/m3-p2c2c-run-graph-creation.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/20-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/assertions.json",
+      "sha256": "76c3becaabe76b7596a4d427058b2436d02d179ea1ba6e49f28c29f4ea0801ce"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/20-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/execution.json",
+      "sha256": "42d507f02ed66a2499a99c93e23ae938a637c817759bc2076d37561af5385938"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/20-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/20-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/20-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/stdout.txt",
+      "sha256": "463a61e8939b1735fd68cd04732e095bb443851aa623ad408646867997a06b3d"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-02-005-n-0-writes-only-run-created-with-sequence-1-and-next-sequence-2-136",
+      "requirementId": "LITE-02-005",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N=0 writes only run.created with sequence 1 and next sequence 2",
+      "line": 190,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "Run graph creation is atomic and ordered;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-005-n-0-writes-the-persisted-graph-in-sequence-order-with-one-timestamp-and-one-outb-137",
+      "requirementId": "LITE-02-005",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event",
+      "line": 306,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "Run graph creation is atomic and ordered;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-005-idempotency-replay-returns-the-stored-result-without-adding-events-or-outboxes-138",
+      "requirementId": "LITE-02-005",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "idempotency replay returns the stored result without adding Events or Outboxes",
+      "line": 535,
+      "expression": "assert.equal(first.replayed, false);",
+      "clause": "Run graph creation is atomic and ordered;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-007-n-0-writes-only-run-created-with-sequence-1-and-next-sequence-2-139",
+      "requirementId": "LITE-02-007",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N=0 writes only run.created with sequence 1 and next sequence 2",
+      "line": 190,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "every durable Event has the required independent Outbox row;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-007-n-0-writes-the-persisted-graph-in-sequence-order-with-one-timestamp-and-one-outb-140",
+      "requirementId": "LITE-02-007",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event",
+      "line": 306,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "every durable Event has the required independent Outbox row;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-007-idempotency-replay-returns-the-stored-result-without-adding-events-or-outboxes-141",
+      "requirementId": "LITE-02-007",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "idempotency replay returns the stored result without adding Events or Outboxes",
+      "line": 535,
+      "expression": "assert.equal(first.replayed, false);",
+      "clause": "every durable Event has the required independent Outbox row;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-008-n-0-writes-only-run-created-with-sequence-1-and-next-sequence-2-142",
+      "requirementId": "LITE-10-008",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N=0 writes only run.created with sequence 1 and next sequence 2",
+      "line": 190,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "idempotency convergence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-008-n-0-writes-the-persisted-graph-in-sequence-order-with-one-timestamp-and-one-outb-143",
+      "requirementId": "LITE-10-008",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event",
+      "line": 306,
+      "expression": "assert.ok(persistedRun);",
+      "clause": "idempotency convergence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-008-idempotency-replay-returns-the-stored-result-without-adding-events-or-outboxes-144",
+      "requirementId": "LITE-10-008",
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "name": "idempotency replay returns the stored result without adding Events or Outboxes",
+      "line": 535,
+      "expression": "assert.equal(first.replayed, false);",
+      "clause": "idempotency convergence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

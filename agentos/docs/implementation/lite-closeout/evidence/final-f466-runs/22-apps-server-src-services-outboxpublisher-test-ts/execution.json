@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event|M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events|M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence)",
+      "src/services/OutboxPublisher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

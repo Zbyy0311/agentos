@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-08-015-approvalregistry-revokes-grants-idempotently-121",
+    "requirementId": "LITE-08-015",
+    "file": "apps/server/src/services/ApprovalRegistry.test.ts",
+    "name": "ApprovalRegistry revokes grants idempotently",
+    "line": 17,
+    "expression": "assert.ok(revoked.revokedAt);",
+    "clause": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-013-approvalregistry-revokes-grants-idempotently-122",
+    "requirementId": "LITE-11-013",
+    "file": "apps/server/src/services/ApprovalRegistry.test.ts",
+    "name": "ApprovalRegistry revokes grants idempotently",
+    "line": 17,
+    "expression": "assert.ok(revoked.revokedAt);",
+    "clause": "deferred API families are not active requirements.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

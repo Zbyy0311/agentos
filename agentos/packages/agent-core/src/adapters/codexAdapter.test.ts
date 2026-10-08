@@ -5,6 +5,17 @@ import { CodexAdapter } from './codexAdapter.js';
 const fixture = readFileSync(new URL('./fixtures/codex-basic.jsonl', import.meta.url), 'utf8');
 
 describe('CodexAdapter', () => {
+  it('LITE-07-104 preserves only explicit bounded command/exit evidence, not status or display text', () => {
+    const result = (overrides: Record<string, unknown>) => new CodexAdapter().createParser().push(JSON.stringify({
+      type: 'item.completed', item: { id: 'test-1', type: 'command_execution', command: 'node --test proof.test.cjs', exit_code: 0, ...overrides },
+    }) + '\n')[0];
+    expect(result({})).toMatchObject({ commandResult: { command: 'node --test proof.test.cjs', exitCode: 0 }, success: true });
+    expect(result({ exit_code: 1 })).toMatchObject({ commandResult: { exitCode: 1 }, success: false });
+    for (const invalid of [{ exit_code: null, status: 'completed' }, { exit_code: 0.5 }, { id: null },
+      { type: 'mcp_tool_call' }, { command: 'x'.repeat(513) }, { command: 'node --test token=secret-value' }]) {
+      expect(result(invalid)).not.toHaveProperty('commandResult');
+    }
+  });
   it('maps structured fixture items to public events in order', () => {
     const parser = new CodexAdapter().createParser();
     const events = parser.push(fixture);

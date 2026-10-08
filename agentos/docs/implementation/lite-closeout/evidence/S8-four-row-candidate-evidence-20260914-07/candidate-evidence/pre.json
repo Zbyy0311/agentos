@@ -1,0 +1,452 @@
+{
+  "schemaVersion": 1,
+  "phase": "pre",
+  "startedAt": "2026-09-14T07:33:51.583Z",
+  "setupPath": "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-07\\candidate-setup.json",
+  "assertions": [
+    {
+      "requirementId": "LITE-03-010",
+      "assertionId": "LITE-03-010-A1",
+      "description": "canonical Event stream subscription was accepted",
+      "step": "GET /api/runs/:runId/stream before Run start",
+      "observedObject": "HTTP response and SSE subscription",
+      "actual": {
+        "status": 200,
+        "contentType": "text/event-stream; charset=utf-8"
+      },
+      "expected": {
+        "status": 200,
+        "contentTypePrefix": "text/event-stream"
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "canonical-stream-open-before-start"
+      },
+      "why": "This binds the later disconnect action to the production canonical Run Event subscription route.",
+      "limits": "It does not by itself prove Run or Process lifecycle behavior."
+    },
+    {
+      "requirementId": "LITE-00-004",
+      "assertionId": "LITE-00-004-A1",
+      "description": "canonical Run start was accepted before disconnect",
+      "step": "POST /api/runs/:runId/start with {}",
+      "observedObject": "Run start HTTP acceptance",
+      "actual": {
+        "status": 202,
+        "operation": {
+          "id": "op_01M2FDCBCSHAE94GNGE44FEE4W",
+          "type": "run.start",
+          "status": "queued",
+          "workspaceId": "d7994c0c",
+          "aggregateType": "run",
+          "aggregateId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+          "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+          "correlationId": "op_01M2FDCBCSHAE94GNGE44FEE4W",
+          "createdAt": "2026-09-14T07:33:51.641Z",
+          "version": 1
+        }
+      },
+      "expected": {
+        "status": 202,
+        "operationStatus": "queued"
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "canonical-run-start-accepted"
+      },
+      "why": "It establishes the same Run and durable start Operation later observed after subscription disconnect.",
+      "limits": "Acceptance alone does not prove active Run survival."
+    },
+    {
+      "requirementId": "LITE-00-004",
+      "assertionId": "LITE-00-004-A2",
+      "description": "Run was observed active before subscription disconnect",
+      "step": "Poll Runtime Inspector after canonical start",
+      "observedObject": "Inspector projection.overview.status",
+      "actual": "running",
+      "expected": "running",
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "runtime-inspector-run-active-before-disconnect"
+      },
+      "why": "The requirement concerns a Run already in execution when the browser/subscription disconnect occurs.",
+      "limits": "This assertion does not prove Process linkage; that is recorded separately for LITE-02-009."
+    },
+    {
+      "requirementId": "LITE-02-009",
+      "assertionId": "LITE-02-009-A1",
+      "description": "the Run has a linked active durable Process before disconnect",
+      "step": "Poll Runtime Inspector after canonical start",
+      "observedObject": "Inspector projection.processes[]",
+      "actual": {
+        "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+        "status": "starting",
+        "processType": "provider"
+      },
+      "expected": {
+        "linkedRunId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+        "activeStatus": [
+          "starting",
+          "running"
+        ]
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "runtime-inspector-run-and-process-active-before-disconnect"
+      },
+      "why": "It proves the Process object being protected is the Process belonging to this Run.",
+      "limits": "It is a point-in-time observation before the disconnect."
+    },
+    {
+      "requirementId": "LITE-03-010",
+      "assertionId": "LITE-03-010-A2",
+      "description": "the canonical subscription received an actual Event frame before disconnect",
+      "step": "Consume the production SSE body while Run starts",
+      "observedObject": "SSE frames received by the client",
+      "actual": {
+        "frameCount": 15,
+        "events": [
+          {
+            "id": "evt_01M2FDCB2ATDXMFN02QS84N52W",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\",\"schemaVersion\":1,\"type\":\"run.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":1,\"timestamp\":\"2026-09-14T07:33:51.305Z\",\"source\":\"run-engine\",\"correlationId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"createdBy\":\"candidate-evidence\",\"reason\":\"initial\",\"rootRunId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"workflowDefinitionId\":\"workflow_00000000000000000000000003\",\"worktreeMode\":\"preferred\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\"}"
+          },
+          {
+            "id": "evt_01M2FDCB2C8P0QZY1WDFF630JC",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCB2C8P0QZY1WDFF630JC\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":2,\"timestamp\":\"2026-09-14T07:33:51.305Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[],\"name\":\"codex_manager\",\"sequence\":1,\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB28W5F3X4EH3SV3FZPE\",\"causationId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\",\"parentEventId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\"}"
+          },
+          {
+            "id": "evt_01M2FDCB2C8P0QZY1WDFF630JD",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCB2C8P0QZY1WDFF630JD\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":3,\"timestamp\":\"2026-09-14T07:33:51.305Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"codex_manager\"],\"name\":\"kimi_worker\",\"sequence\":2,\"workflowStageKey\":\"kimi_worker\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB2954WBMXTTFFG31G05\",\"causationId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\",\"parentEventId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\"}"
+          },
+          {
+            "id": "evt_01M2FDCB2DCRE2SA9X2467XXNP",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCB2DCRE2SA9X2467XXNP\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":4,\"timestamp\":\"2026-09-14T07:33:51.305Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"kimi_worker\"],\"name\":\"opencode_reviewer\",\"sequence\":3,\"workflowStageKey\":\"opencode_reviewer\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB2954WBMXTTFFG31G06\",\"causationId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\",\"parentEventId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\"}"
+          },
+          {
+            "id": "evt_01M2FDCB2DCRE2SA9X2467XXNQ",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCB2DCRE2SA9X2467XXNQ\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":5,\"timestamp\":\"2026-09-14T07:33:51.305Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"opencode_reviewer\"],\"name\":\"codex_final_review\",\"sequence\":4,\"workflowStageKey\":\"codex_final_review\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB2954WBMXTTFFG31G07\",\"causationId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\",\"parentEventId\":\"evt_01M2FDCB2ATDXMFN02QS84N52W\"}"
+          },
+          {
+            "id": "evt_01M2FDCBD7J3GXBN8ADWX35H63",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCBD7J3GXBN8ADWX35H63\",\"schemaVersion\":1,\"type\":\"run.dequeued\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":6,\"timestamp\":\"2026-09-14T07:33:51.655Z\",\"source\":\"scheduler\",\"correlationId\":\"op_01M2FDCBCSHAE94GNGE44FEE4W\",\"severity\":\"info\",\"visibility\":\"internal\",\"durability\":\"durable\",\"payload\":{\"dequeuedAt\":\"2026-09-14T07:33:51.655Z\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\"}"
+          },
+          {
+            "id": "evt_01M2FDCBDSEMKSC9AYJAXAKED1",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCBDSEMKSC9AYJAXAKED1\",\"schemaVersion\":1,\"type\":\"stage.ready\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":7,\"timestamp\":\"2026-09-14T07:33:51.671Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDCBCSHAE94GNGE44FEE4W\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependenciesCompleted\":[]},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB28W5F3X4EH3SV3FZPE\"}"
+          },
+          {
+            "id": "evt_01M2FDCBE7Q3R192SM2SKBWW3W",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCBE7Q3R192SM2SKBWW3W\",\"schemaVersion\":1,\"type\":\"stage.starting\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":8,\"timestamp\":\"2026-09-14T07:33:51.686Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDCBCSHAE94GNGE44FEE4W\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"attempt\":1,\"name\":\"codex_manager\",\"startingAt\":\"2026-09-14T07:33:51.686Z\",\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB28W5F3X4EH3SV3FZPE\"}"
+          },
+          {
+            "id": "evt_01M2FDCBEPK0XWATD5B52518Y6",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCBEPK0XWATD5B52518Y6\",\"schemaVersion\":1,\"type\":\"stage.started\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":9,\"timestamp\":\"2026-09-14T07:33:51.700Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDCBCSHAE94GNGE44FEE4W\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"agentSnapshot\":{\"agentId\":\"codex\",\"enabled\":true,\"name\":\"Codex\",\"permissions\":[\"read\",\"review\"],\"providerConfigId\":\"provider_01M2FDCAJYQS3FYJT03DGMSGP1\",\"role\":\"codex\",\"roleTitle\":\"首席架构师\",\"systemPrompt\":\"负责分析需求、制定方案和完成最终决策。\",\"version\":1},\"attempt\":1,\"name\":\"codex_manager\",\"providerSnapshot\":{\"adapterId\":\"builtin.codex\",\"approvalMode\":\"agentos\",\"argsTemplate\":[\"exec\",\"--dangerously-bypass-approvals-and-sandbox\",\"--skip-git-repo-check\",\"--ephemeral\",\"--model\",\"deepseek/deepseek-flash\"],\"capabilities\":{\"cancellation\":false,\"fileEvents\":false,\"interactiveInput\":false,\"modelSelection\":false,\"nativeApprovals\":false,\"nativeSandbox\":false,\"outputContracts\":false,\"pause\":false,\"reasoningStream\":false,\"sessionResume\":false,\"structuredEvents\":false,\"subagents\":false,\"toolEvents\":false,\"usageEvents\":false,\"workspaceAwareness\":false},\"enabled\":true,\"environmentProfileId\":null,\"executable\":\"C:\\\\Users\\\\Administrator\\\\.codex\\\\.sandbox-bin\\\\codex.exe\",\"model\":null,\"name\":\"Codex Provider\",\"outputMode\":\"structured\",\"providerConfigId\":\"provider_01M2FDCAJYQS3FYJT03DGMSGP1\",\"providerType\":\"codex\",\"runtimeMode\":\"cli\",\"secretProfileId\":null,\"timeoutPolicy\":{\"approvalTimeoutMs\":null,\"cancelGracePeriodMs\":5000,\"discoveryTimeoutMs\":10000,\"idleTimeoutMs\":600000,\"startupTimeoutMs\":60000,\"totalTimeoutMs\":null,\"validationTimeoutMs\":30000},\"version\":2,\"workingDirectoryMode\":\"workspace\",\"workspaceRelativeWorkingDirectory\":null},\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\",\"stageId\":\"stage_01M2FDCB28W5F3X4EH3SV3FZPE\"}"
+          },
+          {
+            "id": "evt_01M2FDCBEQJ4X2VYQBVDGFC20Z",
+            "event": "runtime-event",
+            "data": "{\"id\":\"evt_01M2FDCBEQJ4X2VYQBVDGFC20Z\",\"schemaVersion\":1,\"type\":\"run.started\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDCB1YAP7WMSFCT9ERN1QY\",\"sequence\":10,\"timestamp\":\"2026-09-14T07:33:51.700Z\",\"source\":\"run-engine\",\"correlationId\":\"op_01M2FDCBCSHAE94GNGE44FEE4W\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"startedAt\":\"2026-09-14T07:33:51.700Z\",\"workflowSnapshotVersion\":2},\"taskId\":\"task_01M2FDCB1JZB1DNS3HP2Y2RMY0\"}"
+          }
+        ]
+      },
+      "expected": {
+        "minimumFrameCount": 1
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "canonical-stream-frame-received-before-disconnect"
+      },
+      "why": "It demonstrates that the tested action is an active Event stream subscription, not merely an unopened HTTP request.",
+      "limits": "The frame content is an observed event sample, not a full replay audit."
+    },
+    {
+      "requirementId": "LITE-03-010",
+      "assertionId": "LITE-03-010-A3",
+      "description": "the client observed its own subscription abort completing",
+      "step": "Abort the canonical SSE subscription after active Run/Process observation",
+      "observedObject": "SSE reader and AbortController",
+      "actual": {
+        "abortSignal": true,
+        "abortObservedByReader": true,
+        "nonAbortError": null
+      },
+      "expected": {
+        "abortSignal": true,
+        "abortObservedByReader": true,
+        "nonAbortError": null
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "canonical-stream-client-disconnect-observed"
+      },
+      "why": "This records the actual subscription-disconnect event used for the causal no-cancellation check.",
+      "limits": "It does not claim that every possible browser network failure behaves identically."
+    },
+    {
+      "requirementId": "LITE-00-004",
+      "assertionId": "LITE-00-004-A3",
+      "description": "Run remained active after subscription disconnect",
+      "step": "Read Runtime Inspector after AbortController.abort",
+      "observedObject": "Inspector projection.overview.status",
+      "actual": "running",
+      "expected": "running",
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "runtime-inspector-run-active-after-disconnect"
+      },
+      "why": "It directly observes the same Run after the browser/subscription transport was disconnected.",
+      "limits": "It does not prove the Run can complete; the normal lifecycle close is checked separately."
+    },
+    {
+      "requirementId": "LITE-02-009",
+      "assertionId": "LITE-02-009-A2",
+      "description": "the Run-linked Process remained active after subscription disconnect",
+      "step": "Read Runtime Inspector after AbortController.abort",
+      "observedObject": "Inspector projection.processes[] for the same process id",
+      "actual": {
+        "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+        "status": "starting",
+        "processType": "provider"
+      },
+      "expected": {
+        "linkedRunId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+        "activeStatus": [
+          "starting",
+          "running"
+        ]
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "runtime-inspector-process-active-after-disconnect"
+      },
+      "why": "It extends Run survival to the durable Process owner and checks the same Process identity after disconnect.",
+      "limits": "It does not claim that a Process survives an explicit cancellation."
+    },
+    {
+      "requirementId": "LITE-03-010",
+      "assertionId": "LITE-03-010-A4",
+      "description": "the stream disconnect was not accompanied by a Run cancellation event or cancelled status",
+      "step": "Compare post-disconnect Run status and persisted Event projection",
+      "observedObject": "Inspector overview plus persisted Runtime Events",
+      "actual": {
+        "runStatus": "running",
+        "eventTypes": [
+          "run.created",
+          "stage.created",
+          "stage.created",
+          "stage.created",
+          "stage.created",
+          "run.dequeued",
+          "stage.ready",
+          "stage.starting",
+          "stage.started",
+          "run.started",
+          "memory.context_created",
+          "process.session_claimed",
+          "process.launch_requested",
+          "process.session_state_changed",
+          "process.starting"
+        ]
+      },
+      "expected": {
+        "runStatus": "running",
+        "forbiddenEventTypes": [
+          "run.cancelled",
+          "run.cancellation_requested"
+        ]
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "canonical-stream-disconnect-no-run-cancellation-observed"
+      },
+      "why": "The explicit stream action, reader abort receipt, post-action Run status, and event projection together test the causal boundary.",
+      "limits": "It establishes absence in this observed interval; it does not prove unrelated later explicit cancellation cannot occur."
+    },
+    {
+      "requirementId": "LITE-00-004",
+      "assertionId": "LITE-00-004-A4",
+      "description": "the still-active Run was ended by a separate normal lifecycle cancellation action",
+      "step": "GET start Operation then POST /api/operations/:operationId/cancel with its current version",
+      "observedObject": "Operation cancel response and Runtime Inspector terminal Run state",
+      "actual": {
+        "operationReadStatus": 200,
+        "operationStatusBeforeCancel": "completed",
+        "cancelStatus": 409,
+        "runStatusAfterCancel": "running"
+      },
+      "expected": {
+        "cancelStatus": 200,
+        "runStatusAfterCancel": "cancelled"
+      },
+      "outcome": "failed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "explicit-operation-cancel-after-disconnect"
+      },
+      "why": "It demonstrates the Run was not ended by the subscription disconnect and could be ended by the ordinary lifecycle action afterward.",
+      "limits": "This is an explicit cancellation proof, not proof of successful provider completion."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A1",
+      "description": "a dedicated recovery fixture conversation was created for queued/running/waiting_user states",
+      "step": "POST /api/workspaces/:workspaceId/runtime/conversations",
+      "observedObject": "Recovery fixture conversation",
+      "actual": {
+        "status": 201,
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0"
+      },
+      "expected": {
+        "status": 201,
+        "conversationId": "non-empty"
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-fixture-conversation-created"
+      },
+      "why": "It provides a real persisted Conversation foreign-key target for the restart recovery rows.",
+      "limits": "Conversation creation alone does not prove recovery classification."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A2",
+      "description": "recovery input states were recorded before the simulated server restart",
+      "step": "Insert and immediately re-read three legacy agent_runs rows",
+      "observedObject": "SQLite agent_runs rows before restart",
+      "actual": [
+        {
+          "id": "candidate-recovery-run-queued-45927c47-6741-4468-ade5-47af0e605875",
+          "objective": "candidate recovery queued",
+          "status": "queued",
+          "failureReason": null,
+          "waitingQuestion": null
+        },
+        {
+          "id": "candidate-recovery-run-running-c4817d36-b8da-4d0d-ac84-a40d37d37f44",
+          "objective": "candidate recovery running",
+          "status": "running",
+          "failureReason": null,
+          "waitingQuestion": null
+        },
+        {
+          "id": "candidate-recovery-run-waiting_user-ec56dce6-3097-41a2-bc3f-5150fbb6647e",
+          "objective": "candidate recovery waiting_user",
+          "status": "waiting_user",
+          "failureReason": null,
+          "waitingQuestion": "保留 waiting_user 状态"
+        }
+      ],
+      "expected": {
+        "statuses": [
+          "queued",
+          "running",
+          "waiting_user"
+        ]
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-before-state-recorded-before-server-stop"
+      },
+      "why": "It records the exact uncertainty states presented to startup recovery instead of inferring them afterward.",
+      "limits": "The restart action itself is recorded by the runner and server stdout/stderr receipts."
+    }
+  ],
+  "metadata": {
+    "workspaceId": "d7994c0c",
+    "taskId": "task_01M2FDCB1JZB1DNS3HP2Y2RMY0",
+    "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+    "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+    "stageIds": [
+      "stage_01M2FDCB28W5F3X4EH3SV3FZPE",
+      "stage_01M2FDCB2954WBMXTTFFG31G05",
+      "stage_01M2FDCB2954WBMXTTFFG31G06",
+      "stage_01M2FDCB2954WBMXTTFFG31G07"
+    ],
+    "stageKeys": [
+      "codex_manager",
+      "kimi_worker",
+      "opencode_reviewer",
+      "codex_final_review"
+    ],
+    "routeModels": {
+      "codex": "deepseek/deepseek-flash",
+      "kimi": "opencodex/deepseek/deepseek-flash",
+      "opencode": "deepseek/deepseek-v4-flash"
+    },
+    "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。",
+    "subscriptionDisconnect": {
+      "action": "AbortController.abort",
+      "target": "canonical GET /api/runs/:runId/stream subscription",
+      "at": "2026-09-14T07:33:52.382Z",
+      "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+      "processId": null
+    },
+    "recoveryConversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+    "recoveryBefore": [
+      {
+        "id": "candidate-recovery-run-queued-45927c47-6741-4468-ade5-47af0e605875",
+        "objective": "candidate recovery queued",
+        "status": "queued",
+        "failureReason": null,
+        "waitingQuestion": null
+      },
+      {
+        "id": "candidate-recovery-run-running-c4817d36-b8da-4d0d-ac84-a40d37d37f44",
+        "objective": "candidate recovery running",
+        "status": "running",
+        "failureReason": null,
+        "waitingQuestion": null
+      },
+      {
+        "id": "candidate-recovery-run-waiting_user-ec56dce6-3097-41a2-bc3f-5150fbb6647e",
+        "objective": "candidate recovery waiting_user",
+        "status": "waiting_user",
+        "failureReason": null,
+        "waitingQuestion": "保留 waiting_user 状态"
+      }
+    ]
+  },
+  "errors": [
+    "LITE-00-004/LITE-00-004-A4: the still-active Run was ended by a separate normal lifecycle cancellation action"
+  ],
+  "finishedAt": "2026-09-14T07:34:37.583Z",
+  "counts": {
+    "total": 12,
+    "passed": 11,
+    "failed": 1,
+    "skipped": 0
+  },
+  "rawExitCode": 1
+}

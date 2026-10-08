@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LITE-04-006-lite-04-002-lite-04-006-classifies-every-production-adapter-identically-for-auth-320",
+    "requirementId": "LITE-04-006",
+    "name": "LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures",
+    "line": 49,
+    "expression": "expect(",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-321",
+    "requirementId": "LITE-04-006",
+    "name": "always reports retryability as an explicit boolean, never as an absence",
+    "line": 60,
+    "expression": "expect(",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-keeps-a-normalized-error-idempotent-through-re-normalization-322",
+    "requirementId": "LITE-04-006",
+    "name": "keeps a normalized error idempotent through re-normalization",
+    "line": 71,
+    "expression": "expect(",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

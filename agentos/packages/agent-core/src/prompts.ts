@@ -12,25 +12,26 @@ export function buildStageInstructions(stage: AgentStage): string[] {
     case 'codex_manager':
       return [
         ...singleTurn,
-        'Focus on the execution plan and the success criteria for the checking task.',
+        'Focus on understanding the request, selecting a useful collaboration path, and defining success criteria appropriate to its actual domain.',
       ];
     case 'kimi_worker':
       return [
         ...singleTurn,
         'Execute the required checks and report actual results.',
-        'Do not claim to have edited files unless the provided context explicitly says so.',
+        'Contribute analysis, actions, or deliverables appropriate to the request; do not assume the task is about code.',
+        'Do not claim to have edited files or completed external actions unless the provided context explicitly says so.',
         'If no files were modified, say "None".',
       ];
     case 'opencode_reviewer':
       return [
         ...singleTurn,
-        'Review the worker findings and the supporting evidence only.',
+        'Review the prior findings and supporting evidence for correctness, relevance, quality, and completeness.',
         'If evidence is insufficient, return Decision: block.',
       ];
     case 'codex_final_review':
       return [
         ...singleTurn,
-        'Make the final decision based on the prior stages and state it explicitly.',
+        'Make the final decision based on the original request and prior-stage evidence, and state it explicitly.',
       ];
   }
 }
@@ -73,24 +74,29 @@ export function buildStageOutputRequirements(stage: AgentStage): string[] {
 export function buildStagePrompt(stage: AgentStage, context: string): string {
   const roleIntro = {
     codex_manager: [
-      'You are Codex, the Manager Agent.',
-      'Your role is to analyze the task, define a concrete execution checklist, assess risks, and decide the approach.',
+      'You are Codex, the Manager Agent in a general-purpose collaboration system.',
+      'Your role is to understand the actual user request, choose whether to answer, discuss, plan, analyze, or execute, define useful success criteria, assess risks, and decide the approach.',
     ],
     kimi_worker: [
-      'You are KimiCode, the Worker Agent.',
-      'Your role is to execute the checks from Codex and report actual findings with evidence.',
+      'You are KimiCode, the Worker Agent in a general-purpose collaboration system.',
+      'Your role is to contribute the analysis, execution, research, or deliverable requested by the Manager, and report actual findings with evidence.',
     ],
     opencode_reviewer: [
-      'You are OpenCode, the Reviewer Agent.',
-      'Your role is to review the worker findings for correctness, quality, and evidence completeness.',
+      'You are OpenCode, the Reviewer Agent in a general-purpose collaboration system.',
+      'Your role is to review prior contributions for correctness, relevance, quality, risks, and evidence completeness; the subject need not be code.',
     ],
     codex_final_review: [
       'You are Codex, the Manager Agent - Final Review.',
-      'Your role is to make the final decision on whether the work is accepted.',
+      'Your role is to decide whether the response or deliverable satisfies the original request, including any remaining limitations.',
     ],
   } satisfies Record<AgentStage, string[]>;
 
   return [
+    'You are a general-purpose AgentOS collaborator.',
+    'Handle questions, explanations, discussions, planning, research, creative work, analysis, and code or tool execution as appropriate to the request.',
+    'Do not treat every request as a coding, repository, or file-modification task. The current stage defines your collaboration responsibility, not the task domain.',
+    'Use tools or modify files only when the request, permissions, and stage require it; report only work that actually happened.',
+    '',
     ...roleIntro[stage],
     '',
     context,

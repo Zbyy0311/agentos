@@ -1,0 +1,487 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-16T02:22:33.648Z",
+  "parserVersion": "lite-v1-markdown-heading",
+  "phases": {
+    "service": {
+      "importRecords": 10,
+      "sourceHash": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+      "revisedSourceHash": "a584a8c032515201e113b4f956c6d8dd266b3e71ab8f9eda06d92b0711968592"
+    },
+    "http": {
+      "importRecordsListed": 212
+    }
+  },
+  "counts": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S7E-PREVIEW-01",
+      "requirementId": "LITE-07-106",
+      "phase": "file",
+      "step": "the production preview segments the real file without persisting anything",
+      "actual": {
+        "parserVersion": "lite-v1-markdown-heading",
+        "byteSize": 11626,
+        "fileBytes": 11626,
+        "sourceHashMatchesFileBytes": true,
+        "fragmentCount": 5,
+        "fragmentTitles": [
+          "handbook.md",
+          "Alpha",
+          "Beta",
+          "Beta (part 2)",
+          "Gamma"
+        ],
+        "skipped": 0,
+        "rowsWritten": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0,
+          "entries": 0,
+          "runs": 0
+        }
+      },
+      "expected": {
+        "parserVersion": "lite-v1-markdown-heading",
+        "byteSize": 11626,
+        "fileBytes": 11626,
+        "sourceHashMatchesFileBytes": true,
+        "fragmentCount": 5,
+        "fragmentTitles": [
+          "handbook.md",
+          "Alpha",
+          "Beta",
+          "Beta (part 2)",
+          "Gamma"
+        ],
+        "skipped": 0,
+        "rowsWritten": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0,
+          "entries": 0,
+          "runs": 0
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-PREVIEW-02",
+      "requirementId": "LITE-07-106",
+      "phase": "file",
+      "step": "an oversized section is split further so every fragment stays bounded",
+      "actual": {
+        "sectionCharacters": 12000,
+        "limit": 8000,
+        "fragmentLengths": [
+          35,
+          549,
+          8000,
+          2999,
+          11
+        ],
+        "allWithinLimit": true,
+        "partTitles": [
+          "Beta (part 2)"
+        ],
+        "betaPartsReassemble": true
+      },
+      "expected": {
+        "sectionCharacters": 12000,
+        "limit": 8000,
+        "fragmentLengths": [
+          35,
+          549,
+          8000,
+          2999,
+          11
+        ],
+        "allWithinLimit": true,
+        "partTitles": [
+          "Beta (part 2)"
+        ],
+        "betaPartsReassemble": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-PREVIEW-03",
+      "requirementId": "LITE-07-106",
+      "phase": "file",
+      "step": "each fragment is content-addressed and the user file is left untouched",
+      "actual": {
+        "fragmentHashesMatch": true,
+        "hashOnDiskBefore": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+        "hashOnDiskAfter": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+        "fileUnchanged": true,
+        "fileBytesOnDisk": 11626
+      },
+      "expected": {
+        "fragmentHashesMatch": true,
+        "hashOnDiskBefore": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+        "hashOnDiskAfter": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+        "fileUnchanged": true,
+        "fileBytesOnDisk": 11626
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-CONFIRM-01",
+      "requirementId": "LITE-07-106",
+      "phase": "service",
+      "step": "a confirmed import writes review-required Candidates, durable records and canonical Events",
+      "actual": {
+        "imported": 5,
+        "converged": 0,
+        "skipped": 0,
+        "recordCount": 5,
+        "parserVersion": "lite-v1-markdown-heading",
+        "sourceHashMatchesPreview": true,
+        "fragmentHashesMatchPreview": true,
+        "fragmentIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "candidateIdsMatchRecords": true,
+        "scopes": [
+          "workspace"
+        ],
+        "categories": [
+          "knowledge"
+        ],
+        "authorities": [
+          "imported-verified"
+        ],
+        "decisions": [
+          "review-required"
+        ],
+        "owners": [
+          null
+        ],
+        "candidateCount": 5
+      },
+      "expected": {
+        "imported": 5,
+        "converged": 0,
+        "skipped": 0,
+        "recordCount": 5,
+        "parserVersion": "lite-v1-markdown-heading",
+        "sourceHashMatchesPreview": true,
+        "fragmentHashesMatchPreview": true,
+        "fragmentIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "candidateIdsMatchRecords": true,
+        "scopes": [
+          "workspace"
+        ],
+        "categories": [
+          "knowledge"
+        ],
+        "authorities": [
+          "imported-verified"
+        ],
+        "decisions": [
+          "review-required"
+        ],
+        "owners": [
+          null
+        ],
+        "candidateCount": 5
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-CONFIRM-02",
+      "requirementId": "LITE-07-108",
+      "phase": "service",
+      "step": "the non-Run origin registers its own canonical causal Event without inventing a Run",
+      "actual": {
+        "eventTypes": [
+          "memory.candidate_created"
+        ],
+        "eventCount": 5,
+        "correlationNamesItsOwnRecord": true,
+        "causationMatchesRecordIds": true,
+        "importIds": [
+          "imp_01M2M0BRXXQ7TY1ZTFZVK550K9",
+          "imp_01M2M0BRXZKXEVWX4WZKXZRF2G",
+          "imp_01M2M0BRY000692V3MX9CWRFKK",
+          "imp_01M2M0BRY000692V3MX9CWRFKP",
+          "imp_01M2M0BRY1QPCDWVRFJ6YYQ8JJ"
+        ],
+        "payloadCandidateMatches": true,
+        "runsFabricated": 0
+      },
+      "expected": {
+        "eventTypes": [
+          "memory.candidate_created"
+        ],
+        "eventCount": 5,
+        "correlationNamesItsOwnRecord": true,
+        "causationMatchesRecordIds": true,
+        "importIds": [
+          "imp_01M2M0BRXXQ7TY1ZTFZVK550K9",
+          "imp_01M2M0BRXZKXEVWX4WZKXZRF2G",
+          "imp_01M2M0BRY000692V3MX9CWRFKK",
+          "imp_01M2M0BRY000692V3MX9CWRFKP",
+          "imp_01M2M0BRY1QPCDWVRFJ6YYQ8JJ"
+        ],
+        "payloadCandidateMatches": true,
+        "runsFabricated": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-CONFIRM-03",
+      "requirementId": "LITE-07-108",
+      "phase": "service",
+      "step": "the origin is proved against the durable record, and a borrowed origin is refused",
+      "actual": {
+        "proof": {
+          "candidateId": true,
+          "scope": "workspace",
+          "category": "knowledge",
+          "authority": "imported-verified",
+          "decision": "review-required"
+        },
+        "provesOnlyOwnRecord": true,
+        "unknownRecordProved": false,
+        "borrowedOriginRefusal": "WORKSPACE_EVENT_ORIGIN_UNPROVEN",
+        "eventsAfterRefusal": 5
+      },
+      "expected": {
+        "proof": {
+          "candidateId": true,
+          "scope": "workspace",
+          "category": "knowledge",
+          "authority": "imported-verified",
+          "decision": "review-required"
+        },
+        "provesOnlyOwnRecord": true,
+        "unknownRecordProved": false,
+        "borrowedOriginRefusal": "WORKSPACE_EVENT_ORIGIN_UNPROVEN",
+        "eventsAfterRefusal": 5
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-IDEMPOTENT-01",
+      "requirementId": "LITE-07-107",
+      "phase": "service",
+      "step": "a repeated import of the same bytes converges and writes nothing new",
+      "actual": {
+        "imported": 0,
+        "converged": 5,
+        "sameCandidates": true,
+        "rows": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0
+        }
+      },
+      "expected": {
+        "imported": 0,
+        "converged": 5,
+        "sameCandidates": true,
+        "rows": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-IDEMPOTENT-02",
+      "requirementId": "LITE-07-107",
+      "phase": "service",
+      "step": "a changed source becomes a traceable new version instead of overwriting the audit trail",
+      "actual": {
+        "sourceHashChanged": true,
+        "imported": 5,
+        "converged": 0,
+        "importedIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "recordsAfter": 10,
+        "distinctSourceVersions": 2,
+        "oldVersionFragmentKept": true,
+        "oldAndNewFractionDiffer": true,
+        "oldAndNewCandidatesDiffer": true,
+        "scopesUnchanged": [
+          "workspace"
+        ],
+        "fragmentReuseAcrossVersions": "not-part-of-the-contract"
+      },
+      "expected": {
+        "sourceHashChanged": true,
+        "imported": 5,
+        "converged": 0,
+        "importedIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "recordsAfter": 10,
+        "distinctSourceVersions": 2,
+        "oldVersionFragmentKept": true,
+        "oldAndNewFractionDiffer": true,
+        "oldAndNewCandidatesDiffer": true,
+        "scopesUnchanged": [
+          "workspace"
+        ],
+        "fragmentReuseAcrossVersions": "not-part-of-the-contract"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-OWNER-01",
+      "requirementId": "LITE-07-107",
+      "phase": "owner",
+      "step": "the same bytes in another Workspace are a new import, not a cross-owner convergence",
+      "actual": {
+        "imported": 5,
+        "converged": 0,
+        "records": 5,
+        "candidates": 5,
+        "events": 5,
+        "sameSourceHashAsFirstWorkspace": true,
+        "firstWorkspaceRecordsUnchanged": 10
+      },
+      "expected": {
+        "imported": 5,
+        "converged": 0,
+        "records": 5,
+        "candidates": 5,
+        "events": 5,
+        "sameSourceHashAsFirstWorkspace": true,
+        "firstWorkspaceRecordsUnchanged": 10
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-REFUSAL-01",
+      "requirementId": "LITE-07-106",
+      "phase": "refusals",
+      "step": "the size, encoding, emptiness and input rules are executed, not assumed",
+      "actual": {
+        "tooLarge": "IMPORT_TOO_LARGE",
+        "atLimit": null,
+        "notUtf8": "IMPORT_NOT_UTF8",
+        "notUtf8IsImportError": true,
+        "empty": "IMPORT_EMPTY",
+        "blankName": "IMPORT_INPUT_INVALID",
+        "maxBytes": 1048576,
+        "rowsWrittenByRefusals": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0
+        }
+      },
+      "expected": {
+        "tooLarge": "IMPORT_TOO_LARGE",
+        "atLimit": null,
+        "notUtf8": "IMPORT_NOT_UTF8",
+        "notUtf8IsImportError": true,
+        "empty": "IMPORT_EMPTY",
+        "blankName": "IMPORT_INPUT_INVALID",
+        "maxBytes": 1048576,
+        "rowsWrittenByRefusals": {
+          "candidates": 0,
+          "records": 0,
+          "events": 0
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-REFUSAL-02",
+      "requirementId": "LITE-07-106",
+      "phase": "refusals",
+      "step": "the fragment budget bounds one import instead of unbounded Candidate writes",
+      "actual": {
+        "sections": 205,
+        "fragmentCount": 200,
+        "maxFragments": 200,
+        "skipped": 5,
+        "skipReasons": [
+          "fragment-limit"
+        ],
+        "confirmedImported": 200,
+        "confirmedSkipped": 5
+      },
+      "expected": {
+        "sections": 205,
+        "fragmentCount": 200,
+        "maxFragments": 200,
+        "skipped": 5,
+        "skipReasons": [
+          "fragment-limit"
+        ],
+        "confirmedImported": 200,
+        "confirmedSkipped": 5
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S7E-HTTP-01",
+      "requirementId": "LITE-07-106",
+      "phase": "http",
+      "step": "the mounted router previews, confirms and converges over real HTTP",
+      "actual": {
+        "previewStatus": 200,
+        "previewFragments": 2,
+        "previewParser": "lite-v1-markdown-heading",
+        "confirmStatus": 201,
+        "confirmImported": 2,
+        "repeatStatus": 200,
+        "repeatImported": 0,
+        "repeatConverged": 2,
+        "listedStatus": true,
+        "listedIds": 2,
+        "tooLargeStatus": 413,
+        "tooLargeError": "IMPORT_TOO_LARGE",
+        "missingFieldStatus": 400,
+        "missingFieldError": "IMPORT_INPUT_INVALID",
+        "unknownWorkspaceStatus": 404
+      },
+      "expected": {
+        "previewStatus": 200,
+        "previewFragments": 2,
+        "previewParser": "lite-v1-markdown-heading",
+        "confirmStatus": 201,
+        "confirmImported": 2,
+        "repeatStatus": 200,
+        "repeatImported": 0,
+        "repeatConverged": 2,
+        "listedStatus": true,
+        "listedIds": 2,
+        "tooLargeStatus": 413,
+        "tooLargeError": "IMPORT_TOO_LARGE",
+        "missingFieldStatus": 400,
+        "missingFieldError": "IMPORT_INPUT_INVALID",
+        "unknownWorkspaceStatus": 404
+      },
+      "outcome": "passed"
+    }
+  ]
+}

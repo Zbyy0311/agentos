@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P2 Migration Registry contains exactly the registered migrations in contract order)",
+      "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/03-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/assertions.json",
+      "sha256": "811285e0706b96ed1e697a48d533f61bc84d742b819877d09944de32ba74b21d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/03-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/execution.json",
+      "sha256": "1e96c31ba71fa752e7bd301eab5f6f8a11416e6edd26b042e01860e7997a2b81"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/03-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/03-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/03-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stdout.txt",
+      "sha256": "97363c07f646a15f8ea7f6ef5654bed08e71727c743fa6c95b695b73a26ecf78"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-21",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

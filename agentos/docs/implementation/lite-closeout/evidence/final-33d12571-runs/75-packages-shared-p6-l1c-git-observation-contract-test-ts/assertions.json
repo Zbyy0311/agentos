@@ -1,0 +1,211 @@
+[
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-487-A1",
+    "requirementId": "LITE-03-014",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_COMMIT_ORDER_V1, [",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-487-A2",
+    "requirementId": "LITE-03-014",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 594,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_CRASH_POLICY_V1, {",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-487-A3",
+    "requirementId": "LITE-03-014",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 599,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: false }), false);",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-487-A4",
+    "requirementId": "LITE-03-014",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 600,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: true }), true);",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-487-A5",
+    "requirementId": "LITE-03-014",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 601,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: false, immutableFinalContentExists: false }), true);",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-488-A1",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_COMMIT_ORDER_V1, [",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-488-A2",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 594,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_CRASH_POLICY_V1, {",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-488-A3",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 599,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: false }), false);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-488-A4",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 600,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: true }), true);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-488-A5",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 601,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: false, immutableFinalContentExists: false }), true);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-489-A1",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 150,
+    "expression": "assert.equal(await port.execute(request), result);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-489-A2",
+    "requirementId": "LITE-06-007",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 151,
+    "expression": "assert.deepEqual(port.requests, [request]);",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-490-A1",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 150,
+    "expression": "assert.equal(await port.execute(request), result);",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-490-A2",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 151,
+    "expression": "assert.deepEqual(port.requests, [request]);",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-491-A1",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_COMMIT_ORDER_V1, [",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-491-A2",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 594,
+    "expression": "assert.deepEqual(CANONICAL_DIFF_ARTIFACT_CRASH_POLICY_V1, {",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-491-A3",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 599,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: false }), false);",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-491-A4",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 600,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: true, immutableFinalContentExists: true }), true);",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-491-A5",
+    "requirementId": "LITE-06-010",
+    "file": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 601,
+    "expression": "assert.equal(canCommitCanonicalDiffArtifactV1({ contentAvailable: false, immutableFinalContentExists: false }), true);",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

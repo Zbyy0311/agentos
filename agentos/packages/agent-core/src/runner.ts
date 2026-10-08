@@ -145,7 +145,7 @@ export class AgentRunner {
       '',
       `## Instructions`,
       `Execute your role as defined in AGENT_RULE.md.`,
-      `Output your analysis, decisions, and any code changes.`,
+      `Output your analysis, decisions, execution results, and any applicable deliverables or changes.`,
       ...buildStageInstructions(stage),
     ].join('\n');
   }

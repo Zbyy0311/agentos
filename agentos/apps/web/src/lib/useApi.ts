@@ -6,6 +6,7 @@ interface ApiOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   timeout?: number;
+  headers?: Record<string, string>;
 }
 
 export function useApi() {
@@ -17,7 +18,10 @@ export function useApi() {
     try {
       const res = await fetch(`${API_BASE}${path}`, {
         method: options.method || 'GET',
-        headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+        headers: {
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers ?? {}),
+        },
         body: options.body ? JSON.stringify(options.body) : undefined,
         cache: 'no-store',
         signal: controller.signal,

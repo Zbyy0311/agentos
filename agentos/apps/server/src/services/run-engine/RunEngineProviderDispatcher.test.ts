@@ -1,0 +1,1541 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+
+import { createRequire } from 'node:module';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfigurationSnapshotV1, type RunSnapshotPayloadV2, type WorkspaceReadOnlyEvidence } from '@agentos/shared';
+import { DurableProcessCoordinator, FileArtifactSink, type ExitEvidence, type NativeIdentity, type NativeProcessHandle, type NativeProcessStreams, type PlatformProcessDriver, type ProcessProbePort, type SurvivorVerification, type TreeTerminationResult } from '@agentos/process-runtime';
+import { CodexProviderAdapter, KimiCodeProviderAdapter, OpenCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import { MigrationRegistry } from '../../migrations/registry.js';
+import { MigrationRunner } from '../../migrations/MigrationRunner.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../../migrations/default-registry.js';
+import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../../migrations/migrations/013-workflow-creation-metadata-v2.js';
+import { RunRepository } from '../../store/RunRepository.js';
+import { RunStageRepository } from '../../store/RunStageRepository.js';
+import { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
+import { ProviderSessionRepository } from '../../store/ProviderSessionRepository.js';
+import { ProcessRepository } from '../../store/ProcessRepository.js';
+import { ProcessOutputReferenceRepository } from '../../store/ProcessOutputReferenceRepository.js';
+import { WorkspaceAdmissionRepository } from '../../store/WorkspaceAdmissionRepository.js';
+import { OutboxRepository } from '../../store/OutboxRepository.js';
+import { RuntimeEventOutboxWriter, RuntimeEventRepository } from '../../store/RuntimeEventRepository.js';
+import { RunSequenceAllocator } from '../../store/RunSequenceAllocator.js';
+import { DurableAtomicSeamImpl } from '../../store/DurableAtomicSeam.js';
+import { DurableOutputReferenceRepositoryAdapter, DurableProcessRepositoryAdapter, DurableSessionRepositoryAdapter } from '../../store/process-runtime-adapters.js';
+import { inTransaction } from '../../store/Transaction.js';
+import { LifecycleTransactionService } from '../LifecycleTransactionService.js';
+import { OperationService } from '../OperationService.js';
+import {
+  WorkspaceAdmissionAuthority,
+  type WorkspaceAdmissionEvidenceCollector,
+  type WorkspaceAdmissionEvidenceFactsV1,
+} from '../WorkspaceAdmissionAuthority.js';
+import { RunEngine } from './RunEngine.js';
+import { StageExecutor } from './StageExecutor.js';
+import { StageExecutionCoordinator, type StageExecutionOutcome } from './StageExecutionCoordinator.js';
+import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
+import { NodeProcessDriver, NodeProcessProbePort } from '@agentos/process-runtime';
+import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
+import type { SqliteStore } from '../../store/SqliteStore.js';
+import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
+import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
+import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
+import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
+import { MemoryContextResolver } from '../MemoryContextResolver.js';
+
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { all(...params: unknown[]): unknown[]; get(...params: unknown[]): unknown; run(...params: unknown[]): unknown; }; close(): void; } };
+type Db = InstanceType<typeof DatabaseSync>;
+
+const NOW = '2026-08-15T00:00:00.000Z';
+const EVIDENCE_OBSERVED = '2026-08-14T00:00:00.000Z';
+const EVIDENCE_EXPIRED = '2026-08-14T12:00:00.000Z';
+const EVIDENCE_FUTURE = '2026-08-16T00:00:00.000Z';
+const WS = 'ws_m4';
+const TASK = 'task_m4';
+const RUN = 'run_m4';
+const OP = 'op_' + 'A'.repeat(26);
+const KIMI_EXE = 'C:/kimi.exe';
+let REAL_EXECUTABLE = KIMI_EXE;
+let REAL_PROVIDER_TYPE: 'kimicode' | 'codex' | 'opencode' = 'kimicode';
+
+/**
+ * The real gates read their provider from the environment. The model is
+ * env-driven for every provider so a gate can name the exact model it ran
+ * against instead of silently using whatever the machine defaults to.
+ */
+const REAL_GATE_MODEL_ENV: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: 'AGENTOS_KIMI_MODEL',
+  codex: 'AGENTOS_CODEX_MODEL',
+  opencode: 'AGENTOS_OPENCODE_MODEL',
+};
+const REAL_GATE_ADAPTER_IDS: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: 'builtin.kimicode',
+  codex: 'builtin.codex',
+  opencode: 'builtin.opencode',
+};
+const REAL_GATE_ADAPTER_VERSIONS: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: '1.0.0',
+  codex: '1.0.0',
+  opencode: '1.0.0',
+};
+
+const DEFAULT_STAGE_PROMPT = 'Execute the requested task.';
+
+/**
+ * Real provider gates must be deterministic. A vague instruction made the
+ * OpenCode run wander the filesystem, hit an auto-rejected external-directory
+ * permission, and exit 0 without ever emitting a final assistant message, so
+ * the canonical chain correctly reported PROVIDER_OUTPUT_INVALID. The gate asks
+ * for an exact reply so it measures the AgentOS chain rather than how a
+ * particular model improvises around an underspecified task.
+ */
+const REAL_GATE_PROMPT = 'Reply with exactly: AGENTOS_PROVIDER_GATE_OK';
+
+/**
+ * The OpenCode adapter only truthfully advertises what the repository has
+ * verified about that CLI, so a real OpenCode gate has to use the configuration
+ * it admits: parsed-text output, model selection, and cancellation through the
+ * owned Process Runtime stop port (the same mechanism Codex and Kimi use).
+ */
+const OPENCODE_ADMITTED_CAPABILITIES = {
+  sessionResume: false, structuredEvents: false, nativeApprovals: false, subagents: false,
+  toolEvents: false, fileEvents: false, usageEvents: false, reasoningStream: false,
+  interactiveInput: false, pause: false, cancellation: true, modelSelection: true,
+  workspaceAwareness: true, nativeSandbox: false, outputContracts: false,
+} as const;
+
+const VERIFIED_EVIDENCE: WorkspaceReadOnlyEvidence = {
+  status: 'verified',
+  source: 'qualified-write-denial',
+  boundaryId: 'boundary-dispatch',
+  qualificationId: 'qualification-dispatch',
+};
+
+const FRESH_READ_ONLY_FACTS: WorkspaceAdmissionEvidenceFactsV1 = {
+  observedAt: NOW,
+  validUntil: EVIDENCE_FUTURE,
+  declaredModifyingAction: false,
+  declaredExternalSideEffect: false,
+  evidence: VERIFIED_EVIDENCE,
+};
+let ORIGIN: 'v2_api' | 'legacy_pipeline' = 'v2_api';
+const STAGE_KEYS = ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review'] as const;
+
+function migratedDb(): Db {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+  seed(db);
+  return db;
+}
+
+function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnapshotV1 {
+  return {
+    providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: REAL_PROVIDER_TYPE,
+    adapterId: REAL_GATE_ADAPTER_IDS[REAL_PROVIDER_TYPE],
+    runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [],
+    model: process.env[REAL_GATE_MODEL_ENV[REAL_PROVIDER_TYPE]] ?? null,
+    environmentProfileId: null, secretProfileId: null,
+    workingDirectoryMode: 'workspace', workspaceRelativeWorkingDirectory: null,
+    capabilities: REAL_PROVIDER_TYPE === 'opencode'
+      ? OPENCODE_ADMITTED_CAPABILITIES
+      : { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
+    timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs, approvalTimeoutMs:null },
+    approvalMode: 'disabled',
+    outputMode: REAL_PROVIDER_TYPE === 'opencode' ? 'parsed-text' : 'structured',
+    enabled: true, version: 1,
+  };
+}
+
+function agentSnapshot(systemPrompt = DEFAULT_STAGE_PROMPT): AgentSnapshotV1 {
+  return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt, permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
+}
+
+function snapshotPayload(
+  cancelGracePeriodMs = 5000,
+  systemPrompt = DEFAULT_STAGE_PROMPT,
+  runMetadata: RunSnapshotPayloadV2['run'] = {
+    workspaceId: WS, taskId: TASK, origin: ORIGIN, reason: 'initial', parentRunId: null, rootRunId: RUN,
+  },
+): RunSnapshotPayloadV2 {
+  const stages = STAGE_KEYS.map((key, index) => ({
+    workflowStageKey: key, name: key, sequence: index + 1,
+    agent: agentSnapshot(systemPrompt), provider: providerSnapshot(cancelGracePeriodMs),
+    dependsOn: index === 0 ? [] : [STAGE_KEYS[index - 1]],
+  }));
+  return {
+    schemaVersion: 2, capturedAt: NOW,
+    run: runMetadata,
+    workflow: {
+      definitionId: M3_013_LEGACY_WORKFLOW_V2_ID, definitionKey: 'legacy-pipeline', definitionVersion: 2, name: 'legacy-pipeline-v2',
+      definitionHash: '9ea35ef455c5fefa45d0b28d1433933b2cc6b3fb9e412b4d4452afb7862a6b6d', worktreeMode: 'preferred',
+      stages: stages as never,
+    },
+    security: { redactionApplied: false },
+  };
+}
+
+function seed(db: Db): void {
+  db.prepare(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, '/tmp/m4', '/tmp/m4', '/tmp/m4', ?, ?, ?)`).run(WS, NOW, NOW, NOW);
+  db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, 'M4 task', 'open', 'normal', 'test', ?, ?)`).run(TASK, WS, NOW, NOW);
+  db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, next_event_sequence, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'initial', ?, 1, 'test', ?, ?)`).run(RUN, WS, TASK, RUN, ORIGIN, NOW, NOW);
+  db.prepare(`INSERT INTO provider_configurations (id, workspace_id, name, provider_type, adapter_id, runtime_mode, capabilities_json, timeout_policy_json, created_at, updated_at) VALUES (?, ?, 'M4 provider', 'kimicode', 'builtin.kimicode', 'cli', '{}', '{}', ?, ?)`).run('pcfg_m4', WS, NOW, NOW);
+  db.prepare(`INSERT INTO agent_profiles (workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at) VALUES (?, ?, 'Agent', 'worker', 'Worker', '', '[]', 1, 'agent', '[]', ?, ?)`).run(WS, 'agent_m4', NOW, NOW);
+  db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(OP, WS, RUN, RUN, OP, NOW, NOW);
+}
+
+function seedGraph(db: Db, cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): void {
+  const runMetadata = db.prepare(`
+    SELECT workspace_id AS workspaceId, task_id AS taskId, origin, reason,
+      parent_run_id AS parentRunId, root_run_id AS rootRunId
+    FROM runs WHERE workspace_id = ? AND id = ?
+  `).get(WS, RUN) as RunSnapshotPayloadV2['run'] | undefined;
+  if (runMetadata === undefined) throw new Error('fixture run metadata is missing');
+  const payload = snapshotPayload(cancelGracePeriodMs, systemPrompt, runMetadata);
+  const snapshot = new RunSnapshotRepository(db).insert({
+    workspaceId: WS,
+    runId: RUN,
+    workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+    payload,
+  });
+  STAGE_KEYS.forEach((key, index) => {
+    db.prepare(`INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?, 1)`).run('stage_m4_' + index, WS, RUN, snapshot.id, key, key, index + 1, NOW, NOW);
+  });
+}
+
+function admissionEvidenceJson(validUntil: string): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    workspaceId: WS,
+    admissionId: 'adm_m4_dispatch',
+    subject: { subjectKind: 'CANONICAL_RUN', canonicalRunId: RUN },
+    observedAt: EVIDENCE_OBSERVED,
+    validUntil,
+    declaredModifyingAction: false,
+    declaredExternalSideEffect: false,
+    evidence: VERIFIED_EVIDENCE,
+  });
+}
+
+function seedAdmission(db: Db, input: {
+  readonly state?: 'GRANTED' | 'QUEUED';
+  readonly requestedMutationClass?: 'READ_ONLY' | 'MODIFYING';
+  readonly effectiveMutationClass?: 'READ_ONLY' | 'MODIFYING';
+  readonly enforcementEvidenceJson?: string | null;
+} = {}): void {
+  const state = input.state ?? 'GRANTED';
+  const requestedMutationClass = input.requestedMutationClass ?? 'MODIFYING';
+  new WorkspaceAdmissionRepository(db).insertAdmission({
+    id: 'adm_m4_dispatch',
+    workspaceId: WS,
+    subjectKind: 'CANONICAL_RUN',
+    canonicalRunId: RUN,
+    legacyRunId: null,
+    requestedMutationClass,
+    effectiveMutationClass: input.effectiveMutationClass ?? requestedMutationClass,
+    enforcementEvidenceJson: input.enforcementEvidenceJson ?? null,
+    requestOrder: 1,
+    state,
+    queueReason: state === 'QUEUED' ? 'WAITING_FOR_WORKSPACE_ADMISSION' : null,
+    releaseReason: null,
+    requestedAt: NOW,
+    grantedAt: state === 'GRANTED' ? NOW : null,
+    releasedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    version: 1,
+  });
+}
+
+function seedPriorFailedStage(
+  db: Db,
+  input: { readonly workflowStageKey: string; readonly failureCode: string; readonly failureMessage: string },
+): string {
+  const temporaryTaskId = 'task_m4_prior_failure';
+  db.prepare(`
+    INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at)
+    VALUES (?, ?, 'Prior failure fixture', 'open', 'normal', 'test', ?, ?)
+  `).run(temporaryTaskId, WS, NOW, NOW);
+  const runs = new RunRepository(db);
+  const parent = runs.insert({ workspaceId: WS, taskId: temporaryTaskId, origin: ORIGIN, createdBy: 'test' });
+  const running = runs.transitionStatus(WS, parent.id, parent.version, 'running');
+  const failed = runs.transitionStatus(WS, parent.id, running.version, 'failed', {
+    failureCode: input.failureCode,
+    failureMessage: input.failureMessage,
+  });
+  db.prepare('UPDATE runs SET task_id = ? WHERE workspace_id = ? AND id = ?')
+    .run(TASK, WS, failed.id);
+  db.prepare('DELETE FROM tasks WHERE workspace_id = ? AND id = ?')
+    .run(WS, temporaryTaskId);
+  const snapshot = new RunSnapshotRepository(db).insert({
+    workspaceId: WS,
+    runId: failed.id,
+    workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+    payload: snapshotPayload(5000, DEFAULT_STAGE_PROMPT, {
+      workspaceId: WS,
+      taskId: TASK,
+      origin: ORIGIN,
+      reason: parent.reason,
+      parentRunId: parent.parentRunId ?? null,
+      rootRunId: failed.rootRunId,
+    }),
+  });
+  const stages = new RunStageRepository(db);
+  let stage = stages.insertInitial({
+    workspaceId: WS,
+    runId: failed.id,
+    runSnapshotId: snapshot.id,
+    workflowStageKey: input.workflowStageKey,
+    sequence: 1,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'pending', to: 'ready', timestamp: NOW,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'ready', to: 'starting', timestamp: NOW,
+  });
+  stage = stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'starting', to: 'running', timestamp: NOW,
+  });
+  stages.transitionLifecycleWithinTransaction({
+    workspaceId: WS, runId: failed.id, stageId: stage.id, expectedVersion: stage.version,
+    expectedFrom: 'running', to: 'failed', timestamp: NOW,
+    failureCode: input.failureCode,
+    failureMessage: input.failureMessage,
+  });
+  return failed.id;
+}
+
+class FakeHandle implements NativeProcessHandle {
+  readonly pid = 4242;
+  readonly identity: NativeIdentity = { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly streams: NativeProcessStreams;
+  private readonly exit: Promise<ExitEvidence>;
+  constructor(stdoutLines: string[], exitCode = 0, exit: Promise<ExitEvidence> = Promise.resolve({ exitCode, signal: null, exitedAt: Date.now() })) {
+    this.streams = { stdout: asyncIterable(stdoutLines), stderr: asyncIterable([]) };
+    this.exit = exit;
+  }
+  waitExit(): Promise<ExitEvidence> { return this.exit; }
+}
+
+function asyncIterable(lines: string[]): AsyncIterable<Uint8Array> {
+  return { async *[Symbol.asyncIterator]() { for (const line of lines) yield new TextEncoder().encode(line); } };
+}
+
+class FakeDriver implements PlatformProcessDriver {
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  constructor(private readonly handle: FakeHandle | null, private readonly spawnError?: Error, private readonly onTerminate?: () => void) {}
+  async spawn() { this.spawnCalls += 1; if (this.spawnError !== undefined) throw this.spawnError; return this.handle!; }
+  gracefulStop = async () => { this.gracefulStopCalls += 1; return { delivered: true, detail: 'ok' }; };
+  terminateTree = async (): Promise<TreeTerminationResult> => { this.terminateTreeCalls += 1; this.onTerminate?.(); return { classification: 'complete', attemptedMembers: [], errors: [] }; };
+  verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [], proof: { kind: 'owned-tree-enumeration' } });
+  inspectIdentity = async (identity: NativeIdentity) => ({ kind: 'match' as const, identity });
+}
+
+async function waitForCondition(predicate: () => boolean, attempts = 500): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error('Timed out waiting for condition');
+}
+
+function probeFor(authFailure: boolean): ProcessProbePort {
+  return {
+    probe: async request => {
+      if (request.args[0] === '--version') return { stdout: '0.36.1', stderr: '', exitCode: 0, signal: null };
+      if (request.args[0] === '--help') return { stdout: 'Usage: kimi --output-format stream-json', stderr: '', exitCode: 0, signal: null };
+      if (authFailure) return { stdout: '', stderr: 'No model configured. Run `kimi` and use /login to sign in', exitCode: 1, signal: null };
+      return { stdout: '{"type":"assistant","role":"assistant","content":"ok"}', stderr: '', exitCode: 0, signal: null };
+    },
+  };
+}
+
+function fixture(driver: FakeDriver, authFailure = false, behavior: {
+  readonly returnActive?: boolean;
+  readonly returnStopped?: boolean;
+  readonly cancelOutcome?: StageExecutionOutcome;
+  readonly useRealCoordinator?: boolean;
+  readonly cancelGracePeriodMs?: number;
+  readonly executeThrow?: Error;
+  readonly admissionState?: 'GRANTED' | 'QUEUED';
+  readonly admissionRequestedMutationClass?: 'READ_ONLY' | 'MODIFYING';
+  readonly admissionEffectiveMutationClass?: 'READ_ONLY' | 'MODIFYING';
+  readonly admissionEvidenceJson?: string | null;
+  readonly admissionEvidenceCollector?: WorkspaceAdmissionEvidenceCollector;
+  readonly memoryContextResolver?: import('./RunEngineProviderDispatcher.js').MemoryContextResolverPort;
+  readonly memoryCandidateGenerator?: import('./RunEngineProviderDispatcher.js').MemoryCandidateGenerationPort;
+  readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
+  readonly artifactResults?: import('./RunEngineProviderDispatcher.js').RunEngineProviderDispatcherOptions['artifactResults'];
+  readonly runtimeApproval?: boolean;
+  readonly deferApprovalContinuation?: boolean;
+  readonly approvalNow?: { current: string };
+  readonly noOwnedWorktree?: boolean;
+  readonly memoryTaskObjective?: string;
+  readonly priorMemoryFailure?: {
+    readonly workflowStageKey: string;
+    readonly failureCode: string;
+    readonly failureMessage: string;
+  };
+} = {}) {
+  // The fake fixture always means the deterministic fake provider, so it states
+  // that identity itself instead of inheriting whatever a real gate left behind.
+  REAL_EXECUTABLE = KIMI_EXE;
+  REAL_PROVIDER_TYPE = 'kimicode';
+  const db = migratedDb();
+  if (behavior.priorMemoryFailure !== undefined) {
+    const parentRunId = seedPriorFailedStage(db, behavior.priorMemoryFailure);
+    db.prepare(`
+      UPDATE runs SET parent_run_id = ?, root_run_id = ?, reason = 'retry', objective = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(parentRunId, parentRunId, behavior.memoryTaskObjective ?? null, WS, RUN);
+  } else if (behavior.memoryTaskObjective !== undefined) {
+    db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
+      .run(behavior.memoryTaskObjective, WS, RUN);
+  }
+  seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
+  seedAdmission(db, {
+    state: behavior.admissionState ?? 'GRANTED',
+    requestedMutationClass: behavior.admissionRequestedMutationClass,
+    effectiveMutationClass: behavior.admissionEffectiveMutationClass,
+    enforcementEvidenceJson: behavior.admissionEvidenceJson,
+  });
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
+  const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
+  const outbox = new OutboxRepository(db, events);
+  const factWriter = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(db), outbox, db);
+  const sessionRepo = new ProviderSessionRepository(db, factWriter);
+  const processRepo = new ProcessRepository(db, factWriter);
+  const outputRepo = new ProcessOutputReferenceRepository(db, factWriter);
+  const seam = new DurableAtomicSeamImpl(db, sessionRepo, processRepo);
+  const sessionAdapter = new DurableSessionRepositoryAdapter(sessionRepo);
+  const processAdapter = new DurableProcessRepositoryAdapter(processRepo);
+  const outputAdapter = new DurableOutputReferenceRepositoryAdapter(outputRepo);
+  const durableCoordinator = new DurableProcessCoordinator({
+    sessionRepository: sessionAdapter, processRepository: processAdapter, outputReferenceRepository: outputAdapter,
+    artifactSink: new FileArtifactSink(join(root, 'sink')), atomicSeam: seam, driver,
+  });
+  const adapter = new KimiCodeProviderAdapter({ probe: probeFor(authFailure), discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }) });
+  const registry = new ProviderRegistry([adapter]);
+  const coordinatorCalls = { count: 0 };
+  const capturedInputs: Array<Parameters<StageExecutionCoordinator['execute']>[0]> = [];
+  let dispatcher!: RunEngineProviderDispatcher;
+  const continuations: Promise<void>[] = [];
+  let lifecycle!: LifecycleTransactionService;
+  let deferApprovalContinuation = behavior.deferApprovalContinuation === true;
+  const approvalGate = behavior.runtimeApproval === true
+    ? new RuntimeApprovalGate({
+      getDatabase: () => db,
+      runRepository: () => new RunRepository(db),
+      runStageRepository: () => new RunStageRepository(db),
+      runSnapshotRepository: () => new RunSnapshotRepository(db),
+      operationService: () => new OperationService(db, { now: () => NOW }),
+      lifecycleTransactionService: () => lifecycle,
+      runtimeEventOutboxWriter: () => factWriter,
+    } as unknown as SqliteStore, {
+      now: () => behavior.approvalNow?.current ?? NOW,
+      continueRun: async (workspaceId, runId) => {
+        if (deferApprovalContinuation) return;
+        const continuation = dispatcher.driveSafely(workspaceId, runId);
+        continuations.push(continuation);
+        await continuation;
+      },
+    })
+    : undefined;
+  const realCoordinator = new StageExecutionCoordinator({
+    registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe: probeFor(authFailure),
+    claimOwner: 'run-engine', claimLeaseMs: 60000, now: () => NOW,
+    ...(approvalGate === undefined ? {} : { approvalGate }),
+  });
+  const stubCoordinator = {
+    execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
+      coordinatorCalls.count += 1;
+      capturedInputs.push(input);
+      if (behavior.executeThrow !== undefined) throw behavior.executeThrow;
+      if (behavior.returnActive === true) return { kind: 'active' as const };
+      if (behavior.returnStopped === true) return { kind: 'stopped' as const, cleanup: null, proven: false, stopOrigin: 'EXPLICIT_CANCEL' as const };
+      return realCoordinator.execute(input);
+    },
+    cancelAttempt: async () => {
+      if (behavior.cancelOutcome === undefined) throw new Error('cancel outcome not configured');
+      return behavior.cancelOutcome;
+    },
+  } as unknown as StageExecutionCoordinator;
+  const coordinator = behavior.useRealCoordinator === true ? realCoordinator : stubCoordinator;
+  const runRepo = new RunRepository(db);
+  const runStageRepo = new RunStageRepository(db);
+  const runSnapshotRepo = new RunSnapshotRepository(db);
+  lifecycle = new LifecycleTransactionService({
+    runRepository: runRepo, runStageRepository: runStageRepo, runtimeEventRepository: events,
+    runSequenceAllocator: new RunSequenceAllocator(db), outboxRepository: outbox,
+    runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
+  }, { now: () => NOW });
+  const operationService = new OperationService(db, { now: () => NOW, lifecycleTransactionService: lifecycle });
+  const engine = new RunEngine({
+    runRepository: runRepo, operationService, lifecycleTransactionService: lifecycle,
+    snapshotRepository: runSnapshotRepo, runStageRepository: runStageRepo,
+    stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
+    runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
+  });
+  const dispatchFailures: Array<{ workspaceId: string; runId: string; phase: string; code: string }> = [];
+  const assignedDispatcher = new RunEngineProviderDispatcher({
+    artifactResults: behavior.artifactResults,
+    engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
+    operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
+    worktreePathFor: behavior.noOwnedWorktree === true ? () => undefined : () => 'C:/ws/.agentos/worktrees/run-1',
+    admissionGate: new WorkspaceAdmissionAuthority({
+      store: { getDatabase: () => db },
+      evidenceCollector: behavior.admissionEvidenceCollector,
+      now: () => new Date(NOW),
+    }),
+    ...(behavior.memoryContextResolver === undefined ? {} : { memoryContextResolver: behavior.memoryContextResolver }),
+    ...(behavior.memoryCandidateGenerator === undefined ? {} : { memoryCandidateGenerator: behavior.memoryCandidateGenerator }),
+    ...(behavior.onCandidateGenerationError === undefined ? {} : { onCandidateGenerationError: behavior.onCandidateGenerationError }),
+    onDispatchFailure: report => { dispatchFailures.push(report); },
+  });
+  dispatcher = assignedDispatcher;
+  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService,
+    coordinatorCalls, capturedInputs, dispatchFailures, approvalGate, continuations,
+    setApprovalContinuationDeferred: (value: boolean) => { deferApprovalContinuation = value; } };
+}
+
+function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+/** Captured provider output from the durable artifact sink, for real gates. */
+function readSinkOutput(root: string, perFileLimit = 4000): string {
+  const outputs: string[] = [];
+  const walk = (directory: string): void => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, perFileLimit));
+    }
+  };
+  try { walk(join(root, 'sink')); } catch { /* no output sink */ }
+  return outputs.join('\n');
+}
+
+function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+  return JSON.stringify({
+    failureCode: run.failureCode,
+    failureMessage: run.failureMessage,
+    failedStages,
+    stderr: readSinkOutput(root, 2000),
+  });
+}
+
+function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi', memoryGate = false) {
+  const executableEnv = provider === 'codex'
+    ? 'AGENTOS_CODEX_CLI'
+    : provider === 'opencode' ? 'AGENTOS_OPENCODE_CLI' : 'AGENTOS_KIMICODE_CLI';
+  const executable = process.env[executableEnv];
+  if (!executable) throw new Error(executableEnv + ' is required');
+  // These two module-level values drive the provider snapshot, so a gate must
+  // hand the previous values back when it finishes; otherwise the next test
+  // builds its snapshot for the previous gate's provider.
+  const previousExecutable = REAL_EXECUTABLE;
+  const previousProviderType = REAL_PROVIDER_TYPE;
+  REAL_EXECUTABLE = executable;
+  REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : provider === 'opencode' ? 'opencode' : 'kimicode';
+  const db = migratedDb();
+  if (memoryGate) {
+    db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
+      .run('Read the M1 memory checkpoint and reply with only its value. Do not use tools.', WS, RUN);
+  }
+  seedGraph(db, 5000, memoryGate ? 'Read the M1 memory checkpoint and reply with only its value. Do not use tools.' : REAL_GATE_PROMPT);
+  seedAdmission(db);
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
+  const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
+  const outbox = new OutboxRepository(db, events);
+  const factWriter = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(db), outbox, db);
+  const sessionRepo = new ProviderSessionRepository(db, factWriter);
+  const processRepo = new ProcessRepository(db, factWriter);
+  const outputRepo = new ProcessOutputReferenceRepository(db, factWriter);
+  const seam = new DurableAtomicSeamImpl(db, sessionRepo, processRepo);
+  const sessionAdapter = new DurableSessionRepositoryAdapter(sessionRepo);
+  const processAdapter = new DurableProcessRepositoryAdapter(processRepo);
+  const outputAdapter = new DurableOutputReferenceRepositoryAdapter(outputRepo);
+  const driver = new NodeProcessDriver();
+  const durableCoordinator = new DurableProcessCoordinator({
+    sessionRepository: sessionAdapter, processRepository: processAdapter, outputReferenceRepository: outputAdapter,
+    artifactSink: new FileArtifactSink(join(root, 'sink')), atomicSeam: seam, driver,
+  });
+  const probe = new NodeProcessProbePort();
+  const discover = async () => ({ found: true, selected: executable, candidates: [{ executable, source: 'configuration' as const, confidence: 1 }], warnings: [] });
+  const adapter = provider === 'codex'
+    ? new CodexProviderAdapter({ probe, discover })
+    : provider === 'opencode'
+      ? new OpenCodeProviderAdapter({ probe, discover })
+      : new KimiCodeProviderAdapter({ probe, discover });
+  const registry = new ProviderRegistry([adapter]);
+  const coordinator = new StageExecutionCoordinator({
+    registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe,
+    claimOwner: 'run-engine', claimLeaseMs: 60000, now: () => NOW, environment: process.env,
+  });
+  const runRepo = new RunRepository(db);
+  const runStageRepo = new RunStageRepository(db);
+  const runSnapshotRepo = new RunSnapshotRepository(db);
+  const lifecycle = new LifecycleTransactionService({
+    runRepository: runRepo, runStageRepository: runStageRepo, runtimeEventRepository: events,
+    runSequenceAllocator: new RunSequenceAllocator(db), outboxRepository: outbox,
+    runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
+  }, { now: () => NOW });
+  const operationService = new OperationService(db, { now: () => NOW });
+  const engine = new RunEngine({
+    runRepository: runRepo, operationService, lifecycleTransactionService: lifecycle,
+    snapshotRepository: runSnapshotRepo, runStageRepository: runStageRepo,
+    stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
+    runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
+  });
+  const entries = new MemoryEntryRepository(db);
+  const snapshots = new MemoryContextSnapshotRepository(db);
+  if (memoryGate) entries.createEntry({id:'m1-real-checkpoint',workspaceId:WS,scope:'workspace',category:'knowledge',status:'active',authority:'user-explicit',
+    confidence:1,importance:1,title:'M1 memory checkpoint',content:'Checkpoint value: AGENTOS_MEMORY_GATE_OK',sources:[],createdAt:NOW});
+  const dispatcher = new RunEngineProviderDispatcher({
+    engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
+    operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => root,
+    worktreePathFor: () => root,
+    admissionGate: new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db } }),
+    ...(memoryGate ? {memoryContextResolver:new MemoryContextResolver({store:{getDatabase:()=>db},selector:new MemoryContextBudgetSelector(new MemoryRetrievalService(entries),snapshots)})} : {}),
+  });
+  const restore = () => {
+    REAL_EXECUTABLE = previousExecutable;
+    REAL_PROVIDER_TYPE = previousProviderType;
+  };
+  return { db, root, runRepo, runStageRepo, driver, dispatcher, restore };
+}
+
+describe('RunEngineProviderDispatcher E2E', () => {
+  it('M1 real Codex reads frozen versioned memory on all canonical stages (env-gated)', {skip:process.env.M1_REAL_MEMORY_GATE !== '1'}, async (t) => {
+    const fx=realFixture('codex',true);
+    try {
+      await fx.dispatcher.drive(WS,RUN);
+      const run=fx.runRepo.findById(WS,RUN)!;
+      assert.equal(run.status,'completed',realFailureDetails(fx.root,run,[]));
+      const snapshots=new MemoryContextSnapshotRepository(fx.db);
+      const contexts=snapshots.listForRun(WS,RUN);
+      assert.equal(contexts.length,STAGE_KEYS.length);
+      for(const context of contexts) {
+        assert.equal(context.selected[0]?.memoryVersion,1);
+        assert.match(context.queryHash,/^[a-f0-9]{64}$/);
+        assert.match(snapshots.readContextText(WS,context.id)??'',/AGENTOS_MEMORY_GATE_OK/);
+      }
+      assert.match(readSinkOutput(fx.root,50000),/AGENTOS_MEMORY_GATE_OK/);
+      const processes = fx.db.prepare(`SELECT id, stage_id, stage_attempt, provider_session_id,
+        native_pid, native_birth_identity, exit_code, status FROM runtime_processes
+        WHERE workspace_id = ? AND run_id = ? AND process_type = 'provider' ORDER BY stage_id`)
+        .all(WS, RUN) as Array<{ stage_id: string; exit_code: number | null }>;
+      assert.equal(processes.length, STAGE_KEYS.length, 'exactly one real Provider process per Stage');
+      assert.ok(processes.every(process => process.exit_code === 0), 'every real Provider must exit successfully');
+      t.diagnostic('REAL_PROVIDER_MEMORY_RECEIPT=' + JSON.stringify({
+        mode: 'real-windows-provider', platform: process.platform,
+        workspaceId: WS, taskId: TASK, runId: RUN,
+        provider: 'codex', model: process.env.AGENTOS_CODEX_MODEL ?? 'configured-default-unrecorded',
+        processes,
+        contexts: contexts.map(context => ({
+          id: context.id, stageId: context.stageId, queryHash: context.queryHash,
+          selected: context.selected,
+          contextSha256: createHash('sha256').update(snapshots.readContextText(WS, context.id)!).digest('hex'),
+        })),
+        limitation: 'Read-only memory injection proof; no existing-project candidate application or semantic-model quality claim.',
+      }));
+    } finally { fx.restore(); fx.db.close(); rmSync(fx.root,{recursive:true,force:true}); }
+  });
+  it('LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once', async () => {
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'approved work complete' })]));
+    const fx = fixture(driver, false, { runtimeApproval: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0];
+      assert.ok(pending);
+      assert.equal(pending.status, 'pending');
+      assert.equal(pending.runId, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'waiting_approval');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).some(stage => stage.status === 'waiting_approval'));
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.capturedInputs.length, 1);
+      assert.equal(fx.capturedInputs[0]!.providerSnapshot.capabilities.nativeApprovals, false,
+        'the Provider-native prompt is not an AgentOS authority bridge');
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count, 0);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count, 0);
+      assert.match(String(pending.requestSnapshotJson), /launch/);
+      assert.doesNotMatch(String(pending.requestSnapshotJson), /approved work complete/);
+
+      const resolved = gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      assert.equal(resolved.request.status, 'approved');
+      assert.equal(resolved.replayed, false);
+      await Promise.all(fx.continuations);
+
+      const consumed = gate.list(WS).find(item => item.id === pending.id)!;
+      assert.equal(consumed.status, 'approved');
+      assert.ok(consumed.consumedAt);
+      assert.equal(driver.spawnCalls, 1);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.start'").get() as { count: number }).count, 1);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM memory_candidate_entries").get() as { count: number }).count, 1);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE type = 'memory.candidate_created'").get() as { count: number }).count, 1);
+
+      const replay = gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      assert.equal(replay.replayed, true);
+      assert.equal(driver.spawnCalls, 1);
+
+      const next = gate.list(WS).find(item => item.id !== pending.id);
+      assert.ok(next, 'the next mutable Stage requires its own ASK_USER request');
+      assert.equal(next.status, 'pending');
+      assert.equal(next.requestRound, 1);
+      assert.notEqual(next.sourceKey, pending.sourceKey);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute', async () => {
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      const input = fx.capturedInputs[0]!;
+      assert.throws(() => gate.beforeLaunch(input, {
+        runtimeMode: 'cli', executable: 'C:/changed.exe', args: [], cwd: 'C:/ws',
+        environment: {}, redactedEnvironmentKeys: [], secretRefs: [], stdinMode: 'none', promptDelivery: 'argument',
+        structuredOutput: 'jsonl', cleanupFiles: [], shell: false, metadata: {},
+      }), /RUNTIME_APPROVAL_STALE/);
+      assert.throws(() => gate.beforeLaunch(input, {
+        runtimeMode: 'cli', executable: KIMI_EXE, args: [], cwd: 'C:/ws',
+        environment: { PATH: 'changed-after-approval' }, redactedEnvironmentKeys: [], secretRefs: [],
+        stdinMode: 'none', promptDelivery: 'argument', structuredOutput: 'jsonl', cleanupFiles: [], shell: false, metadata: {},
+      }), /RUNTIME_APPROVAL_STALE/);
+      assert.equal(driver.spawnCalls, 0);
+
+      const rejected = gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'reject', decidedBy: 'operator' });
+      assert.equal(rejected.request.status, 'rejected');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'failed');
+      assert.equal(fx.runStageRepo.listByRun(WS, RUN).find(stage => stage.id === pending.stageId)?.status, 'failed');
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM memory_candidate_entries").get() as { count: number }).count, 0);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE type = 'memory.candidate_created'").get() as { count: number }).count, 0);
+      const replay = gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'reject', decidedBy: 'operator' });
+      assert.equal(replay.replayed, true);
+      assert.equal(driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-006: an approved request rejects a contradictory replay without changing the result', async () => {
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'approved' })]));
+    const fx = fixture(driver, false, { runtimeApproval: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      await Promise.all(fx.continuations);
+      assert.throws(() => gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'reject', decidedBy: 'operator' }), /RUNTIME_APPROVAL_CONFLICT/);
+      assert.equal(gate.list(WS).find(item => item.id === pending.id)?.status, 'approved');
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM approval_decisions').get() as { count: number }).count, 1);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect', async () => {
+    const clock = { current: NOW };
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true, approvalNow: clock });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      clock.current = '2026-08-15T00:10:00.000Z';
+      await Promise.all(fx.continuations);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'failed');
+      assert.equal(gate.list(WS).find(item => item.id === pending.id)?.consumedAt, null);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-005: startup resume never bypasses a Run already marked recovery-required', async () => {
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true, deferApprovalContinuation: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      fx.db.prepare('UPDATE runs SET recovery_required = 1 WHERE workspace_id = ? AND id = ?').run(WS, RUN);
+      fx.setApprovalContinuationDeferred(false);
+      assert.equal(await gate.resumeApprovedUnconsumed(), 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.recoveryRequired, true);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation', async () => {
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'resumed' })]));
+    const fx = fixture(driver, false, { runtimeApproval: true, deferApprovalContinuation: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      assert.equal(fx.continuations.length, 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(gate.list(WS)[0]!.consumedAt, null);
+
+      fx.setApprovalContinuationDeferred(false);
+      assert.equal(await gate.resumeApprovedUnconsumed(), 1);
+      await Promise.all(fx.continuations);
+      assert.equal(driver.spawnCalls, 1);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.start'").get() as { count: number }).count, 1);
+      assert.ok(gate.list(WS).find(item => item.id === pending.id)?.consumedAt);
+    } finally { close(fx); }
+  });
+
+  it('LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence', async () => {
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true, deferApprovalContinuation: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      fx.db.exec(`CREATE TRIGGER fail_approval_candidate_event BEFORE INSERT ON runtime_events
+        WHEN NEW.type = 'memory.candidate_created' BEGIN SELECT RAISE(ABORT, 'injected candidate event failure'); END`);
+      assert.throws(() => gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' }));
+      assert.equal(gate.list(WS)[0]!.status, 'pending');
+      assert.equal(gate.list(WS)[0]!.version, pending.version);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'waiting_approval');
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM approval_decisions').get() as { count: number }).count, 0);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM memory_candidate_entries').get() as { count: number }).count, 0);
+      assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE type = 'approval.resolved'").get() as { count: number }).count, 0);
+      fx.db.exec('DROP TRIGGER fail_approval_candidate_event');
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      assert.equal(gate.list(WS)[0]!.status, 'approved');
+    } finally { close(fx); }
+  });
+
+  it('LITE-07-104: completed adapter result reaches Artifact finalizer and Stage history before terminal Memory', async () => {
+    const structuredOutput = JSON.stringify({ agentosArtifact: { version: 1, type: 'review', conclusion: 'changes_requested', summary: 'Reviewed the actual bounded result.' } });
+    const captured: import('../CanonicalArtifactResultService.js').CanonicalArtifactResultInput[] = [];
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: structuredOutput })]));
+    const fx = fixture(driver, false, { artifactResults: { capture: async input => {
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'running');
+      assert.equal(fx.runStageRepo.listByRun(WS, RUN).find(stage => stage.id === input.stageId)?.status, 'running');
+      captured.push(input);
+      return [`result-${input.stageId}`];
+    } } });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(captured.length, 4);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      for (const input of captured) {
+        assert.equal(input.output, structuredOutput);
+        assert.equal(input.operationId, OP);
+        assert.equal(input.stageAttempt, 1);
+        const stageEvents = fx.db.prepare("SELECT payload_json FROM runtime_events WHERE type = 'stage.completed' AND stage_id = ?")
+          .all(input.stageId) as { payload_json: string }[];
+        assert.ok(stageEvents.some(event => JSON.parse(event.payload_json).artifactIds.includes(`result-${input.stageId}`)));
+      }
+      assert.ok(fx.capturedInputs.every(input => input.prompt.includes('agentosArtifact')));
+    } finally { close(fx); }
+  });
+
+  it('LITE-07-104: active execution cannot finalize a review Artifact', async () => {
+    let captures = 0;
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnActive: true,
+      artifactResults: { capture: async () => { captures += 1; return []; } } });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(captures, 0);
+    } finally { close(fx); }
+  });
+
+  it('L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects', async () => {
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","content":"must-not-run"}']));
+    const fx = fixture(driver, false, { admissionState: 'QUEUED' });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+
+      assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_NOT_GRANTED' });
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.equal(fx.operationService.listByRun(WS, RUN)[0]?.status, 'queued');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'pending'));
+      assert.equal(fx.coordinatorCalls.count, 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count,
+        0,
+      );
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count,
+        0,
+      );
+    } finally { close(fx); }
+  });
+
+  it('L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn', async () => {
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","content":"must-not-run"}']));
+    const fx = fixture(driver, false, {
+      admissionRequestedMutationClass: 'READ_ONLY',
+      admissionEffectiveMutationClass: 'READ_ONLY',
+      admissionEvidenceJson: admissionEvidenceJson(EVIDENCE_EXPIRED),
+      admissionEvidenceCollector: {
+        collect: async () => { throw new Error('fresh evidence unavailable at C:/private/workspace'); },
+      },
+    });
+    try {
+      const admissions = new WorkspaceAdmissionRepository(fx.db);
+      const beforeAdmission = admissions.findById(WS, 'adm_m4_dispatch');
+
+      const result = await fx.dispatcher.drive(WS, RUN);
+
+      assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_AUTHORITY_UNAVAILABLE' });
+      assert.deepEqual(admissions.findById(WS, 'adm_m4_dispatch'), beforeAdmission);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.equal(fx.operationService.listByRun(WS, RUN)[0]?.status, 'queued');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'pending'));
+      assert.equal(fx.coordinatorCalls.count, 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count,
+        0,
+      );
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count,
+        0,
+      );
+    } finally { close(fx); }
+  });
+
+  it('L1D-I18 freshly revalidated GRANTED READ_ONLY authority may pass the dispatcher gate', async () => {
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n']));
+    const fx = fixture(driver, false, {
+      admissionRequestedMutationClass: 'READ_ONLY',
+      admissionEffectiveMutationClass: 'READ_ONLY',
+      admissionEvidenceJson: admissionEvidenceJson(EVIDENCE_EXPIRED),
+      admissionEvidenceCollector: {
+        collect: async () => structuredClone(FRESH_READ_ONLY_FACTS),
+      },
+    });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.equal(driver.spawnCalls, STAGE_KEYS.length);
+      const admission = new WorkspaceAdmissionRepository(fx.db).findById(WS, 'adm_m4_dispatch');
+      assert.equal(admission?.state, 'GRANTED');
+      assert.equal(admission?.effectiveMutationClass, 'READ_ONLY');
+      assert.equal(admission?.version, 2);
+      assert.match(
+        admission?.enforcementEvidenceJson ?? '',
+        new RegExp(EVIDENCE_FUTURE.replaceAll('.', '\\.')),
+      );
+    } finally { close(fx); }
+  });
+
+  it('L1D-I19 QUEUED authorization never advances the queue and retains zero side effects', async () => {
+    let collectionCalls = 0;
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","content":"must-not-run"}']));
+    const fx = fixture(driver, false, {
+      admissionState: 'QUEUED',
+      admissionRequestedMutationClass: 'READ_ONLY',
+      admissionEffectiveMutationClass: 'READ_ONLY',
+      admissionEvidenceJson: admissionEvidenceJson(EVIDENCE_EXPIRED),
+      admissionEvidenceCollector: {
+        collect: async () => {
+          collectionCalls += 1;
+          return structuredClone(FRESH_READ_ONLY_FACTS);
+        },
+      },
+    });
+    try {
+      const admissions = new WorkspaceAdmissionRepository(fx.db);
+      const beforeAdmission = admissions.findById(WS, 'adm_m4_dispatch');
+
+      const result = await fx.dispatcher.drive(WS, RUN);
+
+      assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_NOT_GRANTED' });
+      assert.equal(collectionCalls, 0);
+      assert.deepEqual(admissions.findById(WS, 'adm_m4_dispatch'), beforeAdmission);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.equal(fx.operationService.listByRun(WS, RUN)[0]?.status, 'queued');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'pending'));
+      assert.equal(fx.coordinatorCalls.count, 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count,
+        0,
+      );
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count,
+        0,
+      );
+    } finally { close(fx); }
+  });
+
+  it('P5D maps only the exact proven stop identity into cancellation evidence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      cancelOutcome: {
+        kind: 'stopped',
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+        proven: true,
+        stopOrigin: 'EXPLICIT_CANCEL',
+        processId: 'process-exact',
+      },
+    });
+    try {
+      fx.db.prepare("UPDATE runs SET status = 'running', version = 1 WHERE id = ?").run(RUN);
+      fx.db.prepare("UPDATE run_stages SET status = 'running' WHERE run_id = ? AND sequence = 1").run(RUN);
+
+      const evidence = await fx.dispatcher.cancelRun({
+        workspaceId: WS,
+        runId: RUN,
+        correlationId: OP,
+      });
+
+      assert.deepEqual(evidence, {
+        expectedRunVersion: 1,
+        processId: 'process-exact',
+        terminatedProcessIds: ['process-exact'],
+        worktreePreserved: true,
+      });
+    } finally { close(fx); }
+  });
+
+  it('P5D rejects an unproven explicit stop before producing lifecycle evidence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      cancelOutcome: {
+        kind: 'stopped',
+        cleanup: { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+        proven: false,
+        stopOrigin: 'EXPLICIT_CANCEL',
+        processId: 'process-unproven',
+      },
+    });
+    try {
+      fx.db.prepare("UPDATE runs SET status = 'running', version = 1 WHERE id = ?").run(RUN);
+      fx.db.prepare("UPDATE run_stages SET status = 'running' WHERE run_id = ? AND sequence = 1").run(RUN);
+
+      await assert.rejects(
+        fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: OP }),
+        /RUN_CANCELLATION_EVIDENCE_UNPROVEN/,
+      );
+    } finally { close(fx); }
+  });
+
+  it('consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnStopped: true });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const stage = fx.runStageRepo.listByRun(WS, RUN)[0];
+      assert.equal(stage.status, 'running');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'running');
+      assert.equal(fx.driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
+  it('drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_GATE_FAIL ' + JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages: failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage })) }));
+      }
+      assert.equal(run.status, 'completed');
+      const stages = fx.runStageRepo.listByRun(WS, RUN);
+      assert.ok(stages.every(stage => stage.status === 'completed'));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, STAGE_KEYS.length);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, STAGE_KEYS.length);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { close(fx); }
+  });
+
+  it('LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, {
+      noOwnedWorktree: true,
+    });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.ok(fx.capturedInputs.length > 0);
+      assert.ok(fx.capturedInputs.every(input => input.worktreePath === undefined));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); }
+  });
+
+  it('MEDIUM-1A: joined-existing active stage causes ONE coordinator attempt per drive (no 128 no-progress loop)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnActive: true });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      assert.equal(fx.coordinatorCalls.count, 1);
+      assert.equal(fx.driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
+  it('replay after terminal never re-dispatches or spawns again', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      const spawns = fx.driver.spawnCalls;
+      const replay = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(replay.outcome, 'noop');
+      assert.equal(fx.driver.spawnCalls, spawns);
+    } finally { close(fx); }
+  });
+
+  it('P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once', async () => {
+    let resolveExit!: (evidence: ExitEvidence) => void;
+    const pendingExit = new Promise<ExitEvidence>(resolve => { resolveExit = resolve; });
+    const fx = fixture(
+      new FakeDriver(
+        new FakeHandle([], 0, pendingExit),
+        undefined,
+        () => resolveExit({ exitCode: 0, signal: null, exitedAt: Date.now() }),
+      ),
+      false,
+      { useRealCoordinator: true, cancelGracePeriodMs: 0 },
+    );
+    try {
+      const drivePromise = fx.dispatcher.drive(WS, RUN);
+      await waitForCondition(() => {
+        const process = fx.db.prepare('SELECT status FROM runtime_processes WHERE run_id = ?').get(RUN) as { status?: string } | undefined;
+        return process?.status === 'running';
+      });
+      const beforeCancel = fx.runRepo.findById(WS, RUN)!;
+      const cancellationOperation = fx.operationService.create({ workspaceId: WS, runId: RUN, type: 'run.cancel' });
+      const evidence = await fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: cancellationOperation.correlationId });
+
+      assert.ok(evidence.processId);
+      assert.deepEqual(evidence.terminatedProcessIds, [evidence.processId]);
+      assert.equal(fx.driver.gracefulStopCalls, 1);
+      assert.equal(fx.driver.terminateTreeCalls, 1);
+
+      const operationBeforeCancel = fx.operationService.findById(WS, cancellationOperation.id);
+      const operation = fx.operationService.cancel({
+        workspaceId: WS,
+        operationId: cancellationOperation.id,
+        expectedVersion: operationBeforeCancel.version,
+        evidence,
+      });
+      const driveResult = await drivePromise;
+      assert.equal(driveResult.outcome, 'claimed-and-progressed');
+      assert.equal(operation.status, 'cancelled');
+
+      const run = fx.runRepo.findById(WS, RUN)!;
+      const stages = fx.runStageRepo.listByRun(WS, RUN);
+      const process = fx.db.prepare('SELECT status, cleanup_result FROM runtime_processes WHERE run_id = ?').get(RUN) as { status: string; cleanup_result: string | null };
+      const session = fx.db.prepare('SELECT status FROM provider_sessions WHERE run_id = ?').get(RUN) as { status: string };
+      assert.equal(run.status, 'cancelled');
+      assert.equal(run.version, beforeCancel.version + 1);
+      assert.ok(stages.every(stage => stage.status === 'cancelled'));
+      assert.equal(process.status, 'exited');
+      assert.equal(process.cleanup_result, 'TERMINATED');
+      assert.equal(session.status, 'cancelled');
+      assert.equal(fx.operationService.findById(WS, cancellationOperation.id).version, operationBeforeCancel.version + 1);
+
+      const cancellationEvents = fx.db.prepare(`
+        SELECT type FROM runtime_events
+        WHERE run_id = ? AND type IN ('stage.cancelled', 'run.cancelled')
+        ORDER BY sequence
+      `).all(RUN) as Array<{ type: string }>;
+      assert.equal(cancellationEvents.filter(event => event.type === 'stage.cancelled').length, STAGE_KEYS.length);
+      assert.equal(cancellationEvents.filter(event => event.type === 'run.cancelled').length, 1);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      await assert.rejects(
+        fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: OP }),
+        /already terminal/,
+      );
+    } finally {
+      resolveExit({ exitCode: 0, signal: null, exitedAt: Date.now() });
+      close(fx);
+    }
+  });
+
+  it('auth failure fails the Run canonically with zero spawns', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), true);
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.equal(run.status, 'failed');
+      assert.equal(fx.driver.spawnCalls, 0);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 0);
+    } finally { close(fx); }
+  });
+  it('current-machine Kimi gate: real kimi drives the full chain to completion (env-gated)', { skip: process.env.M4_P4_REAL_GATE !== '1' }, async () => {
+    const fx = realFixture();
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_GATE_FAIL ' + JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages: failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage })) }));
+      }
+      assert.equal(run.status, 'completed');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)', { skip: process.env.M4_P4_REAL_CODEX_GATE !== '1' }, async () => {
+    const fx = realFixture('codex');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_CODEX_GATE_FAIL ' + realFailureDetails(fx.root, run, failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage }))));
+      }
+      assert.equal(run.status, 'completed');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)', { skip: process.env.M4_P4_REAL_KIMI_ROUTED_GATE !== '1' }, async () => {
+    // The account backing the default Kimi model can be quota-blocked, so this
+    // gate names the model explicitly (for example the local opencodex route) and
+    // proves the same canonical chain through the real kimi CLI with it.
+    const fx = realFixture('kimi');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_KIMI_ROUTED_GATE_FAIL ' + JSON.stringify({ model: process.env.AGENTOS_KIMI_MODEL ?? null, failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages: failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage })) }));
+      }
+      assert.equal(run.status, 'completed');
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: real OpenCode completes the canonical production chain (env-gated)', { skip: process.env.M4_P4_REAL_OPENCODE_GATE !== '1' }, async () => {
+    // The canonical OpenCode adapter is deliberately fail-closed: it refuses the
+    // RunEngine chain until three facts are established against the real CLI.
+    // This gate records that refusal as an executable contract instead of
+    // leaving it as prose, and it is the exact condition LITE-04-101 must clear:
+    //   1. an adapter-supported OpenCode CLI version range,
+    //   2. verified non-interactive safe launch flags,
+    //   3. a verified cancellation protocol.
+    // The real OpenCode binary IS present on this machine (1.17.11, at an
+    // absolute path rather than on PATH), and it is exercised for real through
+    // the Conversation path; this gate covers the canonical RunEngine chain.
+    const fx = realFixture('opencode');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.equal(run.status, 'completed', `OpenCode failed: ${run.failureCode}`);
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const processes = fx.db.prepare('SELECT * FROM runtime_processes WHERE run_id = ?').all(RUN);
+      assert.equal(processes.length, STAGE_KEYS.length);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.ok(eventCount > 0);
+      assert.equal(outboxCount, eventCount);
+      // The real provider's assistant text must reach AgentOS's durable output
+      // store; an empty sink would mean the chain completed on nothing.
+      const sinkOutput = readSinkOutput(fx.root);
+      assert.ok(
+        sinkOutput.includes('AGENTOS_PROVIDER_GATE_OK'),
+        `real OpenCode assistant output was not captured: ${sinkOutput.slice(0, 1500)}`,
+      );
+    } finally {
+      fx.restore();
+      fx.db.close();
+      if (process.env.M4_P4_KEEP_ROOT === '1') {
+        process.stderr.write(`LITE-04-101 kept root: ${fx.root}\n`);
+      } else {
+        rmSync(fx.root, { recursive: true, force: true });
+      }
+    }
+  });
+  it('legacy-originated runs flow through the same authority to completion (legacy projection parity)', async () => {
+    ORIGIN = 'legacy_pipeline';
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.equal(run.status, 'completed');
+      assert.equal(run.origin, 'legacy_pipeline');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      const replay = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(replay.outcome, 'noop');
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); ORIGIN = 'v2_api'; }
+  });
+
+  // P6-M1 driveSafely: the production dispatch entry point must contain
+  // failures and never strand a running execution or crash the caller.
+  it('driveSafely drives one accepted run to completion (one spawn per stage)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)!.status, 'completed');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      assert.equal(fx.dispatchFailures.length, 0);
+    } finally { close(fx); }
+  });
+
+  it('driveSafely contains a post-claim coordinator failure into a canonical failure (no strand, no throw)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { executeThrow: new Error('RUN_ENGINE_DISPATCH_STALLED: simulated coordinator throw') });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      // The run must not remain queued/starting/running: it reaches a
+      // canonical terminal state (failed) rather than stranding.
+      assert.ok(['failed', 'completed', 'cancelled'].includes(run.status), 'unexpected run status: ' + run.status);
+      // The failure sink was notified for any residue the lifecycle fold could not absorb.
+      // (Whether a report fires depends on how much the canonical fold absorbed.)
+    } finally { close(fx); }
+  });
+
+  it('LITE-07-102: a contained post-claim failure still fires one terminal trigger for the failed Run', async () => {
+    const calls: Array<{ workspaceId: string; runId: string }> = [];
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      executeThrow: new Error('RUN_ENGINE_DISPATCH_STALLED: simulated coordinator throw'),
+      memoryCandidateGenerator: {
+        generateForRunTerminal: (input: { workspaceId: string; runId: string }) => { calls.push(input); },
+      },
+    });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      // The containment fold is what makes this Run terminal; the trigger must
+      // follow it, and must stay a single call because the fold is idempotent.
+      assert.equal(run.status, 'failed', `unexpected run status: ${run.status}`);
+      assert.equal(calls.length, 1, 'exactly one terminal-outcome trigger for the failed Run');
+      assert.equal(calls[0]!.workspaceId, WS);
+      assert.equal(calls[0]!.runId, RUN);
+    } finally { close(fx); }
+  });
+
+  it('driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw)', async () => {
+    // Force the engine tick/claim path to throw before the claim CAS by using
+    // an auth-failure probe that makes the pre-claim validation fail.
+    const fx = fixture(new FakeDriver(new FakeHandle([])), true);
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.ok(['failed', 'completed', 'cancelled', 'queued', 'starting', 'running'].includes(run.status));
+      assert.equal(fx.driver.spawnCalls, 0, 'auth failure must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('driveSafely is replay-safe: a second drive on a terminal run does not respawn', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); }
+  });
+
+  it('M1 integration: sends a bounded durable task-and-stage query with only the prior normalized failure code', async () => {
+    const fakeSnapshot = { id: 'mctx_inject', runId: RUN } as never;
+    const resolveCalls: Array<Record<string, unknown>> = [];
+    const resolver = {
+      resolve: (input: Record<string, unknown>) => {
+        resolveCalls.push(input);
+        return { snapshot: fakeSnapshot, contextText: 'MEMORY_CONTEXT_BODY', reused: false } as never;
+      },
+      isInjectable: () => true,
+    };
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      {
+        memoryContextResolver: resolver as never,
+        memoryTaskObjective: 'realTaskgoal: recover the signed-in workspace session',
+        priorMemoryFailure: {
+          workflowStageKey: STAGE_KEYS[0],
+          failureCode: 'PROVIDER_AUTH_REQUIRED',
+          failureMessage: 'RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY',
+        },
+      },
+    );
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.ok(resolveCalls.length >= 1, 'resolver must be called before provider execution');
+      assert.equal(resolveCalls[0].workspaceId, WS);
+      assert.equal(resolveCalls[0].runId, RUN);
+      assert.equal(resolveCalls[0].taskId, TASK, 'task scope must come from the persisted Run/Snapshot link');
+      assert.equal(resolveCalls[0].stageId, 'stage_m4_0');
+      assert.equal(resolveCalls[0].agentId, undefined, 'query wiring must not widen owner reach to an Agent');
+      assert.equal(resolveCalls[0].conversationId, undefined, 'query wiring must not widen owner reach to a conversation');
+      const query = resolveCalls[0].query;
+      assert.equal(typeof query, 'string');
+      assert.ok((query as string).includes('realTaskgoal: recover the signed-in workspace session'));
+      assert.ok((query as string).includes(`Stage key: ${STAGE_KEYS[0]}`));
+      assert.ok((query as string).includes('Prior failure code for this stage: PROVIDER_AUTH_REQUIRED'));
+      assert.ok(!(query as string).includes('RAW_PROVIDER_OUTPUT_MUST_NOT_ENTER_MEMORY_QUERY'));
+      assert.ok((query as string).length <= 2000, 'memory query must be capped at 2000 characters');
+      assert.ok(fx.capturedInputs.length >= 1, 'stage must be executed');
+      assert.ok(fx.capturedInputs[0].prompt.startsWith('Memory provides historical context; the current user instruction overrides'), 'the current-instruction precedence rule must precede memory');
+      assert.ok(fx.capturedInputs[0].prompt.includes('\nMEMORY_CONTEXT_BODY\n\n'), 'frozen memory must precede the base prompt');
+    } finally { close(fx); }
+  });
+
+  it('M1 integration: truncates a long durable objective while retaining the current Stage key', async () => {
+    const resolveCalls: Array<Record<string, unknown>> = [];
+    const resolver = {
+      resolve: (input: Record<string, unknown>) => {
+        resolveCalls.push(input);
+        return { snapshot: { id: 'mctx_long_query', runId: RUN }, contextText: 'MEMORY_CONTEXT_BODY', reused: false } as never;
+      },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, {
+      memoryContextResolver: resolver as never,
+      memoryTaskObjective: `Long real task goal ${'recover workspace state '.repeat(300)}`,
+    });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      const query = resolveCalls[0]?.query;
+      assert.equal(typeof query, 'string');
+      assert.ok((query as string).length <= 2000, 'long task metadata must be bounded before retrieval');
+      assert.ok((query as string).includes('Long real task goal'));
+      assert.ok((query as string).includes(`Stage key: ${STAGE_KEYS[0]}`), 'truncation must preserve the Stage key');
+    } finally { close(fx); }
+  });
+
+  it('M4 waits for prepared context before provider dispatch and keeps old resolver ports compatible', async () => {
+    let resolved = false;
+    const resolver = {
+      resolve: () => { throw new Error('SYNC_RESOLVER_MUST_NOT_RUN'); },
+      resolvePrepared: async () => {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        resolved = true;
+        return { snapshot: { id: 'mctx_async', runId: RUN }, contextText: 'ASYNC_FROZEN_BODY', reused: false } as never;
+      },
+      isInjectable: () => resolved,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false,
+      { memoryContextResolver: resolver as never });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(resolved, true);
+      assert.ok(fx.capturedInputs[0].prompt.includes('ASYNC_FROZEN_BODY'));
+    } finally { close(fx); }
+  });
+
+  it('M4 prepared snapshot failure prevents any provider process', async () => {
+    const resolver = {
+      resolve: () => { throw new Error('SYNC_RESOLVER_MUST_NOT_RUN'); },
+      resolvePrepared: async () => { throw new Error('MEMORY_CONTEXT_RESOLVER_SNAPSHOT_FAILED'); },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
+  it('MF-4 integration: a blocked injection prevents provider execution', async () => {
+    const resolver = {
+      resolve: () => ({ snapshot: { id: 'mctx_blocked', runId: RUN }, contextText: 'x', reused: false } as never),
+      isInjectable: () => false,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(fx.driver.spawnCalls, 0, 'a blocked injection must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('MF-4 integration: a resolver snapshot failure prevents provider execution', async () => {
+    const resolver = {
+      resolve: () => { throw new Error('MEMORY_CONTEXT_RESOLVER_SNAPSHOT_FAILED'); },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(fx.driver.spawnCalls, 0, 'a snapshot failure must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped', async () => {
+    const calls: Array<{ workspaceId: string; runId: string; createdAt: string }> = [];
+    const generator = {
+      generateForRunTerminal: (input: { workspaceId: string; runId: string; createdAt: string }) => {
+        calls.push(input);
+      },
+    };
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      { memoryCandidateGenerator: generator },
+    );
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.equal(calls.length, 1, 'one terminal-outcome trigger per Run completion');
+      assert.equal(calls[0]!.workspaceId, WS);
+      assert.equal(calls[0]!.runId, RUN);
+    } finally { close(fx); }
+  });
+
+  it('MF-2R integration: a failing generator never changes the terminal Run', async () => {
+    const errors: unknown[] = [];
+    const generator = {
+      generateForRunTerminal: () => { throw new Error('MEMORY_CANDIDATE_GENERATION_FAILED'); },
+    };
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      {
+        memoryCandidateGenerator: generator,
+        onCandidateGenerationError: (error) => { errors.push(error); },
+      },
+    );
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(
+        fx.runRepo.findById(WS, RUN)?.status,
+        'completed',
+        'generation failure must not affect the terminal Run',
+      );
+      assert.equal(errors.length, 1);
+    } finally { close(fx); }
+  });
+});

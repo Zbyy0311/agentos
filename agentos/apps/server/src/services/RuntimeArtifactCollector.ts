@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import type { RuntimeArtifact, RunFileChange } from '@agentos/shared';
 import type { NormalizedCliEvent } from '@agentos/agent-core';
+import { redactRuntimeText } from '@agentos/agent-core';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 
 export interface ArtifactCollectionContext {
@@ -65,20 +66,28 @@ export class RuntimeArtifactCollector {
     }
     if (event.type !== 'tool.completed') return;
     const started = state.tools.get(event.callId);
-    state.tools.delete(event.callId);
-    const command = extractCommand(started?.command);
+    // Completed command evidence survives retries without a repeated start.
+    // Retain the bounded observation until finalize so failed persistence can retry.
+    const evidence = event.commandResult;
+    const command = evidence?.command ?? extractCommand(started?.command);
     if (!command || !isTestCommand(command)) return;
-    const status = event.success ? 'passed' : 'failed';
+    const finalTest = evidence !== undefined && Number.isSafeInteger(evidence.exitCode) &&
+      event.success === (evidence.exitCode === 0) && isDirectTestCommand(command);
+    const status = finalTest ? (event.success ? 'passed' : 'failed') : 'verdict unverified';
     const report = [
       `Command: ${command}`,
       `Status: ${status}`,
       event.outputPreview ?? event.summary,
     ].filter(Boolean).join('\n');
     await this.create(context, {
-      type: 'report',
+      type: finalTest ? 'test' : 'report',
       title: event.success ? 'Test report' : 'Test failure report',
-      summary: `${command} ${status}`,
-      source: { kind: 'text', content: report },
+      summary: redactRuntimeText(`${command} ${status}`, 512),
+      source: { kind: 'text', content: redactRuntimeText(report, 8192) },
+      ...(finalTest ? { completion: {
+        conclusion: event.success ? 'pass' as const : 'fail' as const,
+        sourceKey: `execution:${context.sourceExecutionId}:tool:${event.callId}`,
+      } } : {}),
     });
   }
 
@@ -148,14 +157,16 @@ export class RuntimeArtifactCollector {
 
   private async create(context: ArtifactCollectionContext, input: Omit<Parameters<RuntimeArtifactService['create']>[0], keyof ArtifactCollectionContext | 'workspaceId' | 'workspaceRoot' | 'runId' | 'sourceExecutionId' | 'agentId'>): Promise<void> {
     const state = this.state(context);
-    const key = `${input.type}:${input.originalPath ?? input.title}:${input.source.kind === 'text' ? hashText(input.source.content) : input.source.kind}`;
-    if (state.dedupe.has(key)) return;
-    state.dedupe.add(key);
+    const key = input.completion?.sourceKey ?? `${input.type}:${input.originalPath ?? input.title}:${input.source.kind === 'text' ? hashText(input.source.content) : input.source.kind}`;
+    if (!input.completion && state.dedupe.has(key)) return;
     const artifact = await this.service.create({
       ...context,
       ...input,
     });
-    this.onCreated?.(artifact);
+    // Failed persistence must be retryable; do not remember uncommitted work.
+    const alreadyNotified = state.dedupe.has(key);
+    state.dedupe.add(key);
+    if (!alreadyNotified) this.onCreated?.(artifact);
   }
 
   private key(context: ArtifactCollectionContext): string {
@@ -175,10 +186,25 @@ function isTestCommand(command: string): boolean {
   const commandBoundary = "(?:^|[\\s'\"`])";
   const commandEnd = "(?:[\\s'\"]|$)";
   const direct = new RegExp(`${commandBoundary}(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?test${commandEnd}`, 'i').test(normalized)
+    || /^node\s+--test(?:\s|$)/i.test(normalized)
     || new RegExp(`${commandBoundary}(?:npx\\s+)?(?:vitest|jest|pytest|cargo\\s+test|go\\s+test|dotnet\\s+test)${commandEnd}`, 'i').test(normalized);
   if (direct) return true;
   return /(?:powershell|cmd)(?:\.exe)?/i.test(normalized)
     && new RegExp(`${commandBoundary}(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?test${commandEnd}`, 'i').test(normalized);
+}
+
+/** S2: only a whole direct invocation; quoted wrappers/composition stay reports. */
+export function isDirectTestCommand(command: string): boolean {
+  if (command.length > 512 || /[\r\n;&|><`$()]/u.test(command)) return false;
+  // A bounded literal argv grammar: no shell expansion, quotes or executable
+  // wrappers which could mask a failing child exit. Unknown grammar is not final.
+  const tokens = command.trim().split(/\s+/u);
+  if (tokens.some(token => !/^[a-zA-Z0-9_.:/\\=-]+$/u.test(token))) return false;
+  const executable = tokens[0]?.toLowerCase();
+  // Lite recognises a bounded Node test file invocation only. Other runners
+  // and package scripts keep report behavior until their exit contract is proven.
+  return executable === 'node' && tokens[1] === '--test' && tokens.length > 2 &&
+    tokens.slice(2).every(token => !token.startsWith('-') && /\.(?:cjs|mjs|js)$/i.test(token));
 }
 
 function captureBaseline(workspaceRoot: string): Baseline {

@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: P5C afterSequence-only cursor replays strictly greater durable sequences
+ok 1 - P5C afterSequence-only cursor replays strictly greater durable sequences
+  ---
+  duration_ms: 197.7057
+  type: 'test'
+  ...
+# Subtest: P5C live durable commits after subscribe are delivered exactly once with the persisted id
+ok 2 - P5C live durable commits after subscribe are delivered exactly once with the persisted id
+  ---
+  duration_ms: 149.4023
+  type: 'test'
+  ...
+# Subtest: LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues
+ok 3 - LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues
+  ---
+  duration_ms: 153.0184
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 913.5363

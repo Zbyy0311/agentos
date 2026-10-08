@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-12-101-lite-12-101-the-workbench-exposes-agent-selection-and-conversation-creation-cont-334",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+    "name": "LITE-12-101 the workbench exposes Agent selection and Conversation creation controls",
+    "line": 92,
+    "expression": "assert.ok(markup.includes('data-agent=\"agent_a\"'));",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

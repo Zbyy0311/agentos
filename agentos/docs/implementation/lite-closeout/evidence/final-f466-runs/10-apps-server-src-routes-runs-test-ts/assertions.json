@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-86",
+    "requirementId": "LITE-11-012",
+    "file": "apps/server/src/routes/runs.test.ts",
+    "name": "returns run list and aggregated details with workspace isolation and capped limit",
+    "line": 44,
+    "expression": "assert.deepEqual(list.runs.map(run => run.id), ['run-a']);",
+    "clause": "Artifact DTOs leak no storage path;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

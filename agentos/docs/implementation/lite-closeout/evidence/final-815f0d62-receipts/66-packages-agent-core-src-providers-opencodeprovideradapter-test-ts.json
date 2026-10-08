@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/providers/opencodeProviderAdapter.test.ts"
+    ]
+  },
+  "cwd": "packages/agent-core",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/assertions.json",
+      "sha256": "ea8ce48eb9cafbf7466cfb52d621dbddff094c169581238b712821eab21fc47f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/execution.json",
+      "sha256": "0a78d950242d96c0ad6adcf61eee7ef9973579ec8a23827a728c287caf2e466f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/stdout.txt",
+      "sha256": "69e5271b49718d06c08f04316778cd10fa854b4f8cc7439dbf5f5b2e6ebddcd5"
+    }
+  ],
+  "counts": {
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "total": 7
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-04-001-parses-only-bounded-redacted-assistant-text-and-reports-truncation-404",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts",
+      "name": "parses only bounded redacted assistant text and reports truncation",
+      "line": 185,
+      "expression": "expect(output.length).toBeLessThanOrEqual(OPENCODE_PLAIN_TEXT_MAX_CHARACTERS);",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-parses-only-bounded-redacted-assistant-text-and-reports-truncation-405",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts",
+      "name": "parses only bounded redacted assistant text and reports truncation",
+      "line": 185,
+      "expression": "expect(output.length).toBeLessThanOrEqual(OPENCODE_PLAIN_TEXT_MAX_CHARACTERS);",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

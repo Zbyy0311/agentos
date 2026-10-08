@@ -1,8 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import express from 'express';
+import http from 'node:http';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { TaskItem, TaskLog } from '@agentos/shared';
 import { CLIError } from '@agentos/agent-core';
-import { applyStageFailure, claimTaskRun, getStageAgentName, touchTaskActivity } from './tasks.js';
+import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import {
+  applyStageFailure,
+  claimTaskRun,
+  createTaskRoutes,
+  getStageAgentName,
+  isContainedPath,
+  isValidLegacyTaskId,
+  resolveLegacyTaskLogDir,
+  touchTaskActivity,
+} from './tasks.js';
 
 function makeTask(): TaskItem {
   return {
@@ -93,4 +109,75 @@ test('[M27-P4-T001] Legacy TaskItem JSON round-trip preserves the frozen field s
     'createdAt', 'currentAgent', 'id', 'outputs', 'reviewBlocked',
     'reviewDecision', 'status', 'title', 'updatedAt', 'workspaceId',
   ].sort());
+});
+
+test('SEC-PATH-01/02 accepts generated-shape and legacy-compatible task IDs', () => {
+  for (const taskId of ['a1b2c3d4', 'task-1', 'task_1', 'ABC123']) {
+    assert.equal(isValidLegacyTaskId(taskId), true, taskId);
+  }
+});
+
+test('SEC-PATH-03 rejects traversal and separator-bearing task IDs', () => {
+  for (const taskId of ['..', '../outside', '../../outside', '..\\outside', '..\\..\\outside', 'foo/bar', 'foo\\bar', '.']) {
+    assert.equal(isValidLegacyTaskId(taskId), false, taskId);
+    assert.equal(resolveLegacyTaskLogDir('C:\\workspace', taskId), null, taskId);
+  }
+});
+
+test('SEC-PATH-04/05 enforces canonical separator-aware log containment', () => {
+  const logsRoot = join('C:\\workspace', '.agentos', 'logs');
+
+  assert.equal(isContainedPath(logsRoot, join(logsRoot, 'task-1')), true);
+  assert.equal(isContainedPath(logsRoot, join(logsRoot, '..', 'outside')), false);
+  assert.equal(isContainedPath(logsRoot, `${logsRoot}-evil`), false);
+});
+
+test('SEC-PATH-06 accepts safe logs and rejects decoded traversal without reading outside logs', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-task-log-security-'));
+  const safeLogDir = join(root, '.agentos', 'logs', 'a1b2c3d4');
+  mkdirSync(safeLogDir, { recursive: true });
+  writeFileSync(join(safeLogDir, 'stdout.log'), 'safe-log', 'utf8');
+  writeFileSync(join(root, '.agentos', 'outside.log'), 'outside-secret', 'utf8');
+
+  const manager = {
+    get: (workspaceId: string) => workspaceId === 'workspace-a' ? { rootPath: root } : undefined,
+  } as WorkspaceManager;
+  const app = express();
+  app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes({} as never, manager));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
+  });
+
+  try {
+    const address = server.address() as AddressInfo;
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/tasks`;
+    const safeResponse = await fetch(`${base}/a1b2c3d4/logs`);
+    assert.equal(safeResponse.status, 200);
+    assert.deepEqual(await safeResponse.json(), { logs: { stdout: 'safe-log' } });
+
+    const traversalResponse = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const request = http.request({
+        hostname: '127.0.0.1',
+        port: address.port,
+        path: '/api/workspaces/workspace-a/tasks/%2e%2e/logs',
+        method: 'GET',
+      }, response => {
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => resolve({
+          status: response.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString('utf8'),
+        }));
+      });
+      request.on('error', reject);
+      request.end();
+    });
+    assert.equal(traversalResponse.status, 400);
+    assert.deepEqual(JSON.parse(traversalResponse.body), { error: 'Invalid taskId' });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
 });

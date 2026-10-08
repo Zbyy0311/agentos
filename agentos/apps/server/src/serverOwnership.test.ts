@@ -50,6 +50,30 @@ function closeServer(server: net.Server): Promise<void> {
   return new Promise(resolvePromise => server.close(() => resolvePromise()));
 }
 
+async function isLoopbackPortBindableWithoutConnections(port: number): Promise<boolean> {
+  const server = net.createServer();
+  try {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.once('error', rejectPromise);
+      server.listen(port, '127.0.0.1', () => resolvePromise());
+    });
+    await closeServer(server);
+    return true;
+  } catch (error) {
+    if (server.listening) await closeServer(server).catch(() => {});
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EACCES' || code === 'EADDRINUSE') return false;
+    throw error;
+  }
+}
+
+async function isLoopbackPortRebindableWithoutConnections(port: number): Promise<boolean> {
+  if (!await isLoopbackPortBindableWithoutConnections(port)) return false;
+  // These probes never accept a connection, so closing cannot create TCP
+  // TIME_WAIT state; the immediate second bind confirms the port was released.
+  return isLoopbackPortBindableWithoutConnections(port);
+}
+
 function observeOwnershipServerCreations(): { count(): number; restore(): void } {
   const mutableNet = net as typeof net & { createServer: typeof net.createServer };
   const originalCreateServer = mutableNet.createServer;
@@ -114,6 +138,12 @@ const R39_EVIDENCE_TIMEOUT_MS = 1_000;
 
 interface R39CandidateEvidence {
   port: number;
+  requestedLocalAddress?: string;
+  requestedLocalPort?: number;
+  localAddress?: string;
+  localPort?: number;
+  remoteAddress?: string;
+  remotePort?: number;
   connectSucceeded: boolean;
   elapsedMs: number;
   responseBytes: number;
@@ -127,6 +157,17 @@ interface R39CandidateEvidence {
 function diagnosticPort(args: readonly unknown[]): number | undefined {
   const target = snapshotListenTarget(args);
   return typeof target?.port === 'number' ? target.port : undefined;
+}
+
+function snapshotConnectTarget(args: readonly unknown[]): Record<string, unknown> | undefined {
+  const target = args[0];
+  if (!target || typeof target !== 'object') return undefined;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of ['host', 'port', 'localAddress', 'localPort']) {
+    const field = readDiagnosticField(target, key);
+    if (field === null || ['string', 'number', 'boolean'].includes(typeof field)) snapshot[key] = field;
+  }
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
 }
 
 function updateR39ResponseEvidence(
@@ -157,12 +198,19 @@ function observeR39ParentProbes(): {
 
   mutableNet.connect = ((...connectArgs: unknown[]) => {
     const port = diagnosticPort(connectArgs);
+    const connectTarget = snapshotConnectTarget(connectArgs);
     const socket = Reflect.apply(originalConnect, mutableNet, connectArgs) as net.Socket;
     if (port === undefined) return socket;
 
     const startedAt = Date.now();
     const evidence: R39CandidateEvidence = {
       port,
+      requestedLocalAddress: typeof connectTarget?.localAddress === 'string'
+        ? connectTarget.localAddress
+        : undefined,
+      requestedLocalPort: typeof connectTarget?.localPort === 'number'
+        ? connectTarget.localPort
+        : undefined,
       connectSucceeded: false,
       elapsedMs: 0,
       responseBytes: 0,
@@ -180,6 +228,10 @@ function observeR39ParentProbes(): {
     timer.unref();
     const onConnect = (): void => {
       evidence.connectSucceeded = true;
+      evidence.localAddress = socket.localAddress ?? undefined;
+      evidence.localPort = socket.localPort ?? undefined;
+      evidence.remoteAddress = socket.remoteAddress ?? undefined;
+      evidence.remotePort = socket.remotePort ?? undefined;
       updateElapsed();
     };
     const onData = (chunk: Buffer): void => {
@@ -255,6 +307,10 @@ function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence
     }, R39_EVIDENCE_TIMEOUT_MS);
     socket.once('connect', () => {
       evidence.connectSucceeded = true;
+      evidence.localAddress = socket.localAddress ?? undefined;
+      evidence.localPort = socket.localPort ?? undefined;
+      evidence.remoteAddress = socket.remoteAddress ?? undefined;
+      evidence.remotePort = socket.remotePort ?? undefined;
     });
     socket.on('data', (chunk: Buffer) => {
       evidence.responseBytes += chunk.length;
@@ -280,7 +336,10 @@ function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence
   });
 }
 
-async function makeUnoccupiedR39Root(label: string): Promise<{
+async function makeUnoccupiedOwnershipRoot(
+  label: string,
+  options: { requireBindablePrimary?: boolean } = {},
+): Promise<{
   root: string;
   candidatePorts: number[];
 }> {
@@ -292,12 +351,14 @@ async function makeUnoccupiedR39Root(label: string): Promise<{
     const allCandidatesHaveNoListener = evidence.every(item => (
       (item.rawSocketError as { code?: unknown } | undefined)?.code === 'ECONNREFUSED'
     ));
-    if (allCandidatesHaveNoListener) {
+    const primaryPortIsBindable = !options.requireBindablePrimary
+      || await isLoopbackPortRebindableWithoutConnections(candidatePorts[0]!);
+    if (allCandidatesHaveNoListener && primaryPortIsBindable) {
       return { root, candidatePorts };
     }
     rmSync(root, { recursive: true, force: true });
   }
-  throw new Error(`R39 could not establish an unoccupied candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
+  throw new Error(`Could not establish an unoccupied ownership candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
 }
 
 // --- Diagnostic-only helpers (diag/r38-r39-crash-release-timing) ------------
@@ -611,6 +672,99 @@ test('R36 different roots colliding on the first candidate move to the next cand
   }
 });
 
+test('Windows loopback probe with a same-numbered source port reaches a foreign owner and falls back safely', {
+  skip: process.platform !== 'win32' ? 'requires Windows loopback TCP behavior' : false,
+}, async () => {
+  const foreignRoot = makeRoot('windows-source-port-owner');
+  const requestingRoot = makeRoot('windows-source-port-request');
+  const targetPort = await freePort();
+  const fallbackPort = await freePort();
+  let foreignOwner: ServerOwnership | undefined;
+  let requestingOwner: ServerOwnership | undefined;
+  const mutableNet = net as typeof net & { connect: typeof net.connect };
+  const originalConnect = mutableNet.connect;
+  let forcedProbe = false;
+  let probeObservation: {
+    requestedLocalAddress: string | undefined;
+    requestedLocalPort: number | undefined;
+    connected: boolean;
+    localAddress?: string;
+    localPort?: number;
+    remoteAddress?: string;
+    remotePort?: number;
+    response: string;
+  } | undefined;
+
+  try {
+    foreignOwner = await acquireLoopbackServerOwnership(foreignRoot, { candidatePorts: [targetPort] });
+    assert.equal(foreignOwner.endpoint, `tcp://127.0.0.1:${targetPort}`);
+
+    mutableNet.connect = ((...connectArgs: unknown[]) => {
+      const target = connectArgs[0];
+      const candidatePort = target && typeof target === 'object'
+        ? readDiagnosticField(target, 'port')
+        : undefined;
+      if (!forcedProbe && candidatePort === targetPort && target && typeof target === 'object') {
+        forcedProbe = true;
+        const forcedOptions: Record<string, unknown> = {
+          ...(target as Record<string, unknown>),
+          localPort: targetPort,
+        };
+        connectArgs[0] = forcedOptions;
+        const socket = Reflect.apply(originalConnect, mutableNet, connectArgs) as net.Socket;
+        const observation = {
+          requestedLocalAddress: typeof forcedOptions.localAddress === 'string'
+            ? forcedOptions.localAddress
+            : undefined,
+          requestedLocalPort: typeof forcedOptions.localPort === 'number'
+            ? forcedOptions.localPort
+            : undefined,
+          connected: false,
+          response: '',
+        } as NonNullable<typeof probeObservation>;
+        probeObservation = observation;
+        socket.once('connect', () => {
+          observation.connected = true;
+          observation.localAddress = socket.localAddress ?? undefined;
+          observation.localPort = socket.localPort ?? undefined;
+          observation.remoteAddress = socket.remoteAddress ?? undefined;
+          observation.remotePort = socket.remotePort ?? undefined;
+        });
+        socket.on('data', chunk => { observation.response += String(chunk); });
+        return socket;
+      }
+      return Reflect.apply(originalConnect, mutableNet, connectArgs) as net.Socket;
+    }) as typeof net.connect;
+
+    try {
+      requestingOwner = await acquireLoopbackServerOwnership(requestingRoot, {
+        candidatePorts: [targetPort, fallbackPort],
+      });
+    } finally {
+      mutableNet.connect = originalConnect;
+    }
+
+    assert.equal(forcedProbe, true, 'the target-port probe must exercise the forced source-port collision');
+    assert.ok(probeObservation, 'the forced probe endpoint must be captured');
+    assert.equal(probeObservation.requestedLocalAddress, '127.0.0.2');
+    assert.equal(probeObservation.requestedLocalPort, targetPort);
+    assert.equal(probeObservation.connected, true, 'the probe must reach the legitimate foreign listener');
+    assert.equal(probeObservation.localAddress, '127.0.0.2');
+    assert.equal(probeObservation.localPort, targetPort);
+    assert.equal(probeObservation.remoteAddress, '127.0.0.1');
+    assert.equal(probeObservation.remotePort, targetPort);
+    assert.match(probeObservation.response, /^AGENTOS_OWNER_V1 [0-9a-f]{64}\n$/);
+    assert.equal(requestingOwner.endpoint, `tcp://127.0.0.1:${fallbackPort}`);
+    assert.equal(foreignOwner.endpoint, `tcp://127.0.0.1:${targetPort}`, 'the foreign owner must remain intact');
+  } finally {
+    mutableNet.connect = originalConnect;
+    await requestingOwner?.release().catch(() => {});
+    await foreignOwner?.release().catch(() => {});
+    rmSync(foreignRoot, { recursive: true, force: true });
+    rmSync(requestingRoot, { recursive: true, force: true });
+  }
+});
+
 test('R37 unknown port occupants fail closed without jumping to the next candidate', async (t) => {
   const variants: Array<{
     name: string;
@@ -653,7 +807,7 @@ test('R37 unknown port occupants fail closed without jumping to the next candida
 });
 
 test('R38 loopback ownership is released automatically after a subprocess crash', { timeout: 120_000 }, async () => {
-  const root = makeRoot('r38');
+  const { root } = await makeUnoccupiedOwnershipRoot('r38', { requireBindablePrimary: true });
   const spawned = spawnLoopbackChild(root);
   let ownership: ServerOwnership | undefined;
   // Diagnostic-only passive observers (diag branch): timestamps and probe
@@ -732,7 +886,7 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   const ROUNDS = 5;
   const CHILDREN = 3;
   for (let round = 0; round < ROUNDS; round += 1) {
-    const { root, candidatePorts } = await makeUnoccupiedR39Root(`r39-${round}`);
+    const { root, candidatePorts } = await makeUnoccupiedOwnershipRoot(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
     const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
     const parentProbeAttempts: R39CandidateEvidence[] = [];

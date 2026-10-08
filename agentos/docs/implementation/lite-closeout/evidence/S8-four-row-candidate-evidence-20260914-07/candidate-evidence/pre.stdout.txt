@@ -1,0 +1,1 @@
+{"phase":"pre","counts":{"total":12,"passed":11,"failed":1,"skipped":0},"errors":1,"outputPath":"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-07\\candidate-evidence\\pre.json"}

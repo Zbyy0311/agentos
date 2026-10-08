@@ -1,0 +1,125 @@
+{
+  "packageName": "S2S3-live-provider-candidate-evidence",
+  "title": "S2/S3 真实 Provider 候选证据包（LITE-07-104 / LITE-07-103 / LITE-08-005～007）",
+  "modelScopeStatement": "这些 gate 用明确指定的 OpenCode CLI 与路由模型（deepseek/deepseek-v4-flash）驱动 AgentOS 的 canonical Provider/Runtime 链；证据只证明该指定模型下的链，不证明机器默认模型或额度受限模型可用。",
+  "routeModels": {
+    "artifactChain": "openCode CLI 1.17.11 / deepseek/deepseek-v4-flash",
+    "approvalChain": "openCode CLI 1.17.11 / deepseek/deepseek-v4-flash"
+  },
+  "gateReceiptDirs": [
+    "artifact-gate",
+    "approval-gate"
+  ],
+  "testNote": "受影响测试（S2 Artifact service/routes，3 个文件，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `16 pass / 0 fail / 0 skipped`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{\"matrixVersion\":15,\"status\":\"frozen\",\"PASS\":0,\"GAP\":26,\"RUNTIME-VERIFY\":205,\"DEFERRED\":164}`。两个 `*.liveGate.test.ts` 在 CI 上按环境跳过（无 Provider CLI），其真实运行收据由本包保存。",
+  "knownLimitations": [
+    "gate 的 stdout/stderr/exit 是同一次真实调用的原始输出；本包的 per-clause receipt 是从该次调用保留的 durable store 副本重新读出的，不是事后重放。",
+    "**已记录的 Provider 输出波动**：本会话较早的一次 artifact gate 调用失败于链入口之前（`PROVIDER_OUTPUT_INVALID: OpenCode produced no valid assistant output`，Run 变为 failed，没有伪造 Artifact）。该次运行的原始日志被后续调用覆盖，未保留为收据，因此这里作为观察记录而不是断言；保留收据的最终调用退出码为 0。",
+    "审批链的「暂停早于进程创建」「陈旧版本不能决定」「重放收敛」这类顺序性断言由 gate 自身在同一调用内断言（收据中的 gate 输出与 exit 0 是同一证据），本包从持久行只重derive最终状态。",
+    "指纹变更（动作/Launch Plan 漂移）拒绝分支由 gate 断言，持久行只保留冻结哈希，未在本包重放。",
+    "过期语义是惰性观察的：过期请求不会执行、不记录决定，但 Run 仍停在 waiting_approval，等操作者取消或要求新决定；这一点已在 S3-approval-live-evidence.md 记录。",
+    "通过审批链执行的 Run 还会产生一条终态 summary 候选（`mcand_terminal_*`，task scope、agent-derived），属于 LITE-07-102 的终态触发路径，本包只记录不改判。"
+  ],
+  "requirements": {
+    "LITE-07-104": {
+      "text": "完成的真实review/test Artifact触发",
+      "section": "S2 授权",
+      "sourceFile": "apps/server/src/services/ArtifactCompletionService.ts",
+      "sourceLine": 70,
+      "secondarySources": [
+        {
+          "sourceFile": "agentos/docs/implementation/lite-closeout/S2-027-authorization.md",
+          "sourceLine": 1,
+          "note": "027 授权：Artifact + 完成事实 + 候选 + 事件原子提交"
+        },
+        {
+          "sourceFile": "agentos/docs/implementation/lite-closeout/S2-artifact-evidence.md",
+          "sourceLine": 1,
+          "note": "既有组件级证据；本包补真实模型调用"
+        }
+      ],
+      "why": "一次真实 Provider 运行（OpenCode CLI 1.17.11，deepseek/deepseek-v4-flash）跑完整条 canonical 链：4 个 Stage 全部 completed，产生 3 个 CANONICAL 来源的 review Artifact（分别落在 codex_manager / kimi_worker / codex_final_review 三个真实 Stage 上，摘要非空）；3 个 Artifact 各有一条来自 canonical result seam（`canonical-result:` 前缀）的完成记录，结论属于 review 词汇表（本次模型对带有真实缺陷的解析文件给出 changes_requested）；每个完成记录产生一个 workspace scope、decision 类、agent-derived、review-required 的候选，并引用其 Artifact 作为来源；每个候选都有对应的 canonical `memory.candidate_created` Runtime Event，且 Runtime Event 与 Outbox 行数相等（每事件恰好一次 handoff）；接受其中一个候选后产生持久 Memory Entry 且引用保留 Artifact provenance，其余候选保持 review-required 且未映射到 Entry。",
+      "limits": "证明的是这一条真实链与其持久事实，不证明 UI 渲染；Arifact 的结论值本身来自模型（本次为 changes_requested），本包只断言它属于类型词汇表而不是固定值；`M4_P4_REAL_ARTIFACT_GATE` 在 CI 上跳过，收据来自本地真实运行。"
+    },
+    "LITE-07-103": {
+      "text": "接受的真实审批决定触发",
+      "section": "S3 授权",
+      "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+      "sourceLine": 120,
+      "secondarySources": [
+        {
+          "sourceFile": "agentos/docs/implementation/lite-closeout/S3-028-authorization.md",
+          "sourceLine": 1,
+          "note": "028 请求 / 026 决定 的冻结契约"
+        },
+        {
+          "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+          "sourceLine": 267,
+          "note": "接受决定后创建候选并返回 candidateId"
+        }
+      ],
+      "why": "同一真实调用里，两条被批准的决定各自产生一个 workspace scope、decision 类、user-explicit、review-required 的候选，且每个候选都引用它自己的 Run 与它自己的 resolution Event（两个不同的 event source id），并且这两个候选各有 canonical `memory.candidate_created` Event。决定触发的事实与决定记录一一对应，不存在把机器产生的事实写成用户权威的路径。",
+      "limits": "只覆盖 accept 分支的真实触发与来源；deny 不产生候选这一点由既有单元测试覆盖，本包未重放；候选进入长期 Memory 仍需审核（本包只证明候选与其来源）。"
+    },
+    "LITE-08-005": {
+      "text": "ASK_USER persists and pauses the Run",
+      "section": "S3 Runtime Authorization",
+      "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+      "sourceLine": 199,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/services/run-engine/RuntimeApprovalGate.liveGate.test.ts",
+          "sourceLine": 212,
+          "note": "gate 断言：首次 drive 后 Run/Stage 为 waiting_approval、请求已持久、进程数为 0"
+        },
+        {
+          "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+          "sourceLine": 44,
+          "note": "生产 gate 实现"
+        }
+      ],
+      "why": "真实运行结束时持久行显示：同一个 Run 下恰好两条请求，分别针对它在两个 write-capable Stage 上的动作（两个不同的 action fingerprint），两条都已 approved 且 resolution=approve_once，每条都带 64-hex 的 action/agent/provider/launch-plan 冻结哈希与非空请求快照，过期时间在未来；该 Run 真实执行了两个不同的 Provider 进程并最终 completed、所有 Stage completed；决定行恰好每请求一条。暂停早于进程创建、以及陈旧版本不能决定，由同一调用的 gate 断言覆盖。",
+      "limits": "本包从持久行重derive的是「请求/决定/进程/Run 的最终状态」；暂停与进程创建的先后顺序只在 gate 自身的断言里（同一次调用，exit 0），不是本包独立复算。"
+    },
+    "LITE-08-006": {
+      "text": "concurrent approve/reject is idempotent",
+      "section": "S3 Runtime Authorization",
+      "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+      "sourceLine": 131,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/migrations/migrations/026-mf2-approval-decision-persistence.ts",
+          "sourceLine": 36,
+          "note": "approval_decisions 的不可改写触发器 APPROVAL_DECISION_IMMUTABLE"
+        },
+        {
+          "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+          "sourceLine": 150,
+          "note": "重放同一决定返回 replayed: true 并复用已提交的候选"
+        }
+      ],
+      "why": "持久层面：两个已解析请求各自恰好一条决定行（每请求决定数 = 1），决定所绑定的请求集合与请求集合一致，且 `approval_decisions_reject_update` 触发器存在并 RAISE `APPROVAL_DECISION_IMMUTABLE`，因此已提交的决定不能被改写；同一个决定重放时按已提交状态收敛（gate 断言 replayed=true 且候选 id 不变）。",
+      "limits": "并发竞争的真实 HTTP 竞争与重试收敛由 gate 断言与既有路由测试覆盖；本包从持久行证明的是「一请求一决定 + 决定不可改写」这一收敛目标的不变量，未重放并发请求流。"
+    },
+    "LITE-08-007": {
+      "text": "stale and expired approvals cannot execute",
+      "section": "S3 Runtime Authorization",
+      "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+      "sourceLine": 228,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/services/RuntimeApprovalGate.ts",
+          "sourceLine": 108,
+          "note": "过期在决定或新启动尝试时被惰性观察"
+        },
+        {
+          "sourceFile": "agentos/docs/implementation/lite-closeout/S3-approval-live-evidence.md",
+          "sourceLine": 1,
+          "note": "过期语义（惰性、无 sweeper）的记录"
+        }
+      ],
+      "why": "过期请求的持久行显示 status=expired、resolution=null、冻结哈希仍为 64-hex；该 workspace 里决定行 0 条、Provider 进程 0 个，Run 仍为 waiting_approval，被暂停的那个 Stage 仍为 waiting_approval，且没有任何 Stage 处于 running——也就是过期既没有执行也没有被静默改写。",
+      "limits": "过期是惰性观察的：本包证明「不执行、不记录决定、不改写 Run」，不证明 Run 自行终止（无 sweeper）；指纹/版本漂移的拒绝分支由 gate 断言，未在本包从持久行复算。"
+    }
+  }
+}
+

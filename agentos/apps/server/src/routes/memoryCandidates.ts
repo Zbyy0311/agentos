@@ -4,10 +4,12 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryCandidateService } from '../services/MemoryCandidateService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
+import { MemorySourceAccumulationService, MemorySourceAccumulationError } from '../services/MemorySourceAccumulationService.js';
 
 export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager: WorkspaceManager, eventBus?: EventBus): Router {
   const router = Router({ mergeParams: true });
   const service = new MemoryCandidateService(store, undefined, undefined, eventBus);
+  const sourceAccumulator = new MemorySourceAccumulationService(store);
 
   router.get('/memory-candidates', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -35,6 +37,32 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
         ? 404
         : message.includes('must be completed') || message === 'Workspace memory is disabled' ? 409 : 400;
       res.status(status).json({ error: message });
+    }
+  });
+
+  // P1 source-ownership path for old agent_runs. The existing generate route
+  // remains available to compatibility clients; the workspace UI uses this
+  // route so new evidence enters the canonical Candidate/review queue.
+  router.post('/runs/:runId/memory-candidates/accumulate', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace.memoryEnabled) return res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' });
+    try {
+      const result = sourceAccumulator.generateForLegacyRun({
+        workspaceId: workspace.id,
+        runId: req.params.runId,
+        createdAt: new Date().toISOString(),
+      });
+      res.status(result.outcome === 'created' ? 201 : 200).json(result);
+    } catch (error) {
+      if (error instanceof MemorySourceAccumulationError) {
+        const status = error.code === 'SOURCE_NOT_FOUND' ? 404
+          : error.code === 'SOURCE_NOT_TERMINAL' ? 409
+            : error.code === 'INPUT_INVALID' ? 400 : 422;
+        res.status(status).json({ error: error.code });
+        return;
+      }
+      res.status(500).json({ error: 'MEMORY_SOURCE_ACCUMULATION_FAILED' });
     }
   });
 

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-03-014-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-199",
+    "requirementId": "LITE-03-014",
+    "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+    "line": 60,
+    "expression": "assert.equal(",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-lite-07-104-actual-collector-finalizes-test-artifact-through-candidate-event-rev-200",
+    "requirementId": "LITE-06-007",
+    "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry",
+    "line": 60,
+    "expression": "assert.equal(",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

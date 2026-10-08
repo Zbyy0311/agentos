@@ -1,0 +1,200 @@
+[
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A1",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 839,
+    "expression": "assert.equal(rejected.status, 400);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A2",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 840,
+    "expression": "assert.deepEqual(rejected.json, { error: 'MEMORY_ENTRY_INPUT_INVALID' });",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A3",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 844,
+    "expression": "assert.equal(scalar(store, `SELECT COUNT(*) AS n FROM ${table}`), 0, table);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A4",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 853,
+    "expression": "assert.equal(reference.status, 201);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A5",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 855,
+    "expression": "assert.equal(body.entry.authority, 'user-explicit');",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A6",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 856,
+    "expression": "assert.equal(body.entry.content, 'Use API_KEY=${OPENAI_API_KEY}.');",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A7",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 857,
+    "expression": "assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?', WS), 1);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A8",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 858,
+    "expression": "assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 1);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-83-A9",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 859,
+    "expression": "assert.equal(db.prepare('SELECT payload_json FROM workspace_events WHERE workspace_id = ?').get(WS) !== undefined, true);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A1",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 839,
+    "expression": "assert.equal(rejected.status, 400);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A2",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 840,
+    "expression": "assert.deepEqual(rejected.json, { error: 'MEMORY_ENTRY_INPUT_INVALID' });",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A3",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 844,
+    "expression": "assert.equal(scalar(store, `SELECT COUNT(*) AS n FROM ${table}`), 0, table);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A4",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 853,
+    "expression": "assert.equal(reference.status, 201);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A5",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 855,
+    "expression": "assert.equal(body.entry.authority, 'user-explicit');",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A6",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 856,
+    "expression": "assert.equal(body.entry.content, 'Use API_KEY=${OPENAI_API_KEY}.');",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A7",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 857,
+    "expression": "assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?', WS), 1);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A8",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 858,
+    "expression": "assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 1);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-explicit-secret-like-save-leaves-no-entry-fts-snapshot-o-84-A9",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink",
+    "line": 859,
+    "expression": "assert.equal(db.prepare('SELECT payload_json FROM workspace_events WHERE workspace_id = ?').get(WS) !== undefined, true);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

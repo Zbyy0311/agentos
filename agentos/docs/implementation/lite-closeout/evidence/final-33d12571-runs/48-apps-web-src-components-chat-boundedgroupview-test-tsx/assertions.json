@@ -1,0 +1,57 @@
+[
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329-A1",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 27,
+    "expression": "assert.ok(markup.includes('data-agentos=\"bounded-group-view\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329-A2",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 28,
+    "expression": "assert.ok(markup.includes('role=\"progressbar\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329-A3",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 29,
+    "expression": "assert.ok(markup.includes('2 / 5'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329-A4",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 30,
+    "expression": "assert.ok(markup.includes('1 / 4'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-01-the-interaction-is-visibly-bounded-with-progress-meters-329-A5",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx",
+    "name": "GRP-01 the interaction is visibly bounded with progress meters",
+    "line": 31,
+    "expression": "assert.ok(markup.includes('2 / 3'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

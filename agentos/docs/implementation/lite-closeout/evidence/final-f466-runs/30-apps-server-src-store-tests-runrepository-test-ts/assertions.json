@@ -1,0 +1,46 @@
+[
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-256",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 63,
+    "expression": "assert.equal(run.parentRunId, undefined);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t32-retry-run-keeps-the-parent-root-chain-257",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 82,
+    "expression": "assert.equal(retry.parentRunId, initial.id);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-258",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 63,
+    "expression": "assert.equal(run.parentRunId, undefined);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t32-retry-run-keeps-the-parent-root-chain-259",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 82,
+    "expression": "assert.equal(retry.parentRunId, initial.id);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

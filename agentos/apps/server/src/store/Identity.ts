@@ -26,10 +26,13 @@ export const ENTITY_ID_PREFIXES = {
   conversation: 'conv',
   message: 'msg',
   turn: 'turn',
+  checkpoint: 'cp',
+  projection: 'proj',
   artifact: 'artifact',
   extension: 'ext',
   idempotency: 'idem',
   operation: 'op',
+  import: 'imp',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;

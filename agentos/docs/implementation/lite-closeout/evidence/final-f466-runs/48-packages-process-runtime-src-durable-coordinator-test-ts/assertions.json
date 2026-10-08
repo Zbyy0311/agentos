@@ -1,0 +1,101 @@
+[
+  {
+    "id": "LITE-00-005-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-328",
+    "requirementId": "LITE-00-005",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(lastOutcome).not.toBeNull();",
+    "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-013-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-329",
+    "requirementId": "LITE-03-013",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(lastOutcome).not.toBeNull();",
+    "clause": "redaction before persistence;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--330",
+    "requirementId": "LITE-03-014",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(spawned.kind).toBe('spawned');",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-014-retained-cap-fails-closed-before-any-byte-commit-331",
+    "requirementId": "LITE-03-014",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(first.retainedBytes).toBe(8);",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-010-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--332",
+    "requirementId": "LITE-05-010",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(spawned.kind).toBe('spawned');",
+    "clause": "bounded independent stdout/stderr with Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-010-retained-cap-fails-closed-before-any-byte-commit-333",
+    "requirementId": "LITE-05-010",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(first.retainedBytes).toBe(8);",
+    "clause": "bounded independent stdout/stderr with Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-009-raw-secrets-never-reach-the-sink-or-the-db-only-scanner-output-is-persisted-334",
+    "requirementId": "LITE-08-009",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "raw secrets never reach the sink or the DB; only scanner output is persisted",
+    "line": 1832,
+    "expression": "expect(lastOutcome).not.toBeNull();",
+    "clause": "snapshots and Events contain no secret values;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-013-output-writer-persists-only-redacted-chunk-bytes-advances-monotonic-checkpoints--335",
+    "requirementId": "LITE-10-013",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes",
+    "line": 1564,
+    "expression": "expect(spawned.kind).toBe('spawned');",
+    "clause": "bounded finalized output references;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-013-retained-cap-fails-closed-before-any-byte-commit-336",
+    "requirementId": "LITE-10-013",
+    "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+    "name": "retained cap fails closed BEFORE any byte commit",
+    "line": 1688,
+    "expression": "expect(first.retainedBytes).toBe(8);",
+    "clause": "bounded finalized output references;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

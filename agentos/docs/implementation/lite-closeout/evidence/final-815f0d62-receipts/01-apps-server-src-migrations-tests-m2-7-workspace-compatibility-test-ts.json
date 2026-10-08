@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss)",
+      "src/migrations/__tests__/m2-7-workspace-compatibility.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/assertions.json",
+      "sha256": "0bde597c2d96ae9808deaaddb626f4fa858aa0175669856a911d946c380778af"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/execution.json",
+      "sha256": "fc6ae3c8cf5a9b9c4f68f06291afd06685b910d41371d33aa58f7100998a7237"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/stdout.txt",
+      "sha256": "ee2dbfa6b575f51be78d00f759d2620b56264744f004cab89a21946308a724f8"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-10-015-lite-10-015-m27-p5-t012-compatibility-read-preserves-selected-workspace-source-b-1",
+      "requirementId": "LITE-10-015",
+      "file": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+      "name": "LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss",
+      "line": 90,
+      "expression": "assert.equal(result.completedCount, 1);",
+      "clause": "compatibility reads without data loss;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

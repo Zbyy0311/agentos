@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "runtime-verify-classification",
+  "authority": {
+    "mainSha": "ec780b739ac5be6875c6ff3ac0523747abd50700",
+    "matrixVersion": 24,
+    "matrixStatus": "frozen",
+    "sourceMatrix": "docs/implementation/lite-closeout/matrix.json",
+    "classificationStartedAfter": "PR #185 merged and main CI run 34990858303 completed successfully"
+  },
+  "rule": {
+    "candidate": "PASS_CANDIDATE means the current production path and one or more named assertions directly cover every clause; it is not a PASS promotion.",
+    "assertionGap": "ASSERTION_GAP means implementation may exist, but the current executed assertions do not directly prove every clause.",
+    "implementationGap": "IMPLEMENTATION_GAP means a production behavior is absent or demonstrably incorrect.",
+    "unresolved": "No unresolved classification is permitted. A later promotion still requires a per-requirement receipt and direct clause rationale."
+  },
+  "evidenceGroups": {
+    "G-SERVER-CORE": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/store/Identity.test.ts src/services/TaskRunService.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/services/RuntimeInspector.test.ts src/services/GitObservationCollector.test.ts src/services/GitObservationCollector.integration.test.ts src/services/RunReplayService.test.ts src/routes/canonicalRunEvents.test.ts src/routes/canonicalRunStream.test.ts src/routes/artifacts.test.ts src/routes/git.test.ts src/routes/runtimeInspector.test.ts src/routes/runtimeInspector.redaction.test.ts src/routes/runLifecycle.test.ts src/routes/operations.test.ts src/routes/conversationRuntime.test.ts src/migrations/M2MigrationRegistryAcceptance.test.ts src/migrations/__tests__/m2-4-task-run-schema.test.ts src/migrations/__tests__/m2-7-workspace-compatibility.test.ts src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 442, "fail": 0, "skip": 0 },
+      "scope": "Server lifecycle, history, inspector, Git, replay, API, migration, and redaction assertions."
+    },
+    "G-SERVER-BRIDGE": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/services/GroupSpeakerResolver.test.ts src/routes/conversationRuntime.group.test.ts src/services/GroupTurnDriver.test.ts src/services/ConversationBridgeService.test.ts src/store/RuntimeApprovalRepository.test.ts src/services/RuntimeArtifactCollector.test.ts src/services/RuntimeArtifactService.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 42, "fail": 0, "skip": 0 },
+      "scope": "Conversation bridge, bounded group execution, approval persistence, and Artifact lifecycle."
+    },
+    "G-SERVER-MEMORY-OUTBOX": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/services/OutboxPublisher.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/store/MemoryCandidateRepository.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 96, "fail": 0, "skip": 0 },
+      "scope": "Memory retrieval, bounded selection, candidate review gates, source/dedup evidence, and Outbox delivery."
+    },
+    "G-SERVER-MIGRATION": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/migrations/__tests__/m3-p2a-migration-012.test.ts src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts src/migrations/__tests__/m2-7-workspace-compatibility.test.ts src/migrations/M2MigrationRegistryAcceptance.test.ts store/__tests__/RunRepository.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 23, "fail": 0, "skip": 0 },
+      "scope": "Migration registry, backup/integrity/FK gates, Event persistence, compatibility, workflow metadata, and RunRepository races."
+    },
+    "G-PROCESS-BASE": {
+      "cwd": "packages/process-runtime",
+      "command": "pnpm --filter @agentos/process-runtime test -- src/durable-coordinator.test.ts src/p6-m3b-windows-birth-identity.test.ts src/manager.test.ts src/races.test.ts src/timeouts.test.ts --reporter=verbose",
+      "rawExitCode": 0,
+      "counts": { "pass": 86, "fail": 0, "skip": 0 },
+      "scope": "Durable reservation, Windows identity, manager lifecycle, timeout, cancellation, output, and race assertions."
+    },
+    "G-PROCESS-NODE": {
+      "cwd": "repository root",
+      "command": "pnpm --filter @agentos/process-runtime test -- src/node-driver.test.ts --reporter=verbose",
+      "rawExitCode": 0,
+      "counts": { "pass": 16, "fail": 0, "skip": 0 },
+      "scope": "Real owned process tree, Job assignment gate, PID evidence, stdout/stderr, and cleanup assertions."
+    },
+    "G-PROVIDER": {
+      "cwd": "repository root",
+      "command": "pnpm --filter @agentos/agent-core test -- src/providers/providerErrorRetryability.test.ts src/providers/capabilityDeclaration.test.ts src/providers/kimiCodeAdapter.test.ts src/providers/codexProviderAdapter.test.ts src/providers/opencodeProviderAdapter.test.ts --reporter=verbose",
+      "rawExitCode": 0,
+      "counts": { "pass": 40, "fail": 0, "skip": 0 },
+      "scope": "Codex/Kimi/OpenCode adapter discovery, validation, launch, parse/finalize, cancellation, error normalization, and capability declarations."
+    },
+    "G-SHARED": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/wf-template-instantiation.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 36, "fail": 0, "skip": 0 },
+      "scope": "Structured Git read contract and bounded workflow-template instantiation contract."
+    },
+    "G-WEB": {
+      "cwd": "apps/web",
+      "command": "node scripts/run-tests.mjs",
+      "rawExitCode": 0,
+      "counts": { "pass": 188, "fail": 0, "skip": 0 },
+      "scope": "Workbench, chat, Group, Inspector, history/search, async states, scroll/timeline, and deferred-surface UI assertions."
+    },
+    "G-CONVERSATION": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/routes/conversationRuntime.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 11, "fail": 0, "skip": 0 },
+      "scope": "Conversation/Message persistence, Message-only no-work bridge, Memory selection, and Workspace authority route assertions."
+    },
+    "G-RUN-DETAIL": {
+      "cwd": "apps/server",
+      "command": "node --import tsx --test --test-concurrency=1 src/routes/runs.test.ts",
+      "rawExitCode": 0,
+      "counts": { "pass": 2, "fail": 0, "skip": 0 },
+      "scope": "Workspace run-detail DTO isolation and no local originalPath disclosure."
+    },
+    "G-REAL-DISCONNECT": {
+      "cwd": "repository root",
+      "command": "existing S8-four-row-candidate-evidence receipt; re-anchor only when the referenced production/test paths are unchanged at ec780",
+      "rawExitCode": 0,
+      "counts": { "pass": 42, "fail": 0, "skip": 0 },
+      "scope": "Previously captured real HTTP disconnect and recovery evidence; supplementary until a final-main per-row receipt is recorded."
+    }
+  },
+  "assertionBundles": {
+    "B-AGENT-SWITCH": [
+      { "file": "apps/server/src/store/SqliteStore.test.ts", "name": "Workspace.agents projected fields match Provider Configuration after update" }
+    ],
+    "B-CONV-RESTART": [
+      { "file": "apps/server/src/routes/conversationRuntime.test.ts", "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect", "line": 231 }
+    ],
+    "B-INSP-DISTINCT": [
+      { "file": "apps/server/src/services/RuntimeInspector.test.ts", "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct", "line": 83 }
+    ],
+    "B-SSE-DISCONNECT": [
+      { "file": "apps/server/src/routes/canonicalRunStream.test.ts", "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues", "line": 504 }
+    ],
+    "B-EVENT-OUTBOX": [
+      { "file": "apps/server/src/services/OutboxPublisher.test.ts", "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event", "line": 250 },
+      { "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts", "name": "P2C-2B every Event and Outbox position rolls back the composite transaction" },
+      { "file": "apps/server/src/routes/canonicalRunEvents.test.ts", "name": "P5A-R06/R09/R12 Events returns the raw bounded page in strict sequence order", "line": 130 }
+    ],
+    "B-WINDOWS-CANCEL": [
+      { "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts", "name": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once", "line": 953 },
+      { "file": "packages/process-runtime/src/node-driver.test.ts", "name": "NodeProcessDriver > P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives" }
+    ],
+    "B-ADMISSION-WRITER": [
+      { "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts", "name": "L1D-U09 an active MODIFYING admission blocks every later request", "line": 447 },
+      { "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts", "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence", "line": 387 }
+    ],
+    "B-READONLY-ENFORCEMENT": [
+      { "file": "packages/shared/p6-l1a-admission.test.ts", "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING" },
+      { "file": "packages/shared/p6-l1a-admission.test.ts", "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY" },
+      { "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts", "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn", "line": 746 },
+      { "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts", "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial", "line": 812 }
+    ],
+    "B-MEMORY-SNAPSHOT": [
+      { "file": "apps/server/src/services/MemoryContextResolver.test.ts", "name": "MF4I-01 resolve persists a snapshot and returns bounded context", "line": 100 },
+      { "file": "apps/server/src/services/MemoryContextResolver.test.ts", "name": "MF4I-02 resolve is idempotent per run scope", "line": 114 },
+      { "file": "apps/server/src/services/MemoryContextResolver.test.ts", "name": "MF4I-07 later entry edits do not rewrite the snapshot", "line": 197 },
+      { "file": "apps/server/src/services/RuntimeInspector.test.ts", "name": "INSP-08 memory context projection", "line": 286 }
+    ],
+    "B-GIT-OBSERVATION": [
+      { "file": "apps/server/src/services/GitObservationCollector.integration.test.ts", "name": "preserves distinct first/final HEAD SHAs across a real commit boundary" },
+      { "file": "apps/server/src/routes/git.test.ts", "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership", "line": 46 }
+    ],
+    "B-WEB-SHELL": [
+      { "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx", "name": "SHELL-01 wide mode renders all four columns with landmarks", "line": 28 },
+      { "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx", "name": "SHELL-05 reduced motion collapses panel transitions to zero", "line": 77 },
+      { "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx", "name": "SHELL-07 dark and light themes emit their own token values", "line": 93 }
+    ],
+    "B-GROUP-BOUNDED": [
+      { "file": "apps/server/src/services/BoundedGroupService.test.ts", "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason" },
+      { "file": "apps/server/src/services/GroupSpeakerResolver.test.ts", "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class" },
+      { "file": "packages/shared/wf-template-instantiation.test.ts", "name": "WFI-10 every template compiles" }
+    ],
+    "B-ENTITY-PARENT": [
+      { "file": "apps/server/src/store/Identity.test.ts", "name": "createEntityId produces prefix_ulid format" },
+      { "file": "apps/server/src/store/__tests__/RunRepository.test.ts", "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id" },
+      { "file": "apps/server/src/store/__tests__/RunRepository.test.ts", "name": "T32 retry Run keeps the parent/root chain" }
+    ],
+    "B-MESSAGE-ONLY": [
+      { "file": "apps/server/src/routes/conversationRuntime.test.ts", "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run", "line": 309 }
+    ],
+    "B-RETRY-LINEAGE": [
+      { "file": "apps/server/src/services/TaskRunService.test.ts", "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation", "line": 2011 },
+      { "file": "apps/server/src/services/TaskRunService.test.ts", "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically", "line": 2127 },
+      { "file": "apps/server/src/routes/runLifecycle.test.ts", "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event", "line": 1554 }
+    ],
+    "B-PID-DISTINCTION": [
+      { "file": "apps/server/src/services/RuntimeInspector.test.ts", "name": "INSP-04 process PID is evidence-only", "line": 221 },
+      { "file": "packages/process-runtime/src/node-driver.test.ts", "name": "NodeProcessDriver > inspectIdentity matches a live pid and reports missing for ESRCH" }
+    ],
+    "B-STAGE-BOUNDED": [
+      { "file": "apps/server/src/services/TaskRunService.test.ts", "name": "TaskRunService captures four Legacy stages on initial and retry with latest lineage", "line": 100 },
+      { "file": "packages/shared/wf-template-instantiation.test.ts", "name": "WFI-04 optional security review" }
+    ],
+    "B-HISTORY": [
+      { "file": "apps/server/src/services/AgentHistoryService.test.ts", "name": "CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts", "line": 85 },
+      { "file": "apps/server/src/services/AgentHistoryService.test.ts", "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)", "line": 116 },
+      { "file": "apps/web/src/lib/historySearch.test.tsx", "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)", "line": 77 },
+      { "file": "apps/web/src/lib/historySearch.test.tsx", "name": "HS-V01 the view renders the filter set, grouped results, and canonical links", "line": 101 }
+    ],
+    "B-PROVIDER-UNKNOWN": [
+      { "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts", "name": "parses golden, malformed, unknown and usage output without fabricating provider semantics", "line": 394 },
+      { "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts", "name": "fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence", "line": 364 }
+    ],
+    "B-GRAPH-ATOMIC": [
+      { "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts", "name": "N=0 writes only run.created with sequence 1 and next sequence 2", "line": 183 },
+      { "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts", "name": "N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event", "line": 295 },
+      { "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts", "name": "idempotency replay returns the stored result without adding Events or Outboxes", "line": 523 }
+    ],
+    "B-LIFECYCLE-EXACT": [
+      { "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts", "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp", "line": 227 },
+      { "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts", "name": "runtime Events are append-only and preserve Run correlation constraints", "line": 471 }
+    ],
+    "B-OUTBOX-DELIVERY": [
+      { "file": "apps/server/src/services/OutboxPublisher.test.ts", "name": "M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events", "line": 387 },
+      { "file": "apps/server/src/services/OutboxPublisher.test.ts", "name": "M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence", "line": 205 }
+    ],
+    "B-STREAM-REPLAY": [
+      { "file": "apps/server/src/routes/canonicalRunStream.test.ts", "name": "P5C afterSequence-only cursor replays strictly greater durable sequences", "line": 282 },
+      { "file": "apps/server/src/routes/canonicalRunStream.test.ts", "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id", "line": 457 },
+      { "file": "apps/server/src/routes/canonicalRunEvents.test.ts", "name": "P5A-R13 Events preserves unknown wire records without Registry consumption wrappers", "line": 145 },
+      { "file": "apps/server/src/services/RunReplayService.test.ts", "name": "P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings", "line": 75 }
+    ],
+    "B-REDACTION": [
+      { "file": "packages/process-runtime/src/durable-coordinator.test.ts", "name": "raw secrets never reach the sink or the DB; only scanner output is persisted", "line": 1811 },
+      { "file": "apps/server/src/routes/canonicalRunEvents.test.ts", "name": "P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details", "line": 221 }
+    ],
+    "B-ARTIFACT": [
+      { "file": "apps/server/src/services/RuntimeArtifactCollector.test.ts", "name": "LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry", "line": 29 },
+      { "file": "packages/shared/p6-l1c-git-observation-contract.test.ts", "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability", "line": 581 }
+    ],
+    "B-PROVIDER-CONTRACT": [
+      { "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts", "name": "validates direct KimiCode fixtures without emitting the forbidden generic validation error", "line": 98 },
+      { "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts", "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures", "line": 190 },
+      { "file": "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts", "name": "parses only bounded redacted assistant text and reports truncation", "line": 175 }
+    ],
+    "B-PROVIDER-ERROR": [
+      { "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts", "name": "classifies every production adapter identically for the same failure class", "line": 45 },
+      { "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts", "name": "always reports retryability as an explicit boolean, never as an absence", "line": 57 },
+      { "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts", "name": "keeps a normalized error idempotent through re-normalization", "line": 66 }
+    ],
+    "B-PROVIDER-CAP": [
+      { "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts", "name": "declares every canonical capability as an explicit boolean", "line": 117 },
+      { "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts", "name": "observes every capability declared true in the adapter real output", "line": 129 },
+      { "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts", "name": "observes no capability declared false in the adapter real output", "line": 152 }
+    ],
+    "B-PROCESS-GATES": [
+      { "file": "packages/process-runtime/src/node-driver.test.ts", "name": "NodeProcessDriver > BLOCKER-1: assignment failure aborts the suspended provider before user code" },
+      { "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts", "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)" },
+      { "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts", "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only" }
+    ],
+    "B-PROCESS-OUTPUT": [
+      { "file": "packages/process-runtime/src/durable-coordinator.test.ts", "name": "output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes", "line": 1548 },
+      { "file": "packages/process-runtime/src/durable-coordinator.test.ts", "name": "retained cap fails closed BEFORE any byte commit", "line": 1678 }
+    ],
+    "B-GIT-CONTRACT": [
+      { "file": "packages/shared/p6-l1c-git-observation-contract.test.ts", "name": "L1C-M1-04 GitCommandPort accepts only structured read families", "line": 138 },
+      { "file": "packages/shared/p6-l1c-git-observation-contract.test.ts", "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability", "line": 581 }
+    ],
+    "B-MIGRATION-GATES": [
+      { "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts", "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable", "line": 399 },
+      { "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts", "name": "all Migration 012 foreign keys and integrity checks pass", "line": 668 },
+      { "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts", "name": "P2 Migration Registry contains exactly the registered migrations in contract order" }
+    ],
+    "B-APPROVAL": [
+      { "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts", "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once", "line": 510 },
+      { "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts", "name": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute", "line": 555 },
+      { "file": "apps/server/src/routes/runtimeApprovals.test.ts", "name": "LITE-08-012: a browser disconnect decides nothing; only the explicit decision does", "line": 465 }
+    ],
+    "B-UI-ASYNC": [
+      { "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx", "name": "LITE-12-007 the empty state is named, never rendered as a blank surface", "line": 46 },
+      { "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx", "name": "LITE-12-007 the error state is an announced alert, not silence", "line": 54 },
+      { "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx", "name": "LITE-12-007 every state renders without throwing, so no state is unreachable", "line": 102 }
+    ],
+    "B-UI-STREAM": [
+      { "file": "apps/web/src/lib/executionTimeline.test.ts", "name": "collapses repeated streaming chunks for one execution into one timeline step" },
+      { "file": "apps/web/src/lib/chatScroll.test.ts", "name": "only auto-anchors an already-following stream" },
+      { "file": "apps/web/src/lib/directConversation.test.ts", "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs", "line": 37 }
+    ],
+    "B-UI-CHAT": [
+      { "file": "apps/web/src/lib/directConversation.test.ts", "name": "DCUX-P02 task and run modes map to distinct explicit actions", "line": 138 }
+    ],
+    "B-UI-GROUP": [
+      { "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx", "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls", "line": 21 },
+      { "file": "apps/web/src/components/chat/BoundedGroupView.test.tsx", "name": "GRP-01 the interaction is visibly bounded with progress meters" }
+    ],
+    "B-UI-INSPECTOR": [
+      { "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx", "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot", "line": 115 },
+      { "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx", "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary", "line": 135 },
+      { "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx", "name": "INS-01 the Run overview is distinct from Task/Process and shows duration", "line": 76 }
+    ],
+    "B-UI-HISTORY": [
+      { "file": "apps/web/src/lib/historySearch.test.tsx", "name": "HS-05 only labelled entries are searchable (no content search, secrets excluded)", "line": 77 },
+      { "file": "apps/web/src/lib/historySearch.test.tsx", "name": "HS-V01 the view renders the filter set, grouped results, and canonical links", "line": 101 }
+    ],
+    "B-UI-SCOPE": [
+      { "file": "apps/web/src/liteScopeBoundary.test.ts", "name": "LITE-12-016 no web module implements a deferred product surface", "line": 52 },
+      { "file": "apps/web/src/liteScopeBoundary.test.ts", "name": "LITE-12-016 the workspace shells expose no deferred product entry point", "line": 64 }
+    ],
+    "B-CANCEL-RETRY": [
+      { "file": "apps/server/src/routes/runLifecycle.test.ts", "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event", "line": 1554 },
+      { "file": "apps/server/src/routes/operations.test.ts", "name": "P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering", "line": 963 }
+    ],
+    "B-INSPECTOR-FACTS": [
+      { "file": "apps/server/src/routes/runtimeInspector.test.ts", "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run", "line": 84 },
+      { "file": "apps/server/src/services/RuntimeInspector.test.ts", "name": "INSP-01 overview projects canonical run state", "line": 181 }
+    ],
+    "B-INSPECTOR-CONTROL": [
+      { "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts", "name": "LITE-13-009 the Inspector is read-only and carries no process control field", "line": 145 }
+    ],
+    "B-INSPECTOR-GIT": [
+      { "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts", "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation", "line": 179 }
+    ],
+    "B-INSPECTOR-REDACTION": [
+      { "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts", "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set", "line": 100 }
+    ],
+    "B-RUN-DETAIL-DTO": [
+      { "file": "apps/server/src/routes/runs.test.ts", "name": "returns run list and aggregated details with workspace isolation and capped limit", "line": 21 }
+    ],
+    "B-DISCONNECT-REAL": [
+      { "file": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json", "name": "LITE-02-009-A2 runtime-inspector-process-active-after-disconnect", "note": "real HTTP receipt; only reusable after unchanged-path check" }
+    ],
+    "B-WORKTREE-REAL": [
+      { "file": "docs/implementation/lite-closeout/S2S3-live-candidate-evidence.json", "name": "S2E-ARTIFACT-01 / S2E-COMPLETION-01", "note": "real gate receipt; only reusable after unchanged-path check" }
+    ]
+  },
+  "candidateRows": [
+    { "id": "LITE-00-001", "assertionBundles": ["B-AGENT-SWITCH", "B-CONV-RESTART"] },
+    { "id": "LITE-00-002", "assertionBundles": ["B-CONV-RESTART"] },
+    { "id": "LITE-00-003", "assertionBundles": ["B-INSP-DISTINCT"] },
+    { "id": "LITE-00-004", "assertionBundles": ["B-SSE-DISCONNECT"] },
+    { "id": "LITE-00-005", "assertionBundles": ["B-EVENT-OUTBOX", "B-STREAM-REPLAY", "B-REDACTION"] },
+    { "id": "LITE-00-006", "assertionBundles": ["B-WINDOWS-CANCEL"] },
+    { "id": "LITE-00-008", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-00-009", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-00-010", "assertionBundles": ["B-MEMORY-SNAPSHOT"] },
+    { "id": "LITE-00-011", "assertionBundles": ["B-GIT-OBSERVATION"] },
+    { "id": "LITE-00-012", "assertionBundles": ["B-WEB-SHELL"] },
+    { "id": "LITE-00-013", "assertionBundles": ["B-GROUP-BOUNDED"] },
+    { "id": "LITE-01-001", "assertionBundles": ["B-ENTITY-PARENT"] },
+    { "id": "LITE-01-002", "assertionBundles": ["B-AGENT-SWITCH"] },
+    { "id": "LITE-01-003", "assertionBundles": ["B-MESSAGE-ONLY"] },
+    { "id": "LITE-01-005", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-01-007", "assertionBundles": ["B-PID-DISTINCTION"] },
+    { "id": "LITE-01-008", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-01-010", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-01-011", "assertionBundles": ["B-STAGE-BOUNDED"] },
+    { "id": "LITE-01-012", "assertionBundles": ["B-MEMORY-SNAPSHOT"] },
+    { "id": "LITE-01-013", "assertionBundles": ["B-HISTORY"] },
+    { "id": "LITE-01-014", "assertionBundles": ["B-PROVIDER-UNKNOWN"] },
+    { "id": "LITE-01-015", "assertionBundles": ["B-CONV-RESTART", "B-MIGRATION-GATES"] },
+    { "id": "LITE-02-002", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-02-003", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-02-004", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-02-005", "assertionBundles": ["B-GRAPH-ATOMIC"] },
+    { "id": "LITE-02-006", "assertionBundles": ["B-LIFECYCLE-EXACT"] },
+    { "id": "LITE-02-007", "assertionBundles": ["B-GRAPH-ATOMIC", "B-EVENT-OUTBOX"] },
+    { "id": "LITE-02-008", "assertionBundles": ["B-OUTBOX-DELIVERY"] },
+    { "id": "LITE-02-009", "assertionBundles": ["B-SSE-DISCONNECT", "B-DISCONNECT-REAL"] },
+    { "id": "LITE-02-010", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-02-011", "assertionBundles": ["B-WINDOWS-CANCEL", "B-EVENT-OUTBOX"] },
+    { "id": "LITE-02-012", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-02-013", "assertionBundles": ["B-WINDOWS-CANCEL"] },
+    { "id": "LITE-02-017", "assertionBundles": ["B-LIFECYCLE-EXACT", "B-EVENT-OUTBOX"] },
+    { "id": "LITE-03-002", "assertionBundles": ["B-LIFECYCLE-EXACT"] },
+    { "id": "LITE-03-003", "assertionBundles": ["B-LIFECYCLE-EXACT"] },
+    { "id": "LITE-03-004", "assertionBundles": ["B-LIFECYCLE-EXACT", "B-EVENT-OUTBOX"] },
+    { "id": "LITE-03-005", "assertionBundles": ["B-LIFECYCLE-EXACT", "B-EVENT-OUTBOX"] },
+    { "id": "LITE-03-006", "assertionBundles": ["B-EVENT-OUTBOX"] },
+    { "id": "LITE-03-007", "assertionBundles": ["B-OUTBOX-DELIVERY"] },
+    { "id": "LITE-03-008", "assertionBundles": ["B-OUTBOX-DELIVERY"] },
+    { "id": "LITE-03-009", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-03-010", "assertionBundles": ["B-SSE-DISCONNECT"] },
+    { "id": "LITE-03-011", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-03-013", "assertionBundles": ["B-REDACTION"] },
+    { "id": "LITE-03-014", "assertionBundles": ["B-ARTIFACT", "B-PROCESS-OUTPUT"] },
+    { "id": "LITE-03-015", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-03-017", "assertionBundles": ["B-GIT-OBSERVATION"] },
+    { "id": "LITE-03-019", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-04-001", "assertionBundles": ["B-PROVIDER-CONTRACT"] },
+    { "id": "LITE-04-003", "assertionBundles": ["B-PROVIDER-CONTRACT", "B-PROVIDER-UNKNOWN"] },
+    { "id": "LITE-04-006", "assertionBundles": ["B-PROVIDER-ERROR"] },
+    { "id": "LITE-04-007", "assertionBundles": ["B-PROVIDER-CAP"] },
+    { "id": "LITE-04-008", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-05-001", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-002", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-003", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-004", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-005", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-006", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-007", "assertionBundles": ["B-WINDOWS-CANCEL", "B-PROCESS-GATES"] },
+    { "id": "LITE-05-008", "assertionBundles": ["B-DISCONNECT-REAL"] },
+    { "id": "LITE-05-009", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-05-010", "assertionBundles": ["B-PROCESS-OUTPUT"] },
+    { "id": "LITE-05-012", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-06-001", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-06-002", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-06-003", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-06-004", "assertionBundles": ["B-READONLY-ENFORCEMENT", "B-PROVIDER-CAP"] },
+    { "id": "LITE-06-005", "assertionBundles": ["B-GIT-OBSERVATION"] },
+    { "id": "LITE-06-006", "assertionBundles": ["B-GIT-OBSERVATION"] },
+    { "id": "LITE-06-007", "assertionBundles": ["B-ARTIFACT", "B-GIT-CONTRACT"] },
+    { "id": "LITE-06-008", "assertionBundles": ["B-MIGRATION-GATES", "B-LIFECYCLE-EXACT"] },
+    { "id": "LITE-06-009", "assertionBundles": ["B-WORKTREE-REAL"] },
+    { "id": "LITE-06-010", "assertionBundles": ["B-GIT-CONTRACT"] },
+    { "id": "LITE-06-011", "assertionBundles": ["B-GIT-OBSERVATION"] },
+    { "id": "LITE-07-005", "assertionBundles": ["B-MEMORY-SNAPSHOT"] },
+    { "id": "LITE-07-014", "assertionBundles": ["B-MEMORY-SNAPSHOT"] },
+    { "id": "LITE-08-008", "assertionBundles": ["B-APPROVAL"] },
+    { "id": "LITE-08-009", "assertionBundles": ["B-REDACTION"] },
+    { "id": "LITE-08-011", "assertionBundles": ["B-APPROVAL"] },
+    { "id": "LITE-08-012", "assertionBundles": ["B-APPROVAL"] },
+    { "id": "LITE-08-013", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-08-014", "assertionBundles": ["B-WORKTREE-REAL"] },
+    { "id": "LITE-09-003", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-09-007", "assertionBundles": ["B-DISCONNECT-REAL"] },
+    { "id": "LITE-09-009", "assertionBundles": ["B-AGENT-SWITCH"] },
+    { "id": "LITE-09-011", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-09-014", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-09-015", "assertionBundles": ["B-GROUP-BOUNDED"] },
+    { "id": "LITE-09-016", "assertionBundles": ["B-CONV-RESTART"] },
+    { "id": "LITE-10-002", "assertionBundles": ["B-MIGRATION-GATES"] },
+    { "id": "LITE-10-003", "assertionBundles": ["B-PID-DISTINCTION"] },
+    { "id": "LITE-10-004", "assertionBundles": ["B-ENTITY-PARENT", "B-RETRY-LINEAGE"] },
+    { "id": "LITE-10-006", "assertionBundles": ["B-LIFECYCLE-EXACT"] },
+    { "id": "LITE-10-007", "assertionBundles": ["B-EVENT-OUTBOX"] },
+    { "id": "LITE-10-008", "assertionBundles": ["B-GRAPH-ATOMIC", "B-RETRY-LINEAGE"] },
+    { "id": "LITE-10-009", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-10-010", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-10-011", "assertionBundles": ["B-READONLY-ENFORCEMENT"] },
+    { "id": "LITE-10-012", "assertionBundles": ["B-PROCESS-GATES"] },
+    { "id": "LITE-10-013", "assertionBundles": ["B-PROCESS-OUTPUT"] },
+    { "id": "LITE-10-014", "assertionBundles": ["B-MIGRATION-GATES"] },
+    { "id": "LITE-10-017", "assertionBundles": ["B-MIGRATION-GATES"] },
+    { "id": "LITE-11-002", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-11-003", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-11-004", "assertionBundles": ["B-SSE-DISCONNECT"] },
+    { "id": "LITE-11-006", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-11-007", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-11-008", "assertionBundles": ["B-ADMISSION-WRITER"] },
+    { "id": "LITE-11-010", "assertionBundles": ["B-RETRY-LINEAGE"] },
+    { "id": "LITE-11-011", "assertionBundles": ["B-HISTORY"] },
+    { "id": "LITE-11-012", "assertionBundles": ["B-RUN-DETAIL-DTO"] },
+    { "id": "LITE-12-001", "assertionBundles": ["B-WEB-SHELL"] },
+    { "id": "LITE-12-002", "assertionBundles": ["B-WEB-SHELL"] },
+    { "id": "LITE-12-003", "assertionBundles": ["B-WEB-SHELL"] },
+    { "id": "LITE-12-004", "assertionBundles": ["B-WEB-SHELL"] },
+    { "id": "LITE-12-005", "assertionBundles": ["B-UI-STREAM"] },
+    { "id": "LITE-12-006", "assertionBundles": ["B-UI-STREAM"] },
+    { "id": "LITE-12-007", "assertionBundles": ["B-UI-ASYNC"] },
+    { "id": "LITE-12-008", "assertionBundles": ["B-UI-CHAT"] },
+    { "id": "LITE-12-009", "assertionBundles": ["B-UI-GROUP"] },
+    { "id": "LITE-12-011", "assertionBundles": ["B-UI-INSPECTOR"] },
+    { "id": "LITE-12-012", "assertionBundles": ["B-UI-INSPECTOR"] },
+    { "id": "LITE-12-013", "assertionBundles": ["B-HISTORY", "B-UI-HISTORY"] },
+    { "id": "LITE-12-016", "assertionBundles": ["B-UI-SCOPE"] },
+    { "id": "LITE-13-001", "assertionBundles": ["B-INSPECTOR-FACTS"] },
+    { "id": "LITE-13-004", "assertionBundles": ["B-STREAM-REPLAY"] },
+    { "id": "LITE-13-006", "assertionBundles": ["B-INSPECTOR-FACTS", "B-UI-INSPECTOR"] },
+    { "id": "LITE-13-007", "assertionBundles": ["B-INSPECTOR-GIT"] },
+    { "id": "LITE-13-009", "assertionBundles": ["B-INSPECTOR-CONTROL"] },
+    { "id": "LITE-13-010", "assertionBundles": ["B-CANCEL-RETRY"] },
+    { "id": "LITE-13-011", "assertionBundles": ["B-INSPECTOR-FACTS", "B-ADMISSION-WRITER"] },
+    { "id": "LITE-13-012", "assertionBundles": ["B-READONLY-ENFORCEMENT", "B-INSPECTOR-FACTS"] },
+    { "id": "LITE-13-013", "assertionBundles": ["B-INSPECTOR-REDACTION"] },
+    { "id": "LITE-13-014", "assertionBundles": ["B-DISCONNECT-REAL"] }
+  ],
+  "assertionGapRows": [
+    { "id": "LITE-01-004", "missing": "No direct assertion demonstrates both zero-Run and many-Run Task cardinalities under the canonical Task/Run contract." },
+    { "id": "LITE-01-006", "missing": "Inspector PID evidence is direct, but independent Run and Process queryability is not asserted at the repository/API boundary." },
+    { "id": "LITE-01-009", "missing": "The executed read-only tests prove write denial/classification, but not that Provider or resource limits cannot be bypassed." },
+    { "id": "LITE-02-016", "missing": "No direct production assertion proves a modifying Run continues successfully when no AgentOS-owned Worktree exists." },
+    { "id": "LITE-03-001", "missing": "No executed assertion maps the complete envelope and payload schema-validation contract to this requirement." },
+    { "id": "LITE-03-012", "missing": "Adapter parsing evidence does not directly prove canonical Event provider mapping fidelity and absence of invented telemetry." },
+    { "id": "LITE-03-016", "missing": "Memory selection is explained in snapshots, but the required explanation Event contract is not directly asserted." },
+    { "id": "LITE-04-002", "missing": "The adapter unit suites do not provide one direct mock-Provider scenario matrix covering success, auth, rate-limit, non-zero, cancel, and crash together." },
+    { "id": "LITE-04-004", "missing": "Provider configuration projection and conversation history are separate assertions; no direct provider-switch end-to-end identity/history assertion exists." },
+    { "id": "LITE-04-005", "missing": "Browser disconnect lifecycle evidence does not directly assert that the actual Provider cancel port is not called." },
+    { "id": "LITE-04-009", "missing": "The current tests do not cover the complete unknown/prompt/user-forced/nativeSandbox/provider-native-worktree capability matrix in one direct mapping." },
+    { "id": "LITE-04-010", "missing": "No direct assertion proves nativeApprovals is an enforceable pre-action bridge rather than a Provider prompt/post-action notice." },
+    { "id": "LITE-04-011", "missing": "Redaction tests cover selected sinks/DTOs, not the complete Events, Snapshots, and debug-bundle surface." },
+    { "id": "LITE-04-012", "missing": "Provider usage/parser tests do not directly assert the canonical Event stream contains no invented telemetry." },
+    { "id": "LITE-05-011", "missing": "Injected recovery ports show composition, but no direct counter/assertion proves OS probing never occurs inside the SQLite write transaction." },
+    { "id": "LITE-07-012", "missing": "Secret rejection/search/output evidence is split across surfaces; the complete Entries, FTS, Snapshots, Events, export, and search matrix is not directly executed as one requirement." },
+    { "id": "LITE-08-001", "missing": "ASK_USER spawn coverage is direct, but the universal every-high-impact-action condition is not covered for all AgentOS/verified Provider boundaries." },
+    { "id": "LITE-08-002", "missing": "The current denial assertion proves AgentOS-owned execution blocking, not each destructive filesystem, merge, push, and secret-export action category." },
+    { "id": "LITE-08-003", "missing": "No verified enforceable Provider-native merge/push pre-action bridge is directly exercised." },
+    { "id": "LITE-08-004", "missing": "No direct assertion covers un-interceptable native actions being visible, modifying, and never falsely reported as blocked." },
+    { "id": "LITE-08-010", "missing": "No direct assertion separates Provider-native approval from AgentOS authority and verifies the bridge guarantee." },
+    { "id": "LITE-08-015", "missing": "The web deferred-surface scan does not prove the server exposes no active DSL, grants, simulation, or RBAC product surface." },
+    { "id": "LITE-09-004", "missing": "Persistence/reconnect and Provider selection are covered separately; no direct assertion combines reconnect with an actual Provider switch." },
+    { "id": "LITE-09-008", "missing": "Transport de-duplication is covered, but UI event projection/card de-duplication is not directly asserted." },
+    { "id": "LITE-09-017", "missing": "Template compilation and durable primitives are separate; no direct real template instantiation creates the required Task/Run/Stage chain." },
+    { "id": "LITE-10-001", "missing": "The executed migration group does not provide a complete fresh-database and supported-upgrade receipt for the entire migration registry." },
+    { "id": "LITE-10-005", "missing": "Snapshot immutability is direct, but child snapshot/entity ID remapping is not directly asserted." },
+    { "id": "LITE-10-015", "missing": "The current compatibility receipt proves selected Workspace copying, not every supported compatibility-read surface without data loss." },
+    { "id": "LITE-10-016", "missing": "Memory/output redaction is direct, but the complete persistence schema and all secret-bearing surfaces are not covered by one direct assertion set." },
+    { "id": "LITE-11-005", "missing": "Start/retry/cancel routes are tested, but there is no direct frozen-baseline comparison proving all semantics, errors, and shapes remain exact." },
+    { "id": "LITE-11-009", "missing": "Admission classifier tests cover claims, but no API-client request directly proves prompt wording/forced capability cannot obtain concurrent read-only admission." },
+    { "id": "LITE-11-013", "missing": "The web scope boundary proves UI absence only; server route absence for all deferred API families is not directly asserted." },
+    { "id": "LITE-12-010", "missing": "No UI integration assertion connects truthful read-only availability and modifying admission to the live authorization result." },
+    { "id": "LITE-12-014", "missing": "Accessibility/token contracts exist, but component/browser keyboard flow and stable focus behavior are not directly exercised." },
+    { "id": "LITE-12-015", "missing": "No direct source/runtime assertion proves every UI data access goes through the API client and never a database/filesystem path." },
+    { "id": "LITE-13-005", "missing": "Inspector output is bounded server-side, but no UI assertion proves client state stays bounded for long streams." },
+    { "id": "LITE-09-103", "missing": "History has unified references, Provider filtering, and secret-free search, but the complete Provider/failure/recovery/real-usage link set is not directly asserted." },
+    { "id": "LITE-12-101", "missing": "Four-column layout is direct, but navigation, notification states, and component-level keyboard flow are not all directly asserted." },
+    { "id": "LITE-13-102", "missing": "Inspector section projection is direct, but the required Cancel/Retry source chain is not exposed and directly asserted." },
+    { "id": "LITE-01-101", "missing": "Workflow templates compile to payloads, but no direct test instantiates a real canonical Task/Run/Stage workflow." }
+  ],
+  "implementationGapRows": [],
+  "unresolvedRows": [],
+  "classificationCounts": {
+    "PASS_CANDIDATE": 139,
+    "ASSERTION_GAP": 40,
+    "IMPLEMENTATION_GAP": 0,
+    "UNRESOLVED": 0,
+    "classifiedRuntimeVerifyRows": 179
+  },
+  "promotionPolicy": {
+    "matrixEdited": false,
+    "passPromoted": false,
+    "nextAction": "Convert only individually receipted candidate rows to PASS on ec780 or a later single authoritative main SHA; resolve the 40 assertion gaps through one bounded evidence-gap slice before promotion.",
+    "deferredRowsUnaffected": true
+  }
+}

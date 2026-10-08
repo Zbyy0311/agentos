@@ -1,0 +1,22 @@
+[
+  {
+    "id": "LITE-04-001-parses-only-bounded-redacted-assistant-text-and-reports-truncation-318",
+    "requirementId": "LITE-04-001",
+    "name": "parses only bounded redacted assistant text and reports truncation",
+    "line": 185,
+    "expression": "expect(",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-parses-only-bounded-redacted-assistant-text-and-reports-truncation-319",
+    "requirementId": "LITE-04-003",
+    "name": "parses only bounded redacted assistant text and reports truncation",
+    "line": 185,
+    "expression": "expect(",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,48 @@ test('reconciles missing paths as failed without deleting worktrees', async () =
   const lease = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'exec', agentId:'a' });
   manager.markCleanupPending(lease.id); await manager.reconcile();
   assert.equal(manager.getLease(lease.id)?.status, 'cleanup_pending');
+});
+
+test('marks active and creating leases failed while preserving files and remaining idempotent', async () => {
+  const root = repo(); const manager = new WorktreeManager(mkdtempSync(join(tmpdir(), 'agentos-leases-')));
+  const active = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'active', agentId:'a' });
+  const creating = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'creating', agentId:'a' });
+  manager.getRecord(creating.id)!.status = 'creating';
+  const activeFile = join(manager.getRecord(active.id)!.absolutePath, 'preserved.txt');
+  const creatingFile = join(manager.getRecord(creating.id)!.absolutePath, 'preserved.txt');
+  writeFileSync(activeFile, 'keep active'); writeFileSync(creatingFile, 'keep creating');
+
+  manager.markFailedPreserved(active.id); manager.markFailedPreserved(creating.id);
+  assert.equal(manager.getLease(active.id)?.status, 'failed');
+  assert.equal(manager.getLease(creating.id)?.status, 'failed');
+  assert.equal(existsSync(activeFile), true); assert.equal(existsSync(creatingFile), true);
+
+  const activeUpdatedAt = manager.getRecord(active.id)!.updatedAt;
+  manager.markFailedPreserved(active.id); manager.markFailedPreserved(creating.id);
+  assert.equal(manager.getRecord(active.id)!.updatedAt, activeUpdatedAt);
+  assert.equal(manager.getLease(active.id)?.status, 'failed');
+  assert.equal(manager.getLease(creating.id)?.status, 'failed');
+  assert.equal(existsSync(activeFile), true); assert.equal(existsSync(creatingFile), true);
+});
+
+test('does not change cleanup_pending, completed, or cleaned leases', async () => {
+  const root = repo(); const manager = new WorktreeManager(mkdtempSync(join(tmpdir(), 'agentos-leases-')));
+  const cleanupPending = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'cleanup', agentId:'a' });
+  manager.markCleanupPending(cleanupPending.id);
+  const completed = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'completed', agentId:'a' });
+  manager.getRecord(completed.id)!.status = 'completed';
+  const cleaned = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'cleaned', agentId:'a' });
+  manager.getRecord(cleaned.id)!.status = 'cleaned';
+
+  for (const lease of [cleanupPending, completed, cleaned]) {
+    const file = join(manager.getRecord(lease.id)!.absolutePath, 'preserved.txt');
+    writeFileSync(file, 'keep');
+    const updatedAt = manager.getRecord(lease.id)!.updatedAt;
+    manager.markFailedPreserved(lease.id);
+    assert.equal(manager.getLease(lease.id)?.status, lease === cleanupPending ? 'cleanup_pending' : lease === completed ? 'completed' : 'cleaned');
+    assert.equal(manager.getRecord(lease.id)!.updatedAt, updatedAt);
+    assert.equal(existsSync(file), true);
+  }
 });
 
 test('rejects unsafe roots, bare repositories, existing branches, and occupied targets', async () => {

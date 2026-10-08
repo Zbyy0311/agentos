@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "amendments": [
+    {
+      "requirementId": "LITE-04-101",
+      "from": "RUNTIME-VERIFY",
+      "to": "DEFERRED",
+      "authority": "User instruction 2026-09-14: 批准 LITE-04-101 按退出条件第 2 项正式改判为 DEFERRED。",
+      "exitCondition": "待闭合：需要一份 CI 可复算的真实调用证据（runner 内可用的 Provider CLI，或由 CI 触发的真实调用闸门），或将该条按用户批准的整体延期正式改判 DEFERRED。在此之前保持 RUNTIME-VERIFY，不按名称或本地结果提升。",
+      "exitConditionSource": "matrix.json LITE-04-101.exit, unchanged by this amendment",
+      "reason": [
+        "当前没有已知的真实 Provider 生产链失败：三个真实调用收据都以 exit 0 且 0 skip 结束。",
+        "延期原因是环境能力而非产品缺陷：GitHub 托管 CI runner 不具备 codex / kimi / opencode 三个 CLI，也不具备受控凭据，因此无法在托管 CI 内产生可复算的真实调用证据。",
+        "不为闭合该条而向托管 Runner 注入生产凭据，也不人为降低验收标准（例如用模拟、桩或按名称匹配冒充真实调用）。"
+      ],
+      "receipts": [
+        {
+          "provider": "codex",
+          "durationMs": 190169,
+          "exitCode": 0,
+          "skipped": 0,
+          "receipt": "docs/implementation/lite-closeout/evidence/gates-20260914/codex"
+        },
+        {
+          "provider": "kimi-routed",
+          "durationMs": 27631,
+          "exitCode": 0,
+          "skipped": 0,
+          "receipt": "docs/implementation/lite-closeout/evidence/gates-20260914/kimi-routed"
+        },
+        {
+          "provider": "opencode",
+          "durationMs": 29917,
+          "exitCode": 0,
+          "skipped": 0,
+          "receipt": "docs/implementation/lite-closeout/evidence/gates-20260914/opencode"
+        }
+      ],
+      "receiptBaseline": "0df73d7544f8c1d98feba83bbcca9e34ec28d91b",
+      "chainVerification": {
+        "method": "git diff against the receipt baseline restricted to the production execution chain",
+        "result": "相关生产执行链零改动：packages/process-runtime 无改动；packages/agent-core 仅新增一个测试文件；apps/server/src/services/run-engine 仅新增一个测试文件。三个收据因此仍描述当前修订的执行链。",
+        "boundary": "该结论只作为延期的补充可信度依据。生产代码无改动不等于收据变成 CI 可复算证据，因此本收据不满足退出条件第 1 项，不得据此改判 PASS。"
+      },
+      "reopenCondition": "只有在具备受控 self-hosted runner，或 CI 已合法提供三个 Provider CLI 与受控凭据时，才重新打开 LITE-04-101 并尝试改判 PASS。",
+      "boundary": "本修正只授权 RUNTIME-VERIFY -> DEFERRED，不授权任何 PASS 提升，也不放宽 LITE-04-101 原有退出条件。"
+    }
+  ],
+  "hashAnchor": "dd0c0dde61d23c1307516eb2f6a299d306136b73a5c2a044f7f702a523a3a5df"
+}

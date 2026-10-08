@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:L1A-05 READ_ONLY \\+ no enforcement -> MODIFYING|L1A-10 READ_ONLY \\+ verified technical denial \\+ no side effects -> READ_ONLY|LITE-04-009 capability and intent claims fail closed unless technical denial is verified)",
+      "../../packages/shared/p6-l1a-admission.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/assertions.json",
+      "sha256": "8d152f585e17b61bd7876500bac000ee7cf0ae1cd67b1115d520e9023f8eae6f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/execution.json",
+      "sha256": "a851010758411c7e803b3c39f03b32528247eae4b214e4cc16e0f6584849dae4"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/74-packages-shared-p6-l1a-admission-test-ts/stdout.txt",
+      "sha256": "dd995ea7a845aeb856960f918c44932f2978780277acb236c5d5201d52047b08"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-009-l1a-05-read-only-no-enforcement-modifying-465",
+      "requirementId": "LITE-00-009",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-009-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-466",
+      "requirementId": "LITE-00-009",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-010-l1a-05-read-only-no-enforcement-modifying-467",
+      "requirementId": "LITE-01-010",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-010-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-468",
+      "requirementId": "LITE-01-010",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-004-l1a-05-read-only-no-enforcement-modifying-469",
+      "requirementId": "LITE-02-004",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-004-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-470",
+      "requirementId": "LITE-02-004",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-008-l1a-05-read-only-no-enforcement-modifying-471",
+      "requirementId": "LITE-04-008",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-008-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-472",
+      "requirementId": "LITE-04-008",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-002-l1a-05-read-only-no-enforcement-modifying-473",
+      "requirementId": "LITE-06-002",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-002-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-474",
+      "requirementId": "LITE-06-002",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-003-l1a-05-read-only-no-enforcement-modifying-475",
+      "requirementId": "LITE-06-003",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "unknown classification is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-003-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-476",
+      "requirementId": "LITE-06-003",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "unknown classification is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-004-l1a-05-read-only-no-enforcement-modifying-477",
+      "requirementId": "LITE-06-004",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-004-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-478",
+      "requirementId": "LITE-06-004",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-011-l1a-05-read-only-no-enforcement-modifying-479",
+      "requirementId": "LITE-09-011",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-011-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-480",
+      "requirementId": "LITE-09-011",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-011-l1a-05-read-only-no-enforcement-modifying-481",
+      "requirementId": "LITE-10-011",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-011-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-482",
+      "requirementId": "LITE-10-011",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-l1a-05-read-only-no-enforcement-modifying-483",
+      "requirementId": "LITE-13-012",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-05 READ_ONLY + no enforcement -> MODIFYING",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-012-l1a-10-read-only-verified-technical-denial-no-side-effects-read-only-484",
+      "requirementId": "LITE-13-012",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY",
+      "line": 135,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-009-lite-04-009-capability-and-intent-claims-fail-closed-unless-technical-denial-is--485",
+      "requirementId": "LITE-04-009",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "LITE-04-009 capability and intent claims fail closed unless technical denial is verified",
+      "line": 189,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "unknown capability, prompt-only intent, user-forced values, `nativeSandbox`, and Provider-native worktrees never imply `enforcedWorkspaceReadOnly`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-009-lite-04-009-capability-and-intent-claims-fail-closed-unless-technical-denial-is--486",
+      "requirementId": "LITE-11-009",
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "name": "LITE-04-009 capability and intent claims fail closed unless technical denial is verified",
+      "line": 189,
+      "expression": "assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');",
+      "clause": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-09-008 projects repeated streaming chunks for one execution into one timeline card)",
+      "src/lib/executionTimeline.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/40-apps-web-src-lib-executiontimeline-test-ts/assertions.json",
+      "sha256": "0e132d4b3320dd8ae36a1e28bb82212f682e20645acc38133f4bc04eff70a644"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/40-apps-web-src-lib-executiontimeline-test-ts/execution.json",
+      "sha256": "36bfaa2eef63a592023ca370059212abe260d1b0089a440d1cb3d0b5025a5a87"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/40-apps-web-src-lib-executiontimeline-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/40-apps-web-src-lib-executiontimeline-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/40-apps-web-src-lib-executiontimeline-test-ts/stdout.txt",
+      "sha256": "28194f3e651906366d50b0e31ed97528e5de05be59188e09cf156252d7c1bae9"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-005-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-299",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/executionTimeline.test.ts",
+      "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+      "line": 23,
+      "expression": "assert.deepEqual(visible.map(item => item.id), ['queued', 'stream-3', 'completed']);",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-300",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/executionTimeline.test.ts",
+      "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+      "line": 23,
+      "expression": "assert.deepEqual(visible.map(item => item.id), ['queued', 'stream-3', 'completed']);",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-003\\receipts.json"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/execution.json",
+      "sha256": "e6b6d219d828b84d56da22997b3db52001ed6963492b9a555cd48c02ff1e796a"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/receipts.json/receipts.json",
+      "sha256": "dbfbe2ee37501bdf2c2e3df2e649e2984115a686f126e0024d42cafac33dcef9"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/stdout.txt",
+      "sha256": "3d60ecaa3eb925e7aa2c66f553651bfa5f55fbb60d58b3e81b4bea9c9b0c201f"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-003/receipts.json/receipts.json",
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S003-EXACT-01",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "entrySources": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ],
+        "entryVersion": 2,
+        "contentUnchanged": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "entrySourcesAdded": 1,
+        "dedupEventsAdded": 1,
+        "dedupEventNameTheEntry": true
+      },
+      "expected": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "entrySources": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ],
+        "entryVersion": 2,
+        "contentUnchanged": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "entrySourcesAdded": 1,
+        "dedupEventsAdded": 1,
+        "dedupEventNameTheEntry": true
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "an exact duplicate converges on the accepted Entry and merges the new source atomically",
+      "expression": "expect('LITE-07-003', 'S003-EXACT-01', 'an exact duplicate converges on the accepted Entry and merges the new source atomically',",
+      "line": 132,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-EXACT-02",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "sourcesAdded": 0,
+        "dedupEventsAdded": 0,
+        "entryVersion": 2
+      },
+      "expected": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "sourcesAdded": 0,
+        "dedupEventsAdded": 0,
+        "entryVersion": 2
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "a replay of the same evaluation writes nothing further",
+      "expression": "expect('LITE-07-003', 'S003-EXACT-02', 'a replay of the same evaluation writes nothing further',",
+      "line": 144,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-OWNER-01",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": null,
+        "newCandidateId": "mcand_terminal_run_owner_07003",
+        "newCandidateCategory": "summary",
+        "otherOwnerEntryUnchanged": [
+          "task:task_other_07003"
+        ],
+        "otherOwnerEntryContentUnchanged": true,
+        "candidatesAdded": 1
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": null,
+        "newCandidateId": "mcand_terminal_run_owner_07003",
+        "newCandidateCategory": "summary",
+        "otherOwnerEntryUnchanged": [
+          "task:task_other_07003"
+        ],
+        "otherOwnerEntryContentUnchanged": true,
+        "candidatesAdded": 1
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "identical content under a different owner does not converge",
+      "expression": "expect('LITE-07-003', 'S003-OWNER-01', 'identical content under a different owner does not converge',",
+      "line": 195,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-NEAR-01",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_normalized",
+        "candidateOutcome": "review-required",
+        "candidateDecision": "review-required",
+        "candidateAuthority": "agent-derived",
+        "promotedIntoEntry": null,
+        "nearEntryStillIntact": true,
+        "entriesAfter": 3
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_normalized",
+        "candidateOutcome": "review-required",
+        "candidateDecision": "review-required",
+        "candidateAuthority": "agent-derived",
+        "promotedIntoEntry": null,
+        "nearEntryStillIntact": true,
+        "entriesAfter": 3
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "a normalized-hash near-duplicate is recorded as a review-required fact, never auto-accepted",
+      "expression": "expect('LITE-07-003', 'S003-NEAR-01', 'a normalized-hash near-duplicate is recorded as a review-required fact, never auto-accepted',",
+      "line": 243,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-NEAR-02",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_fts",
+        "candidateOutcome": "review-required",
+        "promotedIntoEntry": null
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_fts",
+        "candidateOutcome": "review-required",
+        "promotedIntoEntry": null
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "an FTS-similar near-duplicate is likewise held for review",
+      "expression": "expect('LITE-07-003', 'S003-NEAR-02', 'an FTS-similar near-duplicate is likewise held for review',",
+      "line": 283,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-REVIEW-01",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "outcomeAfterReview": "accept",
+        "mergedIntoEntry": true,
+        "entryScope": "task",
+        "entryCategory": "summary",
+        "entryContentBytes": 70,
+        "entrySources": [
+          "run:run_fts_07003"
+        ]
+      },
+      "expected": {
+        "outcomeAfterReview": "accept",
+        "mergedIntoEntry": true,
+        "entryScope": "task",
+        "entryCategory": "summary",
+        "entryContentBytes": 70,
+        "entrySources": [
+          "run:run_fts_07003"
+        ]
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "accepting a near-duplicate after review creates the Entry and keeps its sources",
+      "expression": "expect('LITE-07-003', 'S003-REVIEW-01', 'accepting a near-duplicate after review creates the Entry and keeps its sources',",
+      "line": 303,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-01",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "insertionRefused": true,
+        "refusalCode": "ERR_SQLITE_ERROR",
+        "orphanSources": 0
+      },
+      "expected": {
+        "insertionRefused": true,
+        "refusalCode": "ERR_SQLITE_ERROR",
+        "orphanSources": 0
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "a source that names no real Entry is refused by the schema instead of being believed",
+      "expression": "expect('LITE-07-003', 'S003-PROOF-01', 'a source that names no real Entry is refused by the schema instead of being believed',",
+      "line": 323,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-02",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "refusalCode": "ORIGIN_UNPROVEN"
+      },
+      "expected": {
+        "refusalCode": "ORIGIN_UNPROVEN"
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "a privileged origin without a durable row is refused instead of fabricating causation",
+      "expression": "expect('LITE-07-003', 'S003-PROOF-02', 'a privileged origin without a durable row is refused instead of fabricating causation',",
+      "line": 337,
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-03",
+      "requirementId": "LITE-07-003",
+      "actual": {
+        "mergeOutcome": "refused",
+        "entrySourcesAfter": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ]
+      },
+      "expected": {
+        "mergeOutcome": "refused",
+        "entrySourcesAfter": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ]
+      },
+      "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "name": "the merge refuses when the boundary does not match the stored Entry",
+      "expression": "expect('LITE-07-003', 'S003-PROOF-03', 'the merge refuses when the boundary does not match the stored Entry',",
+      "line": 345,
+      "outcome": "passed"
+    }
+  ]
+}

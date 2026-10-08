@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:HS-05 only labelled entries are searchable \\(no content search, secrets excluded\\)|HS-V01 the view renders the filter set, grouped results, and canonical links)",
+      "src/lib/historySearch.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

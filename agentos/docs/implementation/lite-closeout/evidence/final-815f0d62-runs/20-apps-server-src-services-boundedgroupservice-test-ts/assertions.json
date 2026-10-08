@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-00-013-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-123",
+    "requirementId": "LITE-00-013",
+    "file": "apps/server/src/services/BoundedGroupService.test.ts",
+    "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+    "line": 150,
+    "expression": "assert.equal(last.interaction.status, 'exhausted');",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-124",
+    "requirementId": "LITE-09-015",
+    "file": "apps/server/src/services/BoundedGroupService.test.ts",
+    "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+    "line": 150,
+    "expression": "assert.equal(last.interaction.status, 'exhausted');",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

@@ -78,13 +78,20 @@ export interface ConsumeSseResult {
   lastCursor: number;
 }
 
+export interface ConsumeSseOptions {
+  /** Additional protocol-specific terminal events; the default is `done`/`error`. */
+  readonly terminalEvents?: readonly string[];
+}
+
 export async function consumeSseResponse(
   response: Response,
   onEvent: (event: SseEvent, data: Record<string, unknown>) => void | Promise<void>,
+  options: ConsumeSseOptions = {},
 ): Promise<ConsumeSseResult> {
   if (!response.body) throw new Error('The stream response has no body');
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
+  const terminalEvents = new Set(options.terminalEvents ?? ['done', 'error']);
   let buffer = '';
   let lastCursor = 0;
   let terminal = false;
@@ -93,8 +100,11 @@ export async function consumeSseResponse(
     for (const event of events) {
       const data = parseSseEventData<Record<string, unknown>>(event.data);
       if (!data) continue;
-      if (typeof data.cursor === 'number' && Number.isFinite(data.cursor)) lastCursor = Math.max(lastCursor, data.cursor);
-      if (event.event === 'done' || event.event === 'error') terminal = true;
+      const eventIdCursor = event.id === undefined ? Number.NaN : Number(event.id);
+      const payloadCursor = typeof data.cursor === 'number' ? data.cursor : Number.NaN;
+      const cursor = Number.isSafeInteger(eventIdCursor) && eventIdCursor >= 0 ? eventIdCursor : payloadCursor;
+      if (Number.isSafeInteger(cursor) && cursor >= 0) lastCursor = Math.max(lastCursor, cursor);
+      if (terminalEvents.has(event.event)) terminal = true;
       await onEvent(event, data);
     }
   };

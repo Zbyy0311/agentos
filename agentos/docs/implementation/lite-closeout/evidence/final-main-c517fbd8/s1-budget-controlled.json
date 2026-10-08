@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "--out",
+      "C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s1-budget-run\\candidate"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/candidate/receipts.json",
+      "sha256": "a99407f813d6fb5f91fc89d1eeab24b02d17bfd2be0fe7e6d533380293a4310c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/execution.json",
+      "sha256": "2ec7a446e05468a0f3834b1cfb8d0090029c3291873529d7895031a2fd56a415"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/stdout.txt",
+      "sha256": "f815ee3fd5343a76c7cbafb367287a7f7b201e5f60feec25a534e9ad18d0d83b"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-capture/candidate/receipts.json",
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S1E-PRICING-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "injectedText": "### short\ntiny",
+        "longInjectedTokens": 124,
+        "shortInjectedTokens": 4,
+        "storedEstimates": {
+          "long": 1,
+          "short": 9999
+        },
+        "selected": [
+          "mem_short"
+        ],
+        "totalTokens": 4,
+        "reasons": {
+          "mem_long": "token-budget"
+        }
+      },
+      "expected": {
+        "injectedText": "### short\ntiny",
+        "longInjectedTokens": 124,
+        "shortInjectedTokens": 4,
+        "storedEstimates": {
+          "long": 1,
+          "short": 9999
+        },
+        "selected": [
+          "mem_short"
+        ],
+        "totalTokens": 4,
+        "reasons": {
+          "mem_long": "token-budget"
+        }
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "an Entry is priced by the text that is actually injected, not by its stored estimate",
+      "expression": "expect('LITE-07-007', 'S1E-PRICING-01', 'an Entry is priced by the text that is actually injected, not by its stored estimate',",
+      "line": 101,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-THRESHOLD-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_ok"
+        ],
+        "reasons": {
+          "mem_low_confidence": "below-confidence",
+          "mem_low_importance": "below-importance"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_ok"
+        ],
+        "reasons": {
+          "mem_low_confidence": "below-confidence",
+          "mem_low_importance": "below-importance"
+        }
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "confidence and importance thresholds exclude with their own reason",
+      "expression": "expect('LITE-07-007', 'S1E-THRESHOLD-01', 'confidence and importance thresholds exclude with their own reason',",
+      "line": 114,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-COUNT-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_a",
+          "mem_b"
+        ],
+        "reasons": {
+          "mem_c": "entry-budget"
+        },
+        "considered": 3
+      },
+      "expected": {
+        "selected": [
+          "mem_a",
+          "mem_b"
+        ],
+        "reasons": {
+          "mem_c": "entry-budget"
+        },
+        "considered": 3
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "the Entry count budget excludes the overflow and records every considered Entry",
+      "expression": "expect('LITE-07-007', 'S1E-COUNT-01', 'the Entry count budget excludes the overflow and records every considered Entry',",
+      "line": 119,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-SCOPE-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_task_1",
+          "mem_workspace"
+        ],
+        "reasons": {
+          "mem_task_2": "scope-excluded"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_task_1",
+          "mem_workspace"
+        ],
+        "reasons": {
+          "mem_task_2": "scope-excluded"
+        }
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "a per-Scope limit is attributed to the Scope, not to the category",
+      "expression": "expect('LITE-07-007', 'S1E-SCOPE-01', 'a per-Scope limit is attributed to the Scope, not to the category',",
+      "line": 129,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-CATEGORY-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge"
+        ],
+        "reasons": {
+          "mem_decision_2": "category-budget"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge"
+        ],
+        "reasons": {
+          "mem_decision_2": "category-budget"
+        }
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "a per-category limit is attributed to the category",
+      "expression": "expect('LITE-07-007', 'S1E-CATEGORY-01', 'a per-category limit is attributed to the category',",
+      "line": 138,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-DIVERSITY-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge_1"
+        ],
+        "reasons": {
+          "mem_decision_2": "diversity-limit",
+          "mem_knowledge_2": "entry-budget"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge_1"
+        ],
+        "reasons": {
+          "mem_decision_2": "diversity-limit",
+          "mem_knowledge_2": "entry-budget"
+        }
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "requireDiversity keeps the set from being monopolized and explains the exclusion",
+      "expression": "expect('LITE-07-007', 'S1E-DIVERSITY-01', 'requireDiversity keeps the set from being monopolized and explains the exclusion',",
+      "line": 148,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-TRUNC-01",
+      "requirementId": "LITE-07-007",
+      "actual": {
+        "selected": [
+          "mem_t1"
+        ],
+        "reasons": {
+          "mem_t2": "truncated",
+          "mem_t3": "token-budget"
+        },
+        "truncated": true,
+        "totalTokens": 7,
+        "perEntryTokens": 7,
+        "budgetTokens": 13
+      },
+      "expected": {
+        "selected": [
+          "mem_t1"
+        ],
+        "reasons": {
+          "mem_t2": "truncated",
+          "mem_t3": "token-budget"
+        },
+        "truncated": true,
+        "totalTokens": 7,
+        "perEntryTokens": 7,
+        "budgetTokens": 13
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "token-budget overflow is truncated explicitly and bounded, never silently",
+      "expression": "expect('LITE-07-007', 'S1E-TRUNC-01', 'token-budget overflow is truncated explicitly and bounded, never silently',",
+      "line": 158,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-ELIGIBILITY-01",
+      "requirementId": "LITE-07-109",
+      "actual": {
+        "now": "2026-09-14T00:00:00.000Z",
+        "returned": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "degraded": false,
+        "excludedIdsPresent": []
+      },
+      "expected": {
+        "now": "2026-09-14T00:00:00.000Z",
+        "returned": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "degraded": false,
+        "excludedIdsPresent": []
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "temporal and access eligibility decide before ranking",
+      "expression": "expect('LITE-07-109', 'S1E-ELIGIBILITY-01', 'temporal and access eligibility decide before ranking',",
+      "line": 191,
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-DEGRADED-01",
+      "requirementId": "LITE-07-109",
+      "actual": {
+        "degraded": true,
+        "rankedResults": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "sameSetAsRankedQuery": true,
+        "queryTextStored": 0
+      },
+      "expected": {
+        "degraded": true,
+        "rankedResults": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "sameSetAsRankedQuery": true,
+        "queryTextStored": 0
+      },
+      "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+      "name": "a query with no usable FTS tokens reports degraded while structured filters stay authoritative",
+      "expression": "expect('LITE-07-109', 'S1E-DEGRADED-01', 'a query with no usable FTS tokens reports degraded while structured filters stay authoritative',",
+      "line": 196,
+      "outcome": "passed"
+    }
+  ]
+}

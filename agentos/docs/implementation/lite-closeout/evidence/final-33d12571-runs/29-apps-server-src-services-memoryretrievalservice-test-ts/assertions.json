@@ -1,0 +1,46 @@
+[
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-search-excludes-an-unsafe-historical-entry-and-fts-row-182-A1",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+    "name": "LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row",
+    "line": 248,
+    "expression": "assert.equal(result.degraded, false);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-search-excludes-an-unsafe-historical-entry-and-fts-row-182-A2",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+    "name": "LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row",
+    "line": 249,
+    "expression": "assert.deepEqual(result.results, []);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-search-excludes-an-unsafe-historical-entry-and-fts-row-183-A1",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+    "name": "LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row",
+    "line": 248,
+    "expression": "assert.equal(result.degraded, false);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-search-excludes-an-unsafe-historical-entry-and-fts-row-183-A2",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+    "name": "LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row",
+    "line": 249,
+    "expression": "assert.deepEqual(result.results, []);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

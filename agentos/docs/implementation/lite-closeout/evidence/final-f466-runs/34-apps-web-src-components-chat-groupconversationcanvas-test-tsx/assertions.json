@@ -1,0 +1,12 @@
+[
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-264",
+    "requirementId": "LITE-12-009",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 23,
+    "expression": "assert.ok(",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

@@ -201,6 +201,24 @@ export class OutboxRepository {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
+  /**
+   * Exposes the bound transaction DB so a composing writer can prove the
+   * Outbox writes through ONE SQLite connection.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
+
+  /**
+   * Exposes the RuntimeEventRepository this Outbox reads persisted Events
+   * through, so a composing writer can prove the Outbox and the writer read
+   * and write through the SAME Event repository (and therefore the same
+   * connection).
+   */
+  get runtimeEventRepository(): RuntimeEventRepository {
+    return this.runtimeEvents;
+  }
+
   insertWithinTransaction(input: InsertOutboxMessageInput): OutboxMessage {
     if (!input.id.trim() || !input.eventId.trim()) {
       throw new OutboxRepositoryError('OUTBOX_VALIDATION_FAILED', 'id and eventId are required');

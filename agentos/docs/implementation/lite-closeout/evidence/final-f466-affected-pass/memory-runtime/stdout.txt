@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows
+ok 1 - MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows
+  ---
+  duration_ms: 213.08
+  type: 'test'
+  ...
+# Subtest: MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag
+ok 2 - MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag
+  ---
+  duration_ms: 204.343
+  type: 'test'
+  ...
+# Subtest: MF-5 retrieve: unknown Workspace is 404
+ok 3 - MF-5 retrieve: unknown Workspace is 404
+  ---
+  duration_ms: 170.4012
+  type: 'test'
+  ...
+# Subtest: MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise
+ok 4 - MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise
+  ---
+  duration_ms: 155.8541
+  type: 'test'
+  ...
+# Subtest: MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons
+ok 5 - MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons
+  ---
+  duration_ms: 149.8925
+  type: 'test'
+  ...
+# Subtest: MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown
+ok 6 - MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown
+  ---
+  duration_ms: 193.9543
+  type: 'test'
+  ...
+# Subtest: MF-5 candidate queue: list, outcome filter, and version-guarded review
+ok 7 - MF-5 candidate queue: list, outcome filter, and version-guarded review
+  ---
+  duration_ms: 224.5551
+  type: 'test'
+  ...
+# Subtest: MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry
+ok 8 - MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry
+  ---
+  duration_ms: 190.4691
+  type: 'test'
+  ...
+# Subtest: MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction
+ok 9 - MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction
+  ---
+  duration_ms: 161.2697
+  type: 'test'
+  ...
+# Subtest: LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup
+ok 10 - LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup
+  ---
+  duration_ms: 280.8226
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: explicit save does not converge across category or global/workspace scope
+ok 11 - LITE-07-003: explicit save does not converge across category or global/workspace scope
+  ---
+  duration_ms: 147.4214
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: an archived hash match does not swallow a legal explicit save
+ok 12 - LITE-07-003: an archived hash match does not swallow a legal explicit save
+  ---
+  duration_ms: 148.572
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event
+ok 13 - LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event
+  ---
+  duration_ms: 158.3748
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence
+ok 14 - LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence
+  ---
+  duration_ms: 143.7771
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: source write failure rolls back dedup before any Event is published
+ok 15 - LITE-07-003: source write failure rolls back dedup before any Event is published
+  ---
+  duration_ms: 143.2137
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: simultaneous exact saves converge to one source mutation and one Event
+ok 16 - LITE-07-003: simultaneous exact saves converge to one source mutation and one Event
+  ---
+  duration_ms: 153.0035
+  type: 'test'
+  ...
+# Subtest: LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink
+ok 17 - LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink
+  ---
+  duration_ms: 140.5478
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3382.3617

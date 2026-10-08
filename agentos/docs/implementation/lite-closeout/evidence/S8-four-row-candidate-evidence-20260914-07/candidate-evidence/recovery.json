@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "phase": "recovery",
+  "startedAt": "2026-09-14T07:34:43.742Z",
+  "setupPath": "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-07\\candidate-setup.json",
+  "assertions": [
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A3-queued",
+      "description": "startup recovery conservatively classified queued as failed",
+      "step": "Read legacy runs after server process restart",
+      "observedObject": "agent_run objective=candidate recovery queued",
+      "actual": {
+        "id": "candidate-recovery-run-queued-45927c47-6741-4468-ade5-47af0e605875",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-queued-10dfaa77-05d5-4983-8692-c3f3d6ccba95",
+        "objective": "candidate recovery queued",
+        "status": "failed",
+        "failureReason": "服务重启导致执行中断",
+        "completedAt": "2026-09-14T07:34:43.284Z",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:43.284Z"
+      },
+      "expected": {
+        "status": "failed",
+        "completed": false
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-after-restart-queued-classified-failed"
+      },
+      "why": "A queued/running execution with no proof of completion is classified as failed rather than guessed completed.",
+      "limits": "This fixture does not prove recovery of a live native Process identity."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A3-running",
+      "description": "startup recovery conservatively classified running as failed",
+      "step": "Read legacy runs after server process restart",
+      "observedObject": "agent_run objective=candidate recovery running",
+      "actual": {
+        "id": "candidate-recovery-run-running-c4817d36-b8da-4d0d-ac84-a40d37d37f44",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-running-3bc6aa1a-a7fc-48ad-8c2d-0b15fd6963e2",
+        "objective": "candidate recovery running",
+        "status": "failed",
+        "failureReason": "服务重启导致执行中断",
+        "startedAt": "2026-09-14T07:34:37.527Z",
+        "completedAt": "2026-09-14T07:34:43.293Z",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:43.293Z"
+      },
+      "expected": {
+        "status": "failed",
+        "completed": false
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-after-restart-running-classified-failed"
+      },
+      "why": "A queued/running execution with no proof of completion is classified as failed rather than guessed completed.",
+      "limits": "This fixture does not prove recovery of a live native Process identity."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A4",
+      "description": "waiting_user remained waiting_user after startup recovery",
+      "step": "Read legacy runs after server process restart",
+      "observedObject": "agent_run objective=candidate recovery waiting_user",
+      "actual": {
+        "id": "candidate-recovery-run-waiting_user-ec56dce6-3097-41a2-bc3f-5150fbb6647e",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-waiting_user-ba36b198-e545-44b8-9644-1e6f662df9d2",
+        "objective": "candidate recovery waiting_user",
+        "status": "waiting_user",
+        "waitingQuestion": "保留 waiting_user 状态",
+        "waitingAgentId": "codex",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:37.527Z"
+      },
+      "expected": {
+        "status": "waiting_user",
+        "completed": false
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-after-restart-waiting-user-preserved"
+      },
+      "why": "It checks that a user-waiting state was not treated as an interrupted provider execution.",
+      "limits": "It does not prove a later user response/resume flow."
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "assertionId": "LITE-00-007-A5",
+      "description": "no recovery input was guessed completed",
+      "step": "Compare all recorded recovery rows after restart",
+      "observedObject": "three recovery rows and their resulting statuses",
+      "actual": {
+        "before": [
+          {
+            "id": "candidate-recovery-run-queued-45927c47-6741-4468-ade5-47af0e605875",
+            "objective": "candidate recovery queued",
+            "status": "queued",
+            "failureReason": null,
+            "waitingQuestion": null
+          },
+          {
+            "id": "candidate-recovery-run-running-c4817d36-b8da-4d0d-ac84-a40d37d37f44",
+            "objective": "candidate recovery running",
+            "status": "running",
+            "failureReason": null,
+            "waitingQuestion": null
+          },
+          {
+            "id": "candidate-recovery-run-waiting_user-ec56dce6-3097-41a2-bc3f-5150fbb6647e",
+            "objective": "candidate recovery waiting_user",
+            "status": "waiting_user",
+            "failureReason": null,
+            "waitingQuestion": "保留 waiting_user 状态"
+          }
+        ],
+        "after": [
+          {
+            "objective": "candidate recovery running",
+            "status": "failed",
+            "failureReason": "服务重启导致执行中断"
+          },
+          {
+            "objective": "candidate recovery queued",
+            "status": "failed",
+            "failureReason": "服务重启导致执行中断"
+          },
+          {
+            "objective": "candidate recovery waiting_user",
+            "status": "waiting_user",
+            "failureReason": null
+          }
+        ]
+      },
+      "expected": {
+        "completedRows": 0
+      },
+      "outcome": "passed",
+      "assertionSource": {
+        "type": "e2e-checkpoint",
+        "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+        "checkpoint": "recovery-no-completed-guess"
+      },
+      "why": "The complete before/after set shows every uncertain input classification and rules out a fabricated completion.",
+      "limits": "It is scoped to these three legacy fixture rows."
+    }
+  ],
+  "metadata": {
+    "workspaceId": "d7994c0c",
+    "runId": "run_01M2FDCB1YAP7WMSFCT9ERN1QY",
+    "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+    "recoveryConversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+    "recoveryAction": "server process stopped after pre phase and a new server process was started before this phase",
+    "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。",
+    "recoveryAfter": [
+      {
+        "id": "candidate-recovery-run-running-c4817d36-b8da-4d0d-ac84-a40d37d37f44",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-running-3bc6aa1a-a7fc-48ad-8c2d-0b15fd6963e2",
+        "objective": "candidate recovery running",
+        "status": "failed",
+        "failureReason": "服务重启导致执行中断",
+        "startedAt": "2026-09-14T07:34:37.527Z",
+        "completedAt": "2026-09-14T07:34:43.293Z",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:43.293Z"
+      },
+      {
+        "id": "candidate-recovery-run-queued-45927c47-6741-4468-ade5-47af0e605875",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-queued-10dfaa77-05d5-4983-8692-c3f3d6ccba95",
+        "objective": "candidate recovery queued",
+        "status": "failed",
+        "failureReason": "服务重启导致执行中断",
+        "completedAt": "2026-09-14T07:34:43.284Z",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:43.284Z"
+      },
+      {
+        "id": "candidate-recovery-run-waiting_user-ec56dce6-3097-41a2-bc3f-5150fbb6647e",
+        "workspaceId": "d7994c0c",
+        "conversationId": "c8c414c9-7162-407e-8b67-fe21456472f0",
+        "sourceMessageId": "candidate-recovery-message-waiting_user-ba36b198-e545-44b8-9644-1e6f662df9d2",
+        "objective": "candidate recovery waiting_user",
+        "status": "waiting_user",
+        "waitingQuestion": "保留 waiting_user 状态",
+        "waitingAgentId": "codex",
+        "createdAt": "2026-09-14T07:34:37.527Z",
+        "updatedAt": "2026-09-14T07:34:37.527Z"
+      }
+    ]
+  },
+  "errors": [],
+  "finishedAt": "2026-09-14T07:34:43.784Z",
+  "counts": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "rawExitCode": 0
+}

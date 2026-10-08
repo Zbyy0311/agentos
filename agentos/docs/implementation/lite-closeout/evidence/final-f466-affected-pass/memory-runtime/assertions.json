@@ -1,0 +1,79 @@
+[
+  {
+    "id": "MEM-SCOPE-02",
+    "requirementId": "LITE-07-001",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup",
+    "line": 607,
+    "expression": "assert.equal(response.status, 400);",
+    "clause": "Invalid Scope/owner combinations are rejected by the production boundary.",
+    "whyDirect": "The route submits invalid Scope and owner envelopes through the real HTTP endpoint and asserts the production 400 response for every case.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-EXPLAIN-01",
+    "requirementId": "LITE-07-009",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+    "line": 377,
+    "expression": "assert.deepEqual(snapshot.selected[0]!.reasons, ['scope-match', 'importance']);",
+    "clause": "Selected Entries expose their selection reasons.",
+    "whyDirect": "The production memory-context endpoint is queried and the returned persisted snapshot reason list is compared exactly.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-EXPLAIN-02",
+    "requirementId": "LITE-07-009",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+    "line": 379,
+    "expression": "assert.equal(snapshot.exclusions[0]!.reason, 'below-confidence');",
+    "clause": "Excluded Entries expose their exclusion reasons.",
+    "whyDirect": "The same production endpoint returns an exclusion and the exact persisted exclusion reason is asserted.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-USER-SAVE-01",
+    "requirementId": "LITE-07-101",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+    "line": 540,
+    "expression": "assert.equal(savedBody.entry.authority, 'user-explicit');",
+    "clause": "The real save route creates a user-explicit Entry.",
+    "whyDirect": "The production HTTP save route is called and the returned durable Entry authority is asserted.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-USER-SAVE-02",
+    "requirementId": "LITE-07-101",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+    "line": 547,
+    "expression": "assert.equal(wsEvents[0]!.type, 'memory.entry_created');",
+    "clause": "The save emits the canonical Workspace Event.",
+    "whyDirect": "The production database is queried after the route call and the exact persisted event type is asserted.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-USER-SAVE-03",
+    "requirementId": "LITE-07-101",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+    "line": 563,
+    "expression": "assert.ok(retrievedBody.results.some(r => r.entry.id === savedBody.entry.id && r.entry.authority === 'user-explicit'));",
+    "clause": "The saved Entry is retrievable through the production retrieval path.",
+    "whyDirect": "The test calls the real retrieval endpoint and matches the actual saved Entry by ID and authority.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-USER-SAVE-04",
+    "requirementId": "LITE-07-101",
+    "file": "apps/server/src/routes/memoryRuntime.test.ts",
+    "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+    "line": 570,
+    "expression": "assert.equal((dup.json as { converged: boolean }).converged, true);",
+    "clause": "A duplicate save converges rather than creating a second Entry.",
+    "whyDirect": "The same production route is called again with the same content and the response explicitly reports convergence.",
+    "outcome": "passed"
+  }
+]

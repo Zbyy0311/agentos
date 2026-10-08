@@ -1,0 +1,5 @@
+Exception: E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\scripts\verify-lite-four-row-candidate-evidence.ps1:151
+Line |
+ 151 |  … de -ne 0) { throw "candidate Run preparation failed with exit $prepar …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | candidate Run preparation failed with exit 1

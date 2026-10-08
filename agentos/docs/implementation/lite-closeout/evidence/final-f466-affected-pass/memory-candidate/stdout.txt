@@ -1,0 +1,172 @@
+TAP version 13
+# Subtest: MF2R-01 create persists candidate and decision
+ok 1 - MF2R-01 create persists candidate and decision
+  ---
+  duration_ms: 148.7469
+  type: 'test'
+  ...
+# Subtest: MF2R-02 secret content rejects
+ok 2 - MF2R-02 secret content rejects
+  ---
+  duration_ms: 137.9594
+  type: 'test'
+  ...
+# Subtest: LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row
+ok 3 - LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row
+  ---
+  duration_ms: 138.6226
+  type: 'test'
+  ...
+# Subtest: LITE-07-012/LITE-10-016 unsafe Candidate edit leaves promotion unchanged
+ok 4 - LITE-07-012/LITE-10-016 unsafe Candidate edit leaves promotion unchanged
+  ---
+  duration_ms: 147.8932
+  type: 'test'
+  ...
+# Subtest: LITE-07-012/LITE-10-016 excludes unsafe historical Candidate from export
+ok 5 - LITE-07-012/LITE-10-016 excludes unsafe historical Candidate from export
+  ---
+  duration_ms: 141.2255
+  type: 'test'
+  ...
+# Subtest: MF2R-03 automatic candidate without source rejects
+ok 6 - MF2R-03 automatic candidate without source rejects
+  ---
+  duration_ms: 139.4548
+  type: 'test'
+  ...
+# Subtest: MF2R-04 review-required triggers
+ok 7 - MF2R-04 review-required triggers
+  ---
+  duration_ms: 149.1223
+  type: 'test'
+  ...
+# Subtest: MF2R-05 invalid input fails closed
+ok 8 - MF2R-05 invalid input fails closed
+  ---
+  duration_ms: 135.0726
+  type: 'test'
+  ...
+# Subtest: MF2R-06 review is versioned
+ok 9 - MF2R-06 review is versioned
+  ---
+  duration_ms: 149.7396
+  type: 'test'
+  ...
+# Subtest: MF2R-07 merge-with-existing requires a real entry
+ok 10 - MF2R-07 merge-with-existing requires a real entry
+  ---
+  duration_ms: 166.9027
+  type: 'test'
+  ...
+# Subtest: MF2R-14 accept promotes an active retrieval Entry and preserves provenance
+ok 11 - MF2R-14 accept promotes an active retrieval Entry and preserves provenance
+  ---
+  duration_ms: 168.7624
+  type: 'test'
+  ...
+# Subtest: MF2R-15 edit-and-accept updates fields and recomputes derived values
+ok 12 - MF2R-15 edit-and-accept updates fields and recomputes derived values
+  ---
+  duration_ms: 164.5415
+  type: 'test'
+  ...
+# Subtest: MF2R-16 merge rejects scope or owner leakage
+ok 13 - MF2R-16 merge rejects scope or owner leakage
+  ---
+  duration_ms: 158.1782
+  type: 'test'
+  ...
+# Subtest: MF2R-17 review promotion rolls back the Entry and candidate on persistence failure
+ok 14 - MF2R-17 review promotion rolls back the Entry and candidate on persistence failure
+  ---
+  duration_ms: 162.282
+  type: 'test'
+  ...
+# Subtest: MF2R-18 historical auto-accepted rows without review metadata remain reviewable
+ok 15 - MF2R-18 historical auto-accepted rows without review metadata remain reviewable
+  ---
+  duration_ms: 154.085
+  type: 'test'
+  ...
+# Subtest: MF2R-19 malformed edits fail closed without changing the reviewable candidate
+ok 16 - MF2R-19 malformed edits fail closed without changing the reviewable candidate
+  ---
+  duration_ms: 138.3777
+  type: 'test'
+  ...
+# Subtest: MF2R-08 exact duplicate lookup
+ok 17 - MF2R-08 exact duplicate lookup
+  ---
+  duration_ms: 131.8814
+  type: 'test'
+  ...
+# Subtest: MF2R-09 conflict open and resolve
+ok 18 - MF2R-09 conflict open and resolve
+  ---
+  duration_ms: 147.1489
+  type: 'test'
+  ...
+# Subtest: MF2R-10 conflict input validation
+ok 19 - MF2R-10 conflict input validation
+  ---
+  duration_ms: 133.8531
+  type: 'test'
+  ...
+# Subtest: MF2R-20 conflict open reports the entry effects it persisted
+ok 20 - MF2R-20 conflict open reports the entry effects it persisted
+  ---
+  duration_ms: 141.494
+  type: 'test'
+  ...
+# Subtest: MF2R-21 keep-both releases both conflicted entries
+ok 21 - MF2R-21 keep-both releases both conflicted entries
+  ---
+  duration_ms: 138.8673
+  type: 'test'
+  ...
+# Subtest: MF2R-22 supersede dispositions target the addressed side
+ok 22 - MF2R-22 supersede dispositions target the addressed side
+  ---
+  duration_ms: 278.8571
+  type: 'test'
+  ...
+# Subtest: MF2R-23 reject-both rejects both sides
+ok 23 - MF2R-23 reject-both rejects both sides
+  ---
+  duration_ms: 142.633
+  type: 'test'
+  ...
+# Subtest: MF2R-24 conflict mutations respect other open conflicts and deleted entries
+ok 24 - MF2R-24 conflict mutations respect other open conflicts and deleted entries
+  ---
+  duration_ms: 144.7053
+  type: 'test'
+  ...
+# Subtest: MF2R-11 record exposes no secret value field
+ok 25 - MF2R-11 record exposes no secret value field
+  ---
+  duration_ms: 155.8715
+  type: 'test'
+  ...
+# Subtest: MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)
+ok 26 - MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)
+  ---
+  duration_ms: 179.8151
+  type: 'test'
+  ...
+# Subtest: MF2R-12 listCandidates orders, filters, and guards
+ok 27 - MF2R-12 listCandidates orders, filters, and guards
+  ---
+  duration_ms: 143.4507
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 27
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4341.2548

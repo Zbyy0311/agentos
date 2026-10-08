@@ -39,8 +39,9 @@ test('shows token consumption from execution statistics', async () => {
     />,
   );
 
-  assert.equal(markup.includes('Tokens 28'), true);
-  assert.equal(markup.includes('消耗'), true);
-  assert.equal(markup.includes('Duration'), true);
-  assert.equal(markup.includes('Files'), true);
+  assert.equal(markup.includes('Tokens'), true);
+  assert.equal(markup.includes('28'), true);
+  assert.equal(markup.includes('执行统计'), true);
+  assert.equal(markup.includes('耗时'), true);
+  assert.equal(markup.includes('文件'), true);
 });

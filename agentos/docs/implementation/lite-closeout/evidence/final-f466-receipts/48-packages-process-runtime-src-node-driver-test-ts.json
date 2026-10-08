@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "f466ab3c940c6d5ac792591315a1416da93a06ab",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/node-driver.test.ts"
+    ]
+  },
+  "cwd": "packages/process-runtime",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/48-packages-process-runtime-src-node-driver-test-ts/assertions.json",
+      "sha256": "e040263414f9a55365da6b1a2221f5a25c341ea346eaf83bf5f8478ad0f115b4"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/48-packages-process-runtime-src-node-driver-test-ts/execution.json",
+      "sha256": "d6eee802f9474c0737684ff5843b8252471d63df8ae0ceacc30c8a77f67f8cbc"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/48-packages-process-runtime-src-node-driver-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/48-packages-process-runtime-src-node-driver-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/48-packages-process-runtime-src-node-driver-test-ts/stdout.txt",
+      "sha256": "d02e23afa465c8b433e02b6b6130a1e74a577260719c6158c1753287c95a9fd2"
+    }
+  ],
+  "counts": {
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "total": 16
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-006-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-332",
+      "requirementId": "LITE-00-006",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(",
+      "clause": "Windows cancellation handles the owned process tree;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-007-inspectidentity-matches-a-live-pid-and-reports-missing-for-esrch-333",
+      "requirementId": "LITE-01-007",
+      "name": "inspectIdentity matches a live pid and reports missing for ESRCH",
+      "line": 448,
+      "expression": "expect(",
+      "clause": "Process ID and native PID cannot be confused by API or UI labels;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-011-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-334",
+      "requirementId": "LITE-02-011",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(",
+      "clause": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-013-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-335",
+      "requirementId": "LITE-02-013",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(",
+      "clause": "Process exit does not falsely complete a Run;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-001-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-336",
+      "requirementId": "LITE-05-001",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-002-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-337",
+      "requirementId": "LITE-05-002",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-003-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-338",
+      "requirementId": "LITE-05-003",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-004-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-339",
+      "requirementId": "LITE-05-004",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-005-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-340",
+      "requirementId": "LITE-05-005",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-006-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-341",
+      "requirementId": "LITE-05-006",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-p5b-02-03-07-w4-w5-w6-an-immediately-built-multi-level-tree-is-owned-and-termina-342",
+      "requirementId": "LITE-05-007",
+      "name": "P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives",
+      "line": 334,
+      "expression": "expect(",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-343",
+      "requirementId": "LITE-05-007",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-009-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-344",
+      "requirementId": "LITE-05-009",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-012-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-345",
+      "requirementId": "LITE-05-012",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-003-inspectidentity-matches-a-live-pid-and-reports-missing-for-esrch-346",
+      "requirementId": "LITE-10-003",
+      "name": "inspectIdentity matches a live pid and reports missing for ESRCH",
+      "line": 448,
+      "expression": "expect(",
+      "clause": "opaque IDs and Process ID/PID distinction;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-010-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-347",
+      "requirementId": "LITE-10-010",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "Process reserve-before-spawn;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-012-blocker-1-assignment-failure-aborts-the-suspended-provider-before-user-code-348",
+      "requirementId": "LITE-10-012",
+      "name": "BLOCKER-1: assignment failure aborts the suspended provider before user code",
+      "line": 486,
+      "expression": "expect(",
+      "clause": "fail-closed recovery evidence;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    }
+  ]
+}

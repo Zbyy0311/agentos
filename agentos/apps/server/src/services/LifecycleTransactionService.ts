@@ -336,6 +336,13 @@ export interface CancelRunForOperationWithinTransactionInput {
   readonly correlationId: string;
 }
 
+export interface CancelRunForOperationWithEvidenceWithinTransactionInput extends CompositeLifecycleInputBase {
+  readonly runId: string;
+  readonly terminatedProcessIds: string[];
+  readonly worktreePreserved: boolean;
+  readonly reason?: string;
+}
+
 export interface CompleteRunInput extends StageCompositeInput {
   readonly runId: string;
   readonly durationMs: number;
@@ -966,10 +973,17 @@ export class LifecycleTransactionService {
 
   requestApproval(input: RequestApprovalInput): CompositeLifecycleTransactionResult {
     this.validateRequestApprovalInput(input);
+    return this.dependencies.runInTransaction(() => this.requestApprovalWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; used when a durable approval request must
+   * commit atomically with the canonical waiting transition and Event/Outbox. */
+  requestApprovalWithinTransaction(input: RequestApprovalInput): CompositeLifecycleTransactionResult {
+    this.validateRequestApprovalInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = input.stageId === undefined ? undefined : this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalRequestAvailable(run.id, input.approvalRequestId);
       const stage = input.stageId === undefined
@@ -1023,15 +1037,21 @@ export class LifecycleTransactionService {
       );
       const outbox = this.insertOutbox(event, timestamp);
       return this.compositeResult(input.workspaceId, input.runId, [event], [outbox]);
-    });
+    }
   }
 
   resolveApprovalToRunning(input: ResolveApprovalToRunningInput): CompositeLifecycleTransactionResult {
     this.validateResolveApprovalInput(input, ['approve_once', 'approve_run', 'approve_workspace']);
+    return this.dependencies.runInTransaction(() => this.resolveApprovalToRunningWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; preserves the existing approval-history binding. */
+  resolveApprovalToRunningWithinTransaction(input: ResolveApprovalToRunningInput): CompositeLifecycleTransactionResult {
+    this.validateResolveApprovalInput(input, ['approve_once', 'approve_run', 'approve_workspace']);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = input.stageId === undefined ? undefined : this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalResolutionBinding(input, run.id);
       this.assertExpectedRunState(run, 'waiting_approval');
@@ -1084,16 +1104,23 @@ export class LifecycleTransactionService {
       );
       const outbox = this.insertOutbox(event, timestamp);
       return this.compositeResult(input.workspaceId, input.runId, [event], [outbox]);
-    });
+    }
   }
 
   resolveApprovalToFailure(input: ResolveApprovalToFailureInput): CompositeLifecycleTransactionResult {
     this.validateResolveApprovalInput(input, ['reject']);
     this.validateFailureInput(input);
+    return this.dependencies.runInTransaction(() => this.resolveApprovalToFailureWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; reject and terminal lifecycle share one commit. */
+  resolveApprovalToFailureWithinTransaction(input: ResolveApprovalToFailureInput): CompositeLifecycleTransactionResult {
+    this.validateResolveApprovalInput(input, ['reject']);
+    this.validateFailureInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalResolutionBinding(input, run.id);
       this.assertExpectedRunState(run, 'waiting_approval');
@@ -1193,7 +1220,7 @@ export class LifecycleTransactionService {
       events.push(runEvent);
       outboxes.push(this.insertOutbox(runEvent, timestamp));
       return this.compositeResult(input.workspaceId, input.runId, events, outboxes);
-    });
+    }
   }
 
   resolveApprovalToCancellation(input: ResolveApprovalToCancellationInput): CompositeLifecycleTransactionResult {
@@ -1202,7 +1229,8 @@ export class LifecycleTransactionService {
     return this.dependencies.runInTransaction(() => this.resolveApprovalToCancellationWithinTransaction(input));
   }
 
-  private resolveApprovalToCancellationWithinTransaction(
+  /** Caller owns BEGIN/COMMIT; cancel and terminal lifecycle share one commit. */
+  resolveApprovalToCancellationWithinTransaction(
     input: ResolveApprovalToCancellationInput,
   ): CompositeLifecycleTransactionResult {
     const expectedRunVersion = this.expectedRunVersion(input);
@@ -1344,6 +1372,58 @@ export class LifecycleTransactionService {
     }
 
     return this.cancelRunWithinTransactionBody(trusted, run.version);
+  }
+
+  /**
+   * Hands proof-backed Operation cancellation evidence to the canonical
+   * lifecycle mutation while remaining inside the caller-owned transaction.
+   * Runtime cleanup and evidence collection happen before this seam is called.
+   */
+  cancelRunForOperationWithEvidenceWithinTransaction(
+    input: CancelRunForOperationWithEvidenceWithinTransactionInput,
+  ): CompositeLifecycleTransactionResult {
+    this.validateOperationCancellationWithEvidenceInput(input);
+    const run = this.requireRun(input.workspaceId, input.runId);
+    if (run.workspaceId !== input.workspaceId) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'Operation Run workspace binding is invalid',
+      );
+    }
+    this.assertExpectedVersion('runs', run.id, run.version, input.expectedRunVersion);
+
+    const trusted: CancelRunInput = {
+      workspaceId: input.workspaceId,
+      runId: run.id,
+      expectedRunVersion: input.expectedRunVersion,
+      correlationId: input.correlationId,
+      ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
+      ...(input.parentEventId === undefined ? {} : { parentEventId: input.parentEventId }),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      requestedBy: 'operation_api',
+      terminatedProcessIds: input.terminatedProcessIds,
+      worktreePreserved: input.worktreePreserved,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+    };
+
+    if (run.status === 'waiting_approval') {
+      const approval = this.discoverOperationApproval(run, input.workspaceId);
+      const approvalStage = approval.stageId === undefined
+        ? undefined
+        : this.requireStage(input.workspaceId, run.id, approval.stageId);
+      const approvalInput = {
+        ...trusted,
+        ...(approvalStage === undefined
+          ? {}
+          : { stageId: approvalStage.id, expectedStageVersion: approvalStage.version }),
+        approvalRequestId: approval.approvalRequestId,
+        decision: 'cancel_run' as const,
+        decidedBy: 'operation_api',
+      } as ResolveApprovalToCancellationInput;
+      return this.resolveApprovalToCancellationWithinTransaction(approvalInput);
+    }
+
+    return this.cancelRunWithinTransactionBody(trusted, input.expectedRunVersion);
   }
 
   cancelRun(input: CancelRunInput): CompositeLifecycleTransactionResult {
@@ -1826,6 +1906,20 @@ export class LifecycleTransactionService {
         'workspaceId, runId, and correlationId are required',
       );
     }
+  }
+
+  private validateOperationCancellationWithEvidenceInput(
+    input: CancelRunForOperationWithEvidenceWithinTransactionInput,
+  ): void {
+    this.validateCompositeCommonInput(input);
+    this.validateRunId(input.runId);
+    if (!Array.isArray(input.terminatedProcessIds) || input.terminatedProcessIds.some(id => !isNonBlankString(id))) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'terminatedProcessIds must contain strings');
+    }
+    if (typeof input.worktreePreserved !== 'boolean') {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'worktreePreserved is required');
+    }
+    this.validateOptionalString(input.reason, 'reason');
   }
 
   private validateCompositeCommonInput(input: CompositeLifecycleInputBase): void {

@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: TD-01 a completed reply streams every delta as a durable checkpoint and finalizes
+ok 1 - TD-01 a completed reply streams every delta as a durable checkpoint and finalizes
+  ---
+  duration_ms: 198.2918
+  type: 'test'
+  ...
+# Subtest: TD-02 a provider failure finalizes failed and preserves the checkpoints
+ok 2 - TD-02 a provider failure finalizes failed and preserves the checkpoints
+  ---
+  duration_ms: 179.1311
+  type: 'test'
+  ...
+# Subtest: TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed
+ok 3 - TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed
+  ---
+  duration_ms: 167.6953
+  type: 'test'
+  ...
+# Subtest: TD-04 an unknown Agent fails closed without reserving a stream
+ok 4 - TD-04 an unknown Agent fails closed without reserving a stream
+  ---
+  duration_ms: 164.2826
+  type: 'test'
+  ...
+# Subtest: TD-05 waiting_user finalizes the Turn final with the question as content
+ok 5 - TD-05 waiting_user finalizes the Turn final with the question as content
+  ---
+  duration_ms: 169.8639
+  type: 'test'
+  ...
+# Subtest: TD-06 a runner crash finalizes failed instead of leaving an open stream
+ok 6 - TD-06 a runner crash finalizes failed instead of leaving an open stream
+  ---
+  duration_ms: 167.5789
+  type: 'test'
+  ...
+# Subtest: LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider
+ok 7 - LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider
+  ---
+  duration_ms: 219.9389
+  type: 'test'
+  ...
+# Subtest: LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider
+ok 8 - LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider
+  ---
+  duration_ms: 186.7501
+  type: 'test'
+  ...
+# Subtest: LITE-09-102 chat refuses while another subject holds the Workspace modifying authority
+ok 9 - LITE-09-102 chat refuses while another subject holds the Workspace modifying authority
+  ---
+  duration_ms: 196.8687
+  type: 'test'
+  ...
+# Subtest: LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable
+ok 10 - LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable
+  ---
+  duration_ms: 193.6105
+  type: 'test'
+  ...
+# Subtest: LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded
+ok 11 - LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded
+  ---
+  duration_ms: 200.9598
+  type: 'test'
+  ...
+# Subtest: LITE-09-109 TD-12 an unchanged source still adopts the summary and records it
+ok 12 - LITE-09-109 TD-12 an unchanged source still adopts the summary and records it
+  ---
+  duration_ms: 201.0961
+  type: 'test'
+  ...
+# Subtest: LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call
+ok 13 - LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call
+  ---
+  duration_ms: 173.9239
+  type: 'test'
+  ...
+# Subtest: LITE-09-101 TD-10 an empty selection injects no context block
+ok 14 - LITE-09-101 TD-10 an empty selection injects no context block
+  ---
+  duration_ms: 174.0509
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2931.5615

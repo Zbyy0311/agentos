@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C afterSequence-only cursor replays strictly greater durable sequences|P5C live durable commits after subscribe are delivered exactly once with the persisted id|LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once)",
+      "src/routes/canonicalRunStream.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/assertions.json",
+      "sha256": "3f8edb12b9ff46a99b8abe9827b206f26018c28656ef7952357a94fcd946dae2"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/execution.json",
+      "sha256": "a021a25537a6e577e911f1f85c5a16b6b982dd9397101426d489363582b6eb42"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/stdout.txt",
+      "sha256": "b43b0da00c863a5dc8cac745def9c64f8a9c5cf10ccd8be6fa43e85a8f13757f"
+    }
+  ],
+  "counts": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "total": 4
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-004-p5c-r06-browser-disconnect-is-subscription-only-run-state-untouched-and-lifecycl-48",
+      "requirementId": "LITE-00-004",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "line": 510,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "a Run survives browser disconnect;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-005-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-49",
+      "requirementId": "LITE-00-005",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-005-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-50",
+      "requirementId": "LITE-00-005",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-009-p5c-r06-browser-disconnect-is-subscription-only-run-state-untouched-and-lifecycl-51",
+      "requirementId": "LITE-02-009",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "line": 510,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "browser disconnect leaves Run and Process active;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-010-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-52",
+      "requirementId": "LITE-02-010",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "reconnect provides gap-free, duplicate-free replay plus live delivery;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-010-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-53",
+      "requirementId": "LITE-02-010",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "reconnect provides gap-free, duplicate-free replay plus live delivery;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-009-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-54",
+      "requirementId": "LITE-03-009",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "reconnect from a real cursor with replay, drain, live continuation, no gaps, and no duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-009-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-55",
+      "requirementId": "LITE-03-009",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "reconnect from a real cursor with replay, drain, live continuation, no gaps, and no duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-010-p5c-r06-browser-disconnect-is-subscription-only-run-state-untouched-and-lifecycl-56",
+      "requirementId": "LITE-03-010",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "line": 510,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "browser disconnect without Run cancellation;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-011-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-57",
+      "requirementId": "LITE-03-011",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "unknown Event and future schema compatibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-011-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-58",
+      "requirementId": "LITE-03-011",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "unknown Event and future schema compatibility;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-019-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-59",
+      "requirementId": "LITE-03-019",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "replay with zero external side effects.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-019-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-60",
+      "requirementId": "LITE-03-019",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "replay with zero external side effects.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-004-p5c-r06-browser-disconnect-is-subscription-only-run-state-untouched-and-lifecycl-61",
+      "requirementId": "LITE-11-004",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "line": 510,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "browser disconnect leaves execution active;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-006-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-62",
+      "requirementId": "LITE-11-006",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Event query/replay/SSE has no gaps or duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-006-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-63",
+      "requirementId": "LITE-11-006",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "Event query/replay/SSE has no gaps or duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-007-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-64",
+      "requirementId": "LITE-11-007",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "bad cursor returns stable validation error;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-007-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-65",
+      "requirementId": "LITE-11-007",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "bad cursor returns stable validation error;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-004-p5c-aftersequence-only-cursor-replays-strictly-greater-durable-sequences-66",
+      "requirementId": "LITE-13-004",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+      "line": 289,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "strict Event order, gap recovery, and deduplication;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-004-p5c-live-durable-commits-after-subscribe-are-delivered-exactly-once-with-the-per-67",
+      "requirementId": "LITE-13-004",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+      "line": 462,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "strict Event order, gap recovery, and deduplication;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-005-lite-04-005-p5c-r06-browser-disconnect-is-subscription-only-run-state-untouched--68",
+      "requirementId": "LITE-04-005",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "line": 510,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "browser disconnect does not cancel Provider execution;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-005-p5c-r06-client-disconnect-unsubscribes-the-runstreamservice-subscription-exactly-69",
+      "requirementId": "LITE-04-005",
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "name": "P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once",
+      "line": 573,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "browser disconnect does not cancel Provider execution;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

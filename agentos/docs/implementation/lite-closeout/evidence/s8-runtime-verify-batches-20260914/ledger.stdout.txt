@@ -1,0 +1,1 @@
+{"rows":205,"candidateSupported":99,"insufficientEvidence":106,"failed":0,"insufficientReasons":{"not-in-batch / no-assertion-parsed":6,"passed / no-clause-match":99,"not-clean / no-clause-match":1}}

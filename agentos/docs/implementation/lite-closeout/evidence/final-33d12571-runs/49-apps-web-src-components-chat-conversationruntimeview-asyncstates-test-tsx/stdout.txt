@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: LITE-12-007 the empty state is named, never rendered as a blank surface
+ok 1 - LITE-12-007 the empty state is named, never rendered as a blank surface
+  ---
+  duration_ms: 11.8912
+  type: 'test'
+  ...
+# Subtest: LITE-12-007 the error state is an announced alert, not silence
+ok 2 - LITE-12-007 the error state is an announced alert, not silence
+  ---
+  duration_ms: 3.2602
+  type: 'test'
+  ...
+# Subtest: LITE-12-007 every state renders without throwing, so no state is unreachable
+ok 3 - LITE-12-007 every state renders without throwing, so no state is unreachable
+  ---
+  duration_ms: 14.057
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 233.9627

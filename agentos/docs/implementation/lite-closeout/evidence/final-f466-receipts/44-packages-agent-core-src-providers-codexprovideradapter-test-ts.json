@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/providers/codexProviderAdapter.test.ts"
+    ]
+  },
+  "cwd": "packages/agent-core",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/44-packages-agent-core-src-providers-codexprovideradapter-test-ts/assertions.json",
+      "sha256": "91ece275f2b9b0e81ffa2f7c3a8d1874ae04879f665e811a50217b9e6a60e315"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/44-packages-agent-core-src-providers-codexprovideradapter-test-ts/execution.json",
+      "sha256": "456cf553af5a47194e3ad5ecab73e6464f585995b89d211e5c54ecf624c6cd71"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/44-packages-agent-core-src-providers-codexprovideradapter-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/44-packages-agent-core-src-providers-codexprovideradapter-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/44-packages-agent-core-src-providers-codexprovideradapter-test-ts/stdout.txt",
+      "sha256": "f302232771f3e0f374da24341b93f5a2bf367f5e81b0576b0ec8dff8f744dd39"
+    }
+  ],
+  "counts": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "total": 5
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-315",
+      "requirementId": "LITE-04-001",
+      "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+      "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+      "line": 194,
+      "expression": "expect(types).toEqual([",
+      "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-316",
+      "requirementId": "LITE-04-003",
+      "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+      "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+      "line": 194,
+      "expression": "expect(types).toEqual([",
+      "clause": "Kimi Code invocation does not route through OpenCode;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

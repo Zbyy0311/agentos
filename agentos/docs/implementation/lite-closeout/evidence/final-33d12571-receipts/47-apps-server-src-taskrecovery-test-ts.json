@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction)",
+      "src/taskRecovery.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/assertions.json",
+      "sha256": "e545bc558938f239b60e7ab21b63faa054ae9e644a5390d4c9b762c0fc4ef0df"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/execution.json",
+      "sha256": "ccfbb526b81d6385220d74e95fb7eb6ffb53fd707b508e84a64a9ed3cf356263"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/stdout.txt",
+      "sha256": "6f88484a24b1f0a29cf8af5a28f68377b0d4eb2f51079b4f14515b5832fe9d5a"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A1",
+      "requirementId": "LITE-05-011",
+      "file": "apps/server/src/taskRecovery.test.ts",
+      "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+      "line": 745,
+      "expression": "assert.ok(callsAfterPreflight > 0, 'preflight must have invoked the verifier');",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A2",
+      "requirementId": "LITE-05-011",
+      "file": "apps/server/src/taskRecovery.test.ts",
+      "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+      "line": 748,
+      "expression": "assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A3",
+      "requirementId": "LITE-05-011",
+      "file": "apps/server/src/taskRecovery.test.ts",
+      "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+      "line": 749,
+      "expression": "assert.equal(insideTransactionCalls, 0, 'OS probing must stay outside the SQLite write transaction');",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

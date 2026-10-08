@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   M3_CORE_EVENT_DEFINITIONS,
+  M4_PROCESS_EVENT_DEFINITIONS,
   M3_MULTI_EVENT_ORDERING_CONTRACTS,
   M3_OPERATION_STATUSES,
   M3_RUN_STATUSES,
@@ -114,11 +115,13 @@ test('uses the canonical Stage status set and keeps Migration 009 pending compat
   assert.equal(M3_STAGE_STATUSES.includes('blocked' as never), false);
 });
 
-test('uses the exact EventSource protocol and rejects underscore values', () => {
-  assert.deepEqual(RUNTIME_EVENT_SOURCES, [
-    'run-engine',
-    'scheduler',
-    'workflow-executor',
+  test('uses the exact EventSource protocol and rejects underscore values', () => {
+    // Historical M3/M4 sources are preserved verbatim and in order; P6-L1A adds
+    // the additive 'workspace-admission' source for Workspace Admission events.
+    const historicalSources = [
+      'run-engine',
+      'scheduler',
+      'workflow-executor',
     'stage-executor',
     'provider-adapter',
     'process-manager',
@@ -130,10 +133,19 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
     'artifact-manager',
     'usage-aggregator',
     'recovery-manager',
-    'conversation-service',
-    'extension',
-    'system',
-  ]);
+      'conversation-service',
+      'extension',
+      'system',
+    ];
+    for (const source of historicalSources) {
+      assert.ok((RUNTIME_EVENT_SOURCES as readonly string[]).includes(source));
+    }
+    // The historical block is contiguous and unchanged at the head of the list.
+    assert.deepEqual(
+      (RUNTIME_EVENT_SOURCES as readonly string[]).filter(s => historicalSources.includes(s)),
+      historicalSources,
+    );
+    assert.ok((RUNTIME_EVENT_SOURCES as readonly string[]).includes('workspace-admission'));
 
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
@@ -148,8 +160,17 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
   );
 });
 
-test('registers the complete M3 Event set with frozen domains and metadata', () => {
-  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream']);
+  test('registers the complete M3 Event set with frozen domains and metadata', () => {
+    // Historical M3 domains are preserved verbatim and in order; P6-L1A adds the
+    // additive workspace / git / artifact domains.
+    const historicalDomains = ['run', 'stage', 'approval', 'stream', 'process'];
+    assert.deepEqual(
+      (RUNTIME_EVENT_DOMAINS as readonly string[]).filter(d => historicalDomains.includes(d)),
+      historicalDomains,
+    );
+    for (const domain of ['workspace', 'git', 'artifact']) {
+      assert.ok((RUNTIME_EVENT_DOMAINS as readonly string[]).includes(domain));
+    }
   const expectedTypes = [
     'run.created',
     'run.queued',
@@ -195,6 +216,152 @@ test('registers the complete M3 Event set with frozen domains and metadata', () 
   assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
   assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
   assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('registers the additive P2B Process fact definitions without changing M3 lifecycle types', () => {
+  const registry = createM3RuntimeEventRegistry();
+  assert.equal(M4_PROCESS_EVENT_DEFINITIONS.length, 13);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.length, 26);
+  for (const definition of M4_PROCESS_EVENT_DEFINITIONS) {
+    assert.equal(registry.get(definition.type)?.domain, 'process');
+    assert.equal(registry.get(definition.type)?.source, 'process-manager');
+    assert.equal(registry.get(definition.type)?.defaultDurability, 'durable');
+  }
+
+  const base = {
+    id: 'evt_01J4P2B0000000000000000000',
+    schemaVersion: 1,
+    workspaceId: 'ws_01J4P2B0000000000000000000',
+    taskId: 'task_01J4P2B0000000000000000000',
+    runId: 'run_01J4P2B0000000000000000000',
+    stageId: 'stage_01J4P2B0000000000000000000',
+    processId: 'proc_01J4P2B0000000000000000000',
+    providerSessionId: 'psess_01J4P2B0000000000000000000',
+    sequence: 1,
+    timestamp: '2026-08-14T00:00:00.000Z',
+    source: 'process-manager' as const,
+    correlationId: 'm4-p2b-test',
+    payload: {
+      stageAttempt: 1,
+      authorityRole: 'primary-provider',
+      claimEpoch: 1,
+      runtimeMode: 'cli',
+    },
+    type: 'process.session_claimed',
+  };
+  const sessionEvent = registry.publish(base);
+  assert.equal(sessionEvent.type, 'process.session_claimed');
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000001',
+      processId: undefined,
+      payload: {
+        processType: 'provider',
+        executable: 'tool',
+        argsRedacted: [],
+        cwd: 'workspace',
+        shell: false,
+        timeoutPolicyDigest: '0'.repeat(64),
+        claimEpoch: 1,
+      },
+      type: 'process.launch_requested',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_PROCESS_ID',
+  );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000002',
+      stageId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        processType: 'provider',
+        executable: 'safe:sha256:abc',
+        argsRedacted: [],
+        cwd: 'safe:sha256:def',
+        shell: false,
+        timeoutPolicyDigest: '0'.repeat(64),
+        claimEpoch: 1,
+        authorityRole: 'primary-provider',
+      },
+      type: 'process.launch_requested',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_STAGE_ID',
+  );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000003',
+      stageId: undefined,
+      processId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        claimEpoch: 2,
+        authorityRole: 'primary-provider',
+        ownerChanged: true,
+      },
+      type: 'process.claim_transferred',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'MISSING_PROCESS_OR_SESSION_ID',
+  );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000004',
+      stageId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        stream: 'stdout',
+        artifactId: 'artifact_01J4P2B0000000000000000000',
+        priorSourceOffset: 0,
+        nextSourceOffset: 1,
+        retainedBytes: 1,
+        segmentCount: 1,
+        truncated: false,
+        finalized: false,
+      },
+      type: 'process.output_reference_advanced',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_ARTIFACT_ID',
+  );
+});
+
+test('freezes published nested payload and metadata without freezing the caller draft', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const draft = {
+    id: 'evt_01J4P2B0000000000000000010',
+    schemaVersion: 1,
+    type: 'approval.required',
+    workspaceId: 'ws_01J4P2B0000000000000000000',
+    runId: 'run_01J4P2B0000000000000000000',
+    approvalRequestId: 'approval_01J4P2B0000000000000000000',
+    sequence: 1,
+    timestamp: '2026-08-14T00:00:00.000Z',
+    source: 'approval-service' as const,
+    correlationId: 'run_01J4P2B0000000000000000000',
+    payload: {
+      category: 'command',
+      riskLevel: 'low',
+      title: 'approve',
+      description: 'approve',
+      requestSummary: { nested: { value: 'safe' } },
+    },
+    metadata: { nested: { value: 'safe' } },
+  } satisfies RuntimeEventDraft;
+  const event = registry.publish(draft);
+  assert.equal(Object.isFrozen(event.payload), true);
+  assert.equal(Object.isFrozen((event.payload as { requestSummary: object }).requestSummary), true);
+  assert.equal(Object.isFrozen(event.metadata), true);
+  assert.notEqual(event.payload, draft.payload);
+  assert.throws(() => {
+    ((event.payload as { requestSummary: { nested: { value: string } } }).requestSummary.nested.value) = 'mutated';
+  }, TypeError);
+  assert.equal((draft.payload.requestSummary.nested as { value: string }).value, 'safe');
 });
 
 test('registers and strictly validates the P6C stream text Events', () => {
@@ -983,10 +1150,13 @@ test('validates canonical run.created, run.started, and stage.started payloads',
   assert.ok(Array.isArray(fixtures.validStageStartedEvent.payload.providerSnapshot.argsTemplate));
 });
 
-test('rejects illegal payloads and missing Stage envelope association', () => {
+test('LITE-03-001 rejects illegal payloads and missing Stage envelope association', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
+  const accepted = registry.publish(fixtures.validRunStartedEvent);
+  assert.equal(accepted.id, fixtures.validRunStartedEvent.id);
+  assert.equal(accepted.type, fixtures.validRunStartedEvent.type);
   assert.throws(
     () => registry.publish(fixtures.invalidPayload),
     (error: unknown) => error instanceof RuntimeEventRegistryError
@@ -1006,6 +1176,22 @@ test('rejects illegal payloads and missing Stage envelope association', () => {
     () => registry.publish(fixtures.invalidStageEnvelope),
     (error: unknown) => error instanceof RuntimeEventRegistryError
       && error.code === 'MISSING_STAGE_ID',
+  );
+});
+
+test('LITE-03-001 maps envelope and payload failures to distinct stable errors', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidSchemaVersion),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_SCHEMA_VERSION',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidPayload),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
   );
 });
 

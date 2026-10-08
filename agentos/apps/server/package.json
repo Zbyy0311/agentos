@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:workspace-deps": "pnpm --filter @agentos/shared build && pnpm --filter @agentos/agent-core build",
+    "build:workspace-deps": "pnpm --filter @agentos/shared build && pnpm --filter @agentos/process-runtime build && pnpm --filter @agentos/agent-core build",
     "dev": "pnpm run build:workspace-deps && node --disable-warning=ExperimentalWarning -e \"process.argv.splice(1, 0, 'tsx'); import('tsx/cli')\" -- watch --exclude \"../../workspace/**\" --exclude \"../../.agentos/**\" --exclude \"../../agent-memory/**\" src/index.ts",
     "dev:stable": "pnpm run build:workspace-deps && node --disable-warning=ExperimentalWarning --import tsx src/index.ts",
-    "build": "pnpm run build:workspace-deps && tsc",
+    "build": "pnpm run build:workspace-deps && tsc && node scripts/write-build-identity.mjs",
     "test": "pnpm run build:workspace-deps && node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "start": "node --disable-warning=ExperimentalWarning dist/index.js",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@agentos/agent-core": "workspace:*",
+    "@agentos/process-runtime": "workspace:*",
     "@agentos/shared": "workspace:*",
     "cors": "^2.8.5",
     "express": "^4.19.2",

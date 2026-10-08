@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s5-group\\receipts.json"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

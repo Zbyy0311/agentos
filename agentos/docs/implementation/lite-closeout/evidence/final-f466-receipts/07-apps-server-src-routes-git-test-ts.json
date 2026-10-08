@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-06-011 the Git surface observes only and its wording claims no ownership)",
+      "src/routes/git.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/07-apps-server-src-routes-git-test-ts/assertions.json",
+      "sha256": "e1360b01aaf207f4383891048b6bdaec8baf189be079452c943ea27799c14007"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/07-apps-server-src-routes-git-test-ts/execution.json",
+      "sha256": "9ec86f960ab0fef97f122d028256452c99c0e2b6ed1c27059a3b3e56f46cb7d5"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/07-apps-server-src-routes-git-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/07-apps-server-src-routes-git-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/07-apps-server-src-routes-git-test-ts/stdout.txt",
+      "sha256": "03751bf0c43e3c1324348e4480f7bc480d34ad1a116277681b67ce43a33025ff"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-011-lite-06-011-the-git-surface-observes-only-and-its-wording-claims-no-ownership-70",
+      "requirementId": "LITE-00-011",
+      "file": "apps/server/src/routes/git.test.ts",
+      "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership",
+      "line": 68,
+      "expression": "assert.equal(response.status, 200, `${route} is served as an observation`);",
+      "clause": "Git changes are observable without AgentOS owning Git workflow execution;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-017-lite-06-011-the-git-surface-observes-only-and-its-wording-claims-no-ownership-71",
+      "requirementId": "LITE-03-017",
+      "file": "apps/server/src/routes/git.test.ts",
+      "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership",
+      "line": 68,
+      "expression": "assert.equal(response.status, 200, `${route} is served as an observation`);",
+      "clause": "Git observation wording that does not imply Git ownership;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-005-lite-06-011-the-git-surface-observes-only-and-its-wording-claims-no-ownership-72",
+      "requirementId": "LITE-06-005",
+      "file": "apps/server/src/routes/git.test.ts",
+      "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership",
+      "line": 68,
+      "expression": "assert.equal(response.status, 200, `${route} is served as an observation`);",
+      "clause": "Git root, cwd, base/final commit, status, changed files, and diff Artifact are recorded without ownership claims;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-006-lite-06-011-the-git-surface-observes-only-and-its-wording-claims-no-ownership-73",
+      "requirementId": "LITE-06-006",
+      "file": "apps/server/src/routes/git.test.ts",
+      "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership",
+      "line": 68,
+      "expression": "assert.equal(response.status, 200, `${route} is served as an observation`);",
+      "clause": "non-Git Workspaces report `not-git` without silent fallback;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-011-lite-06-011-the-git-surface-observes-only-and-its-wording-claims-no-ownership-74",
+      "requirementId": "LITE-06-011",
+      "file": "apps/server/src/routes/git.test.ts",
+      "name": "LITE-06-011 the Git surface observes only and its wording claims no ownership",
+      "line": 68,
+      "expression": "assert.equal(response.status, 200, `${route} is served as an observation`);",
+      "clause": "Git observation wording never implies AgentOS-owned Git workflow.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+passed      apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts  rows=0  5 pass / 0 fail / 0 skip  exit=0  897ms
+passed      packages/shared/p6-l1c-git-observation-contract.test.ts  rows=0  26 pass / 0 fail / 0 skip  exit=0  307ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-3.json
+batches=2 passed=2 failed=0 provableRequirements=0/0

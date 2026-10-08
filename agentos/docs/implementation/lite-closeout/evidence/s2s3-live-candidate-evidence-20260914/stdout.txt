@@ -1,0 +1,2 @@
+S2S3_LIVE_CANDIDATE_EVIDENCE: passed
+  model=deepseek/deepseek-v4-flash receipts=13 passed=13 failed=0

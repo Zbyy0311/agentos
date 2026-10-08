@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-12-101-lite-12-101-the-workbench-exposes-agent-selection-and-conversation-creation-cont-334-A1",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+    "name": "LITE-12-101 the workbench exposes Agent selection and Conversation creation controls",
+    "line": 92,
+    "expression": "assert.ok(markup.includes('data-agent=\"agent_a\"'));",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-101-the-workbench-exposes-agent-selection-and-conversation-creation-cont-334-A2",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+    "name": "LITE-12-101 the workbench exposes Agent selection and Conversation creation controls",
+    "line": 93,
+    "expression": "assert.ok(markup.includes('data-agentos=\"new-conversation\"'));",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-101-the-workbench-exposes-agent-selection-and-conversation-creation-cont-334-A3",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+    "name": "LITE-12-101 the workbench exposes Agent selection and Conversation creation controls",
+    "line": 94,
+    "expression": "assert.ok(markup.includes('role=\"list\"'));",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

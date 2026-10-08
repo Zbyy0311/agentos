@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "--out",
+      "C:/Users/Administrator/AppData/Local/Temp/agentos-lite-debug-07003b"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

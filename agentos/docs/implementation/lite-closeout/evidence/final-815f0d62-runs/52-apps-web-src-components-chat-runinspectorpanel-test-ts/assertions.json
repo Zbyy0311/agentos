@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-13-005-lite-13-005-inspector-refresh-replaces-the-bounded-projection-instead-of-appendi-336",
+    "requirementId": "LITE-13-005",
+    "file": "apps/web/src/components/chat/RunInspectorPanel.test.ts",
+    "name": "LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state",
+    "line": 24,
+    "expression": "assert.strictEqual(refreshed, next);",
+    "clause": "bounded output without unbounded client state;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

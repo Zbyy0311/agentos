@@ -2,6 +2,7 @@ import type { AgentProvider } from '@agentos/shared';
 import { probeCodexCli, codexCapabilities, EMPTY_ADAPTER_CAPABILITIES, type CodexProbeResult } from './capabilityProbe.js';
 import { CodexAdapter } from './codexAdapter.js';
 import { KimiAdapter } from './kimiAdapter.js';
+import { OpenCodeAdapter } from './opencodeAdapter.js';
 import { PlainTextAdapter } from './plainTextAdapter.js';
 import type { AgentCliAdapter, NormalizedCliEvent, ProviderProbeResult, ResolvedRuntime } from './types.js';
 
@@ -28,12 +29,13 @@ interface RegistryOptions {
 export class AgentCliAdapterRegistry {
   private readonly codex = new CodexAdapter();
   private readonly kimi = new KimiAdapter();
+  private readonly opencode = new OpenCodeAdapter();
   private readonly plain = new PlainTextAdapter();
   private readonly adapters: AgentCliAdapter[];
   private readonly probe?: (command: string) => Promise<ProviderProbeResult | LegacyCodexProbeResult>;
 
   constructor(options: RegistryOptions = {}) {
-    this.adapters = [this.codex, this.kimi, ...(options.adapters ?? [])];
+    this.adapters = [this.codex, this.kimi, this.opencode, ...(options.adapters ?? [])];
     this.probe = options.probe;
   }
 
@@ -54,8 +56,14 @@ export class AgentCliAdapterRegistry {
     const structuredAvailable = probe.status === 'AVAILABLE'
       && probe.capabilities.structuredOutput
       && (request.configuredProvider === 'codex' || detectedProvider === request.configuredProvider || Boolean(detectedAdapter));
+    const openCodePlainTextAvailable = request.configuredProvider === 'opencode'
+      && configuredAdapter?.provider === 'opencode'
+      && probe.status === 'AVAILABLE'
+      && !mismatch;
     const adapter = structuredAvailable
       ? (mismatch ? detectedAdapter : configuredAdapter) ?? this.plain
+      : openCodePlainTextAvailable
+        ? configuredAdapter
       : this.plain;
     const runtime: ResolvedRuntime = {
       configuredProvider: request.configuredProvider,

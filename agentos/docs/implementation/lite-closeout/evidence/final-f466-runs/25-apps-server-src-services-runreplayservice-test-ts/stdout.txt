@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings
+ok 1 - P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings
+  ---
+  duration_ms: 157.4147
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 570.5123

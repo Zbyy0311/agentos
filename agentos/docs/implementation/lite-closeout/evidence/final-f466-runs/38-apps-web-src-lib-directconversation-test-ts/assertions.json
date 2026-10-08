@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-291",
+    "requirementId": "LITE-12-005",
+    "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+    "line": 44,
+    "expression": "assert.equal(",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-292",
+    "requirementId": "LITE-12-006",
+    "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+    "line": 44,
+    "expression": "assert.equal(",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-293",
+    "requirementId": "LITE-12-008",
+    "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+    "line": 143,
+    "expression": "assert.equal(",
+    "clause": "explicit Chat/Task/Run actions;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

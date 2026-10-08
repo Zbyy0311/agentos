@@ -1,0 +1,11 @@
+▶ RunEngineProviderDispatcher E2E
+  ✔ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (27631.9956ms)
+✔ RunEngineProviderDispatcher E2E (27633.5613ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29036.6161

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "LITE-04-007-declares-every-canonical-capability-as-an-explicit-boolean-304",
+    "requirementId": "LITE-04-007",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 120,
+    "expression": "expect(",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-every-capability-declared-true-in-the-adapter-real-output-305",
+    "requirementId": "LITE-04-007",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 137,
+    "expression": "expect(",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-no-capability-declared-false-in-the-adapter-real-output-306",
+    "requirementId": "LITE-04-007",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 160,
+    "expression": "expect(",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-declares-every-canonical-capability-as-an-explicit-boolean-307",
+    "requirementId": "LITE-06-004",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 120,
+    "expression": "expect(",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-every-capability-declared-true-in-the-adapter-real-output-308",
+    "requirementId": "LITE-06-004",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 137,
+    "expression": "expect(",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-no-capability-declared-false-in-the-adapter-real-output-309",
+    "requirementId": "LITE-06-004",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 160,
+    "expression": "expect(",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

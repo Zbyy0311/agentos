@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/providers/validation.test.ts"
+    ]
+  },
+  "cwd": "packages/agent-core",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/assertions.json",
+      "sha256": "e1120911a9475e32da6bcdd196623ba7568ed0703ebe6a09acd10d4eab8c14ff"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/execution.json",
+      "sha256": "d43b4ecacb93c2faa0dae3b99f026ee04dfdad8922b7396dc2d993f25792a9d5"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/68-packages-agent-core-src-providers-validation-test-ts/stdout.txt",
+      "sha256": "a0c200ad95895f2e529d061508aa741abd93e8ed9d667bae474867069ff4c35d"
+    }
+  ],
+  "counts": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "total": 8
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409",
+      "requirementId": "LITE-04-010",
+      "file": "packages/agent-core/src/providers/validation.test.ts",
+      "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+      "line": 135,
+      "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+      "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410",
+      "requirementId": "LITE-08-003",
+      "file": "packages/agent-core/src/providers/validation.test.ts",
+      "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+      "line": 135,
+      "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+      "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411",
+      "requirementId": "LITE-08-010",
+      "file": "packages/agent-core/src/providers/validation.test.ts",
+      "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+      "line": 135,
+      "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+      "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

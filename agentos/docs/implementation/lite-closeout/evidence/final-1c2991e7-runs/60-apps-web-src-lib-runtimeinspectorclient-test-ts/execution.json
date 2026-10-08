@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-13-102 Inspector client encodes the workspace and Run route|LITE-13-102 Inspector client uses versioned action APIs and idempotency keys)",
+      "src/lib/runtimeInspectorClient.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

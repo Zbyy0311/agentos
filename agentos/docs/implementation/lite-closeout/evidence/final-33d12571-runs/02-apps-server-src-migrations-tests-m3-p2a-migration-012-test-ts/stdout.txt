@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: Migration 012 checksum, order, repeat run and existing idempotency data are stable
+ok 1 - Migration 012 checksum, order, repeat run and existing idempotency data are stable
+  ---
+  duration_ms: 85.9849
+  type: 'test'
+  ...
+# Subtest: all Migration 012 foreign keys and integrity checks pass
+ok 2 - all Migration 012 foreign keys and integrity checks pass
+  ---
+  duration_ms: 45.782
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 289.9713

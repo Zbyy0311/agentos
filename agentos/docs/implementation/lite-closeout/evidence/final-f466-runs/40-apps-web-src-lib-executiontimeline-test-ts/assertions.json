@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-12-005-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-299",
+    "requirementId": "LITE-12-005",
+    "file": "apps/web/src/lib/executionTimeline.test.ts",
+    "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+    "line": 23,
+    "expression": "assert.deepEqual(visible.map(item => item.id), ['queued', 'stream-3', 'completed']);",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-lite-09-008-projects-repeated-streaming-chunks-for-one-execution-into-one-timeli-300",
+    "requirementId": "LITE-12-006",
+    "file": "apps/web/src/lib/executionTimeline.test.ts",
+    "name": "LITE-09-008 projects repeated streaming chunks for one execution into one timeline card",
+    "line": 23,
+    "expression": "assert.deepEqual(visible.map(item => item.id), ['queued', 'stream-3', 'completed']);",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

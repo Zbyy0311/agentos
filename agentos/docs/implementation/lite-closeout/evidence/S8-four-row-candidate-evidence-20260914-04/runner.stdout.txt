@@ -1,0 +1,5 @@
+Candidate route model: codex=deepseek/deepseek-flash
+Candidate route model: kimi=opencodex/deepseek/deepseek-flash
+Candidate route model: opencode=deepseek/deepseek-v4-flash
+Server started: label=pre pid=91808 port=3201
+Node command exit=1 stdout=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-04\candidate-evidence\prepare.stdout.txt stderr=E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\docs\implementation\lite-closeout\evidence\S8-four-row-candidate-evidence-20260914-04\candidate-evidence\prepare.stderr.txt

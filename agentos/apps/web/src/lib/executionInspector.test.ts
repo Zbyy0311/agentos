@@ -39,7 +39,7 @@ test('projects the latest running tool into the current action and keeps its fil
 
   assert.deepEqual(summary.currentAction, {
     state: 'working',
-    label: 'Working',
+    label: '执行中',
     detail: '正在读取',
     target: 'packages/agent-core/src/executor.ts',
   });
@@ -69,7 +69,7 @@ test('merges tool completion, usage, and file changes into compact run evidence'
   assert.equal(summary.tools[0]?.status, 'success');
   assert.equal(summary.tools[0]?.durationMs, 300);
   assert.deepEqual(summary.usage, { inputTokens: 8000, outputTokens: 4400, totalTokens: 12400 });
-  assert.deepEqual(summary.files, { added: 1, removed: 0, changed: 2 });
+  assert.deepEqual(summary.files, { added: 1, removed: 0, changed: 2, observed: true });
   assert.equal(summary.durationMs, 151000);
 });
 
@@ -91,9 +91,15 @@ test('falls back to execution status when no structured runtime event exists', (
 
   assert.deepEqual(summary.currentAction, {
     state: 'working',
-    label: 'Working',
+    label: '执行中',
     detail: '准备上下文',
   });
   assert.deepEqual(summary.tools, []);
   assert.equal(summary.durationMs, undefined);
+});
+
+test('keeps cancelled distinct from failed and marks missing file observation', () => {
+  const summary = summarizeExecutionInspector({ status: 'cancelled', events: [], runtimeEvents: [] });
+  assert.deepEqual(summary.currentAction, { state: 'cancelled', label: '已取消', detail: '执行已取消' });
+  assert.deepEqual(summary.files, { added: 0, removed: 0, changed: 0, observed: false });
 });

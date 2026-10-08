@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/providers/providerErrorRetryability.test.ts"
+    ]
+  },
+  "cwd": "packages/agent-core",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/assertions.json",
+      "sha256": "5a5f2c2afc11e5699864a811a13abcf9ff294cd0cb922fd231ed006b9e11a9a9"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/execution.json",
+      "sha256": "263be23c9411e3e34bea3041867be78dd5613d7b324a5e602751db2ea337e9dd"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/stdout.txt",
+      "sha256": "9e1c6cb2d81b68434020b3f6c22076a018c21ed5752c6a6e7698bd0c9fbec6a8"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-04-006-lite-04-002-lite-04-006-classifies-every-production-adapter-identically-for-auth-406",
+      "requirementId": "LITE-04-006",
+      "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+      "name": "LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures",
+      "line": 49,
+      "expression": "expect({ adapter: adapter.name, input: testCase.input, code: normalized.code })",
+      "clause": "errors normalize to stable codes with retryability;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-407",
+      "requirementId": "LITE-04-006",
+      "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+      "name": "always reports retryability as an explicit boolean, never as an absence",
+      "line": 60,
+      "expression": "expect(typeof normalized.retryable).toBe('boolean');",
+      "clause": "errors normalize to stable codes with retryability;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-006-keeps-a-normalized-error-idempotent-through-re-normalization-408",
+      "requirementId": "LITE-04-006",
+      "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+      "name": "keeps a normalized error idempotent through re-normalization",
+      "line": 71,
+      "expression": "expect(twice.code).toBe(once.code);",
+      "clause": "errors normalize to stable codes with retryability;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,233 @@
+[
+  {
+    "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-106-A1",
+    "requirementId": "LITE-13-007",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+    "line": 191,
+    "expression": "assert.ok(gitProcess, 'the Git process is projected as its own observed process');",
+    "clause": "Git wording never implies ownership;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-106-A2",
+    "requirementId": "LITE-13-007",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+    "line": 192,
+    "expression": "assert.equal(JSON.parse(gitProcess!.argsRedacted)[0], 'status',",
+    "clause": "Git wording never implies ownership;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-106-A3",
+    "requirementId": "LITE-13-007",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+    "line": 196,
+    "expression": "assert.equal(new RegExp('\\\\b' + mutation + '\\\\b', 'i').test(serialized), false,",
+    "clause": "Git wording never implies ownership;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-007-lite-13-007-the-inspector-describes-git-work-as-observation-and-offers-no-git-mu-106-A4",
+    "requirementId": "LITE-13-007",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+    "line": 199,
+    "expression": "assert.equal(/ownership of git|agentos-owned git|agentos owns/i.test(serialized), false,",
+    "clause": "Git wording never implies ownership;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-009-lite-13-009-the-inspector-is-read-only-and-carries-no-process-control-field-107-A1",
+    "requirementId": "LITE-13-009",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+    "line": 150,
+    "expression": "assert.equal((await fetch(inspectorUrl)).status, 200, 'the read is served');",
+    "clause": "no reattach/takeover/direct-kill control;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-009-lite-13-009-the-inspector-is-read-only-and-carries-no-process-control-field-107-A2",
+    "requirementId": "LITE-13-009",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+    "line": 153,
+    "expression": "assert.equal(response.status, 404,",
+    "clause": "no reattach/takeover/direct-kill control;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-009-lite-13-009-the-inspector-is-read-only-and-carries-no-process-control-field-107-A3",
+    "requirementId": "LITE-13-009",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+    "line": 168,
+    "expression": "assert.deepEqual(controlKeys, [], 'the Inspector DTO exposes no control field');",
+    "clause": "no reattach/takeover/direct-kill control;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A1",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 113,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A2",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 116,
+    "expression": "assert.equal(raw.includes(canary), false, `secret canary leaked into the DTO: ${canary}`);",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A3",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 120,
+    "expression": "assert.deepEqual(Object.keys(body.projection).sort(), [",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A4",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 125,
+    "expression": "assert.equal(processes.length, 1);",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A5",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 128,
+    "expression": "assert.equal(processKeys.includes(forbidden), false,",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A6",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 133,
+    "expression": "assert.equal(processes[0]!.argsRedacted, JSON.stringify(['exec', '--model', '[redacted]']));",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-013-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-108-A7",
+    "requirementId": "LITE-13-013",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 134,
+    "expression": "assert.equal(processes[0]!.processType, 'provider');",
+    "clause": "no secrets in DTOs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A1",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 113,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A2",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 116,
+    "expression": "assert.equal(raw.includes(canary), false, `secret canary leaked into the DTO: ${canary}`);",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A3",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 120,
+    "expression": "assert.deepEqual(Object.keys(body.projection).sort(), [",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A4",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 125,
+    "expression": "assert.equal(processes.length, 1);",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A5",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 128,
+    "expression": "assert.equal(processKeys.includes(forbidden), false,",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A6",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 133,
+    "expression": "assert.equal(processes[0]!.argsRedacted, JSON.stringify(['exec', '--model', '[redacted]']));",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-011-lite-13-013-the-inspector-projection-exposes-no-secret-material-and-a-frozen-key-109-A7",
+    "requirementId": "LITE-04-011",
+    "file": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+    "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+    "line": 134,
+    "expression": "assert.equal(processes[0]!.processType, 'provider');",
+    "clause": "secrets are absent from Events, Snapshots, and debug bundles;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

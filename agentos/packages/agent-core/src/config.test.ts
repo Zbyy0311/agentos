@@ -85,9 +85,16 @@ describe('CLI capabilities', () => {
   it('only exposes verified thinking effort values', async () => {
     const { getCliCapability } = await import('./capabilities.js');
 
-    expect(getCliCapability('kimi').thinkingEffortValues).toEqual(['auto']);
+    expect(getCliCapability('kimi')).toMatchObject({
+      thinkingEffortMode: 'env',
+      thinkingEffortValues: ['auto', 'low', 'medium', 'high', 'max'],
+    });
     expect(getCliCapability('unknown-agent').thinkingEffortValues).toEqual(['auto']);
-    expect(getCliCapability('codex').thinkingEffortValues).toEqual(['auto', 'low', 'medium', 'high']);
+    expect(getCliCapability('codex').thinkingEffortValues).toEqual(['auto', 'low', 'medium', 'high', 'max']);
+    expect(getCliCapability('opencode')).toMatchObject({
+      thinkingEffortMode: 'arg',
+      thinkingEffortValues: ['auto', 'low', 'medium', 'high', 'max'],
+    });
   });
 
   it('keeps a Codex fallback on the Codex capability mapping', async () => {
@@ -96,7 +103,7 @@ describe('CLI capabilities', () => {
     expect(getAgentCapability('opencode', 'codex', 'fallback-model')).toMatchObject({
       cliKind: 'codex',
       models: ['fallback-model'],
-      thinkingEfforts: ['auto', 'low', 'medium', 'high'],
+      thinkingEfforts: ['auto', 'low', 'medium', 'high', 'max'],
       defaultThinkingEffort: 'auto',
     });
   });

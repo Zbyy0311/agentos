@@ -1,0 +1,225 @@
+/**
+ * M4-P4 additive production composition: wires the provider execution chain
+ * over one SqliteStore. No default switch / cutover: this factory is only
+ * the composition point for an authorized background dispatcher.
+ */
+import {
+  DurableProcessCoordinator,
+  FileArtifactSink,
+  NodeProcessDriver,
+  NodeProcessProbePort,
+} from '@agentos/process-runtime';
+import type { ProcessProbePort } from '@agentos/process-runtime';
+import {
+  CodexProviderAdapter,
+  KimiCodeProviderAdapter,
+  OpenCodeProviderAdapter,
+  ProviderRegistry,
+} from '@agentos/agent-core/providers';
+import type { SqliteStore } from '../../store/SqliteStore.js';
+
+import {
+  DurableOutputReferenceRepositoryAdapter,
+  DurableProcessRepositoryAdapter,
+  DurableSessionRepositoryAdapter,
+} from '../../store/process-runtime-adapters.js';
+import { RunEngine } from './RunEngine.js';
+import { StageExecutor } from './StageExecutor.js';
+import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
+import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
+import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
+import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
+import { MemoryContextResolver } from '../MemoryContextResolver.js';
+import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
+import { VerifiedMemoryFactService } from '../VerifiedMemoryFactService.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from '../MemoryRetrievalRuntime.js';
+import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
+import { MemoryRuntimeEventEmitter } from '../MemoryRuntimeEventEmitter.js';
+import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEventContextAuthority.js';
+import { CanonicalArtifactResultService } from '../CanonicalArtifactResultService.js';
+import { RuntimeArtifactService } from '../RuntimeArtifactService.js';
+import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
+import type { CollaborationStageHooks } from '../CollaborationStageHooks.js';
+import { dirname } from 'node:path';
+
+export interface ProviderExecutionChainOptions {
+  readonly store: SqliteStore;
+  readonly artifactRoot: string;
+  readonly workspaceRootFor: (workspaceId: string) => string;
+  readonly worktreePathFor?: (workspaceId: string, runId: string) => string | undefined;
+  readonly continueOwnedRun?: (workspaceId: string, runId: string) => Promise<boolean>;
+  readonly withDispatchPermit?: (operation: () => Promise<void>) => Promise<boolean>;
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly probe?: ProcessProbePort;
+  readonly claimOwner?: string;
+  readonly claimLeaseMs?: number;
+  readonly collaborationStageHooks?: CollaborationStageHooks;
+}
+
+export interface ProviderExecutionChain {
+  readonly admissionAuthority: WorkspaceAdmissionAuthority;
+  readonly providerRegistry: ProviderRegistry;
+  readonly engine: RunEngine;
+  readonly coordinator: StageExecutionCoordinator;
+  readonly dispatcher: RunEngineProviderDispatcher;
+  readonly memoryContextResolver: MemoryContextResolver;
+  readonly approvalGate: RuntimeApprovalGate;
+  /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
+  readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
+  /** Adds verified low-risk facts to the same terminal Run candidate trigger. */
+  readonly terminalCandidateGeneratorWithFacts: Pick<MemoryCandidateGenerationService, 'generateForRunTerminal'>;
+  /** M3 verified low-risk facts; parent startup wiring may invoke its sweep. */
+  readonly verifiedMemoryFacts: VerifiedMemoryFactService;
+}
+
+export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
+  const store = options.store;
+  const admissionAuthority = new WorkspaceAdmissionAuthority({ store });
+  const driver = new NodeProcessDriver();
+  const probe = options.probe ?? new NodeProcessProbePort();
+  const seam = store.atomicSeam();
+  const sessionAdapter = new DurableSessionRepositoryAdapter(store.providerSessionRepository());
+  const processAdapter = new DurableProcessRepositoryAdapter(store.processRepository());
+  const outputAdapter = new DurableOutputReferenceRepositoryAdapter(store.processOutputReferenceRepository());
+  const durableCoordinator = new DurableProcessCoordinator({
+    sessionRepository: sessionAdapter,
+    processRepository: processAdapter,
+    outputReferenceRepository: outputAdapter,
+    artifactSink: new FileArtifactSink(options.artifactRoot),
+    atomicSeam: seam,
+    driver,
+  });
+  const registry = new ProviderRegistry([
+    new KimiCodeProviderAdapter({ probe }),
+    new CodexProviderAdapter({ probe }),
+    new OpenCodeProviderAdapter({ probe }),
+  ]);
+  let dispatcher!: RunEngineProviderDispatcher;
+  const approvalGate = new RuntimeApprovalGate(store, {
+    continueRun: async (workspaceId, runId) => {
+      if (await options.continueOwnedRun?.(workspaceId, runId)) return;
+      const drive = () => dispatcher.driveSafely(workspaceId, runId);
+      if (options.withDispatchPermit) {
+        if (!await options.withDispatchPermit(drive)) return;
+      } else {
+        await drive();
+      }
+    },
+  });
+  const runEventObservation: CanonicalRunEventObservationPort = {
+    subscribe: input => store.runStreamService().subscribe({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      afterSequence: input.afterSequence,
+      onEvent: input.onEvent,
+      onOverflow: () => undefined,
+      onFailure: input.onFailure,
+    }),
+  };
+  const coordinator = new StageExecutionCoordinator({
+    registry,
+    durableCoordinator,
+    sessionRepository: sessionAdapter,
+    driver,
+    probe,
+    runEventObservation,
+    environment: options.environment ?? process.env,
+    claimOwner: options.claimOwner,
+    claimLeaseMs: options.claimLeaseMs,
+    approvalGate,
+    canLaunch: input => {
+      const run = store.runRepository().findById(input.workspaceId, input.runId);
+      const stage = store.runStageRepository().listByRun(input.workspaceId, input.runId)
+        .find(candidate => candidate.id === input.stageId);
+      return run?.status === 'running' && stage?.attempt === input.stageAttempt
+        && stage.status === 'running'
+        && options.collaborationStageHooks?.canDispatch?.(input.workspaceId, input.runId) !== false;
+    },
+  });
+  const engine = new RunEngine({
+    runRepository: store.runRepository(),
+    operationService: store.operationService(),
+    lifecycleTransactionService: store.lifecycleTransactionService(),
+    snapshotRepository: store.runSnapshotRepository(),
+    runStageRepository: store.runStageRepository(),
+    stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
+    runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
+  });
+  // MF-5 production wiring: the Memory Runtime owns ONE emitter over the
+  // store's existing one-connection Runtime Event + Outbox writer, and ONE
+  // durable causal-context authority. Both composition seams below (Run
+  // startup snapshot, terminal Candidate) must use it, so the Memory fact and
+  // the canonical Event that records it always share a transaction; an
+  // unproven origin fails closed instead of fabricating causation.
+  const memoryEventEmitter = new MemoryRuntimeEventEmitter({
+    store,
+    factWriter: store.runtimeEventOutboxWriter(),
+    eventAuthority: new DurableMemoryRuntimeEventContextAuthority(store.getDatabase()),
+  });
+  const memoryRetrieval = createMemoryRetrievalRuntime(
+    store.getDatabase(),
+    memoryRetrievalRuntimeConfigFromEnvironment(options.environment ?? process.env),
+  );
+  // MF-4 Run startup integration: the dispatcher resolves, freezes, and gates
+  // Memory through the MF-3 retrieval + MF-4 snapshot contracts before any
+  // provider work, and injects only the bounded persisted context.
+  const memoryContextResolver = new MemoryContextResolver({
+    store,
+    selector: new MemoryContextBudgetSelector(
+      memoryRetrieval.retrieval,
+      new MemoryContextSnapshotRepository(store.getDatabase()),
+    ),
+    emitter: memoryEventEmitter,
+    isMemoryEnabled: workspaceId => store.workspaceRepo.findById(workspaceId)?.memoryEnabled === true,
+  });
+  // LITE-07-102: ONE generator instance serves both the dispatch-time trigger
+  // and the startup sweep, so a Run can never receive two different facts for
+  // the same terminal outcome.
+  const terminalCandidateGenerator = new MemoryCandidateGenerationService({
+    store,
+    runs: store.runRepository(),
+    stages: store.runStageRepository(),
+    tasks: store.taskRepository(),
+    emitter: memoryEventEmitter,
+  });
+  const verifiedMemoryFacts = new VerifiedMemoryFactService(store.getDatabase(), memoryEventEmitter);
+  const terminalCandidateGeneratorWithFacts = {
+    generateForRunTerminal: (input: Parameters<MemoryCandidateGenerationService['generateForRunTerminal']>[0]) => {
+      const result = terminalCandidateGenerator.generateForRunTerminal(input);
+      try {
+        // The fact service rechecks workspace memory eligibility and consumes
+        // only committed terminal evidence; fact failures cannot replace the
+        // ordinary candidate result or affect the already-terminal Run.
+        verifiedMemoryFacts.accumulateTerminal(input);
+      } catch (error) {
+        console.error(`VERIFIED_MEMORY_FACT_ACCUMULATION_FAILED run=${input.runId}:`, error);
+      }
+      return result;
+    },
+  };
+  dispatcher = new RunEngineProviderDispatcher({
+    artifactResults: new CanonicalArtifactResultService(new RuntimeArtifactService(store, dirname(dirname(options.artifactRoot)))),
+    engine,
+    coordinator,
+    admissionGate: admissionAuthority,
+    memoryContextResolver,
+    // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
+    // the terminal commit; failures surface on stderr and never affect the Run.
+    memoryCandidateGenerator: terminalCandidateGeneratorWithFacts,
+    onCandidateGenerationError: (error, runId) => {
+      console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${runId}:`, error);
+    },
+    runRepository: store.runRepository(),
+    runStageRepository: store.runStageRepository(),
+    runSnapshotRepository: store.runSnapshotRepository(),
+    operationService: store.operationService(),
+    lifecycleTransactionService: store.lifecycleTransactionService(),
+    workspaceRootFor: options.workspaceRootFor,
+    worktreePathFor: options.worktreePathFor,
+    collaborationStageHooks: options.collaborationStageHooks,
+  });
+  return {
+    admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
+    memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
+  };
+}

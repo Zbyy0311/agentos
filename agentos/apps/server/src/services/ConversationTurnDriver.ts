@@ -1,0 +1,721 @@
+import { assertRuntimePolicySupported, ConversationAgentRunner, resolveRuntimePolicy } from '@agentos/agent-core';
+import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos/agent-core';
+import { createHash } from 'node:crypto';
+import type { AgentProfile, ConversationMessage, RunIntent } from '@agentos/shared';
+import type { AgentTurnRecord } from '../store/AgentTurnRepository.js';
+import type { MemorySelectionExplanationV1 } from '@agentos/shared';
+import type { ConversationRepository, MessageRecord } from '../store/ConversationRepository.js';
+import { createEntityId } from '../store/Identity.js';
+import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import {
+  TurnContextSnapshotRepository,
+  type TurnContextMemoryExclusion,
+  type TurnContextMemoryPayloadRecord,
+} from '../store/TurnContextSnapshotRepository.js';
+import type { ConversationStreamService, FinalizeStreamInput, FinalizeStreamResult } from './ConversationStreamService.js';
+import { getAttachmentAbsolutePath } from './ConversationAttachmentService.js';
+
+/**
+ * Direct Conversation UX reply stream: the Turn driver.
+ *
+ * Frozen design: docs/implementation/milestones/DC-UX-reply-stream.md (option A).
+ *
+ * The durable checkpoint is the canonical stream. The legacy `ConversationAgentRunner`
+ * is the COMPATIBILITY Provider execution mechanism; each `streaming_response` delta
+ * becomes one durable checkpoint via the CR-3 seam, and completion/failure finalizes
+ * the Turn and Message. A chat reply never creates a Task or Run. Browser disconnect
+ * closes only the SSE subscription; the Turn and its checkpoints survive.
+ *
+ * No route/transport change, no admission change, no legacy aggregate rewrite.
+ */
+
+export interface ReplyWithTurnInput {
+  readonly workspaceId: string;
+  readonly workspaceRoot: string;
+  readonly conversationId: string;
+  /** CR-5: link a Group speaker Turn's snapshot to its interaction. */
+  readonly interactionId?: string;
+  readonly agentId: string;
+  /** The user-selected turn intent; the generic Prompt contract uses this as guidance. */
+  readonly intent?: RunIntent;
+  /** Frozen group-scoped model/effort; omitted for ordinary direct Turns. */
+  readonly runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>;
+  /** Frozen group-only role instructions, applied before the Provider call. */
+  readonly additionalInstructions?: string;
+  /** Frozen role title for this Agent in the current group. */
+  readonly groupRoleTitle?: string;
+  /** The group settings version that produced this Turn's configuration. */
+  readonly groupSettingsVersion?: number;
+  /** The triggering user Message this reply answers. */
+  readonly sourceMessageId: string;
+  readonly content: string;
+  readonly turnId: string;
+  readonly responseMessageId: string;
+  /** Fired for each Provider delta as it becomes durable, with its checkpoint cursor. */
+  readonly onDelta?: (delta: string, cursor: number) => void;
+  readonly signal?: AbortSignal;
+  /** Group-only: require atomic native ownership so server exit reaps this Provider tree. */
+  readonly requireOwnedProcess?: boolean;
+  /** Persist the native identity against the currently claimed group owner/Turn. */
+  readonly onNativeProcessStarted?: (process: {
+    readonly invocationId: string;
+    readonly pid: number;
+    readonly nativeBirthIdentity: string;
+  }) => void;
+  /** Group-only atomic finalization seam; direct conversations keep the ordinary stream transaction. */
+  readonly groupFinalizer?: (
+    input: FinalizeStreamInput,
+    finalizeWithinTransaction: (input: FinalizeStreamInput) => FinalizeStreamResult,
+  ) => FinalizeStreamResult;
+  readonly createdAt: string;
+}
+
+export interface ReplyWithTurnResult {
+  readonly turn: AgentTurnRecord;
+  readonly message: MessageRecord;
+  readonly status: ConversationRunResult['status'];
+  /** The final Message text, assembled from durable checkpoints. */
+  readonly content: string;
+  readonly checkpointCount: number;
+}
+
+export type ReplyStatus = ConversationRunResult['status'];
+
+export class ConversationTurnDriverError extends Error {
+  constructor(readonly code:
+    | 'TURN_DRIVER_AGENT_UNAVAILABLE'
+    | 'TURN_DRIVER_STREAM_FAILED'
+    | 'TURN_DRIVER_CONTEXT_SNAPSHOT_FAILED'
+    | 'TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED') {
+    super(`TURN_DRIVER_${code.replace('TURN_DRIVER_', '')}`);
+    this.name = 'ConversationTurnDriverError';
+  }
+}
+
+/** LITE-09-101: bounded deterministic window frozen into every Turn snapshot. */
+export const MAX_FROZEN_HISTORY_MESSAGES = 12;
+/** Retrieval strategy version persisted with the frozen selection. */
+export const TURN_CONTEXT_STRATEGY_VERSION = 'cr-turn-context.v1';
+/** MF-3 query cap; the retrieval query contains only this request and frozen group role. */
+export const MAX_CHAT_MEMORY_QUERY_CHARS = 2000;
+
+export interface TurnContextSelection {
+  readonly selectedEntryIds: readonly string[];
+  readonly totalTokens: number;
+  readonly truncated: boolean;
+  readonly retrievalStrategyVersion: string;
+  /**
+   * LITE-09-101: the exact text the Provider must receive for this selection.
+   * The driver persists the ids and passes this text to the runner, so what was
+   * frozen and what was injected cannot diverge.
+   */
+  readonly contextText?: string;
+  /** Stable hash of the bounded retrieval query; raw query text is never persisted. */
+  readonly queryHash?: string;
+  readonly selected?: readonly MemorySelectionExplanationV1[];
+  readonly exclusions?: readonly TurnContextMemoryExclusion[];
+  readonly retrievalDegraded?: boolean;
+}
+
+export interface TurnContextSelectionInput {
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly agentId: string;
+  readonly turnId: string;
+  readonly createdAt: string;
+  readonly contextTokenBudget: number | null;
+  /** Bounded current-request/group-role query; never includes transcript history. */
+  readonly retrievalQuery?: string;
+}
+
+/** Selection port; the composition root supplies the real Memory selector. */
+export interface TurnContextSelectionPort {
+  select(input: TurnContextSelectionInput): TurnContextSelection;
+  /** Optional async preparation seam used before a new Turn snapshot is frozen. */
+  selectPrepared?(input: TurnContextSelectionInput): Promise<TurnContextSelection>;
+}
+
+export interface TurnContextSnapshotWriteInput {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly interactionId?: string;
+  readonly agentId: string;
+  readonly turnId: string;
+  readonly budgetJson: string;
+  readonly selectedEntryIdsJson: string;
+  readonly totalTokens: number;
+  readonly truncated: boolean;
+  readonly retrievalStrategyVersion: string;
+  readonly queryHash?: string;
+  readonly memoryPayload?: {
+    readonly contextText: string;
+    readonly selected: readonly MemorySelectionExplanationV1[];
+    readonly exclusions: readonly TurnContextMemoryExclusion[];
+    readonly retrievalDegraded: boolean;
+  };
+  readonly createdAt: string;
+}
+
+/** Durable write port; must persist before the Provider is invoked. */
+export interface TurnContextSnapshotPort {
+  insert(input: TurnContextSnapshotWriteInput): { readonly id: string };
+  /** Present on the production port; optional for existing test/custom ports. */
+  readPayload?(workspaceId: string, snapshotId: string): TurnContextMemoryPayloadRecord | undefined;
+  /** Return a prior immutable payload for an idempotent Turn retry, if one exists. */
+  readForTurn?(workspaceId: string, turnId: string): {
+    readonly snapshotId: string;
+    readonly payload: TurnContextMemoryPayloadRecord | undefined;
+  } | undefined;
+}
+
+/** Build a deterministic query without transcript history and cap total retrieval input. */
+export function buildChatMemoryRetrievalQuery(input: Pick<ReplyWithTurnInput,
+  'content' | 'intent' | 'groupRoleTitle' | 'additionalInstructions'>): string {
+  const parts = [
+    `Current request: ${input.content}`,
+    ...(input.intent === undefined ? [] : [`Turn stage: ${input.intent}`]),
+    ...(input.groupRoleTitle?.trim() ? [`Group role: ${input.groupRoleTitle.trim()}`] : []),
+    ...(input.additionalInstructions?.trim() ? [`Group role instructions: ${input.additionalInstructions.trim()}`] : []),
+  ];
+  return parts.join('\n').slice(0, MAX_CHAT_MEMORY_QUERY_CHARS);
+}
+
+/**
+ * LITE-09-102: a chat Turn has no implicit modifying authority. Chat is
+ * classified as modifying unless the execution is proven read-only, and the
+ * sole Workspace modifying authority may already be held by another subject.
+ */
+export interface ChatWorkspaceAuthorityPort {
+  /** The subject currently holding the Workspace modifying authority, if any. */
+  findModifyingHolder(workspaceId: string): {
+    readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN' | 'COLLABORATION_APPLICATION';
+    /** For COLLABORATION_APPLICATION this is the durable collaboration_control_id. */
+    readonly subjectId: string | null;
+  } | undefined;
+}
+
+export interface ConversationTurnContextOptions {
+  readonly selection?: TurnContextSelectionPort;
+  readonly snapshots?: TurnContextSnapshotPort;
+  /** Per-Turn Memory budget frozen into the snapshot; null means uncapped. */
+  readonly contextTokenBudget?: number | null;
+  readonly workspaceAuthority?: ChatWorkspaceAuthorityPort;
+  /** S6: latest published compaction summary for this Conversation, when any. */
+  readonly compaction?: ConversationCompactionPort;
+  /** S6: hard application budget for summary + uncompressed tail. */
+  readonly compactionBudget?: CompactionApplicationBudget;
+  /** S6: automatic threshold check + durable compaction attempt before assembly. */
+  readonly compactionTrigger?: ConversationCompactionTriggerPort;
+}
+
+/**
+ * S6 / LITE-09-105: a published compaction summary replaces the Messages it
+ * already covers. The summary is immutable and the uncompressed tail stays
+ * exactly as it was; nothing is deleted or rewritten.
+ */
+export interface PublishedCompactionSummary {
+  readonly id: string;
+  readonly summary: string;
+  readonly sourceStartMessageId: string | null;
+  readonly sourceEndMessageId: string | null;
+  /** How many Messages the summary covered when it was published. */
+  readonly sourceMessageCount: number;
+  /**
+   * LITE-09-109: hash of the covered Messages' `[id, content]` pairs at publication
+   * time. This is the revision/visibility evidence the compaction already stores,
+   * reused instead of adding Message versioning; a summary whose source no longer
+   * hashes to this value must not enter a new context.
+   */
+  readonly sourceHash: string;
+}
+
+export interface ConversationCompactionPort {
+  latestPublished(workspaceId: string, conversationId: string): PublishedCompactionSummary | undefined;
+}
+
+/**
+ * S6 / LITE-09-106 + LITE-09-107: the automatic trigger runs before a new
+ * Turn assembles its context, so a published summary is used by exactly the
+ * Turn that caused it. The trigger owns its own durable attempt state and must
+ * not raise: the hard-budget check still decides whether the Provider call is
+ * allowed once the attempt is over.
+ */
+export interface ConversationCompactionTriggerPort {
+  ensureCompacted(input: {
+    readonly workspaceId: string;
+    readonly conversationId: string;
+    readonly agentId: string;
+  }): Promise<unknown>;
+}
+
+export interface CompactionApplicationBudget {
+  /** Hard application budget for summary + uncompressed tail. */
+  readonly hardBudgetTokens: number;
+  readonly estimateTokens?: (text: string) => number;
+}
+
+export type CompactionApplicationResult =
+  | { readonly kind: 'uncompacted'; readonly history: readonly ConversationMessage[] }
+  | { readonly kind: 'applied'; readonly history: readonly ConversationMessage[]; readonly summaryId: string; readonly summarizedMessages: number }
+  | { readonly kind: 'over-budget'; readonly summaryId: string; readonly estimatedTokens: number; readonly hardBudgetTokens: number }
+  /**
+   * LITE-09-109: the summary's source no longer matches what it covered, so the
+   * summary must not enter a new context. The caller falls back to the uncompressed
+   * window; a historical snapshot that used the summary is untouched, and nothing
+   * about the Messages is rewritten.
+   */
+  | { readonly kind: 'stale-source'; readonly summaryId: string; readonly reason: CompactionSourceStaleReason };
+
+export type CompactionSourceStaleReason =
+  | 'source-start-missing'
+  | 'source-end-missing'
+  | 'source-range-invalid'
+  | 'source-count-changed'
+  | 'source-content-changed';
+
+/** Same canonicalization the compaction used when it published the source hash. */
+function hashCompactionSource(messages: readonly ConversationMessage[]): string {
+  return createHash('sha256')
+    .update(JSON.stringify(messages.map(message => [message.id, message.content])))
+    .digest('hex');
+}
+
+/**
+ * Applies a published summary to a new context. Only Messages the summary
+ * already covers are replaced; the remainder and their order are untouched.
+ */
+export function applyCompactionSummary(
+  history: readonly ConversationMessage[],
+  summary: PublishedCompactionSummary | undefined,
+  budget: CompactionApplicationBudget,
+): CompactionApplicationResult {
+  if (summary === undefined || summary.sourceEndMessageId === null) {
+    return { kind: 'uncompacted', history };
+  }
+  const endIndex = history.findIndex(message => message.id === summary.sourceEndMessageId);
+  if (endIndex < 0) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-end-missing' };
+  }
+  // LITE-09-109: validate the covered range before the summary is allowed to stand in for
+  // it. A Message that was hidden, removed from the visible set, or edited through the
+  // existing edit path changes either the covered count or the covered bytes, and either
+  // way the summary is no longer a truthful replacement - so it is refused rather than
+  // silently applied. No new edit API, UI or Message versioning is introduced: this is the
+  // same [id, content] evidence the compaction already published.
+  let startIndex = 0;
+  if (summary.sourceStartMessageId !== null) {
+    startIndex = history.findIndex(message => message.id === summary.sourceStartMessageId);
+    if (startIndex < 0) {
+      return { kind: 'stale-source', summaryId: summary.id, reason: 'source-start-missing' };
+    }
+    if (startIndex > endIndex) {
+      return { kind: 'stale-source', summaryId: summary.id, reason: 'source-range-invalid' };
+    }
+  }
+  const covered = history.slice(startIndex, endIndex + 1);
+  if (covered.length !== summary.sourceMessageCount) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-count-changed' };
+  }
+  if (hashCompactionSource(covered) !== summary.sourceHash) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-content-changed' };
+  }
+  const tail = history.slice(endIndex + 1);
+  const estimate = budget.estimateTokens ?? ((text: string) => Math.max(1, Math.ceil(text.length / 4)));
+  const estimatedTokens = estimate(summary.summary) + tail.reduce((total, message) => total + estimate(message.content), 0);
+  if (estimatedTokens > budget.hardBudgetTokens) {
+    return { kind: 'over-budget', summaryId: summary.id, estimatedTokens, hardBudgetTokens: budget.hardBudgetTokens };
+  }
+  const synthetic: ConversationMessage = {
+    id: 'compaction:' + summary.id,
+    conversationId: tail[0]?.conversationId ?? history[0]?.conversationId ?? '',
+    workspaceId: tail[0]?.workspaceId ?? history[0]?.workspaceId ?? '',
+    senderType: 'system',
+    content: summary.summary,
+    createdAt: tail[0]?.createdAt ?? history[0]?.createdAt ?? '',
+  };
+  return { kind: 'applied', history: [synthetic, ...tail], summaryId: summary.id, summarizedMessages: endIndex + 1 };
+}
+
+const EMPTY_SELECTION: TurnContextSelectionPort = {
+  select: () => ({ selectedEntryIds: [], totalTokens: 0, truncated: false, retrievalStrategyVersion: TURN_CONTEXT_STRATEGY_VERSION }),
+};
+
+/**
+ * Production snapshot writer over the existing CR-5 store. It owns the
+ * transaction so the caller cannot forget to persist before invoking a Provider.
+ */
+export function createDurableTurnContextSnapshotPort(
+  store: { getDatabase(): TransactionDatabase },
+): TurnContextSnapshotPort {
+  return {
+    insert(input: TurnContextSnapshotWriteInput) {
+      const db = store.getDatabase();
+      return inTransaction(db, () => new TurnContextSnapshotRepository(db).insertWithinTransaction({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
+        agentId: input.agentId,
+        turnId: input.turnId,
+        budgetJson: input.budgetJson,
+        selectedEntryIdsJson: input.selectedEntryIdsJson,
+        totalTokens: input.totalTokens,
+        truncated: input.truncated,
+        ...(input.queryHash === undefined ? {} : { queryHash: input.queryHash }),
+        ...(input.memoryPayload === undefined ? {} : { memoryPayload: input.memoryPayload }),
+        retrievalStrategyVersion: input.retrievalStrategyVersion,
+        createdAt: input.createdAt,
+      }));
+    },
+    readPayload(workspaceId, snapshotId) {
+      return new TurnContextSnapshotRepository(store.getDatabase()).readPayload(workspaceId, snapshotId);
+    },
+    readForTurn(workspaceId, turnId) {
+      const repository = new TurnContextSnapshotRepository(store.getDatabase());
+      const snapshot = repository.listForTurn(workspaceId, turnId)[0];
+      return snapshot === undefined ? undefined : {
+        snapshotId: snapshot.id,
+        payload: repository.readPayload(workspaceId, snapshot.id),
+      };
+    },
+  };
+}
+
+type RunnerFactory = (options: ConstructorParameters<typeof ConversationAgentRunner>[0]) => {
+  run(): Promise<ConversationRunResult>;
+};
+
+/** Narrow the Runner's event to what the driver consumes. */
+function isStreamDelta(event: ConversationExecutionEvent): boolean {
+  return event.status === 'streaming_response' && typeof event.content === 'string' && event.content.length > 0;
+}
+
+export class ConversationTurnDriver {
+  constructor(
+    private readonly conversations: ConversationRepository,
+    private readonly stream: ConversationStreamService,
+    private readonly getAgent: (workspaceId: string, agentId: string) => AgentProfile | undefined,
+    private readonly runnerFactory?: RunnerFactory,
+    private readonly context?: ConversationTurnContextOptions,
+  ) {}
+
+  /**
+   * Run one bounded reply Turn for a user Message. Reserves the stream durably,
+   * drives the Provider, appends every delta as a checkpoint, and finalizes one-way.
+   * The reservation is durable before the Provider is invoked.
+   */
+  async replyWithTurn(input: ReplyWithTurnInput): Promise<ReplyWithTurnResult> {
+    const agent = this.getAgent(input.workspaceId, input.agentId);
+    if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
+    const intent = input.intent ?? 'execute';
+    const runtimePolicy = intent === 'execute' ? undefined : resolveRuntimePolicy(intent, agent);
+    if (runtimePolicy !== undefined) {
+      assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    }
+
+    // S6 / LITE-09-106: the versioned threshold is evaluated BEFORE this Turn's
+    // context is assembled, so a summary published here is the one this Turn
+    // actually uses. The attempt is durable and never truncates history.
+    if (this.context?.compactionTrigger !== undefined) {
+      await this.context.compactionTrigger.ensureCompacted({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        agentId: input.agentId,
+      });
+    }
+
+    const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
+      .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
+      .map(toLegacyMessage);
+    const sourceAttachments = this.conversations.listStoredMessageAttachments(
+      input.workspaceId,
+      input.conversationId,
+      input.sourceMessageId,
+    );
+    // S6 / LITE-09-105: a published summary replaces the Messages it covers.
+    // Over-budget summary + tail must block the Provider call and preserve the
+    // input instead of silently truncating it.
+    let effectiveHistory: readonly ConversationMessage[] = history;
+    let appliedSummaryId: string | undefined;
+    let summarizedMessages = 0;
+    let staleCompactionSummary: { readonly summaryId: string; readonly reason: CompactionSourceStaleReason } | undefined;
+    if (this.context?.compaction !== undefined) {
+      const summary = this.context.compaction.latestPublished(input.workspaceId, input.conversationId);
+      const applied = applyCompactionSummary(history, summary, this.context.compactionBudget ?? { hardBudgetTokens: Number.POSITIVE_INFINITY });
+      if (applied.kind === 'over-budget') {
+        // Fail closed BEFORE the reservation: no Turn is created, the Messages
+        // stay untouched, and the caller can retry explicitly.
+        throw new ConversationTurnDriverError('TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED');
+      }
+      if (applied.kind === 'applied') {
+        effectiveHistory = applied.history;
+        appliedSummaryId = applied.summaryId;
+        summarizedMessages = applied.summarizedMessages;
+      } else if (applied.kind === 'stale-source') {
+        // LITE-09-109: the summary's source was edited or is no longer visible, so it is
+        // not a truthful replacement for it. The Turn continues on the uncompressed
+        // bounded window, and the reason is recorded in the snapshot budget so the
+        // refusal is visible rather than silent. The historical snapshot that used the
+        // summary is not touched, and the trigger can publish a fresh summary later.
+        staleCompactionSummary = { summaryId: applied.summaryId, reason: applied.reason };
+      }
+    }
+    const frozenHistory = effectiveHistory.slice(-MAX_FROZEN_HISTORY_MESSAGES);
+    // The snapshot id is chosen up front so the durable Turn can reference the
+    // exact selection it will receive.
+    const priorTurnContext = this.context?.snapshots?.readForTurn?.(input.workspaceId, input.turnId);
+    const contextSnapshotId = this.context?.snapshots === undefined
+      ? undefined
+      : priorTurnContext?.snapshotId ?? createEntityId('snapshot');
+
+    const reservation = this.stream.beginAgentTurnStream({
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      messageId: input.responseMessageId,
+      agentId: input.agentId,
+      sourceMessageId: input.sourceMessageId,
+      ...(contextSnapshotId === undefined ? {} : { contextSnapshotId }),
+      createdAt: input.createdAt,
+    });
+
+    // LITE-09-102 / D2=A: refuse instead of granting implicit modifying
+    // authority. A chat reply never becomes a modifying Run, so when another
+    // subject holds the Workspace's single-writer authority the truthful
+    // outcome is a stable refusal that points at the explicit Run path.
+    if (this.context?.workspaceAuthority !== undefined) {
+      const holder = this.context.workspaceAuthority.findModifyingHolder(input.workspaceId);
+      if (holder !== undefined) {
+        return this.fail(
+          input,
+          reservation,
+          'CONVERSATION_WORKSPACE_MODIFYING_BUSY',
+          `Workspace modifying authority is held by ${holder.subjectKind} ${holder.subjectId}; chat has no implicit modifying authority. Wait for that work to finish, or start an explicit Run.`,
+          0,
+        );
+      }
+    }
+
+    // LITE-09-101: freeze and PERSIST the bounded context before any Provider
+    // work. A persistence failure finalizes the Turn as failed and must never
+    // fall back to unbounded history or invoke the Provider.
+    let memoryContext: string | undefined;
+    if (this.context?.snapshots !== undefined && contextSnapshotId !== undefined) {
+      try {
+        const isReplay = priorTurnContext !== undefined
+          || reservation.turn.contextSnapshotId !== contextSnapshotId;
+        let frozenText: string | undefined;
+        if (isReplay) {
+          const replaySnapshotId = reservation.turn.contextSnapshotId;
+          if (replaySnapshotId === null
+            || (priorTurnContext !== undefined && priorTurnContext.snapshotId !== replaySnapshotId)) {
+            throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          }
+          const frozenPayload = priorTurnContext?.payload
+            ?? this.context.snapshots.readPayload?.(input.workspaceId, replaySnapshotId);
+          if (frozenPayload === undefined) throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          frozenText = frozenPayload.contextText;
+        } else {
+          const selectionInput: TurnContextSelectionInput = {
+            workspaceId: input.workspaceId,
+            conversationId: input.conversationId,
+            agentId: input.agentId,
+            turnId: input.turnId,
+            createdAt: input.createdAt,
+            contextTokenBudget: this.context.contextTokenBudget ?? null,
+            retrievalQuery: buildChatMemoryRetrievalQuery(input),
+          };
+          const selector = this.context.selection ?? EMPTY_SELECTION;
+          const selection = selector.selectPrepared === undefined
+            ? selector.select(selectionInput)
+            : await selector.selectPrepared(selectionInput);
+          this.context.snapshots.insert({
+            id: contextSnapshotId,
+            workspaceId: input.workspaceId,
+            conversationId: input.conversationId,
+            ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
+            agentId: input.agentId,
+            turnId: input.turnId,
+            budgetJson: JSON.stringify({
+              agentId: input.agentId,
+              maxFrozenHistoryMessages: MAX_FROZEN_HISTORY_MESSAGES,
+              frozenHistoryMessages: frozenHistory.length,
+              frozenHistoryMessageIds: frozenHistory.map(message => message.id),
+              totalConversationMessages: history.length,
+              contextTokenBudget: this.context.contextTokenBudget ?? null,
+              ...(input.runtimeOverrides === undefined && input.additionalInstructions === undefined && input.groupRoleTitle === undefined && input.groupSettingsVersion === undefined
+                ? {}
+                : {
+                  groupRuntimeConfig: {
+                    model: input.runtimeOverrides?.model ?? null,
+                    thinkingEffort: input.runtimeOverrides?.thinkingEffort ?? null,
+                    roleTitle: input.groupRoleTitle ?? null,
+                    additionalInstructions: input.additionalInstructions ?? null,
+                    settingsVersion: input.groupSettingsVersion ?? null,
+                  },
+                }),
+              ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
+              ...(staleCompactionSummary === undefined
+                ? {}
+                : {
+                  rejectedCompactionSummaryId: staleCompactionSummary.summaryId,
+                  rejectedCompactionReason: staleCompactionSummary.reason,
+                }),
+            }),
+            selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
+            totalTokens: selection.totalTokens,
+            truncated: selection.truncated,
+            retrievalStrategyVersion: selection.retrievalStrategyVersion,
+            ...(selection.queryHash === undefined ? {} : { queryHash: selection.queryHash }),
+            memoryPayload: {
+              contextText: selection.contextText ?? '',
+              selected: selection.selected ?? [],
+              exclusions: selection.exclusions ?? [],
+              retrievalDegraded: selection.retrievalDegraded ?? false,
+            },
+            createdAt: input.createdAt,
+          });
+          // Inject the text read back from the committed, hash-verified immutable
+          // payload. Older custom snapshot ports keep their original selection seam.
+          const frozenPayload = this.context.snapshots.readPayload?.(input.workspaceId, contextSnapshotId);
+          if (this.context.snapshots.readPayload !== undefined && frozenPayload === undefined) {
+            throw new Error('TURN_CONTEXT_PAYLOAD_MISSING');
+          }
+          frozenText = frozenPayload?.contextText ?? selection.contextText;
+        }
+        if (frozenText !== undefined && frozenText.trim().length > 0) {
+          memoryContext = frozenText;
+        }
+      } catch (error) {
+        return this.fail(
+          input, reservation, 'CONTEXT_SNAPSHOT_FAILED',
+          error instanceof Error ? error.message : String(error), 0,
+        );
+      }
+    }
+
+    let ordinal = 0;
+    let checkpointCount = 0;
+    const onEvent = (event: ConversationExecutionEvent): void => {
+      if (!isStreamDelta(event)) return;
+      ordinal += 1;
+      const appended = this.stream.appendStreamDelta({
+        workspaceId: input.workspaceId,
+        turnId: input.turnId,
+        messageId: input.responseMessageId,
+        delta: event.content!,
+        ordinal,
+        createdAt: input.createdAt,
+      });
+      checkpointCount = ordinal;
+      input.onDelta?.(event.content!, appended.nextCursor);
+    };
+
+    const options: ConstructorParameters<typeof ConversationAgentRunner>[0] = {
+      agent,
+      intent,
+      workspaceRoot: input.workspaceRoot,
+      executionId: input.turnId,
+      message: [
+        input.content,
+        input.groupRoleTitle?.trim() ? `群聊角色：${input.groupRoleTitle.trim()}` : '',
+        input.additionalInstructions?.trim() ? `群聊附加指令：${input.additionalInstructions.trim()}` : '',
+      ].filter(Boolean).join('\n\n'),
+      history: frozenHistory,
+      ...(input.runtimeOverrides === undefined ? {} : { runtimeOverrides: input.runtimeOverrides }),
+      ...(runtimePolicy === undefined ? {} : { runtimePolicy }),
+      ...(sourceAttachments.length === 0 ? {} : {
+        attachments: sourceAttachments.map(attachment => ({
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath),
+        })),
+      }),
+      // LITE-09-101: inject exactly the frozen selection whose ids the snapshot above
+      // recorded. An empty or whitespace-only selection adds nothing to the prompt.
+      ...(memoryContext === undefined ? {} : { memoryContext }),
+      onEvent,
+      ...(input.requireOwnedProcess === undefined ? {} : { requireOwnedProcess: input.requireOwnedProcess }),
+      ...(input.onNativeProcessStarted === undefined ? {} : { onNativeProcessStarted: input.onNativeProcessStarted }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    };
+    const runner = this.runnerFactory === undefined ? new ConversationAgentRunner(options) : this.runnerFactory(options);
+
+    let result: ConversationRunResult;
+    try {
+      result = await runner.run();
+    } catch (error) {
+      return this.fail(input, reservation, 'PROVIDER_CRASH', error instanceof Error ? error.message : String(error), checkpointCount);
+    }
+    if (result.status === 'completed' || result.status === 'waiting_user') {
+      const settled = this.finalize(input, {
+        workspaceId: input.workspaceId,
+        turnId: input.turnId,
+        messageId: input.responseMessageId,
+        expectedTurnVersion: reservation.turn.version,
+        expectedMessageVersion: reservation.message.version,
+        outcome: 'final',
+        content: result.status === 'completed' ? result.content : (result.waitingQuestion ?? result.content),
+        updatedAt: new Date().toISOString(),
+      });
+      return {
+        turn: settled.turn, message: settled.message, status: result.status,
+        content: settled.message.content, checkpointCount,
+      };
+    }
+    const cancelled = result.status === 'cancelled';
+    const settled = this.finalize(input, {
+      workspaceId: input.workspaceId,
+      turnId: input.turnId,
+      messageId: input.responseMessageId,
+      expectedTurnVersion: reservation.turn.version,
+      expectedMessageVersion: reservation.message.version,
+      outcome: cancelled ? 'cancelled' : 'failed',
+      failureCode: cancelled ? 'TURN_CANCELLED' : 'PROVIDER_FAILED',
+      ...(result.error === undefined ? {} : { failureMessage: result.error }),
+      updatedAt: new Date().toISOString(),
+    });
+    return { turn: settled.turn, message: settled.message, status: result.status, content: settled.message.content, checkpointCount };
+  }
+
+  private fail(
+    input: ReplyWithTurnInput,
+    reservation: { turn: AgentTurnRecord; message: MessageRecord },
+    failureCode: string,
+    failureMessage: string,
+    checkpointCount: number,
+  ): ReplyWithTurnResult {
+    const settled = this.finalize(input, {
+      workspaceId: input.workspaceId,
+      turnId: input.turnId,
+      messageId: input.responseMessageId,
+      expectedTurnVersion: reservation.turn.version,
+      expectedMessageVersion: reservation.message.version,
+      outcome: 'failed',
+      failureCode,
+      failureMessage,
+      updatedAt: new Date().toISOString(),
+    });
+    return { turn: settled.turn, message: settled.message, status: 'failed', content: settled.message.content, checkpointCount };
+  }
+
+  private finalize(input: ReplyWithTurnInput, finalization: FinalizeStreamInput): FinalizeStreamResult {
+    if (input.groupFinalizer === undefined) return this.stream.finalizeStream(finalization);
+    return input.groupFinalizer(finalization, value => this.stream.finalizeStreamWithinTransaction(value));
+  }
+}
+
+function toLegacyMessage(message: MessageRecord): ConversationMessage {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    workspaceId: message.workspaceId,
+    senderType: message.senderType,
+    ...(message.senderAgentId === null ? {} : { senderAgentId: message.senderAgentId }),
+    content: message.content,
+    createdAt: message.createdAt,
+    ...(message.runId === null ? {} : { runId: message.runId }),
+    ...(message.attachments === undefined ? {} : { attachments: [...message.attachments] }),
+  };
+}

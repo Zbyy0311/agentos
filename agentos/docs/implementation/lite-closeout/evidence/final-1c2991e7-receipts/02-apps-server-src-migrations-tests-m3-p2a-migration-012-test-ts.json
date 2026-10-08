@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:Migration 012 checksum, order, repeat run and existing idempotency data are stable|all Migration 012 foreign keys and integrity checks pass)",
+      "src/migrations/__tests__/m3-p2a-migration-012.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/assertions.json",
+      "sha256": "bc1d32658f9c4961091cb9e9f6f099b9ffe5063fce8e01359ff785f8bb688c0f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/execution.json",
+      "sha256": "e67c4978e49a25c6330a7308ef629f54a85bc6946b0207832e514e9f276046d9"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/stdout.txt",
+      "sha256": "a631337438c84fc7527f84410e80ee98f02f894dc3b0dc2d9328cf670452475d"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-015-migration-012-checksum-order-repeat-run-and-existing-idempotency-data-are-stable-2",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable",
+      "line": 409,
+      "expression": "assert.deepEqual((first as Array<{ migration_id: string }>).map(row => row.migration_id), MIGRATION_IDS);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-all-migration-012-foreign-keys-and-integrity-checks-pass-3",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "all Migration 012 foreign keys and integrity checks pass",
+      "line": 674,
+      "expression": "assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-migration-012-checksum-order-repeat-run-and-existing-idempotency-data-are-stable-4",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable",
+      "line": 409,
+      "expression": "assert.deepEqual((first as Array<{ migration_id: string }>).map(row => row.migration_id), MIGRATION_IDS);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-all-migration-012-foreign-keys-and-integrity-checks-pass-5",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "all Migration 012 foreign keys and integrity checks pass",
+      "line": 674,
+      "expression": "assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-migration-012-checksum-order-repeat-run-and-existing-idempotency-data-are-stable-6",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable",
+      "line": 409,
+      "expression": "assert.deepEqual((first as Array<{ migration_id: string }>).map(row => row.migration_id), MIGRATION_IDS);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-all-migration-012-foreign-keys-and-integrity-checks-pass-7",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "all Migration 012 foreign keys and integrity checks pass",
+      "line": 674,
+      "expression": "assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-migration-012-checksum-order-repeat-run-and-existing-idempotency-data-are-stable-8",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable",
+      "line": 409,
+      "expression": "assert.deepEqual((first as Array<{ migration_id: string }>).map(row => row.migration_id), MIGRATION_IDS);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-all-migration-012-foreign-keys-and-integrity-checks-pass-9",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "all Migration 012 foreign keys and integrity checks pass",
+      "line": 674,
+      "expression": "assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-migration-012-checksum-order-repeat-run-and-existing-idempotency-data-are-stable-10",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "Migration 012 checksum, order, repeat run and existing idempotency data are stable",
+      "line": 409,
+      "expression": "assert.deepEqual((first as Array<{ migration_id: string }>).map(row => row.migration_id), MIGRATION_IDS);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-all-migration-012-foreign-keys-and-integrity-checks-pass-11",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "name": "all Migration 012 foreign keys and integrity checks pass",
+      "line": 674,
+      "expression": "assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

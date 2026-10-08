@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-08-008-lite-08-012-a-browser-disconnect-decides-nothing-only-the-explicit-decision-does-103",
+    "requirementId": "LITE-08-008",
+    "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+    "name": "LITE-08-012: a browser disconnect decides nothing; only the explicit decision does",
+    "line": 474,
+    "expression": "assert.equal(request.status, 'pending');",
+    "clause": "snapshot hashes detect changed actions;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-011-lite-08-012-a-browser-disconnect-decides-nothing-only-the-explicit-decision-does-104",
+    "requirementId": "LITE-08-011",
+    "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+    "name": "LITE-08-012: a browser disconnect decides nothing; only the explicit decision does",
+    "line": 474,
+    "expression": "assert.equal(request.status, 'pending');",
+    "clause": "engine failure fails closed;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-012-lite-08-012-a-browser-disconnect-decides-nothing-only-the-explicit-decision-does-105",
+    "requirementId": "LITE-08-012",
+    "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+    "name": "LITE-08-012: a browser disconnect decides nothing; only the explicit decision does",
+    "line": 474,
+    "expression": "assert.equal(request.status, 'pending');",
+    "clause": "browser disconnect does not decide;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

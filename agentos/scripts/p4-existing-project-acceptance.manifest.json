@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 2,
+  "manifestId": "agentos-existing-project-acceptance-v2",
+  "status": "runner-supported",
+  "description": "Version 2 requires separate defect and feature scenarios, raw-hashed real plans, committed source-bound baseline probes rerun against frozen candidate overlays, per-scenario frozen candidates, review-request/revision/approval history, and hashed retest/preview/apply evidence. Structural verification is distinct from runtime acceptance, which the local runner verifies against AgentOS persisted records; no external signer is required.",
+  "modes": {
+    "simulated-provider": {
+      "providerExecution": "simulated",
+      "platform": "any",
+      "credentialBoundary": "none"
+    },
+    "real-windows-acceptance": {
+      "providerExecution": "real",
+      "platform": "win32",
+      "credentialBoundary": "operator-managed-outside-ci"
+    }
+  },
+  "receiptRequirements": {
+    "repositoryCommitSha": "full-40-character-git-sha",
+    "repositoryTreeSha": "full-40-character-git-sha",
+    "actualCheckoutMustMatchExpectedSha": true,
+    "immutableRepositorySnapshot": true,
+    "projectRepository": {
+      "commitSha": "full-40-character-git-commit-sha-in-runtime-repository",
+      "treeSha": "git-tree-resolved-from-project-commit",
+      "defaultCommit": "expected-runtime-sha",
+      "distinctCommitRequiresExplicitProjectSha": true,
+      "receiptMustNotSelectProjectSha": true
+    },
+    "modelFields": ["provider", "id"],
+    "processExitCode": 0,
+    "acceptanceExitCode": 0,
+    "candidate": {
+      "artifactPath": "runner-captured-runtime-diff",
+      "hashAlgorithm": "sha256-file-bytes-matching-runtime-database-diff",
+      "hashFormat": "64-character-lowercase-hex"
+    },
+    "evidenceArtifacts": {
+      "artifactPath": "repository-relative-worktree-file",
+      "hashAlgorithm": "sha256-file-bytes",
+      "mustBeCommittedBeforeExecution": false
+    },
+    "realPlanEvidence": {
+      "mode": "real-windows-acceptance-only",
+      "artifactPath": "plan/real-plan.json",
+      "hashAlgorithm": "sha256-raw-plan-file-bytes",
+      "receiptMustMatchCapturedPlanFields": true
+    },
+    "baselineProbe": {
+      "sourcePathPrefix": "agentos/scripts/fixtures/p4-memory-source-probes/",
+      "sourceMustBeCommittedAtProjectSha": true,
+      "isolatedWorkspaceSourceMustBeTrackedAndClean": true,
+      "runtimeCheckoutSourceMustBeCleanWhenProjectShaEqualsExpectedSha": true,
+      "sourceBindings": ["sourcePath", "sourceSha256", "sourceBlobSha", "sourceCommitSha"],
+      "argvMustBeBoundAndIdenticalAcrossBaselineAndCandidate": true,
+      "baselineRequiresNonzeroAndExpectedAssertionMarker": true,
+      "candidateRequiresZeroAndPassMarker": true,
+      "candidateRunsAgainstFrozenCandidatePatchOverlay": true,
+      "externalArgvFilesRequireSha256": true
+    },
+    "scenarios": {
+      "exactKinds": ["defect", "feature"],
+      "exactCount": 2,
+      "baselineReproduction": "capture-declared-baseline-probes-separately-from-acceptance-commands-and-require-a-matching-nonzero-failure-on-the-frozen-base",
+      "requiredIdentityFields": ["projectId", "taskId", "runId", "candidateId"],
+      "uniqueAcrossScenarios": ["taskId", "runId", "candidateId"],
+      "requiredRoles": ["planner", "implementer", "reviewer"],
+      "uniqueRoleIds": true,
+      "uniqueReviewEventIds": true,
+      "status": "passed",
+      "reviewTransitions": ["changes-requested", "revision-submitted", "approved"],
+      "directApprovalAllowed": true,
+      "minimumReworkScenarios": 1,
+      "requiredCommandStages": ["retest", "preview", "apply"],
+      "successfulExitCode": 0,
+      "commandArtifactFields": ["schemaVersion", "kind", "scenarioId", "stage", "commandId", "argv", "cwd", "rawExitCode", "expectedExitCode", "frozenCandidateSha256", "stdout", "stderr", "stageResult", "observedAt"]
+    },
+    "trust": {
+      "receiptSignature": "not-required",
+      "acceptanceVerdict": "requires-local-runtime-database-verification",
+      "runtimeEvidence": [
+        "collaboration tasks, candidates, reviews, and review stage outputs",
+        "canonical Runs and durable runtime Events",
+        "provider sessions, configured model, native provider process identity and exit codes",
+        "persisted acceptance test exit codes and outputs",
+        "candidate preview response and applied candidate state"
+      ]
+    }
+  }
+}

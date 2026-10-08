@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T18:59:36.685Z",
+  "phases": {
+    "resolved": {
+      "rankedSnapshotId": "mctx_run_lite0713_stage_0713_ranked_mf3-ranking-v1",
+      "degradedSnapshotId": "mctx_run_lite0713_stage_0713_degraded_mf3-ranking-v1",
+      "degradedTokens": 19,
+      "rankedTokens": 19
+    }
+  },
+  "counts": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S0713-RESOLVE-01",
+      "requirementId": "LITE-07-013",
+      "phase": "resolved",
+      "step": "the real Run context path records whether its retrieval ran degraded, per snapshot",
+      "actual": {
+        "rankedSelectsEntry": true,
+        "rankedSnapshotFlag": false,
+        "rankedDurableColumn": 0,
+        "degradedSelectsEntry": true,
+        "degradedSnapshotFlag": true,
+        "degradedDurableColumn": 1,
+        "snapshotsDiffer": true,
+        "sameSelectionEitherWay": true
+      },
+      "expected": {
+        "rankedSelectsEntry": true,
+        "rankedSnapshotFlag": false,
+        "rankedDurableColumn": 0,
+        "degradedSelectsEntry": true,
+        "degradedSnapshotFlag": true,
+        "degradedDurableColumn": 1,
+        "snapshotsDiffer": true,
+        "sameSelectionEitherWay": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S0713-RESOLVE-02",
+      "requirementId": "LITE-07-013",
+      "phase": "resolved",
+      "step": "the flag survives the production read path and the injected text is unaffected by it",
+      "actual": {
+        "degradedReadBack": true,
+        "rankedReadBack": false,
+        "degradedContextMatchesItsOwnSelection": true,
+        "contextTextEqualsPersisted": true,
+        "eventsWritten": 2,
+        "outboxMatchesEvents": true
+      },
+      "expected": {
+        "degradedReadBack": true,
+        "rankedReadBack": false,
+        "degradedContextMatchesItsOwnSelection": true,
+        "contextTextEqualsPersisted": true,
+        "eventsWritten": 2,
+        "outboxMatchesEvents": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S0713-DEFAULT-01",
+      "requirementId": "LITE-07-013",
+      "phase": "default",
+      "step": "the stored flag is a non-null boolean column defaulting to the non-degraded value",
+      "actual": {
+        "column": {
+          "name": "retrieval_degraded",
+          "type": "INTEGER",
+          "notNull": 1,
+          "defaultValue": "0"
+        },
+        "nonDegradedRows": 1,
+        "totalSnapshots": 2
+      },
+      "expected": {
+        "column": {
+          "name": "retrieval_degraded",
+          "type": "INTEGER",
+          "notNull": 1,
+          "defaultValue": "0"
+        },
+        "nonDegradedRows": 1,
+        "totalSnapshots": 2
+      },
+      "outcome": "passed"
+    }
+  ]
+}

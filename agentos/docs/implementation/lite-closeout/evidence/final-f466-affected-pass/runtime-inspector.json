@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/RuntimeInspector.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/assertions.json",
+      "sha256": "6ef43a3fd6dba7113bd3082e4252a02b596d274103c2f9ae09efefb4c44be0c7"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/execution.json",
+      "sha256": "d2059b1afc3bf5a4ba3d658ba98421021f1bbdd6cc9d37306a1c601a56a417a4"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/stdout.txt",
+      "sha256": "fe59cb617725dfc70c69a9106252a5414d6336f5acbcf624d2323645927ff1e5"
+    }
+  ],
+  "counts": {
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "total": 16
+  },
+  "assertionCoverage": [
+    {
+      "id": "INSP-12-RUN-IDENTITY",
+      "requirementId": "LITE-13-002",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "line": 151,
+      "expression": "assert.equal(projection.overview.runId, RUN);",
+      "clause": "Run, Stage, Provider, Process, and duration are distinct.",
+      "whyDirect": "The named production RuntimeInspector test reads the canonical projection and asserts the Run identity, stage, provider session, process identity, evidence-only PID, and Run-derived duration as separate values.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-12-PROCESS",
+      "requirementId": "LITE-13-002",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "line": 167,
+      "expression": "assert.equal(projection.processes.length, 1);",
+      "clause": "The projection contains a distinct Process record linked to the Provider Session and Stage.",
+      "whyDirect": "The assertion observes the persisted Process projection separately from the Stage and Provider Session records created by the fixture.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-12-DURATION",
+      "requirementId": "LITE-13-002",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "line": 182,
+      "expression": "assert.equal(timed.overview.durationMs, 2500);",
+      "clause": "Duration is derived from the canonical Run timestamps.",
+      "whyDirect": "The test changes only the Run timestamps and verifies the Inspector duration, proving duration is a Run projection rather than a Process identity or PID.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-04-ID",
+      "requirementId": "LITE-13-003",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-04 process PID is evidence-only",
+      "line": 237,
+      "expression": "assert.equal(projection.processes[0].processId, processId);",
+      "clause": "The durable Process ID is projected as the AgentOS identity.",
+      "whyDirect": "The named test inserts a Process with a distinct durable ID and reads that ID back from the production Inspector projection.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-04-PID",
+      "requirementId": "LITE-13-003",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-04 process PID is evidence-only",
+      "line": 238,
+      "expression": "assert.equal(projection.processes[0].nativePidEvidenceOnly, 4242);",
+      "clause": "The native PID is retained only as evidence.",
+      "whyDirect": "The assertion verifies the native PID is exposed under the explicit evidence-only field, not substituted for the durable Process ID.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-04-NO-NATIVE-ID",
+      "requirementId": "LITE-13-003",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-04 process PID is evidence-only",
+      "line": 240,
+      "expression": "assert.ok(!('nativePid' in projection.processes[0]));",
+      "clause": "The DTO does not expose a misleading nativePid identity field.",
+      "whyDirect": "The assertion directly checks the returned production DTO shape and rejects the ambiguous nativePid property.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-07-EVENTS",
+      "requirementId": "LITE-13-015",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-07 inspect performs no writes",
+      "line": 308,
+      "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), before);",
+      "clause": "Inspector replay does not append Runtime Events.",
+      "whyDirect": "The test snapshots the canonical Runtime Event count, invokes the production Inspector, and verifies the count is unchanged.",
+      "outcome": "passed"
+    },
+    {
+      "id": "INSP-07-RUN-STATE",
+      "requirementId": "LITE-13-015",
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "name": "INSP-07 inspect performs no writes",
+      "line": 309,
+      "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runs WHERE status = ?', 'running'), 1);",
+      "clause": "Inspector replay does not mutate the canonical Run state.",
+      "whyDirect": "The assertion reads the canonical Run table after inspection and confirms the existing running state remains unchanged.",
+      "outcome": "passed"
+    }
+  ]
+}

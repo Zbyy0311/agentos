@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-10-015-lite-10-015-m27-p5-t012-compatibility-read-preserves-selected-workspace-source-b-1",
+    "requirementId": "LITE-10-015",
+    "file": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+    "name": "LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss",
+    "line": 90,
+    "expression": "assert.equal(result.completedCount, 1);",
+    "clause": "compatibility reads without data loss;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

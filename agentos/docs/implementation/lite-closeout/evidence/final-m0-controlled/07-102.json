@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-102\\receipts.json"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/execution.json",
+      "sha256": "74b4a30400c9498e8597ac313d1db14b333bb521db02c9870ff8b2f55d0720a7"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/receipts.json/receipts.json",
+      "sha256": "0925d7ba32d2b3bd54aacfce46c30317a881ae4fe4efcf118748f2159772889c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/stdout.txt",
+      "sha256": "883de926c1ca6ca5f09f7f36d9882a57bad420c6463face24d9f67df02b49fe0"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-m0-clean/07-102/receipts.json/receipts.json",
+  "counts": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S102-TRIGGER-01",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "runStatus": "failed",
+        "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "terminalEvents": [
+          "run.dequeued",
+          "run.started",
+          "run.failed"
+        ],
+        "stageOutcomes": [
+          "failed",
+          "skipped",
+          "skipped",
+          "skipped"
+        ],
+        "candidateCount": 1,
+        "candidate": [
+          {
+            "id": "mcand_terminal_run_lite102_a",
+            "scope": "task",
+            "category": "failure",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "outcome": "review-required"
+          }
+        ],
+        "candidateEvents": 1,
+        "providerProcesses": 0,
+        "providerSessions": 0,
+        "outputReferences": 0
+      },
+      "expected": {
+        "runStatus": "failed",
+        "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "terminalEvents": [
+          "run.dequeued",
+          "run.started",
+          "run.failed"
+        ],
+        "stageOutcomes": [
+          "failed",
+          "skipped",
+          "skipped",
+          "skipped"
+        ],
+        "candidateCount": 1,
+        "candidate": [
+          {
+            "id": "mcand_terminal_run_lite102_a",
+            "scope": "task",
+            "category": "failure",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "outcome": "review-required"
+          }
+        ],
+        "candidateEvents": 1,
+        "providerProcesses": 0,
+        "providerSessions": 0,
+        "outputReferences": 0
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger",
+      "expression": "expect('LITE-07-102', 'S102-TRIGGER-01', 'a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger',",
+      "line": 160,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-BOUNDED-01",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "contentBytes": 404,
+        "withinBound": true,
+        "everyLineAllowlisted": true,
+        "prefixesSeen": [
+          "任务：",
+          "结果：",
+          "失败代码：",
+          "失败说明：",
+          "Stage 结果："
+        ],
+        "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "failureMessageTruncated": true,
+        "stageSummary": true,
+        "storedMessageIsTheRunsOwnBoundedMessage": true,
+        "providerOutputRowsForThisWorkspace": 0,
+        "sourceKinds": [
+          "run"
+        ]
+      },
+      "expected": {
+        "contentBytes": 404,
+        "withinBound": true,
+        "everyLineAllowlisted": true,
+        "prefixesSeen": [
+          "任务：",
+          "结果：",
+          "失败代码：",
+          "失败说明：",
+          "Stage 结果："
+        ],
+        "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "failureMessageTruncated": true,
+        "stageSummary": true,
+        "storedMessageIsTheRunsOwnBoundedMessage": true,
+        "providerOutputRowsForThisWorkspace": 0,
+        "sourceKinds": [
+          "run"
+        ]
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "the fact is bounded record-only evidence: allowlisted lines, truncated fields, no raw output",
+      "expression": "expect('LITE-07-102', 'S102-BOUNDED-01', 'the fact is bounded record-only evidence: allowlisted lines, truncated fields, no raw output',",
+      "line": 186,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-IDEMPOTENT-01",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "replayOutcome": "existing",
+        "replayCandidateMatches": true,
+        "runRowsUnchanged": true,
+        "candidatesAdded": 0,
+        "eventsAdded": 0
+      },
+      "expected": {
+        "replayOutcome": "existing",
+        "replayCandidateMatches": true,
+        "runRowsUnchanged": true,
+        "candidatesAdded": 0,
+        "eventsAdded": 0
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "a replay neither modifies the terminal Run nor creates a second fact or Event",
+      "expression": "expect('LITE-07-102', 'S102-IDEMPOTENT-01', 'a replay neither modifies the terminal Run nor creates a second fact or Event',",
+      "line": 218,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-01",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "terminalRunRows": 3,
+        "generated": 1,
+        "existing": 1,
+        "missingAuthority": 1,
+        "unresolved": 0,
+        "repairedCandidate": {
+          "id": "mcand_terminal_run_lite102_b",
+          "scope": "task",
+          "category": "failure",
+          "decision": "review-required",
+          "citesRun": true
+        },
+        "candidateEventsBefore": 1,
+        "terminalEventBefore": 1,
+        "candidatesAfterSweep": 2
+      },
+      "expected": {
+        "terminalRunRows": 3,
+        "generated": 1,
+        "existing": 1,
+        "missingAuthority": 1,
+        "unresolved": 0,
+        "repairedCandidate": {
+          "id": "mcand_terminal_run_lite102_b",
+          "scope": "task",
+          "category": "failure",
+          "decision": "review-required",
+          "citesRun": true
+        },
+        "candidateEventsBefore": 1,
+        "terminalEventBefore": 1,
+        "candidatesAfterSweep": 2
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from",
+      "expression": "expect('LITE-07-102', 'S102-RESTART-01', 'the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from',",
+      "line": 255,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-02",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "runRowsUnchanged": true,
+        "runs": [
+          {
+            "id": "run_lite102_a",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_b",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_c",
+            "status": "cancelled"
+          }
+        ]
+      },
+      "expected": {
+        "runRowsUnchanged": true,
+        "runs": [
+          {
+            "id": "run_lite102_a",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_b",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_c",
+            "status": "cancelled"
+          }
+        ]
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "the sweep never mutates a Run row, terminal or not",
+      "expression": "expect('LITE-07-102', 'S102-RESTART-02', 'the sweep never mutates a Run row, terminal or not',",
+      "line": 266,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-03",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "generated": 0,
+        "existing": 2,
+        "missingAuthority": 1,
+        "candidates": 2
+      },
+      "expected": {
+        "generated": 0,
+        "existing": 2,
+        "missingAuthority": 1,
+        "candidates": 2
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "a second sweep converges with no new facts, so a restart loop cannot duplicate work",
+      "expression": "expect('LITE-07-102', 'S102-RESTART-03', 'a second sweep converges with no new facts, so a restart loop cannot duplicate work',",
+      "line": 272,
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-REFUSE-01",
+      "requirementId": "LITE-07-102",
+      "actual": {
+        "outcome": "not-terminal",
+        "runRowsUnchanged": true,
+        "runStatus": "queued",
+        "candidateCreated": false,
+        "providerProcesses": 0,
+        "runtimeEvents": 0
+      },
+      "expected": {
+        "outcome": "not-terminal",
+        "runRowsUnchanged": true,
+        "runStatus": "queued",
+        "candidateCreated": false,
+        "providerProcesses": 0,
+        "runtimeEvents": 0
+      },
+      "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+      "name": "a non-terminal Run is refused without being touched and without any execution starting",
+      "expression": "expect('LITE-07-102', 'S102-REFUSE-01', 'a non-terminal Run is refused without being touched and without any execution starting',",
+      "line": 286,
+      "outcome": "passed"
+    }
+  ]
+}

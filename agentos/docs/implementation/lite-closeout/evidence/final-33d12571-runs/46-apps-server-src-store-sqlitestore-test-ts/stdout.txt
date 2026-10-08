@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: Workspace.agents projected fields match Provider Configuration after update
+ok 1 - Workspace.agents projected fields match Provider Configuration after update
+  ---
+  duration_ms: 148.745
+  type: 'test'
+  ...
+# Subtest: LITE-04-004 switching a Provider preserves the Agent identity and durable History
+ok 2 - LITE-04-004 switching a Provider preserves the Agent identity and durable History
+  ---
+  duration_ms: 154.4148
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 585.6221

@@ -24,11 +24,12 @@ export function createArtifactRoutes(
       return res.status(409).json({ error: 'Artifact content is metadata-only' });
     }
     const artifact = record.record.artifact;
-    const inline = artifact.type === 'image' || artifact.type === 'diff' || artifact.type === 'report' || artifact.type === 'log';
+    const inline = artifact.type === 'image' || artifact.type === 'diff' || artifact.type === 'report' || artifact.type === 'log'
+      || artifact.type === 'review' || artifact.type === 'test';
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-    res.setHeader('Content-Type', safeMimeType(artifact.mimeType, artifact.type));
+    res.setHeader('Content-Type', safeMimeType(artifact.mimeType ?? undefined, artifact.type));
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeFilename(artifact.title)}"`);
     return res.sendFile(record.path, error => {
       if (error && !res.headersSent) res.status(404).json({ error: 'Artifact content not found' });

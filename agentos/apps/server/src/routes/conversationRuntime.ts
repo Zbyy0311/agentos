@@ -1,0 +1,1348 @@
+import { Router, type Request, type Response } from 'express';
+
+import { createHash } from 'node:crypto';
+import { createEntityId } from '../store/Identity.js';
+import { inTransaction } from '../store/Transaction.js';
+import type { SqliteStore } from '../store/SqliteStore.js';
+import type { GroupInteractionRepository } from '../store/GroupInteractionRepository.js';
+import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { createSseWriter, startSseHeartbeat } from './sse.js';
+import {
+  ConversationTurnDriver,
+  createDurableTurnContextSnapshotPort,
+  type ChatWorkspaceAuthorityPort,
+} from '../services/ConversationTurnDriver.js';
+import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
+import {
+  ConversationCompactionService,
+  createConversationCompactionPort,
+} from '../services/ConversationCompactionService.js';
+import { ConversationCompactionTrigger } from '../services/ConversationCompactionTrigger.js';
+import { ProviderCompactionSummarizer } from '../services/ProviderCompactionSummarizer.js';
+import { SUMMARIZATION_CLI_PROFILES } from '../services/summarizationCliProfiles.js';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { CompactionRepository } from '../store/CompactionRepository.js';
+import { projectConversationCompaction } from '../services/ConversationCompactionInspector.js';
+import { createMemoryRetrievalRuntime, memoryRetrievalRuntimeConfigFromEnvironment } from '../services/MemoryRetrievalRuntime.js';
+import { MemorySourceAccumulationService } from '../services/MemorySourceAccumulationService.js';
+import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
+import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
+import { BoundedGroupError } from '../services/BoundedGroupService.js';
+import { cleanupConversationAttachments, parseConversationAttachmentInputs, saveConversationAttachments, validateConversationAttachmentInputs, type StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
+import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
+import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
+import {
+  CONVERSATION_REPLY_MODES,
+  type AgentProfile,
+  type ConversationReplyMode,
+  type RunIntent,
+} from '@agentos/shared';
+import type { ConversationStatus } from '@agentos/shared';
+import { createProductionRecoveredProcessVerifier, isValidNativeBirthIdentity } from '@agentos/process-runtime';
+
+/**
+ * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
+ *
+ * Workspace-scoped under `/api/workspaces/:workspaceId/runtime` — the forward paths
+ * from the Lite contract are realized under the app's existing workspace mount without
+ * colliding with the legacy `/conversations` surface, which remains COMPATIBILITY.
+ *
+ * This router is a thin API boundary over the merged CR seams:
+ *   ConversationRepository (CR-1) + AgentTurnRepository (CR-2) + ConversationStreamService
+ *   (CR-3) + ConversationBridgeService (CR-4a) + BoundedGroupService (CR-5) +
+ *   AgentHistoryService (CR-6).
+ *
+ * It never spawns a process, never touches Provider credentials, and sends a user
+ * Message by persisting before any routing. The chat reply stream (a Provider-backed
+ * Agent Turn over the CR-3 seam) is the Direct Conversation UX slice, not this one.
+ */
+
+interface ErrorMapping { readonly status: number; readonly code: string }
+
+function mapError(error: unknown): ErrorMapping {
+  const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
+  if (/GROUP_RECOVERY_/.test(code)) return { status: 409, code };
+  if (/GROUP_VERSION_CONFLICT|GROUP_REPLY_ASSOCIATION_INVALID|GROUP_REPLY_FINALIZATION_REQUIRED|GROUP_EXECUTION_ALREADY_OWNED|GROUP_EXECUTION_INTERRUPTED|GROUP_SOURCE_MISMATCH|GROUP_CONVERSATION_NOT_ACTIVE/.test(code)) {
+    return { status: 409, code };
+  }
+  if (/NOT_FOUND/.test(code)) return { status: 404, code };
+  if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
+  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE|DISCUSSION_ACTIVE/.test(code)) {
+    return { status: 409, code };
+  }
+  return { status: 500, code };
+}
+
+function fail(res: Response, error: unknown): void {
+  const mapped = mapError(error);
+  res.status(mapped.status).json({ error: mapped.code });
+}
+
+function hasP2GroupRecoverySchema(store: SqliteStore): boolean {
+  return store.getDatabase().prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'p2_group_recovery_links'").get() !== undefined;
+}
+
+async function proveInterruptedGroupProviderProcessesExited(input: {
+  readonly workspaceId: string;
+  readonly interactionId: string;
+  readonly conversationId: string;
+  readonly ownerEpoch: number;
+  readonly currentTurnId: string | null;
+}, interactions: GroupInteractionRepository): Promise<boolean> {
+  if (input.currentTurnId === null) return true;
+  const events = interactions.listExecutionEvents(
+    input.workspaceId, input.conversationId, input.interactionId, 0,
+  );
+  const processEvents = events.filter(event => event.eventType === 'group.provider.started');
+  if (!processEvents.some(event => event.payload.turnId === input.currentTurnId
+    && event.ownerEpoch === input.ownerEpoch)) return false;
+
+  const verifier = createProductionRecoveredProcessVerifier();
+  for (const event of processEvents) {
+    if (event.ownerEpoch !== input.ownerEpoch) return false;
+    const pid = event.payload.pid;
+    const birth = event.payload.nativeBirthIdentity;
+    if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0
+      || typeof birth !== 'string' || !isValidNativeBirthIdentity(birth)) return false;
+    const observed = await verifier.verify(pid);
+    if (observed.kind === 'not-found') continue;
+    if (observed.kind === 'alive'
+      && typeof observed.identity.nativeBirthIdentity === 'string'
+      && observed.identity.nativeBirthIdentity !== birth) continue;
+    return false;
+  }
+  return true;
+}
+
+function isConversationReplyMode(value: unknown): value is ConversationReplyMode {
+  return (CONVERSATION_REPLY_MODES as readonly unknown[]).includes(value);
+}
+
+function parseConversationIntent(value: unknown): RunIntent | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'ask' || value === 'execute' || value === 'review') return value;
+  throw new Error('intent must be ask, execute, or review');
+}
+
+type RuntimeGroupMemberInput = ReturnType<typeof parseGroupMemberSettings> & { readonly agentId: string };
+
+function parseRuntimeGroupMemberSettings(value: unknown): RuntimeGroupMemberInput[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 2) throw new Error('members must contain at least two Agents');
+  return value.map(item => {
+    if (!item || typeof item !== 'object') throw new Error('members contains an invalid entry');
+    const row = item as Record<string, unknown>;
+    if (typeof row.agentId !== 'string' || row.agentId.trim().length === 0) {
+      throw new Error('members requires agentId');
+    }
+    return { agentId: row.agentId.trim(), ...parseGroupMemberSettings(row) };
+  });
+}
+
+async function validateRuntimeGroupMemberSettings(
+  profiles: Map<string, AgentProfile>,
+  members: ReadonlyArray<{
+    readonly agentId: string;
+    readonly model?: string | null;
+    readonly thinkingEffort?: import('@agentos/shared').ThinkingEffort | null;
+  }>,
+  modelDiscovery: ModelDiscoveryService,
+): Promise<void> {
+  await Promise.all(members.map(async member => {
+    const profile = profiles.get(member.agentId);
+    if (!profile) throw new Error('a group member Agent is unavailable');
+    const capable = await withAgentCapability(profile, modelDiscovery);
+    validateRuntimeOverrides(capable, {
+      ...(typeof member.model === 'string' && member.model.length > 0 ? { model: member.model } : {}),
+      ...(member.thinkingEffort === undefined || member.thinkingEffort === null ? {} : { thinkingEffort: member.thinkingEffort }),
+    });
+  }));
+}
+
+export function createConversationRuntimeRoutes(
+  store: SqliteStore,
+  workspaceManager: WorkspaceManager,
+  modelDiscovery: ModelDiscoveryService = new CliModelDiscovery(),
+): Router {
+  const router = Router({ mergeParams: true });
+
+  const requireWorkspace = (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return null;
+    }
+    return workspace;
+  };
+
+  const conversations = () => store.conversationRepository();
+  const sourceAccumulator = new MemorySourceAccumulationService(store);
+  const accumulateWithoutAffectingExecution = (label: string, action: () => unknown) => {
+    try {
+      action();
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error ? String((error as { code?: unknown }).code)
+        : error instanceof Error ? error.message : 'UNKNOWN';
+      console.error(`MEMORY_SOURCE_ACCUMULATION_FAILED source=${label} code=${code}`);
+    }
+  };
+
+  /**
+   * LITE-09-101: the production Memory selector for chat. Without it the driver
+   * falls back to the empty selector, so a chat Turn persisted a frozen but empty
+   * selection and no Memory ever reached the Provider. This reuses the same MF-3
+   * retrieval and MF-4 budget the Run path uses, scoped to this Agent/Conversation.
+   */
+  const memoryRetrieval = createMemoryRetrievalRuntime(
+    store.getDatabase(),
+    memoryRetrievalRuntimeConfigFromEnvironment(),
+  );
+  const chatMemorySelection = createChatMemorySelectionPort({
+    retrieval: memoryRetrieval.retrieval,
+    isMemoryEnabled: workspaceId => workspaceManager.get(workspaceId)?.memoryEnabled === true,
+    onProblem: detail => console.warn('[AgentOS ChatMemory] ' + detail),
+  });
+
+  /**
+   * LITE-09-102 / D2=A: chat has no implicit modifying authority. The forward
+   * chat path is classified as modifying (no adapter proves enforced
+   * read-only), so it refuses while another subject holds the Workspace's
+   * single-writer authority instead of running concurrently with it.
+   */
+  const chatWorkspaceAuthority: ChatWorkspaceAuthorityPort = {
+    findModifyingHolder: (workspaceId: string) => {
+      const row = new WorkspaceAdmissionRepository(store.getDatabase())
+        .listByWorkspace(workspaceId)
+        .find(admission => admission.effectiveMutationClass === 'MODIFYING' && admission.state === 'GRANTED');
+      if (row === undefined) return undefined;
+      const subjectId = row.subjectKind === 'CANONICAL_RUN'
+        ? row.canonicalRunId
+        : row.subjectKind === 'LEGACY_AGENT_RUN'
+          ? row.legacyRunId
+          : row.collaborationControlId;
+      return {
+        subjectKind: row.subjectKind,
+        subjectId: subjectId ?? null,
+      };
+    },
+  };
+
+  // S6: published compaction summaries apply to new Turn contexts. The hard
+  // application budget is the frozen lite-v1 fallback when no provider bound
+  // is known, which is what the compaction policy records today.
+  const compactionPort = createConversationCompactionPort(store);
+  const compactionBudget = { hardBudgetTokens: 16384 };
+
+  // S6 / LITE-09-106 + LITE-09-107: the automatic trigger. One engine per
+  // router and one summary execution channel: only an allowlisted CLI profile
+  // may produce a summary, and it runs in an isolated scratch directory that
+  // is outside every Workspace. Without an allowlisted profile the attempt
+  // fails closed and the durable task records the failure code.
+  const compactionEngine = new ConversationCompactionService({
+    store,
+    summarizer: new ProviderCompactionSummarizer({
+      scratchRoot: join(tmpdir(), 'agentos-compaction-scratch'),
+      profiles: SUMMARIZATION_CLI_PROFILES,
+    }),
+  });
+  const compactionTrigger = new ConversationCompactionTrigger({
+    store,
+    engine: compactionEngine,
+    getAgent: (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(profile => profile.id === agentId),
+    onAttempt: attempt => console.log(
+      `COMPACTION_ATTEMPT outcome=${attempt.outcome} policy=${attempt.policyVersion}`
+      + (attempt.taskId === undefined ? '' : ` task=${attempt.taskId}`),
+    ),
+    onError: (code, error) => console.error(`COMPACTION_TRIGGER_ERROR code=${code}`, error),
+  });
+
+  // ---- Conversations ------------------------------------------------------
+
+  router.post('/conversations', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const kind = body.kind;
+    if (kind !== 'direct' && kind !== 'group') {
+      res.status(400).json({ error: 'kind must be direct or group' });
+      return;
+    }
+    const title = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : null;
+    const now = new Date().toISOString();
+    const userId = typeof body.userId === 'string' && body.userId.trim().length > 0
+      ? body.userId.trim()
+      : store.getDefaultUserProfile().id;
+    try {
+      if (kind === 'direct') {
+        const agentId = typeof body.agentId === 'string' ? body.agentId : null;
+        if (agentId === null) { res.status(400).json({ error: 'agentId is required for a direct Conversation' }); return; }
+        const agent = store.listAgentProfiles(workspace.id).find(p => p.id === agentId && p.enabled);
+        if (!agent) { res.status(400).json({ error: 'Agent is unavailable' }); return; }
+        const conversationInput = {
+          id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'direct' as const,
+          title: title ?? `与 ${agent.name} 的对话`, createdAt: now,
+        };
+        const created = conversations().createConversationWithMembers({
+          conversation: conversationInput,
+          members: [
+            {
+              id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+              subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+              replyMode: 'always', joinedAt: now,
+            },
+            {
+              id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+              subjectType: 'agent', subjectId: agent.id, displayNameSnapshot: agent.name, role: 'participant',
+              replyMode: 'always', joinedAt: now,
+            },
+          ],
+        });
+        res.status(201).json(created);
+        return;
+      }
+      // group
+      const replyMode = body.replyMode === undefined ? 'sequential' : body.replyMode;
+      if (!isConversationReplyMode(replyMode)) {
+        res.status(400).json({ error: 'replyMode must be sequential, parallel-read-only, orchestrated, manual, or mention-only' });
+        return;
+      }
+      const memberAgentIds = Array.isArray(body.memberAgentIds)
+        ? (body.memberAgentIds as unknown[]).filter((id): id is string => typeof id === 'string')
+        : [];
+      let parsedMemberSettings: RuntimeGroupMemberInput[] | undefined;
+      try {
+        parsedMemberSettings = parseRuntimeGroupMemberSettings(body.members);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      const requestedMembers: RuntimeGroupMemberInput[] = parsedMemberSettings ?? memberAgentIds.map(agentId => ({ agentId }));
+      const requestedAgentIds = requestedMembers.map(member => member.agentId);
+      if (requestedAgentIds.length < 2) {
+        res.status(400).json({ error: 'a group Conversation needs at least two Agents' });
+        return;
+      }
+      const profiles = new Map(store.listAgentProfiles(workspace.id).filter(p => p.enabled).map(p => [p.id, p]));
+      if (new Set(requestedAgentIds).size !== requestedAgentIds.length || requestedAgentIds.some(id => !profiles.has(id))) {
+        res.status(400).json({ error: 'a group member Agent is unavailable' });
+        return;
+      }
+      try {
+        await validateRuntimeGroupMemberSettings(profiles, requestedMembers, modelDiscovery);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      const conversationInput = {
+        id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'group' as const,
+        title: title ?? 'Group', replyMode, createdAt: now,
+      };
+      const created = conversations().createConversationWithMembers({
+        conversation: conversationInput,
+        members: [
+          {
+            id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+            subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+            replyMode: 'always', joinedAt: now,
+          },
+          ...requestedMembers.map(member => ({
+            id: createEntityId('conversation'), conversationId: conversationInput.id, workspaceId: workspace.id,
+            subjectType: 'agent' as const, subjectId: member.agentId, displayNameSnapshot: profiles.get(member.agentId)!.name,
+            role: 'participant' as const, replyMode: 'always' as const, joinedAt: now,
+            ...(member.roleTitle === undefined ? {} : { roleTitle: member.roleTitle }),
+            ...(member.model === undefined ? {} : { model: member.model }),
+            ...(member.thinkingEffort === undefined ? {} : { thinkingEffort: member.thinkingEffort }),
+            ...(member.additionalInstructions === undefined ? {} : { additionalInstructions: member.additionalInstructions }),
+          })),
+        ],
+      });
+      res.status(201).json(created);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  router.get('/conversations', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const status = req.query.status;
+    if (status !== undefined && (status !== 'active' && status !== 'archived')) {
+      res.status(400).json({ error: 'status must be active or archived' });
+      return;
+    }
+    res.json({ conversations: conversations().listConversations(workspace.id, status as ConversationStatus | undefined) });
+  });
+
+  router.get('/conversations/:conversationId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    res.json({ conversation });
+  });
+
+  router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const title = (req.body as Record<string, unknown>).title;
+    if (typeof title !== 'string' || title.trim().length === 0) { res.status(400).json({ error: 'title is required' }); return; }
+    try {
+      const conversation = conversations().updateConversationTitle({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        title, updatedAt: new Date().toISOString(),
+      });
+      res.json({ conversation });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post('/conversations/:conversationId/archive', (req: Request, res: Response) => {
+    transitionConversation(req, res, 'archive');
+  });
+  router.post('/conversations/:conversationId/restore', (req: Request, res: Response) => {
+    transitionConversation(req, res, 'restore');
+  });
+  function transitionConversation(req: Request, res: Response, action: 'archive' | 'restore'): void {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
+    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    try {
+      const conversation = conversations().transitionConversation({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        expectedVersion, action, changedAt: new Date().toISOString(),
+      });
+      res.json({ conversation });
+    } catch (error) {
+      fail(res, error);
+    }
+  }
+
+  router.get('/conversations/:conversationId/members', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    res.json({ members: conversations().listMembers(workspace.id, req.params.conversationId) });
+  });
+
+  /**
+   * Replace only group-scoped Agent settings. Membership, permissions and
+   * Provider credentials remain outside this endpoint. The whole update is
+   * optimistic and transactional, so the next interaction sees either the old
+   * set or the new set, never a partially edited group.
+   */
+  router.patch('/conversations/:conversationId/members', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { res.status(400).json({ error: 'Only group Conversations support member settings' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!Number.isSafeInteger(body.expectedSettingsVersion) || Number(body.expectedSettingsVersion) < 1) {
+      res.status(400).json({ error: 'expectedSettingsVersion is required' });
+      return;
+    }
+    if (!Array.isArray(body.members)) {
+      res.status(400).json({ error: 'members must be an array' });
+      return;
+    }
+    const existing = conversations().listMembers(workspace.id, conversation.id)
+      .filter(member => member.subjectType === 'agent' && member.status === 'active');
+    const byAgentId = new Map(existing.map(member => [member.subjectId, member]));
+    const byMemberId = new Map(existing.map(member => [member.id, member]));
+    const updates: Array<{
+      memberId: string;
+      roleTitle?: string;
+      model?: string | null;
+      thinkingEffort?: import('@agentos/shared').ThinkingEffort | null;
+      additionalInstructions?: string | null;
+    }> = [];
+    try {
+      for (const item of body.members) {
+        if (!item || typeof item !== 'object') throw new Error('members contains an invalid entry');
+        const row = item as Record<string, unknown>;
+        const member = typeof row.memberId === 'string'
+          ? byMemberId.get(row.memberId)
+          : typeof row.agentId === 'string' ? byAgentId.get(row.agentId) : undefined;
+        if (!member) throw new Error('members contains an unknown Agent member');
+        const settings = parseGroupMemberSettings(row);
+        const model = row.model === null || (typeof row.model === 'string' && row.model.trim().length === 0)
+          ? null
+          : settings.model;
+        const additionalInstructions = row.additionalInstructions === null
+          || (typeof row.additionalInstructions === 'string' && row.additionalInstructions.trim().length === 0)
+          ? null
+          : settings.additionalInstructions;
+        const thinkingEffort = row.thinkingEffort === null ? null : settings.thinkingEffort;
+        updates.push({
+          memberId: member.id,
+          ...(settings.roleTitle === undefined ? {} : { roleTitle: settings.roleTitle }),
+          ...(model === undefined ? {} : { model }),
+          ...(thinkingEffort === undefined ? {} : { thinkingEffort }),
+          ...(additionalInstructions === undefined ? {} : { additionalInstructions }),
+        });
+      }
+      await validateRuntimeGroupMemberSettings(
+        new Map(store.listAgentProfiles(workspace.id).filter(agent => agent.enabled).map(agent => [agent.id, agent])),
+        updates.map(update => ({
+          agentId: byMemberId.get(update.memberId)!.subjectId,
+          ...update,
+        })),
+        modelDiscovery,
+      );
+      const result = conversations().updateGroupMemberSettings({
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        expectedSettingsVersion: Number(body.expectedSettingsVersion),
+        members: updates,
+        updatedAt: new Date().toISOString(),
+      });
+      res.json(result);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  router.get('/conversations/:conversationId/turns', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    res.json({ turns: store.agentTurnRepository().listTurnsByConversation(workspace.id, req.params.conversationId) });
+  });
+
+  /**
+   * S6 Inspector read surface (LITE-09-104/107): the effective compaction
+   * policy, every task of the Conversation with its frozen budget inputs, the
+   * applied summary and the attempts/failure state. Read-only, no Provider
+   * work, no mutation.
+   */
+  router.get('/conversations/:conversationId/compactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    // LITE-13-101 also has to answer WHO adopted a summary: a published summary
+    // only matters through the Turn and frozen context snapshot that used it.
+    // The read model is shared with the Run-scoped Inspector so the two surfaces
+    // cannot report different compaction stories for the same Conversation.
+    res.json(projectConversationCompaction(store.getDatabase(), workspace.id, req.params.conversationId));
+  });
+
+  // ---- Messages -----------------------------------------------------------
+  /**
+   * S6 / LITE-09-108: explicit retry for a Conversation whose automatic
+   * compaction could not complete. It runs exactly the same evaluation the
+   * Turn path runs, so it can never invent a different outcome, and it reports
+   * the durable task state instead of a bare success.
+   */
+  router.post('/conversations/:conversationId/compactions/retry', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const member = conversations().listMembers(workspace.id, conversation.id)
+      .find(candidate => candidate.subjectType === 'agent' && candidate.status === 'active');
+    if (member === undefined) { res.status(400).json({ error: 'no active Agent member' }); return; }
+    try {
+      const result = await compactionTrigger.ensureCompacted({
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        agentId: member.subjectId,
+        // LITE-09-108: this is the explicit retry, so it may spend a new attempt even when
+        // the automatic chain for the source is already exhausted.
+        mode: 'explicit',
+      });
+      const task = result.taskId === undefined ? undefined : new CompactionRepository(store.getDatabase())
+        .findById(workspace.id, result.taskId);
+      // A blocked retry is not a server error: the reason is durable policy or
+      // execution state, and the caller needs it verbatim.
+      res.status(200).json({
+        outcome: result.outcome,
+        policyVersion: result.policyVersion,
+        ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }),
+        ...(task === undefined ? {} : { task: {
+          id: task.id, status: task.status, attempts: task.attempts,
+          failureCode: task.failureCode, failureMessage: task.failureMessage,
+          sourceMessageCount: task.sourceMessageCount, publishedAt: task.publishedAt,
+        } }),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+
+  router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const afterSequence = typeof req.query.afterSequence === 'string' ? Number(req.query.afterSequence) : 0;
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+      res.status(400).json({ error: 'afterSequence must be a non-negative integer' });
+      return;
+    }
+    res.json({ messages: conversations().listMessages(workspace.id, req.params.conversationId, afterSequence) });
+  });
+
+  /**
+   * Send a user Message: persisted before any routing. No Task, Run, or Agent Turn
+   * is created here; the Provider-backed reply stream is the Direct Conversation UX
+   * slice. clientMessageId makes a retried send converge on one Message.
+   */
+  router.post('/conversations/:conversationId/messages', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const content = body.content;
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+    const kind = body.kind === undefined ? 'text' : body.kind;
+    if (kind !== 'text') { res.status(400).json({ error: 'only text Messages are supported here' }); return; }
+    try {
+      const message = conversations().appendMessage({
+        id: createEntityId('message'), conversationId: req.params.conversationId, workspaceId: workspace.id,
+        senderType: 'user', kind: 'text', status: 'final', content,
+        ...(typeof body.clientMessageId === 'string' && body.clientMessageId.trim().length > 0
+          ? { clientMessageId: body.clientMessageId.trim() } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(201).json({ message });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  /**
+   * Unified group send: the user Message and its bounded discussion are one
+   * durable command. A client message key converges on the same pair after a
+   * retry, so the UI never starts a second discussion for one click.
+   */
+  router.post('/conversations/:conversationId/discussions', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const content = body.content;
+    if (typeof content !== 'string') { res.status(400).json({ error: 'content is required' }); return; }
+    let attachments;
+    try {
+      attachments = parseConversationAttachmentInputs(body.attachments);
+      validateConversationAttachmentInputs(attachments);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    if (content.trim().length === 0 && attachments.length === 0) {
+      res.status(400).json({ error: 'content or image attachment is required' });
+      return;
+    }
+    const budget = body.budget;
+    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    const clientMessageId = typeof body.clientMessageId === 'string' && body.clientMessageId.trim().length > 0
+      ? body.clientMessageId.trim() : undefined;
+    let storedAttachments: StoredConversationAttachment[] = [];
+    try {
+      const sourceMessageId = createEntityId('message');
+      if (attachments.length > 0) {
+        storedAttachments = await saveConversationAttachments({
+          workspaceRoot: workspace.rootPath,
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          messageId: sourceMessageId,
+          attachments,
+        });
+      }
+      const result = inTransaction(store.getDatabase(), () => {
+        const sourceMessage = conversations().appendMessageWithinTransaction({
+          id: sourceMessageId, conversationId: conversation.id, workspaceId: workspace.id,
+          senderType: 'user', kind: 'text', status: 'final', content: content.trim(), attachments: storedAttachments,
+          ...(clientMessageId === undefined ? {} : { clientMessageId }),
+          createdAt: new Date().toISOString(),
+        });
+        const existing = store.groupInteractionRepository().findInteractionBySourceMessage(workspace.id, conversation.id, sourceMessage.id);
+        if (existing) return { message: sourceMessage, interaction: existing, idempotent: true };
+        const active = store.groupInteractionRepository().listInteractions(workspace.id, conversation.id)
+          .find(item => item.status === 'active' && (!hasP2GroupRecoverySchema(store) || store.getDatabase().prepare(
+            'SELECT 1 AS linked FROM p2_group_recovery_links WHERE workspace_id = ? AND prior_interaction_id = ?',
+          ).get(workspace.id, item.id) === undefined));
+        if (active) {
+          const error = new Error('GROUP_DISCUSSION_ACTIVE');
+          (error as { code?: string }).code = 'GROUP_DISCUSSION_ACTIVE';
+          throw error;
+        }
+        const interaction = store.groupInteractionRepository().createInteractionWithinTransaction({
+          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+          sourceMessageId: sourceMessage.id, budget: budget as never, createdAt: new Date().toISOString(),
+        });
+        return { message: sourceMessage, interaction, idempotent: false };
+      });
+      if (result.idempotent && storedAttachments.length > 0) {
+        await cleanupConversationAttachments(workspace.rootPath, storedAttachments);
+      }
+      res.status(result.idempotent ? 200 : 201).json(result);
+    } catch (error) {
+      if (storedAttachments.length > 0) {
+        try { await cleanupConversationAttachments(workspace.rootPath, storedAttachments); } catch { /* preserve the original API error */ }
+      }
+      fail(res, error);
+    }
+  });
+
+  // Durable streaming reconnect (CR-3): replay checkpoints after the client cursor.
+  router.get('/conversations/:conversationId/messages/:messageId/checkpoints', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const afterCursor = typeof req.query.afterCursor === 'string' ? Number(req.query.afterCursor) : 0;
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
+      res.status(400).json({ error: 'afterCursor must be a non-negative integer' });
+      return;
+    }
+    try {
+      const replay = store.conversationStreamService().replayStream({
+        workspaceId: workspace.id, messageId: req.params.messageId, afterCursor,
+      });
+      if (replay.message.conversationId !== req.params.conversationId) {
+        res.status(404).json({ error: 'Message not found in this Conversation' });
+        return;
+      }
+      res.json(replay);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  // ---- Task / Run bridge (CR-4a) -------------------------------------------
+
+  router.post('/messages/:messageId/create-task', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    try {
+      const result = store.conversationBridgeService().createTaskFromMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        createdBy: typeof body.createdBy === 'string' ? body.createdBy : store.getDefaultUserProfile().id,
+        ...(typeof body.title === 'string' ? { title: body.title } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  router.post('/messages/:messageId/start-run', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    try {
+      const result = store.conversationBridgeService().startRunFromMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        createdBy: typeof body.createdBy === 'string' ? body.createdBy : store.getDefaultUserProfile().id,
+        ...(typeof body.objective === 'string' ? { objective: body.objective } : {}),
+        ...(body.requestedIntent === 'READ_ONLY' || body.requestedIntent === 'MODIFYING'
+          ? { requestedIntent: body.requestedIntent } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(result.runCreated ? 201 : 200).json(result);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  // ---- Agent History (CR-6) ----------------------------------------------
+
+  // ---- Bounded Group Conversation (CR-5) ---------------------------------
+
+  router.post('/conversations/:conversationId/interactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const budget = body.budget;
+    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group' || conversation.status !== 'active') {
+      res.status(409).json({ error: 'GROUP_CONVERSATION_NOT_ACTIVE' });
+      return;
+    }
+    const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
+    if (sourceMessageId.length === 0) { res.status(400).json({ error: 'sourceMessageId is required' }); return; }
+    try {
+      const interaction = store.boundedGroupService().createInteraction({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        budget: budget as never, sourceMessageId, createdAt: new Date().toISOString(),
+      });
+      res.status(201).json({ interaction });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.get('/conversations/:conversationId/interactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
+    res.json({ interactions: store.groupInteractionRepository().listInteractions(workspace.id, conversation.id) });
+  });
+
+  router.get('/interactions/:interactionId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!interaction) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    const recovery = hasP2GroupRecoverySchema(store)
+      ? store.getDatabase().prepare(`SELECT prior_interaction_id AS priorInteractionId,
+          new_interaction_id AS newInteractionId,source_message_id AS sourceMessageId,created_at AS createdAt
+          FROM p2_group_recovery_links WHERE workspace_id = ? AND (prior_interaction_id = ? OR new_interaction_id = ?)`).get(
+        workspace.id, interaction.id, interaction.id,
+      ) ?? null
+      : null;
+    res.json({
+      interaction,
+      replies: store.groupInteractionRepository().listReplies(interaction.id),
+      budget: store.boundedGroupService().budgetStatus(interaction),
+      executionOwner: (() => {
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+        return owner ? { status: owner.status, ownerEpoch: owner.ownerEpoch } : null;
+      })(),
+      recovery,
+    });
+  });
+
+  router.post('/interactions/:interactionId/recover', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    if (!hasP2GroupRecoverySchema(store)) { res.status(409).json({ error: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const expectedVersion = body.expectedVersion;
+    const expectedOwnerEpoch = body.expectedOwnerEpoch;
+    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    const idempotencyKey = req.header('Idempotency-Key')?.trim();
+    if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 1
+      || !Number.isSafeInteger(expectedOwnerEpoch) || (expectedOwnerEpoch as number) < 1
+      || content.length === 0 || content.length > 16_000 || !idempotencyKey
+      || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u.test(idempotencyKey)) {
+      res.status(400).json({ error: 'GROUP_RECOVERY_INPUT_INVALID' });
+      return;
+    }
+    const interactionId = req.params.interactionId;
+    const requestHash = createHash('sha256').update(JSON.stringify({
+      workspaceId: workspace.id, interactionId, expectedVersion, expectedOwnerEpoch, content,
+    })).digest('hex');
+    const db = store.getDatabase();
+    try {
+      const existingLink = db.prepare(`SELECT 1 AS linked FROM p2_group_recovery_links
+        WHERE workspace_id = ? AND prior_interaction_id = ?`).get(workspace.id, interactionId);
+      if (existingLink === undefined) {
+        const prior = store.groupInteractionRepository().findInteractionById(workspace.id, interactionId);
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+        if (prior !== undefined && prior.version === expectedVersion && prior.status === 'active' && prior.integrityStatus === 'unusable'
+          && owner?.status === 'interrupted' && owner.ownerEpoch === expectedOwnerEpoch) {
+          const processTreeProvenGone = await proveInterruptedGroupProviderProcessesExited({
+            workspaceId: workspace.id,
+            interactionId,
+            conversationId: owner.conversationId,
+            ownerEpoch: owner.ownerEpoch,
+            currentTurnId: owner.currentTurnId,
+          }, store.groupInteractionRepository());
+          if (!processTreeProvenGone) {
+            res.status(409).json({ error: 'GROUP_RECOVERY_PROCESS_UNPROVEN' });
+            return;
+          }
+        }
+      }
+      const result = inTransaction(db, () => {
+        const priorLink = db.prepare(`SELECT * FROM p2_group_recovery_links
+          WHERE workspace_id = ? AND prior_interaction_id = ?`).get(workspace.id, interactionId) as {
+            id: string; request_hash: string; new_interaction_id: string; source_message_id: string;
+          } | undefined;
+        const keyed = db.prepare('SELECT * FROM p2_group_recovery_links WHERE workspace_id = ? AND idempotency_key = ?')
+          .get(workspace.id, idempotencyKey) as typeof priorLink | undefined;
+        if (keyed) {
+          if (keyed.request_hash !== requestHash || keyed.id !== priorLink?.id) {
+            throw Object.assign(new Error('GROUP_RECOVERY_IDEMPOTENCY_CONFLICT'), { code: 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT' });
+          }
+          const priorOwner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+          return {
+            interaction: store.groupInteractionRepository().findInteractionById(workspace.id, keyed.new_interaction_id),
+            message: conversations().findMessageById(workspace.id, keyed.source_message_id), replayed: true,
+            participantAgentIds: priorOwner?.participantAgentIds ?? [],
+          };
+        }
+        if (priorLink) throw Object.assign(new Error('GROUP_RECOVERY_ALREADY_LINKED'), { code: 'GROUP_RECOVERY_ALREADY_LINKED' });
+        const prior = store.groupInteractionRepository().findInteractionById(workspace.id, interactionId);
+        const owner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId);
+        if (!prior || prior.status !== 'active' || prior.integrityStatus !== 'unusable'
+          || prior.version !== expectedVersion || !owner || owner.status !== 'interrupted'
+          || owner.ownerEpoch !== expectedOwnerEpoch || owner.conversationId !== prior.conversationId
+          || !owner.sourceMessageId) {
+          throw Object.assign(new Error('GROUP_RECOVERY_STALE'), { code: 'GROUP_RECOVERY_STALE' });
+        }
+        const conversation = conversations().findConversationById(workspace.id, prior.conversationId);
+        const source = conversations().findMessageById(workspace.id, owner.sourceMessageId);
+        if (!conversation || conversation.kind !== 'group' || conversation.status !== 'active'
+          || !source || source.workspaceId !== workspace.id || source.conversationId !== conversation.id
+          || source.senderType !== 'user' || source.status !== 'final') {
+          throw Object.assign(new Error('GROUP_RECOVERY_SOURCE_INVALID'), { code: 'GROUP_RECOVERY_SOURCE_INVALID' });
+        }
+        const activeOther = store.groupInteractionRepository().listInteractions(workspace.id, conversation.id)
+          .some(item => item.id !== prior.id && item.status === 'active' && item.integrityStatus === 'valid');
+        if (activeOther) throw Object.assign(new Error('GROUP_RECOVERY_ACTIVE_ROUND'), { code: 'GROUP_RECOVERY_ACTIVE_ROUND' });
+        const budget = {
+          maxAgentsPerTurn: Number(owner.budget.maxAgentsPerTurn),
+          maxRepliesPerAgent: Number(owner.budget.maxRepliesPerAgent),
+          maxTotalReplies: Number(owner.budget.maxTotalReplies),
+          maxAgentHops: Number(owner.budget.maxAgentHops),
+          ...(owner.budget.timeoutMs == null ? {} : { timeoutMs: Number(owner.budget.timeoutMs) }),
+          ...(owner.budget.contextTokenBudget == null ? {} : { contextTokenBudget: Number(owner.budget.contextTokenBudget) }),
+        };
+        const now = new Date().toISOString();
+        const newInteractionId = createEntityId('conversation');
+        const sourceMessageId = createEntityId('message');
+        const recoveryId = createEntityId('operation');
+        const message = conversations().appendMessageWithinTransaction({
+          id: sourceMessageId, conversationId: conversation.id, workspaceId: workspace.id,
+          senderType: 'user', kind: 'text', status: 'final', content,
+          clientMessageId: `p2-recovery-${createHash('sha256').update(`${workspace.id}:${idempotencyKey}`).digest('hex').slice(0, 40)}`,
+          createdAt: now,
+        });
+        const interaction = store.groupInteractionRepository().createInteractionWithinTransaction({
+          id: newInteractionId, workspaceId: workspace.id, conversationId: conversation.id,
+          budget, sourceMessageId, createdAt: now,
+          recoverySupersedesInterrupted: {
+            interactionId: prior.id,
+            ownerId: owner.ownerId,
+            ownerEpoch: owner.ownerEpoch,
+          },
+        });
+        db.prepare(`INSERT INTO p2_group_recovery_links (
+          id,workspace_id,conversation_id,prior_interaction_id,prior_owner_id,prior_owner_epoch,
+          prior_interaction_version,new_interaction_id,source_message_id,idempotency_key,request_hash,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          recoveryId, workspace.id, conversation.id, prior.id, owner.ownerId, owner.ownerEpoch,
+          prior.version, interaction.id, message.id, idempotencyKey, requestHash, now,
+        );
+        store.groupInteractionRepository().transitionExecutionWithinTransaction({
+          workspaceId: workspace.id, interactionId: prior.id, ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch,
+          status: 'abandoned', terminalReason: `superseded-by:${interaction.id}`,
+          eventType: 'group.recovery.linked', payload: { newInteractionId: interaction.id, sourceMessageId: message.id }, updatedAt: now,
+        });
+        return { interaction, message, replayed: false, participantAgentIds: owner.participantAgentIds };
+      });
+      if (!result.interaction || !result.message) throw Object.assign(new Error('GROUP_RECOVERY_RESULT_MISSING'), { code: 'GROUP_RECOVERY_RESULT_MISSING' });
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
+  });
+
+  /** Read-only, cursor-based observation. Closing this response detaches only the observer. */
+  router.get('/conversations/:conversationId/interactions/:interactionId/events', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!conversation || conversation.kind !== 'group' || !interaction
+      || interaction.conversationId !== conversation.id) {
+      res.status(404).json({ error: 'Group interaction not found' });
+      return;
+    }
+    const headerCursor = req.header('Last-Event-ID');
+    const queryCursor = typeof req.query.after === 'string' ? req.query.after : undefined;
+    const rawCursor = queryCursor ?? headerCursor ?? '0';
+    const afterCursor = Number(rawCursor);
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
+      res.status(400).json({ error: 'after must be a non-negative integer cursor' });
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    let cursor = afterCursor;
+    let stopped = false;
+    const cleanup = (): void => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+    };
+    const pump = (): void => {
+      if (stopped || res.writableEnded) { cleanup(); return; }
+      const events = store.boundedGroupService().listExecutionEvents(
+        workspace.id, conversation.id, interaction.id, cursor,
+      );
+      for (const event of events) {
+        cursor = event.cursor;
+        // Native process identities are durable internal recovery evidence,
+        // not client-facing conversation events.
+        if (event.eventType === 'group.provider.started') continue;
+        try {
+          res.write(`id: ${event.cursor}\nevent: ${event.eventType}\ndata: ${JSON.stringify({
+            ...event.payload, cursor: event.cursor, ownerEpoch: event.ownerEpoch,
+          })}\n\n`);
+        } catch {
+          cleanup();
+          return;
+        }
+      }
+      const owner = store.boundedGroupService().findExecutionOwner(workspace.id, interaction.id);
+      if (owner !== undefined && ['completed', 'failed', 'interrupted', 'abandoned'].includes(owner.status)
+        && cursor >= owner.eventCursor) {
+        cleanup();
+        res.end();
+      }
+    };
+    res.on('close', cleanup);
+    const timer = setInterval(pump, 150);
+    timer.unref?.();
+    pump();
+  });
+
+  router.post('/interactions/:interactionId/replies', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    // A ledger-only compatibility write can no longer satisfy the durable
+    // owner/Turn/final-Message association or atomic finalization contract.
+    // Group replies must be produced through /respond, where finalization,
+    // ledger, budget, and event state commit together.
+    res.status(409).json({ error: 'GROUP_REPLY_FINALIZATION_REQUIRED' });
+  });
+
+  router.post('/interactions/:interactionId/stop', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
+    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    try {
+      const interaction = store.boundedGroupService().stopInteraction({
+        workspaceId: workspace.id, interactionId: req.params.interactionId,
+        expectedVersion, endedAt: new Date().toISOString(),
+      });
+      const execution = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+      res.json({
+        interaction,
+        execution: execution === undefined ? null : {
+          ownerEpoch: execution.ownerEpoch, status: execution.status,
+          eventCursor: execution.eventCursor, terminalReason: execution.terminalReason,
+        },
+      });
+    } catch (error) { fail(res, error); }
+  });
+
+  /**
+   * Bounded group walk (CG-S5..CG-S9): resolve the speaker plan, then run each
+   * speaker sequentially through the CR-3 reply stream and record every reply
+   * through CR-5 `recordReply`. The runtime selects the speakers; the caller
+   * supplies the triggering user Message and, for `manual` / `orchestrated`
+   * modes, the explicit list / template order. The stream emits one
+   * `group.plan` event (speakers + skipped with stable reasons), one
+   * `group.turn.start` / `checkpoint` / `group.turn.final|failed` chain per
+   * speaker, and one `group.done`.
+   */
+  router.post('/conversations/:conversationId/interactions/:interactionId/respond', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!interaction || interaction.conversationId !== conversation.id) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    if (interaction.status !== 'active') {
+      res.status(409).json({ error: 'GROUP_INTERACTION_TERMINATED' });
+      return;
+    }
+    if (interaction.integrityStatus !== 'valid') {
+      res.status(409).json({ error: 'GROUP_EXECUTION_INTERRUPTED', interactionId: interaction.id, reason: interaction.integrityReason });
+      return;
+    }
+    const priorOwner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
+    if (priorOwner) {
+      res.status(409).json({ error: priorOwner.status === 'interrupted' ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED', interactionId: interaction.id });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    let intent: RunIntent;
+    try {
+      // Keep omitted intent compatible with existing Providers. The generic
+      // prompt handles ordinary questions in execute mode; ask/review remain
+      // explicit because they require a proven read-only enforcement path.
+      intent = parseConversationIntent(body.intent) ?? 'execute';
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
+    const source = sourceMessageId.length === 0
+      ? undefined
+      : conversations().findMessageById(workspace.id, sourceMessageId);
+    if (!source || source.conversationId !== conversation.id || source.senderType !== 'user' || source.status !== 'final') {
+      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      return;
+    }
+    if (interaction.sourceMessageId !== source.id) {
+      res.status(409).json({ error: 'GROUP_SOURCE_MISMATCH' });
+      return;
+    }
+    const stringList = (value: unknown): string[] | undefined => {
+      if (value === undefined) return undefined;
+      if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) return undefined;
+      return value as string[];
+    };
+    const mentionedAgentIds = stringList(body.mentionedAgentIds);
+    const namedAgentIds = stringList(body.namedAgentIds);
+    const orchestratedOrder = stringList(body.orchestratedOrder);
+    if ((body.mentionedAgentIds !== undefined && mentionedAgentIds === undefined)
+      || (body.namedAgentIds !== undefined && namedAgentIds === undefined)
+      || (body.orchestratedOrder !== undefined && orchestratedOrder === undefined)) {
+      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      return;
+    }
+
+    // Claim conflicts must remain HTTP refusals, including races between two
+    // Server instances. Open SSE only after the durable driver emits its plan.
+    const writeEvent = createSseWriter(res);
+    let stopHeartbeat: (() => void) | undefined;
+    const send: typeof writeEvent = (event, data) => {
+      if (!res.headersSent) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+        stopHeartbeat = startSseHeartbeat(res);
+      }
+      writeEvent(event, data);
+    };
+    const interactionId = interaction.id;
+    const driver = new GroupTurnDriver(
+      store.boundedGroupService(),
+      store.groupInteractionRepository(),
+      conversations(),
+      store.conversationStreamService(),
+      (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+        compactionTrigger,
+        selection: chatMemorySelection,
+      },
+    );
+    try {
+      const result = await driver.run(
+        {
+          workspaceId: workspace.id,
+          workspaceRoot: workspace.rootPath,
+          conversationId: conversation.id,
+          interactionId,
+          sourceMessageId: source.id,
+          ...(intent === undefined ? {} : { intent }),
+          ...(mentionedAgentIds === undefined ? {} : { mentionedAgentIds }),
+          ...(namedAgentIds === undefined ? {} : { namedAgentIds }),
+          ...(orchestratedOrder === undefined ? {} : { orchestratedOrder }),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          onPlan: (plan, state) => send('group.plan', {
+            interactionId,
+            speakers: plan.speakers.map(speaker => speaker.agentId),
+            skipped: plan.skipped,
+            interactionVersion: state?.interactionVersion ?? interaction.version,
+            ownerEpoch: state?.ownerEpoch ?? 0,
+            eventCursor: state?.eventCursor ?? 0,
+            ...(plan.terminalReason === undefined ? {} : { terminalReason: plan.terminalReason }),
+          }),
+          onSpeakerTurnStart: speaker => send('group.turn.start', {
+            interactionId, agentId: speaker.agentId, turnId: speaker.turnId, messageId: speaker.messageId,
+            interactionVersion: speaker.interactionVersion, ownerEpoch: speaker.ownerEpoch, eventCursor: speaker.eventCursor,
+          }),
+          onSpeakerDelta: (agentId, turnId, messageId, delta, checkpointCursor, eventCursor) => send('checkpoint', {
+            agentId, turnId, messageId, cursor: checkpointCursor, eventCursor,
+            interactionVersion: store.boundedGroupService().findInteraction(workspace.id, interactionId)?.version ?? interaction.version,
+            ownerEpoch: store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId)?.ownerEpoch ?? 0,
+            delta,
+          }),
+          onSpeakerTurnEnd: outcome => send(
+            outcome.status === 'final' ? 'group.turn.final' : 'group.turn.failed',
+            {
+              interactionId, agentId: outcome.agentId, turnId: outcome.turnId, messageId: outcome.messageId,
+              replyId: outcome.replyId, interactionVersion: outcome.interactionVersion, ownerEpoch: outcome.ownerEpoch,
+            },
+          ),
+        },
+      );
+      if (workspace.memoryEnabled && result.interaction?.status !== 'active'
+        && result.speakers.some(speaker => speaker.status === 'final')) {
+        accumulateWithoutAffectingExecution('group-interaction', () => sourceAccumulator.generateForGroupInteraction({
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          interactionId,
+          sourceMessageId: source.id,
+          createdAt: new Date().toISOString(),
+        }));
+      }
+      send('group.done', {
+        interactionId,
+        endedBy: result.endedBy,
+        speakers: result.speakers,
+        interactionVersion: result.interaction?.version ?? interaction.version,
+        ownerEpoch: result.ownerEpoch ?? 0,
+        eventCursor: result.eventCursor ?? store.groupInteractionRepository().findExecutionOwner(workspace.id, interactionId)?.eventCursor ?? 0,
+        ...(result.interaction === undefined ? {} : { interaction: result.interaction }),
+      });
+    } catch (error) {
+      if (!res.headersSent) {
+        if (error instanceof BoundedGroupError && ['GROUP_EXECUTION_ALREADY_OWNED', 'GROUP_EXECUTION_INTERRUPTED'].includes(error.code)) {
+          res.status(409).json({ error: error.code, interactionId });
+        } else { fail(res, error); }
+        return;
+      }
+      const code = error instanceof GroupTurnDriverError ? error.code : (error instanceof Error ? error.message : 'GROUP_WALK_FAILED');
+      send('group.error', { interactionId, error: code });
+      send('group.done', { interactionId, endedBy: 'provider-failed' });
+    } finally {
+      stopHeartbeat?.();
+      res.end();
+    }
+  });
+
+  /**
+   * Send a user Message and stream the primary Agent member's reply as durable
+   * checkpoints (CR-3). The reply's deltas are SSE 'checkpoint' events carrying the
+   * durable cursor; a reconnect replays from the checkpoints endpoint. A chat reply
+   * creates no Task or Run; browser disconnect closes only the subscription.
+   */
+  router.post('/conversations/:conversationId/messages/stream', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = req.body as Record<string, unknown>;
+    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    if (content.length === 0) { res.status(400).json({ error: 'content is required' }); return; }
+    let intent: RunIntent;
+    try {
+      // A bounded group is still a conversation. Keep the existing execution
+      // default; ask/review are explicit and require read-only enforcement.
+      intent = parseConversationIntent(body.intent) ?? 'execute';
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    const agent = conversations().listMembers(workspace.id, conversation.id)
+      .find(member => member.subjectType === 'agent' && member.status === 'active');
+    if (!agent) { res.status(400).json({ error: 'no active Agent member' }); return; }
+
+    // Persist the user Message before any routing or Provider call.
+    let userMessage;
+    try {
+      userMessage = conversations().appendMessage({
+        id: createEntityId('message'), conversationId: conversation.id, workspaceId: workspace.id,
+        senderType: 'user', kind: 'text', status: 'final', content, createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      fail(res, error);
+      return;
+    }
+
+    const turnId = createEntityId('turn');
+    const responseMessageId = createEntityId('message');
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+    send('turn.start', { turnId, messageId: responseMessageId, sourceMessageId: userMessage.id });
+    const driver = new ConversationTurnDriver(
+      conversations(),
+      store.conversationStreamService(),
+      (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      undefined,
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+        compactionTrigger,
+        selection: chatMemorySelection,
+      },
+    );
+    try {
+      const result = await driver.replyWithTurn({
+        workspaceId: workspace.id,
+        workspaceRoot: workspace.rootPath,
+        conversationId: conversation.id,
+        agentId: agent.subjectId,
+        ...(intent === undefined ? {} : { intent }),
+        ...(agent.model === undefined && agent.thinkingEffort === undefined ? {} : {
+          runtimeOverrides: {
+            ...(agent.model === undefined ? {} : { model: agent.model }),
+            ...(agent.thinkingEffort === undefined ? {} : { thinkingEffort: agent.thinkingEffort }),
+          },
+        }),
+        ...(agent.additionalInstructions === undefined ? {} : { additionalInstructions: agent.additionalInstructions }),
+        ...(conversation.kind === 'group' && agent.roleTitle ? { groupRoleTitle: agent.roleTitle } : {}),
+        ...(conversation.settingsVersion === undefined ? {} : { groupSettingsVersion: conversation.settingsVersion }),
+        sourceMessageId: userMessage.id,
+        content,
+        turnId,
+        responseMessageId,
+        onDelta: (delta, cursor) => send('checkpoint', { messageId: responseMessageId, cursor, delta }),
+        createdAt: new Date().toISOString(),
+      });
+      if (workspace.memoryEnabled && conversation.kind === 'direct' && result.turn.status === 'final') {
+        accumulateWithoutAffectingExecution('direct-turn', () => sourceAccumulator.generateForDirectTurn({
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          turnId: result.turn.id,
+          sourceMessageId: userMessage.id,
+          responseMessageId: result.message.id,
+          createdAt: new Date().toISOString(),
+        }));
+      }
+      if (result.turn.status === 'final') {
+        send('turn.final', { turn: result.turn, message: result.message });
+      } else {
+        send('turn.failed', { turn: result.turn, message: result.message });
+      }
+      send('done', { messageId: responseMessageId, turnId });
+    } catch (error) {
+      send('turn.failed', { error: error instanceof Error ? error.message : String(error) });
+      send('done', { messageId: responseMessageId, turnId });
+    } finally {
+      stopHeartbeat();
+      res.end();
+    }
+  });
+
+
+  router.get('/agents/:agentId/history', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const q = req.query;
+    try {
+      const entries = store.agentHistoryService().history(workspace.id, req.params.agentId, {
+        ...(typeof q.kind === 'string' ? { kind: q.kind as never } : {}),
+        ...(typeof q.status === 'string' ? { status: q.status } : {}),
+        ...(typeof q.conversationId === 'string' ? { conversationId: q.conversationId } : {}),
+        ...(typeof q.taskId === 'string' ? { taskId: q.taskId } : {}),
+        ...(typeof q.runId === 'string' ? { runId: q.runId } : {}),
+        ...(typeof q.providerConfigId === 'string' ? { providerConfigId: q.providerConfigId } : {}),
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...(typeof q.q === 'string' ? { q: q.q } : {}),
+        ...(typeof q.limit === 'string' ? { limit: Number(q.limit) } : {}),
+      });
+      res.json({ history: entries });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  return router;
+}

@@ -1,0 +1,25 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/process-runtime
+
+ ✓ src/node-driver.test.ts > NodeProcessDriver > observes natural exits for ownership-session hygiene 60ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > spawns a validated launch and observes stdout and exit evidence 335ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > gracefulStop delivers a signal and the child terminates 304ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > terminateTree force-terminates and reports complete for a plain root 323ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > verifySurvivors reports live owned members and proves an empty tree after cleanup 320ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > P5B-04/W2/W3/W7/W10: a child created as the provider FIRST instruction cannot escape the AgentOS Job 371ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > P5B-02/03/07/W4/W5/W6: an immediately built multi-level tree is owned and terminated while an unrelated control survives 484ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > W1: provider code cannot execute before Job ownership (suspended-create trace evidence) 339ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > W9: provider stdout/stderr bytes and exact argv survive the owned channel 329ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > inspectIdentity matches a live pid and reports missing for ESRCH 318ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > W11: rejects spawn when the executable is missing, fail-closed with no proof 294ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > BLOCKER-1: assignment failure aborts the suspended provider before user code 567ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > HIGH-1 B1/B2/B5: bounded backpressure preserves every stdout byte and resumes 2410ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > HIGH-1 B3/B4: stalled output still terminates through the control plane 1068ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > HIGH-2: owned spawn passes exactly the declared environment and launch facts 332ms
+ ✓ src/node-driver.test.ts > NodeProcessDriver > W12: no test-owned or helper survivors remain after the suite 82ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  09:07:19
+   Duration  8.25s (transform 71ms, setup 0ms, import 178ms, tests 7.94s, environment 0ms)
+

@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/routes/memoryRuntime.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/assertions.json",
+      "sha256": "936dbbaf204b302e6cc747ac7f13a87de6ea22ff6ce0bb2a2c816554c31ccf51"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/execution.json",
+      "sha256": "626f52e9fc70222de357eec6b38bb516666d60aa44c4501b0665e9a460db2c77"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/stdout.txt",
+      "sha256": "c6f26637923b6dd8ed332eb8ab8b8b622e72583579c8141ef1a2dff462588272"
+    }
+  ],
+  "counts": {
+    "passed": 17,
+    "failed": 0,
+    "skipped": 0,
+    "total": 17
+  },
+  "assertionCoverage": [
+    {
+      "id": "MEM-SCOPE-02",
+      "requirementId": "LITE-07-001",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup",
+      "line": 607,
+      "expression": "assert.equal(response.status, 400);",
+      "clause": "Invalid Scope/owner combinations are rejected by the production boundary.",
+      "whyDirect": "The route submits invalid Scope and owner envelopes through the real HTTP endpoint and asserts the production 400 response for every case.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-EXPLAIN-01",
+      "requirementId": "LITE-07-009",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+      "line": 377,
+      "expression": "assert.deepEqual(snapshot.selected[0]!.reasons, ['scope-match', 'importance']);",
+      "clause": "Selected Entries expose their selection reasons.",
+      "whyDirect": "The production memory-context endpoint is queried and the returned persisted snapshot reason list is compared exactly.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-EXPLAIN-02",
+      "requirementId": "LITE-07-009",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+      "line": 379,
+      "expression": "assert.equal(snapshot.exclusions[0]!.reason, 'below-confidence');",
+      "clause": "Excluded Entries expose their exclusion reasons.",
+      "whyDirect": "The same production endpoint returns an exclusion and the exact persisted exclusion reason is asserted.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-USER-SAVE-01",
+      "requirementId": "LITE-07-101",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "line": 540,
+      "expression": "assert.equal(savedBody.entry.authority, 'user-explicit');",
+      "clause": "The real save route creates a user-explicit Entry.",
+      "whyDirect": "The production HTTP save route is called and the returned durable Entry authority is asserted.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-USER-SAVE-02",
+      "requirementId": "LITE-07-101",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "line": 547,
+      "expression": "assert.equal(wsEvents[0]!.type, 'memory.entry_created');",
+      "clause": "The save emits the canonical Workspace Event.",
+      "whyDirect": "The production database is queried after the route call and the exact persisted event type is asserted.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-USER-SAVE-03",
+      "requirementId": "LITE-07-101",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "line": 563,
+      "expression": "assert.ok(retrievedBody.results.some(r => r.entry.id === savedBody.entry.id && r.entry.authority === 'user-explicit'));",
+      "clause": "The saved Entry is retrievable through the production retrieval path.",
+      "whyDirect": "The test calls the real retrieval endpoint and matches the actual saved Entry by ID and authority.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-USER-SAVE-04",
+      "requirementId": "LITE-07-101",
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "line": 570,
+      "expression": "assert.equal((dup.json as { converged: boolean }).converged, true);",
+      "clause": "A duplicate save converges rather than creating a second Entry.",
+      "whyDirect": "The same production route is called again with the same content and the response explicitly reports convergence.",
+      "outcome": "passed"
+    }
+  ]
+}

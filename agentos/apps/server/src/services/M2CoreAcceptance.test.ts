@@ -116,19 +116,29 @@ const EXISTING_COVERAGE: readonly CoverageEntry[] = [
     ],
   },
   {
-    area: 'Migration Registry 001–013',
+    area: 'Migration Registry and Integrity',
     checks: [
       {
+        file: 'apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts',
+        markers: [
+          'P2 Migration Registry contains exactly the registered migrations in contract order',
+          'LITE-10-001 fresh install and supported upgrade both apply the complete registry',
+        ],
+      },
+      {
         file: 'apps/server/src/migrations/__tests__/integration.test.ts',
-        markers: ['Fresh database applies the complete 001-013 registry exactly once', 'The complete 001-013 schema passes integrity and foreign-key checks'],
+        markers: [
+          '[M27-P5-T001] Fresh database applies the complete registered migration set exactly once',
+          '[M27-P5-T005] The complete registered schema passes integrity and foreign-key checks',
+        ],
       },
       {
         file: 'apps/server/src/migrations/__tests__/migration.test.ts',
-        markers: ['sorts by numeric ID', 'Closing and reopening a fully migrated database keeps 001-013 idempotent'],
+        markers: ['sorts by numeric ID', 'Closing and reopening a fully migrated database keeps the registered migration set idempotent'],
       },
       {
         file: 'apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts',
-        markers: ['REG-03 migration records are exactly 001-013'],
+        markers: ['REG-03 migration records match the default registry'],
       },
     ],
   },

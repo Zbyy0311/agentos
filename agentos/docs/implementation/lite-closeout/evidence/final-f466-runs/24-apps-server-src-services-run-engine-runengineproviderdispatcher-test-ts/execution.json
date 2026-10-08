@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once|L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn|LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once|LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute|LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available)",
+      "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

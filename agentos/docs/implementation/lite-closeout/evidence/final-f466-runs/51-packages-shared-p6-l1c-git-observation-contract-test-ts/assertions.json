@@ -1,0 +1,52 @@
+[
+  {
+    "id": "LITE-03-014-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-391",
+    "requirementId": "LITE-03-014",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(",
+    "clause": "payload limit and Artifact fallback;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-392",
+    "requirementId": "LITE-06-007",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-007-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-393",
+    "requirementId": "LITE-06-007",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 150,
+    "expression": "assert.equal(",
+    "clause": "diff Artifacts are immutable and checksummed;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-04-gitcommandport-accepts-only-structured-read-families-394",
+    "requirementId": "LITE-06-010",
+    "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+    "line": 150,
+    "expression": "assert.equal(",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-010-l1c-m1-20-canonical-diff-artifact-crash-ordering-forbids-db-first-availability-395",
+    "requirementId": "LITE-06-010",
+    "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+    "line": 582,
+    "expression": "assert.deepEqual(",
+    "clause": "no automatic or destructive Git command is executed by observation;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

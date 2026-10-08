@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox)",
+      "src/services/MemoryRuntimeEventEmitter.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/assertions.json",
+      "sha256": "64a1d4624819165c61fcd21aea613cad8b81835750a106a35355acb70e9c5211"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/execution.json",
+      "sha256": "24265d9e79ea675b65094930d4fc9f13f86bb78aeadcafb4319831a7a5406c48"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/stdout.txt",
+      "sha256": "2c3bed37efb89589bc725c886eb3abd5f936adaf45a5ed902fddeb1ee27bfe93"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-07-012-lite-07-012-lite-10-016-secret-like-memory-writes-emit-no-runtime-event-or-outbo-184",
+      "requirementId": "LITE-07-012",
+      "file": "apps/server/src/services/MemoryRuntimeEventEmitter.test.ts",
+      "name": "LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox",
+      "line": 393,
+      "expression": "assert.ok(error instanceof MemoryRuntimeEventEmissionError);",
+      "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-016-lite-07-012-lite-10-016-secret-like-memory-writes-emit-no-runtime-event-or-outbo-185",
+      "requirementId": "LITE-10-016",
+      "file": "apps/server/src/services/MemoryRuntimeEventEmitter.test.ts",
+      "name": "LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox",
+      "line": 393,
+      "expression": "assert.ok(error instanceof MemoryRuntimeEventEmissionError);",
+      "clause": "no secret persistence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

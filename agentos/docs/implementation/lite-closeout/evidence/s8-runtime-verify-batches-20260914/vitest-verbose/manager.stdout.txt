@@ -1,0 +1,39 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime
+
+ ✓ src/manager.test.ts > ProcessManager reserve > creates a created reservation; duplicate claims join without side effects 3ms
+ ✓ src/manager.test.ts > ProcessManager reserve > rejects a conflicting claim owner for the same claim key 1ms
+ ✓ src/manager.test.ts > ProcessManager start > validates, consumes the one spawn right and reaches running 10ms
+ ✓ src/manager.test.ts > ProcessManager start > passes ephemeral secrets to the Driver but never into diagnostics 1ms
+ ✓ src/manager.test.ts > ProcessManager start > joins duplicate starts onto the single spawn 1ms
+ ✓ src/manager.test.ts > ProcessManager start > terminalizes failed with the stable spawn error on spawn failure 1ms
+ ✓ src/manager.test.ts > ProcessManager start > terminalizes failed on validation failure without ever spawning 0ms
+ ✓ src/manager.test.ts > ProcessManager start > maps a missing executable to the stable validation error 0ms
+ ✓ src/manager.test.ts > ProcessManager start > rejects stale, foreign and greater epochs without adoption 1ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > terminalizes exited on natural exit with exit evidence 1ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > stop is idempotent, joins one ticket and the first reason wins 1ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > keeps the terminal result immutable against late stops, starts and exits 0ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > fails closed to orphaned on survivors and never reports cancel success 0ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > never signals a mismatched identity 0ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > rejects a pid that is already bound to another Process 1ms
+ ✓ src/manager.test.ts > ProcessManager exit and stop > does not treat bare complete registration cleanup as proven 0ms
+ ✓ src/manager.test.ts > ProcessManager tree fail-closed cleanup > verifies survivors after a root exit during stopping before reporting success 0ms
+ ✓ src/manager.test.ts > ProcessManager tree fail-closed cleanup > keeps survivor uncertainty non-terminal with cleanup evidence 0ms
+ ✓ src/manager.test.ts > ProcessManager tree fail-closed cleanup > keeps an unknown verification non-terminal instead of reporting cancel success 0ms
+ ✓ src/manager.test.ts > ProcessManager tree fail-closed cleanup > registration failure with survivors keeps tree uncertainty non-terminal 0ms
+ ✓ src/manager.test.ts > ProcessManager tree fail-closed cleanup > registration failure with a verify failure records platform uncertainty 0ms
+ ✓ src/manager.test.ts > ProcessManager output observation > exposes bounded process-scoped stdout/stderr pages without native handles 1ms
+ ✓ src/manager.test.ts > ProcessManager output observation > keeps trailing output observable when native exit precedes stream close 0ms
+ ✓ src/manager.test.ts > ProcessManager deadlines > startup timeout runs the bounded stop pipeline 0ms
+ ✓ src/manager.test.ts > ProcessManager deadlines > idle timeout resets on activity 0ms
+ ✓ src/manager.test.ts > ProcessManager deadlines > idle deadline pauses during an approved wait 0ms
+ ✓ src/manager.test.ts > ProcessManager deadlines > total timeout fires from native start 0ms
+ ✓ src/manager.test.ts > ProcessManager output and shutdown gates > output overflow initiates a fail-closed stop 0ms
+ ✓ src/manager.test.ts > ProcessManager output and shutdown gates > shutdown rejects new operations with the stable code 0ms
+ ✓ src/manager.test.ts > provider neutrality > sources contain no provider semantics 4ms
+
+ Test Files  1 passed (1)
+      Tests  30 passed (30)
+   Start at  22:07:30
+   Duration  392ms (transform 130ms, setup 0ms, import 164ms, tests 32ms, environment 0ms)
+

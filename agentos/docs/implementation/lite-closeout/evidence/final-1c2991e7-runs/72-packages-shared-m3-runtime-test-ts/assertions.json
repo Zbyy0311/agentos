@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1158,
+    "expression": "assert.equal(accepted.id, fixtures.validRunStartedEvent.id);",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-maps-envelope-and-payload-failures-to-distinct-stable-errors-463",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 maps envelope and payload failures to distinct stable errors",
+    "line": 1219,
+    "expression": "assert.equal(result.kind, 'unknown');",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

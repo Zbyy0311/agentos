@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "label": "s9-c517-turn-driver",
+  "startedAt": "2026-09-15T04:06:01.371Z",
+  "finishedAt": "2026-09-15T04:06:04.384Z",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/ConversationTurnDriver.test.ts"
+    ]
+  },
+  "cwd": "apps\\server",
+  "environment": {},
+  "nodeVersion": "v24.18.0",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true,
+  "counts": {
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "tests": 14
+  },
+  "assertionCoverage": [
+    {
+      "id": "TURN-STREAM-01",
+      "requirementId": "LITE-09-006",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+      "line": 187,
+      "expression": "assert.equal(result.checkpointCount, 3);",
+      "clause": "Every streamed delta is durably checkpointed.",
+      "whyDirect": "The production ConversationTurnDriver completes a three-delta Provider stream and reports the exact persisted checkpoint count.",
+      "outcome": "passed"
+    },
+    {
+      "id": "TURN-STREAM-02",
+      "requirementId": "LITE-09-006",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+      "line": 190,
+      "expression": "assert.deepEqual(replay.checkpoints.map(c => c.delta), ['Hel', 'lo ', 'world']);",
+      "clause": "Durable stream checkpoints replay in order.",
+      "whyDirect": "The production checkpoint stream is replayed from the durable store and the exact Provider delta sequence is asserted.",
+      "outcome": "passed"
+    },
+    {
+      "id": "TURN-STREAM-03",
+      "requirementId": "LITE-09-006",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+      "line": 185,
+      "expression": "assert.equal(result.message.status, 'final');",
+      "clause": "The streamed Message finalizes durably.",
+      "whyDirect": "After the production driver consumes the completed stream, the durable Message status is read back as final.",
+      "outcome": "passed"
+    },
+    {
+      "id": "TURN-STREAM-04",
+      "requirementId": "LITE-09-006",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+      "line": 186,
+      "expression": "assert.equal(result.turn.status, 'final');",
+      "clause": "The corresponding Turn finalizes durably.",
+      "whyDirect": "The production Turn record returned after stream completion is explicitly checked for final status.",
+      "outcome": "passed"
+    },
+    {
+      "id": "TURN-STREAM-05",
+      "requirementId": "LITE-09-006",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+      "line": 191,
+      "expression": "assert.equal(replay.nextCursor, 3);",
+      "clause": "The durable stream cursor advances across all finalized deltas.",
+      "whyDirect": "The production replay response reports the cursor immediately after the three persisted checkpoints.",
+      "outcome": "passed"
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/turn-driver-tap/stdout.txt",
+      "sha256": "2c55842d95cb4c1a19f8f4054a3d4ba56a2901f013dd0266e70a6500e6197059"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/turn-driver-tap/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "limitation": "Counts are parsed only from a unique TAP summary; null means unparsed, never zero. Named test results remain in raw output. No acceptance promotion."
+}

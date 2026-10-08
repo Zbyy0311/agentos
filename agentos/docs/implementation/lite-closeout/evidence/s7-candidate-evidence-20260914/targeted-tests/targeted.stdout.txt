@@ -1,0 +1,19 @@
+✔ S7/030: fresh and through029 upgrade apply identical additive 030 (49.0306ms)
+✔ S7/030: refuses incomplete prerequisites and defines the idempotency tuple plus immutability (19.0583ms)
+✔ S7 route: preview -> confirm -> review queue -> accept creates an Entry with the import source (239.2904ms)
+✔ S7 route: oversize and malformed input fail with stable status codes (141.1974ms)
+✔ S7: preview splits by heading, is read-only, and reports the source hash (146.019ms)
+✔ S7: oversized sections are split into bounded fragments (131.338ms)
+✔ S7: size, encoding, and empty input are refused before any write (131.9833ms)
+✔ S7: confirm creates review-required Candidates, immutable records and one Event per fragment (139.8749ms)
+✔ S7: re-importing the same file converges with no second Candidate or Event (133.5037ms)
+✔ S7: a changed source is a new traceable version, and the source file on disk is untouched (139.3832ms)
+✔ S7: an Event failure rolls back the Candidate and the import record together (129.8706ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2457.2433

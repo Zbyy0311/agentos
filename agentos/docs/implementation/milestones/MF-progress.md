@@ -1,0 +1,230 @@
+# Memory Foundation — Progress and Remaining Work
+
+Current status (2026-10-01): the merged Lite closeout matrix records 23 Memory
+requirements PASS and 8 explicitly DEFERRED, with no registered Memory GAP or
+RUNTIME-VERIFY. See [matrix v26](../lite-closeout/matrix.json) and the
+[final closeout report](../lite-closeout/FINAL-CLOSEOUT-90E2E5A1.md). These are
+historical revision-bound acceptance results, not proof that every later UI
+path is complete.
+
+The current follow-up repairs a concrete project-knowledge disconnect:
+the UI used compatibility `memories`, while Run/chat read `memory_entries`.
+See [the integration contract](MF-project-knowledge-integration.md). This
+follow-up has its own verification and does not rewrite the frozen receipts.
+
+Historical slice status: PARTIAL — the following progress record describes the
+earlier merged slices; its remaining-work claims were superseded by S1–S9.
+
+Final Lite acceptance is governed by [S0](../lite-closeout/README.md), not by
+historical slice labels. S1-A / PR #143 repairs terminal dedup provenance under
+`LITE-07-003/107`; the later matrix closes those explicit-save and review paths.
+
+## 1. Purpose
+
+This record tracks the Memory Foundation slices defined by
+`docs/implementation/milestones/MF-entry-audit.md`, so the remaining work is
+legible without re-auditing the repository.
+
+## 2. Merged baseline
+
+| Field | Value |
+|---|---|
+| Baseline | `origin-https/main @ 26838b3f` (Merge PR #130) |
+| Migration ledger | `001`–`025` present; MF-5 Workspace Event stream added migration `025` (`workspace_events` + `workspaces.next_event_sequence`) |
+| Main CI | `26838b3f` PR CI run `34615517814` conclusion `success` |
+| Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
+
+## 3. Slice status
+
+| Slice | Scope | State | PR |
+|---|---|---|---|
+| MF-0 | Shared contracts (Scope/Category/Authority, scope-owner validation, promotion gate, budget policy, snapshot identity, event family) | **MERGED** | #79 |
+| MF-1 | Memory Entry persistence + FTS5 (migration 017, `MemoryEntryRepository`) | **MERGED** | #80 (auth), #81 (impl) |
+| MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
+| MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
+| MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
+| MF-5 | Events, emission, Run injection, API, Candidate review API, UI, Inspector surfaces, Workspace Event stream | **MERGED** | #89 (events), #91 (emission), #92 (Run injection), #120 (API), #122 (Candidate API + Inspector wiring), #123 (UI), #127 (Workspace Event stream auth), #128 (Workspace Event stream impl) |
+
+## 4. Merged evidence
+
+| Suite | Result |
+|---|---|
+| MF-0 shared contracts | 20/20 PASS |
+| MF-1 migration 017 | 16/16 PASS |
+| MF-1 repository | 16/16 PASS |
+| MF-3 retrieval | 15/15 PASS |
+| MF-4 migration 018 | 10/10 PASS |
+| MF-4 snapshot repository | 8/8 PASS |
+| MF-4 budget selector | 10/10 PASS |
+| MF-2 migration 019 | 10/10 PASS |
+| MF-2 candidate/conflict repository | 11/11 PASS |
+| MF-5 memory events | 8/8 PASS |
+| MF-5 emitter | 10/10 PASS |
+| MF-4 Run-startup resolver | 10/10 PASS |
+| Dispatcher MF-4 integration gates | 3/3 PASS |
+| MF-5 API routes | 5/5 PASS |
+| MF-4R-09 `listForRun` | 1/1 PASS (within 9/9 snapshot suite) |
+| MF-5 Candidate queue API + review + Inspector wiring | 21/21 focused PASS (incl. MF2R-12) |
+| MF-5 UI (explanation, review queue, Inspector detail) | web 162/162 PASS; `next build` clean |
+| MF-5 Workspace Event stream (migration 025) | 3/3 PASS |
+| MF-5 Workspace Event writer/authority/sequence (gates A5..A18) | 12/12 PASS |
+| MF-5 Workspace Event sanctioned Workspace delete (gate A15) | 1/1 PASS |
+| MF-5 Workspace Event shared contracts | 8/8 PASS |
+| MF-2 explicit user save (PR #136 amendment + #137 impl) | writer 14/14 + route 9/9 PASS |
+| Full Server run (MF-5 Workspace Event stream head) | 2673 total, 2666 passed, 4 failed, 3 skipped |
+| Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
+| Full Server run (MF-5 Candidate API head) | 2593 total, 2586 passed, 4 failed, 3 skipped |
+
+The recorded 4 server failures were Windows `ENOTEMPTY` temp-directory
+teardown failures in `worktrees.test.ts` (2), `ConversationService.test.ts`,
+and `LegacyTaskItemImportService.test.ts`. Their recurrence alone does not
+prove baseline equivalence or unrelatedness. Earlier `tar` failures in
+`WorktreeArtifactService` are separate historical observations. The MF-5
+full suite was also repeated to capture logs; do not interpret these records
+as a single unrepeated run. CI evidence is revision-specific as listed above.
+
+## 5. What the merged slices provide
+
+- **Entry model**: forward `memory_entries` with Scope/Category/Authority,
+  Confidence/Importance, dedup hashes, validity/expiry, sensitivity class, and
+  immutable identity with monotonic version.
+- **Sources**: typed stable source references; automatic Entries require one.
+- **Retrieval**: owner-bounded Scope reach, non-retrievable status exclusion,
+  category/tag filters, neutralized FTS5 query, deterministic ranking with
+  reason codes, visible FTS-degraded mode.
+- **Snapshot**: write-once per-Run/Stage Context Snapshot with frozen query
+  hash, strategy version, and budget; per-Entry selection and exclusion reasons;
+  injection gate that fails closed.
+
+## 6. Remaining work
+
+### MF-2 — Candidate pipeline + dedup/conflict (MERGED)
+
+Merged via PR #86 (schema authorization, migration 019) and PR #87
+(implementation). Provides forward `memory_candidate_entries`,
+`memory_candidate_sources`, and `memory_conflicts`, plus
+`MemoryCandidateRepository` with the MF-0 promotion gate, versioned review,
+`merge-with-existing` binding, exact-duplicate lookup, and conflict
+open/resolve that never deletes.
+
+MF-2 remainder status: the terminal-outcome trigger, normalized-hash and
+FTS-similarity near-duplicate detection were closed by the MF-2R slice
+(PR #125), and the explicit user save trigger by the user-save slice
+(PR #136 + #137: forward `POST /memory/entries` creating the Entry and emitting
+`memory.entry_created` through the MF-5 Workspace stream in one transaction).
+The accepted-approval-decision trigger is closed by the approval-decision
+persistence slice (PR #139 authorization + #140 implementation): durable
+`approval_decisions` (migration 026) + the forward `POST /approval-decisions`
+route generating one review-required Candidate on acceptance.
+Still open, each needing a new durable seam before a candidate can
+be generated from it: completed review/test Artifact (no such Artifact type), compaction
+(no compaction implementation), and explicit import (Workspace import forces
+`memory: false`). These are separate authorized work, not this slice.
+
+### MF-5 — Events, API, UI, Inspector surfaces (PARTIAL)
+
+Merged:
+
+- PR #89: canonical `memory` Runtime Event domain and the 13-definition family
+  with payload guards on the existing registry;
+- PR #91: emission wiring — within-transaction write seams on MF-1/MF-2/MF-4
+  plus `MemoryRuntimeEventEmitter`, so a Memory fact and its canonical Event +
+  Outbox row commit in one transaction.
+
+Merged via PR #120 (API):
+
+- `POST /api/workspaces/:workspaceId/memory/retrieve` — MF-3 retrieval as a
+  read-only explanation surface with a visible `degraded` flag
+  (`MemoryRetrievalService.retrieveWithStatus`); never persists a snapshot.
+- `GET .../runs/:runId/memory-context` — every frozen Context Snapshot of a
+  Run via the additive `MemoryContextSnapshotRepository.listForRun`;
+- `GET .../memory-contexts/:memoryContextId` — one frozen snapshot with
+  selection/exclusion reasons;
+- `POST .../memory-conflicts/:conflictId/resolve` — transactional MF-2
+  resolution with optimistic `expectedVersion`.
+
+This contract gap is closed by PR #127 (schema authorization) + PR #128
+(implementation): the MF-5 Workspace Event stream (migration `025`, one
+`WorkspaceEventWriter` bound to the store connection, a
+claim-then-proof `DurableWorkspaceEventContextAuthority`, and the section 9
+route seams) lets a Workspace-scoped Memory fact commit its canonical Event
+without a Run. The user-initiated conflict resolution and Candidate review
+now commit fact + Workspace Events in one transaction.
+
+Completed after the API slice:
+
+- PR #122: forward Candidate queue + version-guarded review endpoints
+  (`GET /memory/candidates`, `POST /memory/candidates/:id/review`) and the
+  production Inspector `memoryContextSnapshots` wiring (the projection
+  previously always returned `null`).
+- PR #123: Memory explanation view (12 §14), forward Candidate review queue
+  UI, and the Inspector Memory detail section. `edit-and-accept` is not
+  offered in the UI because the merged review contract records the outcome
+  without applying edited fields.
+
+MF-5 remains partial. A source audit after PR #125 found that Candidate review
+updated its outcome without promoting an Entry. The local correction now
+creates the Entry atomically for accept and automatic acceptance, applies
+validated edit-and-accept fields, and merges source evidence only into an active
+same-owner/same-scope Entry. Reviewed terminal candidates reject replay; old
+auto-accepted rows without promotion metadata remain explicitly reviewable.
+Candidate/generation/API tests passed 33/33. This does not close the remaining
+trigger, duplicate-convergence, conflict-disposition or production Event gaps.
+
+The Inspector projection now includes Scope, Category, Authority, Confidence,
+Importance, sources and maximum token budget. Its production conversation
+workbench panel selects a linked Run and supports refresh. Server Inspector
+tests passed 14/14 and Playwright/Edge desktop fixture QA exercised conversation
+selection, Run switching, and refresh with no console errors. The fixture test
+is not a live Provider execution acceptance test.
+
+PR #125 (`800d6dd2`) adds candidate generation after successful Run completion
+in the provider dispatcher, with normalized-hash and title-FTS duplicate
+signals. This is one trigger slice, not completion of all six triggers or
+dedup evidence convergence.
+
+An event-integration audit followed the promotion corrections
+(`MF-event-integration-audit.md`). On this branch the Run-scoped production
+seams are now wired: `createProviderExecutionChain` builds one
+`MemoryRuntimeEventEmitter` over the store's bound Runtime Event + Outbox
+writer and a `DurableMemoryRuntimeEventContextAuthority`, and hands it to the
+Run-startup `MemoryContextResolver` and the terminal
+`MemoryCandidateGenerationService`. Each Memory fact and its canonical Event
+now commit in one transaction; the caller's causal context is a claim that the
+durable `operations`/`runtime_events` row must prove, so an unproven origin
+fails closed instead of fabricating causation. Replay stays a pure read and
+appends no second Event; an Event or Outbox failure rolls the Memory write back.
+Evidence: 161/162 across the affected suites plus the Operation and Memory
+routes (1 environment-gated skip), `tsc --noEmit` exit 0, with dedicated
+emission suites for the authority, the composition root, the snapshot seam and
+the candidate seam. The Workspace-only Memory routes now also emit canonical
+Events through the MF-5 Workspace Event stream (PR #127/#128), closing the
+contract gap.
+
+### Run startup integration (MERGED; replay integrity closed)
+
+Merged via PR #92: `MemoryContextResolver` composes MF-3 retrieval + MF-4
+budget selection, persists the immutable Context Snapshot BEFORE injection, and
+gates injection. `RunEngineProviderDispatcher` resolves and injects the
+bounded context into the stage prompt when a resolver is configured; a blocked
+injection or snapshot failure prevents the provider spawn. The production
+`createProviderExecutionChain` supplies the resolver. Resolution is idempotent
+per (Run, Stage).
+
+Reopened integrity gap at PR #125: replay read current Entry content. The local
+correction stores the injected text and SHA-256 in additive migration 024,
+atomically with the snapshot. Replay reads that frozen payload and rejects
+missing/corrupt historical payloads. Exact Run/Stage lookup is also corrected.
+Behavioral tests cover Entry edits/logical deletion, empty payload, corrupt
+payload, historical metadata-only snapshots and rollback. That correction
+merged as PR #126 (`fix(memory): complete promotion, frozen replay and
+Inspector integration`); the gap is closed. See `MF-snapshot-replay-design.md`.
+
+## 7. Non-goals (unchanged)
+
+- Vector Database or remote embeddings;
+- semantic knowledge graph;
+- autonomous global promotion;
+- elaborate supersession graph or forgetting scheduler;
+- highly autonomous extraction;
+- sending the whole Memory Store to Providers.

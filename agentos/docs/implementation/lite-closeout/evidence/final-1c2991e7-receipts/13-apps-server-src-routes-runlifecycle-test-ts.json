@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event|P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body|P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT|P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201)",
+      "src/routes/runLifecycle.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/13-apps-server-src-routes-runlifecycle-test-ts/assertions.json",
+      "sha256": "6cf86eb9e3727496b98eb3ea492c2424b3a4b55a3035212fe6828e9c74267880"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/13-apps-server-src-routes-runlifecycle-test-ts/execution.json",
+      "sha256": "7141184217bf840bec12d8404f755c2cb09c20dbf4ac3dccbe6a820f5826196c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/13-apps-server-src-routes-runlifecycle-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/13-apps-server-src-routes-runlifecycle-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/13-apps-server-src-routes-runlifecycle-test-ts/stdout.txt",
+      "sha256": "d7c467e1a47ea04f52ee369418a3c2427ffbff0ceb85dd6afa2643eed0123554"
+    }
+  ],
+  "counts": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "total": 4
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-005-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-89",
+      "requirementId": "LITE-01-005",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "retry creates a new Run lineage;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-002-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-90",
+      "requirementId": "LITE-02-002",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "Task creation is idempotent and separate from Run creation;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-012-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-91",
+      "requirementId": "LITE-02-012",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "retry creates a new Run with preserved lineage;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-015-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-92",
+      "requirementId": "LITE-03-015",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "Conversation bridge deduplication;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-004-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-93",
+      "requirementId": "LITE-10-004",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "Task zero/many Runs and retry child lineage;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-008-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-94",
+      "requirementId": "LITE-10-008",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "idempotency convergence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-002-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-95",
+      "requirementId": "LITE-11-002",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "create-task and start-run are separate and idempotent;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-003-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-96",
+      "requirementId": "LITE-11-003",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "Start returns durable acceptance;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-010-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-97",
+      "requirementId": "LITE-11-010",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "optimistic races have one winner;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-010-p3c1-ry13-retry-routes-through-api-policy-runtime-and-a-committed-event-98",
+      "requirementId": "LITE-13-010",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event",
+      "line": 1561,
+      "expression": "assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],",
+      "clause": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-005-p3c1-r01-canonical-url-accepts-a-live-no-key-start-with-the-exact-202-operation--99",
+      "requirementId": "LITE-11-005",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body",
+      "line": 404,
+      "expression": "assert.equal(response.status, 202);",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-005-p3c1-r16-an-expectedversion-mismatch-returns-409-version-conflict-100",
+      "requirementId": "LITE-11-005",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT",
+      "line": 591,
+      "expression": "assert.equal(tableRowCount(fx.store, 'operations'), 0);",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-005-p3c1-ry01-canonical-retry-route-accepts-a-failed-parent-and-returns-http-201-101",
+      "requirementId": "LITE-11-005",
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "name": "P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201",
+      "line": 1177,
+      "expression": "assert.equal(response.status, 201);",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:20:21.267Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 11,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "scope": "最后一批：LITE-08 Policy 组（9 行）、LITE-09-001、LITE-12-004/008/016",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次、covering-batches*.json，或已合并的真实 gate 证据包）。",
+    "复合条款缺任一分项的具名断言即记驳回。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-08-001",
+      "clause": "every high-impact action at an AgentOS-controlled or verified Provider pre-action boundary is decided before execution;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+      "rationale": "断言体：write-capable Stage 在**任何 spawn 之前**被闸门拦下（Run/Stage 进入 waiting_approval，进程数为 0），只有被批准后才继续同一个原 Run。这正是「高影响动作在执行前被决定」。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（审批生命周期，不是闸门前置性）"
+    },
+    {
+      "id": "LITE-08-002",
+      "clause": "DENY blocks AgentOS-owned spawn, destructive filesystem action, merge, push, and secret export;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "rationale": "断言体：拒绝（DENY 语义）是终态且可安全重放，且被拒后不会再执行 —— 对 Agent 拥有的 spawn 路径即为阻断。",
+      "limits": "断言覆盖「拒绝阻断 AgentOS 拥有的执行」；条款并列的破坏性文件操作/merge/push/秘密导出四类**具体动作类型**没有逐类断言（它们由 Policy 延后范围界定，见 08-015）。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-08-008",
+      "clause": "snapshot hashes detect changed actions;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/run-engine/RuntimeApprovalGate.liveGate.test.ts",
+          "name": "（真实 gate）launch_plan_hash / action_fingerprint / agent_snapshot_hash / provider_snapshot_hash 均为 64-hex 冻结身份，且变更后不能执行"
+        }
+      ],
+      "rationale": "断言体：启动计划发生变化后**不能执行** —— 这正是快照哈希漂移检测的行为后果；真实 gate 侧进一步断言四个快照哈希都以 64-hex 冻结身份持久化。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-08-013",
+      "clause": "no policy path bypasses single-writer admission;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects"
+        },
+        {
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn"
+        }
+      ],
+      "rationale": "单写者由 DB fence 强制（第二条 GRANTED 被拒），且未获授权/陈旧授权在任何路径下都零副作用 —— 即没有策略旁路。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "receipt": "covering-batches.json（56 passed）"
+    },
+    {
+      "id": "LITE-08-014",
+      "clause": "modifying execution succeeds without an AgentOS-owned Worktree;",
+      "verdict": "accepted",
+      "coveringFile": "docs/implementation/lite-closeout/S2S3-live-candidate-evidence.json",
+      "coveringAssertion": "S2E-ARTIFACT-01 / S2E-COMPLETION-01（真实运行）",
+      "rationale": "已合并的真实 gate 证据：该 Run 持有 MODIFYING admission、四个 Stage 全部 completed、产生 canonical review Artifact 与完成记录，而组合根注入的是 `worktreePathFor: () => workspaceRoot` —— 即**没有 AgentOS 拥有的 Worktree**，修改型执行仍然成功。",
+      "limits": "证据来自真实 gate 运行（非单元断言）；单元层未见「无 Worktree 仍成功」的具名断言。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "receipt": "S2S3-live-candidate-evidence.json（#168 已合并）"
+    },
+    {
+      "id": "LITE-08-015",
+      "clause": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 no web module implements a deferred product surface",
+      "rationale": "断言体：DEFERRED_SURFACES 显式包含 `{ label: 'full Policy editor', pattern: /policy[-_.]?(editor|builder|dsl)/i }`，并断言没有任何延迟产品面被实现或暴露入口 —— 即完整 DSL/规则编辑不在 Lite 活跃范围。",
+      "limits": "扫描面是 web 路由与模块；服务端是否暴露 DSL/模拟接口不在该断言内（本轮未找到服务端侧同口径断言）。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "receipt": "covering-batches-7.json（3 passed）"
+    },
+    {
+      "id": "LITE-12-004",
+      "clause": "reduced-motion behavior;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "coveringAssertion": "SHELL-05 reduced motion collapses panel transitions to zero",
+      "rationale": "断言名即条款，且在该批次的收据中为 passed（9 条断言 0 fail）。",
+      "currentPointer": "同一文件（指针正确）"
+    },
+    {
+      "id": "LITE-12-008",
+      "clause": "explicit Chat/Task/Run actions;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/lib/directConversation.test.ts",
+      "coveringAssertion": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/components/chat/ConversationRuntimeView.test.tsx",
+          "name": "DCUX-V02 the Composer exposes Chat/Task/Run as distinct modes"
+        },
+        {
+          "file": "apps/web/src/lib/directConversationController.test.ts",
+          "name": "（断言调用序列为 ['create-task','start-run']）"
+        }
+      ],
+      "rationale": "三处都是具名断言：chat 模式映射为 send、task 模式映射为 create-task、run 模式映射为 start-run（互不混淆），组件暴露三种显式模式，控制器按 create-task → start-run 顺序调用。",
+      "currentPointer": "WorkbenchShell.test.tsx（布局，不覆盖）",
+      "receipt": "covering-batches-8.json（10 passed）"
+    },
+    {
+      "id": "LITE-12-016",
+      "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 the UI ships only the Lite route surface",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/liteScopeBoundary.test.ts",
+          "name": "LITE-12-016 no web module implements a deferred product surface"
+        },
+        {
+          "file": "apps/web/src/liteScopeBoundary.test.ts",
+          "name": "LITE-12-016 the workspace shells expose no deferred product entry point"
+        }
+      ],
+      "rationale": "三条断言分别覆盖：只发布 Lite 路由面、没有模块实现延迟产品面、shell 不暴露延迟入口；延迟清单含 worktree 管理、完整 Policy 编辑、Provider 比较。断言名直接点名本条编号。",
+      "currentPointer": "WorkbenchShell.test.tsx（不覆盖）"
+    },
+    {
+      "id": "LITE-08-003",
+      "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "rationale": "检索未找到「Provider 原生 merge/push 的可执行前置桥」相关断言；现有断言覆盖的是 AgentOS 控制的 spawn 闸门，不覆盖「Provider 原生动作 + 已验证可执行桥」这一条件式。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-08-004",
+      "clause": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "rationale": "检索 `un-interceptable` / `never reported as blocked` 无命中；未找到「不可拦截动作不得被报告为已阻断」的断言，也未找到「不可用执行能力必须可见」的断言。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-08-012",
+      "clause": "browser disconnect does not decide;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "rationale": "检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-09-001",
+      "clause": "Message-only Turns create no Task and no Run;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "rationale": "与 LITE-02-001/11-001 同一缺口：ConversationTurnDriver 的 14 条断言覆盖流式、失败、取消、快照与冻结选择，**没有**「message-only Turn 之后 Task/Run 行数不变」的运行时断言；唯一相关候选是 Composer 意图层断言（DCUX-P01），不在运行时。按缺口记录。",
+      "currentPointer": "同一文件（不覆盖本条）"
+    }
+  ],
+  "summary": {
+    "judged": 13,
+    "accepted": 9,
+    "rejected": 4
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  },
+  "triageComplete": true
+}
+

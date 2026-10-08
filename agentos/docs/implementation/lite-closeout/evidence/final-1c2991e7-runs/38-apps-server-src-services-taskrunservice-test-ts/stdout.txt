@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: LITE-01-004 a Task supports zero Runs and then multiple independent Runs
+ok 1 - LITE-01-004 a Task supports zero Runs and then multiple independent Runs
+  ---
+  duration_ms: 159.7481
+  type: 'test'
+  ...
+# Subtest: TaskRunService captures four Legacy stages on initial and retry with latest lineage
+ok 2 - TaskRunService captures four Legacy stages on initial and retry with latest lineage
+  ---
+  duration_ms: 165.0873
+  type: 'test'
+  ...
+# Subtest: P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation
+ok 3 - P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation
+  ---
+  duration_ms: 149.0885
+  type: 'test'
+  ...
+# Subtest: P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically
+ok 4 - P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically
+  ---
+  duration_ms: 153.2518
+  type: 'test'
+  ...
+# Subtest: LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability
+ok 5 - LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability
+  ---
+  duration_ms: 158.8012
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1097.87

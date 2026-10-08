@@ -1,0 +1,134 @@
+[
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A1",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 194,
+    "expression": "expect(types).toEqual([",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A2",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 198,
+    "expression": "expect(parsed.events.find(event => event.type === 'assistant.message')).toEqual({",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A3",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 201,
+    "expression": "expect((await adapter.finalize({ exitCode: 0, signal: null, parsedEvents: parsed.events })).output).toBe('已检查 executor.ts');",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A4",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 205,
+    "expression": "expect(malformedResult.error?.code).toBe('PROVIDER_OUTPUT_PARSE_FAILED');",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A5",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 208,
+    "expression": "expect(emptyResult.error?.code).toBe('PROVIDER_OUTPUT_INVALID');",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-001-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-396-A6",
+    "requirementId": "LITE-04-001",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 210,
+    "expression": "expect(failedResult.error?.code).toBe('PROVIDER_SESSION_FAILED');",
+    "clause": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A1",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 194,
+    "expression": "expect(types).toEqual([",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A2",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 198,
+    "expression": "expect(parsed.events.find(event => event.type === 'assistant.message')).toEqual({",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A3",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 201,
+    "expression": "expect((await adapter.finalize({ exitCode: 0, signal: null, parsedEvents: parsed.events })).output).toBe('已检查 executor.ts');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A4",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 205,
+    "expression": "expect(malformedResult.error?.code).toBe('PROVIDER_OUTPUT_PARSE_FAILED');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A5",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 208,
+    "expression": "expect(emptyResult.error?.code).toBe('PROVIDER_OUTPUT_INVALID');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-003-reuses-the-legacy-codex-json-parser-requires-assistant-output-and-finalizes-stab-397-A6",
+    "requirementId": "LITE-04-003",
+    "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+    "name": "reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures",
+    "line": 210,
+    "expression": "expect(failedResult.error?.code).toBe('PROVIDER_SESSION_FAILED');",
+    "clause": "Kimi Code invocation does not route through OpenCode;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

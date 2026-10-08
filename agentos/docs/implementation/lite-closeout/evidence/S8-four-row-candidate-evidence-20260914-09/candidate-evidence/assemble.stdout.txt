@@ -1,0 +1,1 @@
+{"outputPath":"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\S8-four-row-candidate-evidence.json","verdicts":{"LITE-00-004":"candidate-supported","LITE-00-007":"candidate-supported","LITE-02-009":"candidate-supported","LITE-03-010":"candidate-supported"}}

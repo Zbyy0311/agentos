@@ -1,0 +1,46 @@
+[
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-93",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-94",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-95",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-96",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

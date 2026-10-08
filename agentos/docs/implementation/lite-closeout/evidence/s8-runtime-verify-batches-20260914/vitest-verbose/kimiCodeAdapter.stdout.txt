@@ -1,0 +1,30 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core
+
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > normalizes the legacy kimi input token without changing canonical adapter identity 2ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > validates direct KimiCode fixtures without emitting the forbidden generic validation error 2ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > routes version, help, and auth probes through the injected Process Runtime port 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses the same Windows safe-environment semantics for validation, auth, and launch 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps POSIX safe-environment matching case-sensitive 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed on conflicting Windows safe-environment aliases 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > distinguishes an explicitly configured inaccessible executable from no discovery candidate 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > sanitizes discovery warning text before returning validation evidence 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > builds a canonical direct launch plan with separated args and secret references only 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > freezes an absent persisted Kimi version to the manifest compatibility version 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > refuses to build an execution plan for an unfreezable missing-version adapter 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses canonical environment override before the legacy Kimi override when config is unset 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > does not fall back to another executable when a configured binary is inaccessible 4ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication authenticated from a successful structured assistant response 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication unauthenticated on explicit login-required evidence 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > no longer probes the stale auth status command 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > parses golden, malformed, unknown and usage output without fabricating provider semantics 1ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > maps finalize outcomes and sends cancel only through an accepted Process port ticket 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps precise auth-required, auth-expired, and generic session classifications 0ms
+ ✓ src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > has no direct child_process or spawn/exec dependency in the adapter source 0ms
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  21:47:57
+   Duration  414ms (transform 162ms, setup 0ms, import 207ms, tests 20ms, environment 0ms)
+

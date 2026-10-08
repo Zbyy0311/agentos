@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { RuntimeArtifactCollector } from './RuntimeArtifactCollector.js';
+import { ArtifactCompletionRepository } from '../store/ArtifactCompletionRepository.js';
+import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 
 function git(root: string, args: string[]): void {
   execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
@@ -23,7 +26,7 @@ function removeTempDir(root: string): void {
   }
 }
 
-test('collects file, clean-baseline diff, report, and public log artifacts', async () => {
+test('LITE-07-104: actual collector finalizes test Artifact through Candidate/Event/review/Entry', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-artifact-collector-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [{
@@ -43,18 +46,47 @@ test('collects file, clean-baseline diff, report, and public log artifacts', asy
   git(root, ['add', 'executor.ts', 'workspace/workspaces.json']);
   git(root, ['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-m', 'initial']);
   const service = new RuntimeArtifactService(store, root);
-  const collector = new RuntimeArtifactCollector(service);
+  let notifications = 0;
+  const collector = new RuntimeArtifactCollector(service, () => { notifications += 1; });
   const context = { workspaceId: 'workspace-a', workspaceRoot: root, runId: 'run-a', sourceExecutionId: 'execution-a', agentId: 'codex' };
   try {
     collector.start(context);
     writeFileSync(source, 'after', 'utf8');
-    await collector.recordRuntimeEvent(context, { type: 'tool.started', callId: 'test-1', toolName: 'command_execution', summary: 'npm test', inputPreview: 'npm test' });
-    await collector.recordRuntimeEvent(context, { type: 'tool.completed', callId: 'test-1', toolName: 'command_execution', success: true, summary: 'command_execution 完成', outputPreview: '1 passed' });
+    await collector.recordRuntimeEvent(context, { type: 'tool.started', callId: 'test-1', toolName: 'command_execution', summary: 'node --test proof.test.cjs', inputPreview: 'node --test proof.test.cjs' });
+    const done = { type: 'tool.completed' as const, callId: 'test-1', toolName: 'command_execution', success: true,
+      summary: 'command_execution 完成', outputPreview: '1 passed', commandResult: { command: 'node --test proof.test.cjs', exitCode: 0 } };
+    await collector.recordRuntimeEvent(context, done);
+    await collector.recordRuntimeEvent(context, done);
+    assert.equal(notifications, 1);
+    await assert.rejects(collector.recordRuntimeEvent(context, { ...done, success: false,
+      commandResult: { ...done.commandResult, exitCode: 1 } }), /ARTIFACT_COMPLETION_CONFLICT/);
     await collector.collectFileChanges(context, [{ path: 'executor.ts', changeType: 'modified' }]);
     await collector.finalize(context);
     const artifacts = store.listRuntimeArtifacts('workspace-a', 'run-a');
-    assert.deepEqual(new Set(artifacts.map(artifact => artifact.type)), new Set(['file', 'diff', 'report', 'log']));
+    assert.deepEqual(new Set(artifacts.map(artifact => artifact.type)), new Set(['file', 'diff', 'test', 'log']));
     assert.equal(artifacts.every(artifact => artifact.sourceExecutionId === 'execution-a'), true);
+    const artifact = artifacts.find(item => item.type === 'test')!;
+    const completion = new ArtifactCompletionRepository(store.getDatabase()).findByArtifact('workspace-a', artifact.id)!;
+    assert.equal(completion.conclusion, 'pass');
+    assert.equal(completion.runId, null); // real legacy Run is not a canonical Run
+    const candidates = new MemoryCandidateRepository(store.getDatabase());
+    const candidate = candidates.findCandidateById('workspace-a', completion.candidateId)!;
+    assert.equal(candidate.outcome, 'review-required');
+    assert.equal(candidate.authority, 'agent-derived');
+    assert.deepEqual(candidate.sources, [{ kind: 'artifact', id: artifact.id }]);
+    const created = store.getDatabase().prepare('SELECT type, payload_json FROM workspace_events').all() as { type: string; payload_json: string }[];
+    assert.equal(created.length, 1);
+    assert.equal(created[0].type, 'memory.candidate_created');
+    assert.equal(JSON.parse(created[0].payload_json).candidateId, candidate.id);
+    const accepted = candidates.reviewCandidate({ workspaceId: 'workspace-a', candidateId: candidate.id,
+      expectedVersion: 1, outcome: 'accept', reviewedAt: new Date().toISOString() }, { writer: store.workspaceEventWriter() });
+    const entry = new MemoryEntryRepository(store.getDatabase()).findById('workspace-a', accepted.mergedIntoEntryId!)!;
+    assert.deepEqual(entry.sources, [{ kind: 'artifact', id: artifact.id }]);
+    assert.ok((await service.readContentBytes('workspace-a', artifact.id)).toString('utf8').includes('Status: passed'));
+    const replay = new RuntimeArtifactCollector(service);
+    await replay.recordRuntimeEvent(context, done);
+    assert.equal(new ArtifactCompletionRepository(store.getDatabase()).list('workspace-a').length, 1);
+    assert.equal((store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_events WHERE type = 'memory.candidate_created'").get() as { n: number }).n, 1);
   } finally {
     store.close();
     removeTempDir(root);
@@ -88,6 +120,9 @@ test('recognizes Windows shell wrappers around npm test for report artifacts', a
   try {
     const artifacts = store.listRuntimeArtifacts(workspace.id, 'run-shell');
     assert.equal(artifacts.some(artifact => artifact.type === 'report'), true);
+    await collector.recordRuntimeEvent(context, { type: 'tool.started', callId: 'unknown-exit', toolName: 'command_execution', summary: 'node --test proof.test.cjs' });
+    await collector.recordRuntimeEvent(context, { type: 'tool.completed', callId: 'unknown-exit', toolName: 'command_execution', success: true, summary: 'completed' });
+    assert.equal(new ArtifactCompletionRepository(store.getDatabase()).list(workspace.id).length, 0);
   } finally {
     store.close();
     removeTempDir(root);

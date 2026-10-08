@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue)",
+      "src/services/m3-p6-integrated-verification.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/21-apps-server-src-services-m3-p6-integrated-verification-test-ts/assertions.json",
+      "sha256": "1d4e8dadbbf1fbd5b5ebd7e5dae8fd76065716e746869c993cfefcb5467b8ffd"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/21-apps-server-src-services-m3-p6-integrated-verification-test-ts/execution.json",
+      "sha256": "8507a7a6b95bf7831777f196d43994bb050392c0407512b4168564b0dec15740"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/21-apps-server-src-services-m3-p6-integrated-verification-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/21-apps-server-src-services-m3-p6-integrated-verification-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/21-apps-server-src-services-m3-p6-integrated-verification-test-ts/stdout.txt",
+      "sha256": "69db55d32f5584e2043e2392e9c58518fa3b7b1d5576319cbba12ce16ced3b42"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-05-008-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-145",
+      "requirementId": "LITE-05-008",
+      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+      "line": 702,
+      "expression": "assert.equal(run.status, 'completed');",
+      "clause": "browser disconnect leaves the Process running;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-007-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-146",
+      "requirementId": "LITE-09-007",
+      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+      "line": 702,
+      "expression": "assert.equal(run.status, 'completed');",
+      "clause": "browser disconnect leaves Run and Process active;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-014-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-147",
+      "requirementId": "LITE-13-014",
+      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+      "line": 702,
+      "expression": "assert.equal(run.status, 'completed');",
+      "clause": "browser disconnect leaves execution active;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

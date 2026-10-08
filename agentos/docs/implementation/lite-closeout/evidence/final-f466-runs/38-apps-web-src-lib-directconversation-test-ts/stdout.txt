@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: DCUX-S03 reconnect resumes from the durable cursor and resyncs
+ok 1 - DCUX-S03 reconnect resumes from the durable cursor and resyncs
+  ---
+  duration_ms: 0.6828
+  type: 'test'
+  ...
+# Subtest: DCUX-P02 task and run modes map to distinct explicit actions
+ok 2 - DCUX-P02 task and run modes map to distinct explicit actions
+  ---
+  duration_ms: 0.1803
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 214.9439

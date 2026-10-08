@@ -1,0 +1,1496 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:08:26.457Z",
+  "evidencePackage": "S8-runtime-verify-pointer-load",
+  "ledgerPath": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/runtime-verify-ledger.json",
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "summary": {
+    "files": 25,
+    "clauses": 205,
+    "clausesInCorrectlySizedPointers": 106,
+    "clausesInOverAssignedPointers": 99,
+    "overAssignedFiles": 7
+  },
+  "analysis": [
+    {
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "assignedClauses": 17,
+      "executedAssertions": 2,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 15,
+      "clauses": [
+        {
+          "id": "LITE-10-001",
+          "requirement": "fresh and supported upgrade migrations;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-10-002",
+          "requirement": "checksum, backup, integrity, and foreign-key gates;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-003",
+          "requirement": "opaque IDs and Process ID/PID distinction;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-004",
+          "requirement": "Task zero/many Runs and retry child lineage;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-005",
+          "requirement": "Snapshot immutability and child remapping;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-006",
+          "requirement": "Event append-only and per-Run ordering;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-007",
+          "requirement": "Event/Outbox atomicity and replay;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-008",
+          "requirement": "idempotency convergence;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-009",
+          "requirement": "optimistic race winner;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-010",
+          "requirement": "Process reserve-before-spawn;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-011",
+          "requirement": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-012",
+          "requirement": "fail-closed recovery evidence;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-013",
+          "requirement": "bounded finalized output references;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-014",
+          "requirement": "Workspace tombstones and non-cascading history;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-015",
+          "requirement": "compatibility reads without data loss;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-016",
+          "requirement": "no secret persistence;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-10-017",
+          "requirement": "no clean-sheet schema replacement.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "assignedClauses": 14,
+      "executedAssertions": 4,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 10,
+      "clauses": [
+        {
+          "id": "LITE-13-001",
+          "requirement": "view facts match canonical records;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-13-002",
+          "requirement": "Run, Stage, Provider, Process, and duration are distinct;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-003",
+          "requirement": "Process ID is never confused with PID;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-004",
+          "requirement": "strict Event order, gap recovery, and deduplication;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-005",
+          "requirement": "bounded output without unbounded client state;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-006",
+          "requirement": "Memory view reproduces Snapshot and explanations;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-13-007",
+          "requirement": "Git wording never implies ownership;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-008",
+          "requirement": "recovery never guesses success;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-009",
+          "requirement": "no reattach/takeover/direct-kill control;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-010",
+          "requirement": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-011",
+          "requirement": "no two modifying Runs in one Workspace;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-13-013",
+          "requirement": "no secrets in DTOs;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-014",
+          "requirement": "browser disconnect leaves execution active;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-13-015",
+          "requirement": "replay has zero external side effects.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "assignedClauses": 18,
+      "executedAssertions": 9,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 9,
+      "clauses": [
+        {
+          "id": "LITE-00-012",
+          "requirement": "the UI presents the four-column engineering workbench with a focused Inspector;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-12-001",
+          "requirement": "four-column layout and adaptive collapse;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-12-002",
+          "requirement": "shared semantic token coverage;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-003",
+          "requirement": "dark/light contrast;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-12-004",
+          "requirement": "reduced-motion behavior;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-005",
+          "requirement": "batched streaming and stable scroll;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-006",
+          "requirement": "cursor reconnect without gaps/duplicates;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-007",
+          "requirement": "complete async states;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-008",
+          "requirement": "explicit Chat/Task/Run actions;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-009",
+          "requirement": "bounded Group controls;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-010",
+          "requirement": "truthful parallel-read-only availability and modifying admission when write denial cannot be enforced;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-12-011",
+          "requirement": "Memory selection explanation;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-012",
+          "requirement": "Inspector parity with canonical data;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-12-013",
+          "requirement": "Agent-unified History and secret-free Search;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-014",
+          "requirement": "keyboard core flow and stable focus;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-015",
+          "requirement": "API-client-only access;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-016",
+          "requirement": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-12-101",
+          "requirement": "四栏正文要求的导航、通知状态及键盘流覆盖",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "(no runnable test file named)",
+      "assignedClauses": 6,
+      "executedAssertions": 0,
+      "fileStatus": "not-in-batch",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 6,
+      "clauses": [
+        {
+          "id": "LITE-00-002",
+          "requirement": "Conversation and Message records survive reconnect and restart;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-00-003",
+          "requirement": "Task, Run, Process, and Event remain distinct and traceable;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-00-004",
+          "requirement": "a Run survives browser disconnect;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-00-006",
+          "requirement": "Windows cancellation handles the owned process tree;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-00-007",
+          "requirement": "recovery classifies uncertainty without guessing completion;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-00-009",
+          "requirement": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/OutboxPublisher.test.ts",
+      "assignedClauses": 17,
+      "executedAssertions": 12,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 5,
+      "clauses": [
+        {
+          "id": "LITE-00-005",
+          "requirement": "Runtime Events remain ordered, durable, replayable, and redacted;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-02-008",
+          "requirement": "publication retry does not repeat a domain transition;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-03-001",
+          "requirement": "envelope and payload schema validation;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-002",
+          "requirement": "immutable Event records;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-003",
+          "requirement": "strict unique per-Run ordering;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-007",
+          "requirement": "reclaim, retry, and dead letter without duplicate domain transition;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-03-008",
+          "requirement": "at-least-once delivery with idempotent consumers;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-03-010",
+          "requirement": "browser disconnect without Run cancellation;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-011",
+          "requirement": "unknown Event and future schema compatibility;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-03-012",
+          "requirement": "provider mapping fidelity and no invented telemetry;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-013",
+          "requirement": "redaction before persistence;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-014",
+          "requirement": "payload limit and Artifact fallback;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-015",
+          "requirement": "Conversation bridge deduplication;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-016",
+          "requirement": "Memory selection explanation Events;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-03-017",
+          "requirement": "Git observation wording that does not imply Git ownership;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-03-018",
+          "requirement": "recovery classification preserves the **NON-GOAL** of reattach and never guesses success;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-03-019",
+          "requirement": "replay with zero external side effects.",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        }
+      ]
+    },
+    {
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "assignedClauses": 12,
+      "executedAssertions": 10,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 2,
+      "clauses": [
+        {
+          "id": "LITE-05-001",
+          "requirement": "reserve-before-spawn ordering and idempotency;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-05-002",
+          "requirement": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-05-003",
+          "requirement": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-05-004",
+          "requirement": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-05-005",
+          "requirement": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-05-006",
+          "requirement": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-05-007",
+          "requirement": "cancel terminates the owned Windows process tree with survivor verification;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-05-008",
+          "requirement": "browser disconnect leaves the Process running;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-05-009",
+          "requirement": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-05-010",
+          "requirement": "bounded independent stdout/stderr with Artifact fallback;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-05-011",
+          "requirement": "startup preflight never probes OS state inside a SQLite write transaction;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-05-012",
+          "requirement": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "assignedClauses": 15,
+      "executedAssertions": 14,
+      "fileStatus": "passed",
+      "individuallyJustifiable": false,
+      "unsupportedByCount": 1,
+      "clauses": [
+        {
+          "id": "LITE-09-001",
+          "requirement": "Message-only Turns create no Task and no Run;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-002",
+          "requirement": "Task creation and Run creation are distinct and idempotent;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-003",
+          "requirement": "Run start passes Workspace admission;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-09-004",
+          "requirement": "Messages survive reconnect and Provider switch;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-09-005",
+          "requirement": "client retry creates exactly one Message;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-09-006",
+          "requirement": "streams finalize durably;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-09-007",
+          "requirement": "browser disconnect leaves Run and Process active;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-008",
+          "requirement": "Event projection never duplicates cards;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-011",
+          "requirement": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-09-012",
+          "requirement": "budgets, stop, and loop guard terminate every group interaction;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-014",
+          "requirement": "no Workspace has two AgentOS modifying Runs;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-09-015",
+          "requirement": "@all never launches parallel modification;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-09-016",
+          "requirement": "archive preserves linked records;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-09-017",
+          "requirement": "templates use durable Task, Run, and Stage primitives;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-09-018",
+          "requirement": "search excludes secrets.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "assignedClauses": 27,
+      "executedAssertions": 30,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-02-001",
+          "requirement": "Message-only turns do not create modifying Runs;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-002",
+          "requirement": "Task creation is idempotent and separate from Run creation;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-003",
+          "requirement": "modifying admission never permits two active modifying Runs in one Workspace;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-02-004",
+          "requirement": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-02-009",
+          "requirement": "browser disconnect leaves Run and Process active;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-02-011",
+          "requirement": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-02-012",
+          "requirement": "retry creates a new Run with preserved lineage;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-013",
+          "requirement": "Process exit does not falsely complete a Run;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-014",
+          "requirement": "recovery handles `MISSING`, `MISMATCH`, `UNKNOWN`, and technically justified `SAME` without guessing continuation;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-02-015",
+          "requirement": "recovery preserves the **NON-GOAL** of reattach/adoption/respawn and creates no duplicate authority;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-02-016",
+          "requirement": "Worktree absence does not block a modifying Run after Workspace admission;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-017",
+          "requirement": "failures preserve evidence and release authority only through committed transitions.",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 5
+        },
+        {
+          "id": "LITE-03-004",
+          "requirement": "atomic current state, Event, version, and Outbox writes;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-03-005",
+          "requirement": "exact multi-Event lifecycle ordering;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-03-006",
+          "requirement": "one Outbox row per durable Event;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-08-001",
+          "requirement": "every high-impact action at an AgentOS-controlled or verified Provider pre-action boundary is decided before execution;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-002",
+          "requirement": "DENY blocks AgentOS-owned spawn, destructive filesystem action, merge, push, and secret export;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-003",
+          "requirement": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-004",
+          "requirement": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-008",
+          "requirement": "snapshot hashes detect changed actions;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-009",
+          "requirement": "snapshots and Events contain no secret values;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-08-010",
+          "requirement": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-08-011",
+          "requirement": "engine failure fails closed;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-08-012",
+          "requirement": "browser disconnect does not decide;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-013",
+          "requirement": "no policy path bypasses single-writer admission;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-014",
+          "requirement": "modifying execution succeeds without an AgentOS-owned Worktree;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-08-015",
+          "requirement": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "assignedClauses": 16,
+      "executedAssertions": 16,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-02-010",
+          "requirement": "reconnect provides gap-free, duplicate-free replay plus live delivery;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-03-009",
+          "requirement": "reconnect from a real cursor with replay, drain, live continuation, no gaps, and no duplicates;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-04-005",
+          "requirement": "browser disconnect does not cancel Provider execution;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-11-001",
+          "requirement": "Message post creates no Task or Run;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-002",
+          "requirement": "create-task and start-run are separate and idempotent;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-003",
+          "requirement": "Start returns durable acceptance;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-11-004",
+          "requirement": "browser disconnect leaves execution active;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-11-005",
+          "requirement": "frozen start/retry/cancel semantics and errors remain exact;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-006",
+          "requirement": "Event query/replay/SSE has no gaps or duplicates;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-11-007",
+          "requirement": "bad cursor returns stable validation error;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-11-008",
+          "requirement": "one Workspace never admits two modifying Runs;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-009",
+          "requirement": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-010",
+          "requirement": "optimistic races have one winner;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-011",
+          "requirement": "History is Agent-unified and Search is secret-free;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-012",
+          "requirement": "Artifact DTOs leak no storage path;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-11-013",
+          "requirement": "deferred API families are not active requirements.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "assignedClauses": 13,
+      "executedAssertions": 46,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-00-008",
+          "requirement": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 7
+        },
+        {
+          "id": "LITE-01-009",
+          "requirement": "read-only concurrency requires tested technical Workspace write denial and does not bypass Provider or resource limits;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-06-001",
+          "requirement": "one Workspace never admits two AgentOS modifying Runs concurrently;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-06-002",
+          "requirement": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-06-003",
+          "requirement": "unknown classification is admitted as modifying;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-06-004",
+          "requirement": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-06-005",
+          "requirement": "Git root, cwd, base/final commit, status, changed files, and diff Artifact are recorded without ownership claims;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-06-006",
+          "requirement": "non-Git Workspaces report `not-git` without silent fallback;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-06-007",
+          "requirement": "diff Artifacts are immutable and checksummed;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-06-008",
+          "requirement": "historical Worktree fields and Events remain readable;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-06-009",
+          "requirement": "a modifying Run completes without any AgentOS-owned Worktree;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-06-010",
+          "requirement": "no automatic or destructive Git command is executed by observation;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-06-011",
+          "requirement": "Git observation wording never implies AgentOS-owned Git workflow.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/store/Identity.test.ts",
+      "assignedClauses": 13,
+      "executedAssertions": 38,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-01-001",
+          "requirement": "each durable entity uses stable IDs and correct parent references;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-01-002",
+          "requirement": "Agent identity remains stable across Provider changes;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-01-003",
+          "requirement": "Message creation is distinct from Task and Run creation;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-01-004",
+          "requirement": "Task supports zero or many Runs;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-005",
+          "requirement": "retry creates a new Run lineage;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-006",
+          "requirement": "Run and Process can be queried independently;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-007",
+          "requirement": "Process ID and native PID cannot be confused by API or UI labels;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-01-008",
+          "requirement": "one Workspace cannot admit two modifying Runs;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-010",
+          "requirement": "prompt-only or user-forced capability claims never create read-only eligibility;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-011",
+          "requirement": "Stage remains optional and bounded;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-01-012",
+          "requirement": "Memory Context Snapshot records why entries were selected;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-01-013",
+          "requirement": "Agent History links canonical records rather than provider-native history;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-01-015",
+          "requirement": "archived or compatibility records do not disappear destructively.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "assignedClauses": 11,
+      "executedAssertions": 21,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-01-014",
+          "requirement": "unknown Provider details do not become invented facts;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        },
+        {
+          "id": "LITE-04-001",
+          "requirement": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-04-002",
+          "requirement": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-04-003",
+          "requirement": "Kimi Code invocation does not route through OpenCode;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-04-006",
+          "requirement": "errors normalize to stable codes with retryability;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-04-007",
+          "requirement": "capability declarations match tested behavior;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-04-008",
+          "requirement": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-04-009",
+          "requirement": "unknown capability, prompt-only intent, user-forced values, `nativeSandbox`, and Provider-native worktrees never imply `enforcedWorkspaceReadOnly`;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        },
+        {
+          "id": "LITE-04-010",
+          "requirement": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-04-011",
+          "requirement": "secrets are absent from Events, Snapshots, and debug bundles;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-04-012",
+          "requirement": "no invented provider telemetry appears in canonical Events.",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "assignedClauses": 8,
+      "executedAssertions": 17,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-00-010",
+          "requirement": "Memory selection is reproducible and explainable;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-07-001",
+          "requirement": "valid and invalid Scope/owner combinations;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-07-002",
+          "requirement": "source requirement for automatic Entries;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-07-005",
+          "requirement": "FTS5 retrieval only inside allowed Scope;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-07-006",
+          "requirement": "deterministic ranking with reasons;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-07-009",
+          "requirement": "explanation for selections and exclusions;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-07-012",
+          "requirement": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        },
+        {
+          "id": "LITE-07-014",
+          "requirement": "Provider receives only the selected Context.",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "assignedClauses": 3,
+      "executedAssertions": 36,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-00-001",
+          "requirement": "a persistent Agent can change Provider without losing canonical identity or history;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 7
+        },
+        {
+          "id": "LITE-04-004",
+          "requirement": "Provider switching preserves Agent identity and history;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-09-009",
+          "requirement": "Agent identity survives Provider changes;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "assignedClauses": 3,
+      "executedAssertions": 30,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-02-005",
+          "requirement": "Run graph creation is atomic and ordered;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 5
+        },
+        {
+          "id": "LITE-02-006",
+          "requirement": "transition-to-Event mappings remain exact;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        },
+        {
+          "id": "LITE-02-007",
+          "requirement": "every durable Event has the required independent Outbox row;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 3
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "assignedClauses": 3,
+      "executedAssertions": 24,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-07-004",
+          "requirement": "conflict preservation and explicit resolution;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 4
+        },
+        {
+          "id": "LITE-07-008",
+          "requirement": "immutable Context Snapshot after later Entry edits;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 6
+        },
+        {
+          "id": "LITE-07-011",
+          "requirement": "no automatic wider-Scope promotion;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 2
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 36,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-00-011",
+          "requirement": "Git changes are observable without AgentOS owning Git workflow execution;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 17,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-00-013",
+          "requirement": "Group Conversation and workflow templates remain bounded.",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 15,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-07-010",
+          "requirement": "no bulk transcript or Provider-history promotion;",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 23,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-13-012",
+          "requirement": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 7
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 33,
+      "fileStatus": "not-clean",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-04-101",
+          "requirement": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 16,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-07-101",
+          "requirement": "显式用户保存触发",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 7,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-09-103",
+          "requirement": "历史/搜索链接规范实体、Provider、failure/recovery及真实usage",
+          "verdict": "candidate-supported",
+          "matchingAssertions": 1
+        }
+      ]
+    },
+    {
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 12,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-13-102",
+          "requirement": "Inspector各section规范字段及Cancel/Retry源链",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    },
+    {
+      "file": "packages/shared/wf-template-instantiation.test.ts",
+      "assignedClauses": 1,
+      "executedAssertions": 10,
+      "fileStatus": "passed",
+      "individuallyJustifiable": true,
+      "unsupportedByCount": 0,
+      "clauses": [
+        {
+          "id": "LITE-01-101",
+          "requirement": "有界Workflow templates及真实实例化",
+          "verdict": "insufficient-evidence",
+          "matchingAssertions": 0
+        }
+      ]
+    }
+  ]
+}

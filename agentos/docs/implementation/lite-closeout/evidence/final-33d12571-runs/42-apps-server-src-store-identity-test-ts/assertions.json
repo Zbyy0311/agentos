@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-01-001-createentityid-produces-prefix-ulid-format-315-A1",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/Identity.test.ts",
+    "name": "createEntityId produces prefix_ulid format",
+    "line": 63,
+    "expression": "assert.ok(id.startsWith(`${ENTITY_ID_PREFIXES[kind]}_`));",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-createentityid-produces-prefix-ulid-format-316-A1",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/Identity.test.ts",
+    "name": "createEntityId produces prefix_ulid format",
+    "line": 63,
+    "expression": "assert.ok(id.startsWith(`${ENTITY_ID_PREFIXES[kind]}_`));",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

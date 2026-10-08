@@ -1,0 +1,543 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "LITE-07-102-candidate-evidence",
+  "generatedAt": "2026-09-14T13:27:07.233Z",
+  "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "testCodeSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "routeModels": {
+    "terminalTrigger": "生产 RunEngineProviderDispatcher 的派发时触发（无模型调用）",
+    "restartSweep": "生产 TerminalMemoryCandidateReconciler"
+  },
+  "modelScopeStatement": "本包不调用任何 Provider 模型：Run 在启动阶段因 Provider 可执行文件不可用而失败，证据绑定的是 AgentOS 自身的终态触发、有界事实与重启清扫契约。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s102-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/receipts.json",
+        "sha256": "7e09d7da156d4f144c3c4a0fe8a09f0a2d6da16092ad779d159232c5ecfd826f",
+        "bytes": 8980
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/stdout.txt",
+        "sha256": "883de926c1ca6ca5f09f7f36d9882a57bad420c6463face24d9f67df02b49fe0",
+        "bytes": 63
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "d3147222cf56467d61c6b47f824add618ed856355769374f3f3805501bf370ad",
+        "bytes": 5632
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "phases": {
+      "driveB": {
+        "driven": {
+          "outcome": "claimed-and-progressed"
+        },
+        "status": "failed",
+        "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "eventTypes": [
+          "run.dequeued",
+          "stage.ready",
+          "stage.starting",
+          "stage.started",
+          "run.started",
+          "memory.context_created",
+          "stage.failed",
+          "stage.skipped",
+          "stage.skipped",
+          "stage.skipped",
+          "run.failed",
+          "memory.candidate_created"
+        ],
+        "admissions": [
+          {
+            "id": "adm_a",
+            "state": "RELEASED",
+            "requestOrder": 1
+          },
+          {
+            "id": "adm_b",
+            "state": "GRANTED",
+            "requestOrder": 2
+          }
+        ]
+      },
+      "restart": {
+        "sweep": {
+          "workspaces": 1,
+          "terminalRuns": 3,
+          "generated": 1,
+          "existing": 1,
+          "missingAuthority": 1,
+          "unresolved": 0
+        },
+        "secondSweep": {
+          "workspaces": 1,
+          "terminalRuns": 3,
+          "generated": 0,
+          "existing": 2,
+          "missingAuthority": 1,
+          "unresolved": 0
+        },
+        "lostCandidate": "mcand_terminal_run_lite102_b"
+      },
+      "summary": {
+        "candidates": [
+          {
+            "id": "mcand_terminal_run_lite102_a",
+            "category": "failure",
+            "decision": "review-required"
+          },
+          {
+            "id": "mcand_terminal_run_lite102_b",
+            "category": "failure",
+            "decision": "review-required"
+          }
+        ]
+      }
+    },
+    "counts": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-07-102",
+      "specification": {
+        "text": "Task/Run/Stage terminal outcome 触发及故障后收敛",
+        "section": "§7; §14",
+        "sourceFile": "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "sourceLine": 130,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+            "sourceLine": 571,
+            "note": "派发时触发：非成功终态 Run 也要生成事实"
+          },
+          {
+            "sourceFile": "apps/server/src/services/TerminalMemoryCandidateReconciler.ts",
+            "sourceLine": 108,
+            "note": "重启清扫：只修缺失的候选，不猜执行结果"
+          },
+          {
+            "sourceFile": "apps/server/src/index.ts",
+            "sourceLine": 222,
+            "note": "生产组合根在启动时执行清扫并记录结果"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S1",
+        "document": "07-Memory-Runtime.md",
+        "section": "§7; §14",
+        "requirement": "Task/Run/Stage terminal outcome 触发及故障后收敛",
+        "exitCriteria": "有界规范终态按来源幂等生成，重启不遗漏；失败不得修改已终态Run或启动执行；不保存raw输出。",
+        "recordedGap": "仅成功最终Run路径触发；非成功终态、独立Stage和终态提交到候选生成之间的崩溃窗口未覆盖。",
+        "productionEntryPoints": [
+          "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+          "apps/server/src/services/MemoryCandidateGenerationService.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+      "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s102-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/receipts.json",
+          "sha256": "7e09d7da156d4f144c3c4a0fe8a09f0a2d6da16092ad779d159232c5ecfd826f",
+          "bytes": 8980
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/stdout.txt",
+          "sha256": "883de926c1ca6ca5f09f7f36d9882a57bad420c6463face24d9f67df02b49fe0",
+          "bytes": 63
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "d3147222cf56467d61c6b47f824add618ed856355769374f3f3805501bf370ad",
+          "bytes": 5632
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S102-TRIGGER-01",
+          "assertionId": "S102-TRIGGER-01",
+          "requirementId": "LITE-07-102",
+          "phase": "trigger",
+          "step": "a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger",
+          "actual": {
+            "runStatus": "failed",
+            "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+            "terminalEvents": [
+              "run.dequeued",
+              "run.started",
+              "run.failed"
+            ],
+            "stageOutcomes": [
+              "failed",
+              "skipped",
+              "skipped",
+              "skipped"
+            ],
+            "candidateCount": 1,
+            "candidate": [
+              {
+                "id": "mcand_terminal_run_lite102_a",
+                "scope": "task",
+                "category": "failure",
+                "authority": "agent-derived",
+                "decision": "review-required",
+                "outcome": "review-required"
+              }
+            ],
+            "candidateEvents": 1,
+            "providerProcesses": 0,
+            "providerSessions": 0,
+            "outputReferences": 0
+          },
+          "expected": {
+            "runStatus": "failed",
+            "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+            "terminalEvents": [
+              "run.dequeued",
+              "run.started",
+              "run.failed"
+            ],
+            "stageOutcomes": [
+              "failed",
+              "skipped",
+              "skipped",
+              "skipped"
+            ],
+            "candidateCount": 1,
+            "candidate": [
+              {
+                "id": "mcand_terminal_run_lite102_a",
+                "scope": "task",
+                "category": "failure",
+                "authority": "agent-derived",
+                "decision": "review-required",
+                "outcome": "review-required"
+              }
+            ],
+            "candidateEvents": 1,
+            "providerProcesses": 0,
+            "providerSessions": 0,
+            "outputReferences": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-BOUNDED-01",
+          "assertionId": "S102-BOUNDED-01",
+          "requirementId": "LITE-07-102",
+          "phase": "bounded",
+          "step": "the fact is bounded record-only evidence: allowlisted lines, truncated fields, no raw output",
+          "actual": {
+            "contentBytes": 404,
+            "withinBound": true,
+            "everyLineAllowlisted": true,
+            "prefixesSeen": [
+              "任务：",
+              "结果：",
+              "失败代码：",
+              "失败说明：",
+              "Stage 结果："
+            ],
+            "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+            "failureMessageTruncated": true,
+            "stageSummary": true,
+            "storedMessageIsTheRunsOwnBoundedMessage": true,
+            "providerOutputRowsForThisWorkspace": 0,
+            "sourceKinds": [
+              "run"
+            ]
+          },
+          "expected": {
+            "contentBytes": 404,
+            "withinBound": true,
+            "everyLineAllowlisted": true,
+            "prefixesSeen": [
+              "任务：",
+              "结果：",
+              "失败代码：",
+              "失败说明：",
+              "Stage 结果："
+            ],
+            "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+            "failureMessageTruncated": true,
+            "stageSummary": true,
+            "storedMessageIsTheRunsOwnBoundedMessage": true,
+            "providerOutputRowsForThisWorkspace": 0,
+            "sourceKinds": [
+              "run"
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-IDEMPOTENT-01",
+          "assertionId": "S102-IDEMPOTENT-01",
+          "requirementId": "LITE-07-102",
+          "phase": "idempotent",
+          "step": "a replay neither modifies the terminal Run nor creates a second fact or Event",
+          "actual": {
+            "replayOutcome": "existing",
+            "replayCandidateMatches": true,
+            "runRowsUnchanged": true,
+            "candidatesAdded": 0,
+            "eventsAdded": 0
+          },
+          "expected": {
+            "replayOutcome": "existing",
+            "replayCandidateMatches": true,
+            "runRowsUnchanged": true,
+            "candidatesAdded": 0,
+            "eventsAdded": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-RESTART-01",
+          "assertionId": "S102-RESTART-01",
+          "requirementId": "LITE-07-102",
+          "phase": "restart",
+          "step": "the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from",
+          "actual": {
+            "terminalRunRows": 3,
+            "generated": 1,
+            "existing": 1,
+            "missingAuthority": 1,
+            "unresolved": 0,
+            "repairedCandidate": {
+              "id": "mcand_terminal_run_lite102_b",
+              "scope": "task",
+              "category": "failure",
+              "decision": "review-required",
+              "citesRun": true
+            },
+            "candidateEventsBefore": 1,
+            "terminalEventBefore": 1,
+            "candidatesAfterSweep": 2
+          },
+          "expected": {
+            "terminalRunRows": 3,
+            "generated": 1,
+            "existing": 1,
+            "missingAuthority": 1,
+            "unresolved": 0,
+            "repairedCandidate": {
+              "id": "mcand_terminal_run_lite102_b",
+              "scope": "task",
+              "category": "failure",
+              "decision": "review-required",
+              "citesRun": true
+            },
+            "candidateEventsBefore": 1,
+            "terminalEventBefore": 1,
+            "candidatesAfterSweep": 2
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-RESTART-02",
+          "assertionId": "S102-RESTART-02",
+          "requirementId": "LITE-07-102",
+          "phase": "restart",
+          "step": "the sweep never mutates a Run row, terminal or not",
+          "actual": {
+            "runRowsUnchanged": true,
+            "runs": [
+              {
+                "id": "run_lite102_a",
+                "status": "failed"
+              },
+              {
+                "id": "run_lite102_b",
+                "status": "failed"
+              },
+              {
+                "id": "run_lite102_c",
+                "status": "cancelled"
+              }
+            ]
+          },
+          "expected": {
+            "runRowsUnchanged": true,
+            "runs": [
+              {
+                "id": "run_lite102_a",
+                "status": "failed"
+              },
+              {
+                "id": "run_lite102_b",
+                "status": "failed"
+              },
+              {
+                "id": "run_lite102_c",
+                "status": "cancelled"
+              }
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-RESTART-03",
+          "assertionId": "S102-RESTART-03",
+          "requirementId": "LITE-07-102",
+          "phase": "restart",
+          "step": "a second sweep converges with no new facts, so a restart loop cannot duplicate work",
+          "actual": {
+            "generated": 0,
+            "existing": 2,
+            "missingAuthority": 1,
+            "candidates": 2
+          },
+          "expected": {
+            "generated": 0,
+            "existing": 2,
+            "missingAuthority": 1,
+            "candidates": 2
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-REFUSE-01",
+          "assertionId": "S102-REFUSE-01",
+          "requirementId": "LITE-07-102",
+          "phase": "refuse",
+          "step": "a non-terminal Run is refused without being touched and without any execution starting",
+          "actual": {
+            "outcome": "not-terminal",
+            "runRowsUnchanged": true,
+            "runStatus": "queued",
+            "candidateCreated": false,
+            "providerProcesses": 0,
+            "runtimeEvents": 0
+          },
+          "expected": {
+            "outcome": "not-terminal",
+            "runRowsUnchanged": true,
+            "runStatus": "queued",
+            "candidateCreated": false,
+            "providerProcesses": 0,
+            "runtimeEvents": 0
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "**非成功终态触发**：一条真实 canonical Run 在生产派发链上于启动阶段失败（PROVIDER_EXECUTABLE_NOT_ACCESSIBLE），Run 状态 failed、Stage 为 failed+3×skipped、终态事件 run.failed 已写；派发时触发恰好产生一个 Candidate（`mcand_terminal_<runId>`，task scope / failure 类 / agent-derived / review-required），并有一条 canonical memory.candidate_created 事件；同时 provider 进程 0、provider 会话 0、进程输出引用 0——失败没有启动执行、也没有留下原始输出。**有界事实**：候选内容 404 字节，每一行都属于冻结字段前缀（任务/结果/失败代码/失败说明/Stage 结果），失败说明行等于该 Run 自身失败信息截断到 400 字符，Stage 结果行含 `codex_manager: failed`。**按来源幂等**：再次派发 + 用同一持久事件的上下文再次调用生成器 → outcome `existing`，Run 行（含 version/updated_at）逐字节不变，候选与事件数均不增。**重启不遗漏**：移除 run_b 的候选行（崩溃留下的状态）后，生产清扫器在 3 条终态 Run 上报告 generated=1（修复 run_b）、existing=1（run_a）、missingAuthority=1（run_c 无终态事件），且所有 Run 行逐字节不变；第二次清扫 generated=0、existing=2，收敛。**不修改终态 Run / 不启动执行**：非终态 Run 调用生成器返回 not-terminal，Run 行不变、无候选、无进程、无事件。",
+      "adjacentBehaviorNotProven": "覆盖 failed 终态的真实派发触发、幂等重放、崩溃窗口重启修复、无权威不发明、以及非终态拒绝与零执行；cancelled 终态只以夹具行出现在 missingAuthority 分支（未走生产取消链），per-Stage 候选生成器在当前实现中不存在（Stage 终态以该 Run 事实内的 Stage 结果行体现）。",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      "?? agentos/docs/implementation/lite-closeout/LITE-07-102-candidate-evidence.json",
+      "?? agentos/docs/implementation/lite-closeout/LITE-07-102-candidate-evidence.md",
+      "?? agentos/docs/implementation/lite-closeout/LITE-07-102-candidate-evidence.spec.json",
+      "?? agentos/docs/implementation/lite-closeout/evidence/s102-candidate-evidence-20260914/",
+      "?? agentos/scripts/verify-lite-07-102-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}

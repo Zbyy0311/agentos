@@ -1,0 +1,793 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Latest requested Markdown audit report and executable repair plan. Documentation only; current code is an uncommitted partial implementation. Preserves historical evidence.",
+  "generatedAt": "2026-09-30",
+  "root": "C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos",
+  "branch": "codex/collaboration-workflow-closure",
+  "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+  "scope": "Current collaboration/control/candidate/client-integration paths; not a full line-by-line repository or dependency-security audit.",
+  "snapshotBeforeDocumentation": {
+    "capturedAt": "2026-09-30T19:19:32.6984020+08:00",
+    "root": "C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos",
+    "branch": "codex/collaboration-workflow-closure",
+    "head": "7d2ddf87111ad39b639c2a1082c11be716b8084d",
+    "nonDocumentationFileCount": 128,
+    "manifestAlgorithm": "SHA256 of sorted relative dirty/untracked path<TAB>uppercase SHA256 joined by LF, no final LF; all docs paths excluded; ABSENT used for deletions; files within agentos only",
+    "manifestSha256": "A1F8D4DFB10FEC3BCC8C92007E573A1A6B863F50D7CBDA758003EC1F3A12F5D2",
+    "files": [
+      {
+        "path": ".gitignore",
+        "sha256": "3F47DDF6977AC3DFA73D0153C39081E1B4C1BA6C1E2AA75F3FD91775FC4DC67B"
+      },
+      {
+        "path": "apps/server/src/index.ts",
+        "sha256": "AD0D617E92A4555EC40EA3785BC6592C04EEAD9289AB4D4B029CFF80BE9BD163"
+      },
+      {
+        "path": "apps/server/src/managers/WorkspaceManager.ts",
+        "sha256": "83ED45F9FB81790EF9F0C73CEF0DE21F508519D6C93EC568C6C61D42A9EB291E"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/integration.test.ts",
+        "sha256": "EB872156A1DAF890DA942978DAF36C32966239F781D7ABF9EEF52C2EAA99ED68"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+        "sha256": "274A7A9B97984A9ECFBD217819B44CAD5E1EA1ECF631302B1A2A18DE6BEC5D4B"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+        "sha256": "81DD828E4087604683DCC04FE50F2A556C2729FFA9615D077670DAC4E3F18C02"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-6-idempotency-schema.test.ts",
+        "sha256": "309C3FC0148A42ACF868B280CBFAD12605F67AAC8629FCEBBFE11AAC8EE189BF"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m2-8-p3-migration-restore-rehearsal.test.ts",
+        "sha256": "F5D10D0AF6FDD7EA574690D749F127F4D5BA98133773DA8DB19264D4B6AEC3B0"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+        "sha256": "3C01BFA8BC1ADF2CF87D99E0717B20AD391674116E5F93BC256DB03A54808393"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+        "sha256": "52B4533B373B5D6D214E0B84FC61A68DD98E7326E1E62DA01366F60D03983492"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "sha256": "512834EBD3C41BF4278255226E623CA023AD5B42C232433DA96449C2960105AB"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-040-collaboration-application-admission.test.ts",
+        "sha256": "7623A5E77100DD75AE11D6AA14DDB8BE18D3E6473523187848A8CDFBCBBA8B1F"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration-041-group-execution-ownership.test.ts",
+        "sha256": "CE14A1DAD31B81AAEB0D7847C678DC350755378CD79D16AFDA0DAE64892E7EEE"
+      },
+      {
+        "path": "apps/server/src/migrations/__tests__/migration.test.ts",
+        "sha256": "3F567A86E967DFB6A54B3B04BA0FCF87ED7517A93AB9D42098B5ECCE23E7B1BD"
+      },
+      {
+        "path": "apps/server/src/migrations/default-registry.ts",
+        "sha256": "374B819EFFA5E2EE4220123866313C684BB941ED88B7622C2E7661AE8F753DC3"
+      },
+      {
+        "path": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+        "sha256": "9F70204F912D20515A5F1827C7F402445589AB59971E925C7F96AC8E22B156E5"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/035-collaboration-workflow.ts",
+        "sha256": "0F7778318D4AB38DCB26E938793871555DA887EFEC0791AC97FC7FB1D8A5CD0D"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/036-group-discussion-idempotency.ts",
+        "sha256": "9DB4BD5D306B23A9B8B545B66CF41AA778DA125066ADBFD0E52E7A91EBFA627B"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/037-canonical-message-attachments.ts",
+        "sha256": "4906D761FE806E57CAB6D8B9FEAB1E910B2391D15147F4E3C2A2653A80DAFDA9"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/038-collaboration-candidate-evidence.ts",
+        "sha256": "18435FD945DE333F23B66D0FA3CF70DD7BC24927764086CB991E08B670EBEF1A"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/039-collaboration-control.ts",
+        "sha256": "AAF7410F69C5883F34B9754F31B9224C7F44A36EC92AEE0E4EE2A48A67D3DC59"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/040-collaboration-application-admission.ts",
+        "sha256": "743B272F30A9986D8BD46FCED56F16750BB825AD913EDD5F472BE7840C2BBFFD"
+      },
+      {
+        "path": "apps/server/src/migrations/migrations/041-group-execution-ownership.ts",
+        "sha256": "6FA082DE30DBCC8672417D7C7F268F428F0A652C5F386EC2E25A1DCBD31760B0"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.control.test.ts",
+        "sha256": "843BD39ADFD0738B6F80D9783191AB251254D508467EA0EFD30BAB2947135FF2"
+      },
+      {
+        "path": "apps/server/src/routes/collaborations.ts",
+        "sha256": "2CCEE7E28D1FC492C1B7BB528A295706B073FEF800D21E721341A3A8F26DA6A2"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.group.test.ts",
+        "sha256": "9BB63B40497573F8613FD694CCE0F9793F6411C4EA18FBF62727B15B3BBACF67"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.test.ts",
+        "sha256": "0A087AA49A94FB474F650D4250C9D16BE79B58B120A37B154E7209AD848DCEBF"
+      },
+      {
+        "path": "apps/server/src/routes/conversationRuntime.ts",
+        "sha256": "86FA2797D79B00F1C5AF5BDDFFA2A5A40BACF749B0B15D2C3157EF61C853ED63"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.test.ts",
+        "sha256": "A825CEAF383758E9766B80F631172A2E219ED56BD048D2E46B0FAB419F4E7E97"
+      },
+      {
+        "path": "apps/server/src/routes/conversations.ts",
+        "sha256": "F21D8CBAB9DCAF8CF31CB14527B7CCCA461789B182390D9A416AAC9B693C44AC"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.test.ts",
+        "sha256": "09815D5397ED630AD4DE4A9AF279096C1078C8AE421B8B2FFB31DD0F33766B26"
+      },
+      {
+        "path": "apps/server/src/services/BoundedGroupService.ts",
+        "sha256": "A9D6C0527CA9E0A2C49128ED21E10C2A8152928661C28B5ECAD186ECCA699B89"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.test.ts",
+        "sha256": "428EC04231EA244C941FC683015742463140AC49EE3584911B3FFC9A5E9CACAF"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationApplyJournal.ts",
+        "sha256": "B3F95F916A94F7D1911E396D1805A9A071C157996122F1FB72609E280F20EE59"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.test.ts",
+        "sha256": "84C80B12A8A981F5CB227974BD7A8E8E79E9A68AE8F62DD65E03E4FBF4121BB6"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationCandidateSnapshot.ts",
+        "sha256": "804CD9CBF8A7C64B567DDA565C939F0A2514D74A1267051AC21DFE0755AF9E6B"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.test.ts",
+        "sha256": "BE3C19DEE419E034B4A2E221D5D5C45A130DCA440F55AA3615E25CAC1015B709"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationPathBoundary.ts",
+        "sha256": "317E582A40C46CAFCD2E6CF5D5DA1265D82A191037F60FEB7F3CD5C9AA946ACD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.test.ts",
+        "sha256": "92FA475FE8C90F96B12C9F3D39432CB23E8697656E0F4627E5DA66096FECA499"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationReviewProtocol.ts",
+        "sha256": "60FFEE25520A245701D840EF982533C4CE69E8336C6643942AF761EF0A35195E"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.test.ts",
+        "sha256": "B3D9428F0A49D53C6BE57FAAC88EE9358BCE5D9C7B435EB759CFA51886A78CCD"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationScopePolicy.ts",
+        "sha256": "B6DB1BAB87D783E23B3CB6C566F7AA4C7DA604EE6F2F7E7ECF0B6AAD7D3D38E0"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationStageHooks.ts",
+        "sha256": "30F60EC12276B22D5C49052DB8979C657958356F85E74FB906F9C988064BF5C7"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.control.test.ts",
+        "sha256": "F01C57FA92D58BE13C48CF8C2612C4193C1B46B93488E83233D751284A162278"
+      },
+      {
+        "path": "apps/server/src/services/CollaborationWorkflowService.ts",
+        "sha256": "330A37044D8F28CCCD8FF52FE6AB98CEED13D823E5A1DF49A3331605C3D87259"
+      },
+      {
+        "path": "apps/server/src/services/ConversationAttachmentService.ts",
+        "sha256": "EAA61C9C0C33AD2F60CDD5F692B31BC49A84A818A23402ABCA1EEEEC67DD9C32"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "sha256": "50517D501ED5518D74D07A1054730A96E79DB17310D59D5DEB814E20C10CC7D1"
+      },
+      {
+        "path": "apps/server/src/services/ConversationTurnDriver.ts",
+        "sha256": "738F13AD6490D5C581FB19F2EDEB3FA88D7F694B7592C66FAE17A6F762F5169F"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.test.ts",
+        "sha256": "5CCF5D52813BA2EEE61D2CA263C70A431340D5E2BB326193C726E5A8F2504779"
+      },
+      {
+        "path": "apps/server/src/services/GroupTurnDriver.ts",
+        "sha256": "9A9D97BEC93E69A97B7097DB9B1F000918108C1CDA0258721A47F8CFD3958F24"
+      },
+      {
+        "path": "apps/server/src/services/M2CoreAcceptance.test.ts",
+        "sha256": "DD95F3D6E6D6AAB77B7E42D8196F9AFB5DB81980E7A35D08CF9B76D6051356A8"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "sha256": "AB2E95FC1AECEB5126A236A9F5BE4BB5133478939605B6E931C47E25E5379FFE"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "sha256": "6EC8B58346449CC60BB939C3CE1F7C626FE1145EF4F38AE864D33AF2CCF2095F"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+        "sha256": "018B9E741E306E45CF57EAD7EAA1AACF71BBB7CC18D494B3F91E085A5BB0223C"
+      },
+      {
+        "path": "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "sha256": "5BE11CBAB8BD24E7705E32A90798A0EE4E665EACFDD0F07FF5FB89CE188CD1CC"
+      },
+      {
+        "path": "apps/server/src/services/SnapshotService.ts",
+        "sha256": "784B5AF9F7BD6AA8EA4A6F7AD41C29792457994CF520E6B4D682C2E25A52648A"
+      },
+      {
+        "path": "apps/server/src/services/TaskRunService.test.ts",
+        "sha256": "1CB661D0D62F5CFDD51D8B22003E57A0C989A74511FBA6809088F25EBEC28CFE"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.test.ts",
+        "sha256": "1088B8A8E0708DBD8B6EAA8CBB35811ECA33D6888EBF150D1F45219A173D527E"
+      },
+      {
+        "path": "apps/server/src/services/WorkflowTemplateService.ts",
+        "sha256": "E8DBFBCEE59BDD27285097BA399EFC274A8542B9B23D3CE2A08F236A03606030"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "sha256": "62D3B677EDE701FD57CB0668423DA2BD580862664BABD3E398BF85096E872DE0"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionAuthority.ts",
+        "sha256": "4051D067B887EA97C762F333C89281791025498A3A6CC90FFEF20C54A8B158E5"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.test.ts",
+        "sha256": "FD8E19334F81FD850D5F399177597863DC3D3439BEA457B7537429607EB5EEA4"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceAdmissionStartupReconciler.ts",
+        "sha256": "34C8C213A89871FE3C439A84F2259F2ED263DA32A9EBFEEC3029E5DB11A5C349"
+      },
+      {
+        "path": "apps/server/src/services/WorkspaceCompatibilityMigrationService.ts",
+        "sha256": "488917A734CE8594272D62FD93E1CB0CA7FF454A48EDB57D6CC8CF5E4E9CBBD2"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.test.ts",
+        "sha256": "3AB3604C1EF3C50EA5AAAEB1752BCE83A2AD848B86ECD979B02E63BCCA5707F8"
+      },
+      {
+        "path": "apps/server/src/services/WorktreeManager.ts",
+        "sha256": "3D05A1CEA2E74998294E747C1ECC4919D490C3BCED134D92DCB5F3153A6D6FEC"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationControlRepository.ts",
+        "sha256": "0B02AF84742D2EC25E066EF47A54D7772F03C411CB99BC4AC09BD233FEEF08E6"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.test.ts",
+        "sha256": "5C5737C366E9F5CA2D28F6585E674FF55417EDADC8522446AD3A60C959C90ECE"
+      },
+      {
+        "path": "apps/server/src/store/CollaborationRepository.ts",
+        "sha256": "9F8EEAAAC0093DC1498A9B11200B67480ACBBAF0B8C0C26DA98B50DA974E69EA"
+      },
+      {
+        "path": "apps/server/src/store/ConversationRepository.ts",
+        "sha256": "06D2BF0B9E2C3AB47654EFF6D72E36401F6E2839A8D978300DF640A97C741788"
+      },
+      {
+        "path": "apps/server/src/store/GroupInteractionRepository.ts",
+        "sha256": "1252C2BCE257C35814AB1CF9C3E735F6B770435942D2220CF293389C17CCCBA1"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.test.ts",
+        "sha256": "98C727CFA5F95FE68A0E0D21A956605AA10E5E284F8F89002D51C256CADE6491"
+      },
+      {
+        "path": "apps/server/src/store/SqliteStore.ts",
+        "sha256": "695653CC093AF010E955F7B57DE2ECC71E6FF02F805C8B490DD2D185357CD6F0"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.test.ts",
+        "sha256": "D284EEF96358A832FB2A650099A98313BF9B11A73833F65AA0C2E5EE123F2E94"
+      },
+      {
+        "path": "apps/server/src/store/WorkspaceAdmissionRepository.ts",
+        "sha256": "FF2DEF92B1EC190E2FB9D23DCDD9798793FB5FA56F5B5A38FC506B5C42B1ED4C"
+      },
+      {
+        "path": "apps/web/src/app/globals.css",
+        "sha256": "CA61580764B40F3770F6C6AA5A5FD40932B11C80BBCA64EBEA090F508CEE73EC"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/page.tsx",
+        "sha256": "91FAE922AE6E48F2F8744A4D22CEC5F5A10CBCAA03C919B374C84F62C39B44FC"
+      },
+      {
+        "path": "apps/web/src/app/workspace/[id]/runtime/page.tsx",
+        "sha256": "14D01943BDF089BB893CE1E11DA3099384CF25A23501FE234E7B47484D0169EB"
+      },
+      {
+        "path": "apps/web/src/app/workspace/pageIntegration.test.ts",
+        "sha256": "7777E14E7B25858AE28E3EF61B20FC5262781AA4F5D9A6620ED3C12C191D3080"
+      },
+      {
+        "path": "apps/web/src/components/chat/AgentList.tsx",
+        "sha256": "54FEABA5EA4B2E594F8C7173DD4BE3F686FE0A9DCAF1495C90ABC881DE7B5E0D"
+      },
+      {
+        "path": "apps/web/src/components/chat/ChatPanel.tsx",
+        "sha256": "AFBCCB5CB31A5CCABB97B82A459E2CDE091645013C2BB514B710ADA55D54AAEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskDetailsView.tsx",
+        "sha256": "1CFAA46D8B20AFA4E9CA1BCFC4F008AA86FE576AF0A8AAAD8B3D2F3E9830C364"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskPanel.tsx",
+        "sha256": "6080CDA53F92FB8611B6EC1FC96AB90535DAFBBE032AD29CACF6BCD15D50B1B5"
+      },
+      {
+        "path": "apps/web/src/components/chat/CollaborationTaskProgressCard.tsx",
+        "sha256": "AB839AE74124DC43C478CAE47E958B3F80A80A7805C9E5ACA780931FC996A31A"
+      },
+      {
+        "path": "apps/web/src/components/chat/GroupCreator.tsx",
+        "sha256": "C0D8F495856DD1028F01DDD12A38471AF2B938075CF155D9336719DB3AB4CFB0"
+      },
+      {
+        "path": "apps/web/src/components/chat/RunInspectorPanel.tsx",
+        "sha256": "83AF3A6F0475BB83D504AF7AA7B00A905D6B2FD41ACB9451E4A8175343358DB3"
+      },
+      {
+        "path": "apps/web/src/components/chat/RuntimeConversationCreator.tsx",
+        "sha256": "EA99BA1232E1CF0CD7BD5945B0EEF464644504EA8E2284FD527ECA57E6A36BEE"
+      },
+      {
+        "path": "apps/web/src/components/chat/UnifiedRuntimeConversationSurface.tsx",
+        "sha256": "812C506D749EFCDE24DEABBD6AA8BF2999EF405F52FD1F41867AA06761786A8A"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.test.ts",
+        "sha256": "43A4988B184A7A400B9D1615FDF2B4208F9FE534C4C9974F1A2D05CC85C3DCD2"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationControl.ts",
+        "sha256": "ECA95488E06EF6DE09B990C01503DB52728648714499F04A86D845659892935F"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.test.ts",
+        "sha256": "464F14FD0550F4012C14E4DABA2756CF6B0AD01349CCB6DF149974CA13A6E169"
+      },
+      {
+        "path": "apps/web/src/lib/collaborationTaskHistory.ts",
+        "sha256": "F71DD542187D07386C74438108D5F7DEF92DBC968DB7913B6A6FC5BAE13A6953"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.test.ts",
+        "sha256": "4060F733ECEF2AD2B4A5240215B338D178CBCD5202A46D747C875184CCA959AA"
+      },
+      {
+        "path": "apps/web/src/lib/composerKeyboard.ts",
+        "sha256": "D5774BE56BD29B1054DA59A9A65ABD2642996BD30B66F30886068BBB258F34C9"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftController.test.ts",
+        "sha256": "1E8205552C0BDF3EA81D551A533D73868E9CFF905D257CBAC3A3CEB29D129A45"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftController.ts",
+        "sha256": "03CD0AEB7F95385F1A0FD24A0E6E19854D7D287AF252AC3E80DC2C35377587E7"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftLifecycle.ts",
+        "sha256": "F0E2B11BC59FE538E4437F8E4DECE864D8A0BB2F15F9DEA03DD3C36A9FEBBA8F"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftRepository.ts",
+        "sha256": "8B2B21111B0A559390D04C64CD59E0C1AA7202DD67AA7EEF21DF7BAA089468DE"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.test.ts",
+        "sha256": "7D22E29757BD24EB6420978EDCE63C1F6C06195E9CBFD28610E05FDFF292045E"
+      },
+      {
+        "path": "apps/web/src/lib/conversationDraftState.ts",
+        "sha256": "87BC509BD527F17DE9581DA8D0B67CF4DACA1A88AE67DF33B356E908E34DC775"
+      },
+      {
+        "path": "apps/web/src/lib/directConversationClient.ts",
+        "sha256": "494F55C53602616CEC7C22175F740E5208E58AA0A20FF9C156ABD2355D3C7043"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.test.ts",
+        "sha256": "BE406BE51D489D93FDD5EB26D6E280C7BF97090F876D013F6E2EA4A51951B1CA"
+      },
+      {
+        "path": "apps/web/src/lib/groupConversationClient.ts",
+        "sha256": "A28F9406B30CA29EE7545298A5A12994D81E673944D160EE7BF15F0CC5B1C53E"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.test.ts",
+        "sha256": "056A0056277A8F5EC8F6474BCEC229A3ED5E2153DFB35239699CB782038CA69D"
+      },
+      {
+        "path": "apps/web/src/lib/groupDiscussionOutbox.ts",
+        "sha256": "7BD4CA8E7DCEA7C856ED245187546EF254B230228746E17A8DD688C27E8FADA2"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.test.ts",
+        "sha256": "F21203074185512263C4AE82EDD6B32527594EE14B4F28CB09FBE202A174FAAC"
+      },
+      {
+        "path": "apps/web/src/lib/imageAttachments.ts",
+        "sha256": "3B86A07826E3254686E32AABFAC095411D5DA206BC47FFD4895B7A94D9C0B427"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.test.ts",
+        "sha256": "E9DFA77E1EF81018FD1882E4F04C4ECD1A76BAF4514B69436DDB86A6BBAE825C"
+      },
+      {
+        "path": "apps/web/src/lib/runConversationBinding.ts",
+        "sha256": "68756A5040AF168177D96B371DD9B850DB64C017CE7BFAB7AE67D47D30DF8CD3"
+      },
+      {
+        "path": "apps/web/src/lib/sse.test.ts",
+        "sha256": "EABCB19E926EF287B6371E5B2ADDB12CB7B7414E90638C67A8F1C2BE3AFC1608"
+      },
+      {
+        "path": "apps/web/src/lib/sse.ts",
+        "sha256": "D2738A50D0EAA16390DCD8F0765B9BC97EC0D8EFC00C628FCD27EBEF2F65868E"
+      },
+      {
+        "path": "apps/web/src/lib/streamReconnect.ts",
+        "sha256": "AC4BBD29E112F698E9106788C1590E9DD09956C5AA9B9ADE9469186E5E86A51D"
+      },
+      {
+        "path": "apps/web/src/lib/useApi.ts",
+        "sha256": "CFD72D139BCBC8E0E03FD7992845E73B488016A5F7929B29E200C3F6FEB9DE08"
+      },
+      {
+        "path": "apps/web/src/lib/useCollaborationProgress.ts",
+        "sha256": "76D80405106F1013C66E4E12BC8B757CED730468376BFC952FE6C73CC4526D09"
+      },
+      {
+        "path": "apps/web/src/lib/useConversationDraft.ts",
+        "sha256": "7BBC2B72F3A66923AC00E5BD247D0C4E8AEE15EA9FDE9E9BFAAF01991B87ED92"
+      },
+      {
+        "path": "apps/web/src/lib/useDirectConversation.ts",
+        "sha256": "CDF3242EDF1F47EF54B6B50B5961A4E714D2FC23FF96DCC980F594A53782BD7F"
+      },
+      {
+        "path": "apps/web/src/lib/useGroupConversation.ts",
+        "sha256": "EC36ED166B5C65681D6C90D05A0E9D1B8DFAD80919537CC172A329B37BF84A21"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "sha256": "0C0625CF0A88DDAEEA59A1A08BA912ACF4FA0C0CDBB1D77EE387C867F6D6CDBE"
+      },
+      {
+        "path": "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "sha256": "2252AFC0A60A1BA921917752983BB2DB61BACC8F24D448E4F1A4C51B98E624C9"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "sha256": "EBE4652B8905017754DA43024FB0CF1D16E40BAE7895950B6B2B3B603A980ACE"
+      },
+      {
+        "path": "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "sha256": "C9B9262AC4BBFEAF5D7821909DC6F5EA469CBA866FEA2AC33DC6B4B03BC741DF"
+      },
+      {
+        "path": "packages/agent-core/src/providers/types.ts",
+        "sha256": "6A5D0BF54205C5E6C38189CFFCA905BCF111CA9DC47C6601621FD694EA32009E"
+      },
+      {
+        "path": "packages/agent-core/src/providers/validation.test.ts",
+        "sha256": "2ADA8852B9CD8EAB77C8041BF250FC6034D151556CEDCF8A209AE1D1E3909718"
+      },
+      {
+        "path": "packages/process-runtime/src/node-driver.test.ts",
+        "sha256": "DCF00AD1DE3C4169FC2E4070CB245A87AD85EE8D6506C59A3810D191525BE482"
+      },
+      {
+        "path": "packages/shared/p6-l1a-admission.test.ts",
+        "sha256": "AC5A3EB2BE028EE5DE3F321BAA50FD593EE931006B66A38905D0927362F06A0E"
+      },
+      {
+        "path": "packages/shared/src/types/collaboration.ts",
+        "sha256": "4C62771C088A148384FCCBF5930AE4DB8EF746AD13640BF8E09CA45C7BA6B77E"
+      },
+      {
+        "path": "packages/shared/src/types/index.ts",
+        "sha256": "471A10C8C0F36D1EAA6B455EE90508B7346BBEAD22D87314E287562FA9D899A9"
+      },
+      {
+        "path": "packages/shared/src/types/p6-l1a-admission.ts",
+        "sha256": "134F668AC04BE60DB4B9E9A2339D7F829B5984DEA4A3FC0304A1041EBC7698EB"
+      }
+    ]
+  },
+  "checks": {
+    "serverTypecheck": {
+      "command": "pnpm --filter @agentos/server exec tsc --noEmit --incremental false --pretty false",
+      "attempts": [
+        {
+          "exitCode": 0,
+          "output": "",
+          "diagnosticCount": 0
+        },
+        {
+          "exitCode": 0,
+          "output": "",
+          "diagnosticCount": 0
+        }
+      ]
+    },
+    "webTypecheck": {
+      "command": "pnpm --filter @agentos/web exec tsc --noEmit --incremental false --pretty false",
+      "attempts": [
+        {
+          "exitCode": 1,
+          "output": "src/app/workspace/[id]/page.tsx(1213,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1223,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createdDirectConversation'?\r\nsrc/lib/conversationDraftRepository.ts(177,44): error TS2345: Argument of type '(item: ConversationDraft[\"attachments\"][number]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; dataUrl?: string; blob?: Blob; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; ... 5 more ...; blob?: Blob | undefined; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type 'ImageDraft'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n",
+          "diagnosticCount": 3
+        },
+        {
+          "exitCode": 1,
+          "output": "src/app/workspace/[id]/page.tsx(1213,79): error TS18049: 'conversation' is possibly 'null' or 'undefined'.\r\nsrc/app/workspace/[id]/page.tsx(1223,11): error TS2552: Cannot find name 'createdConversation'. Did you mean 'createdDirectConversation'?\r\nsrc/lib/conversationDraftRepository.ts(177,44): error TS2345: Argument of type '(item: ConversationDraft[\"attachments\"][number]) => { previewUrl: string; id: string; name: string; mimeType: string; size: number; dataUrl?: string; blob?: Blob; }' is not assignable to parameter of type '(value: PersistedAttachmentMetadata, index: number, array: readonly PersistedAttachmentMetadata[]) => { previewUrl: string; ... 5 more ...; blob?: Blob | undefined; }'.\r\n  Types of parameters 'item' and 'value' are incompatible.\r\n    Property 'previewUrl' is missing in type 'PersistedAttachmentMetadata' but required in type 'ImageDraft'.\r\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\web:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 2: tsc --noEmit --incremental false --pretty false\n",
+          "diagnosticCount": 3
+        }
+      ]
+    },
+    "webTests": {
+      "command": "pnpm --filter @agentos/web test",
+      "attempts": [
+        {
+          "exitCode": 1,
+          "total": 262,
+          "passed": 256,
+          "failed": 6,
+          "skipped": 0,
+          "outputCapture": "First call printed failure/summary lines; full raw stdout not persisted. Same six failure titles and counts as attempt 2."
+        },
+        {
+          "exitCode": 1,
+          "total": 262,
+          "passed": 256,
+          "failed": 6,
+          "skipped": 0,
+          "output": "✖ workspace page connects draft readiness, persistence warning, and identity-scoped scroll (2.2315ms)\r\n✖ a completed direct send settles its frozen owner before current-view-only updates (0.319ms)\r\n✖ runtime group deep links preserve and verify their actual storage source (0.6793ms)\r\n✖ explicit direct Run hints are classified before they reach the Run Inspector (0.4874ms)\r\n✖ visible conversation evidence is keyed to the active verified identity (0.4627ms)\r\n✖ a restored queue item reads only its own frozen outbox submission (0.6579ms)\r\nℹ tests 262\r\nℹ suites 0\r\nℹ pass 256\r\nℹ fail 6\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 2669.5786\r\n✖ failing tests:\r\n✖ workspace page connects draft readiness, persistence warning, and identity-scoped scroll (2.2315ms)\r\n  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /draftReady=\\{draftState\\.ready\\}/. Input:\r\n    code: 'ERR_ASSERTION',\r\n✖ a completed direct send settles its frozen owner before current-view-only updates (0.319ms)\r\n  AssertionError [ERR_ASSERTION]: settlement must not be skipped when the user has selected another identity\r\n    code: 'ERR_ASSERTION',\r\n✖ runtime group deep links preserve and verify their actual storage source (0.6793ms)\r\n  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /query\\.set\\('conversationSource',\\s*'runtime'\\)/. Input:\r\n    code: 'ERR_ASSERTION',\r\n✖ explicit direct Run hints are classified before they reach the Run Inspector (0.4874ms)\r\n  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /classifyRunConversationBinding\\(/. Input:\r\n    code: 'ERR_ASSERTION',\r\n✖ visible conversation evidence is keyed to the active verified identity (0.4627ms)\r\n  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /conversationEvidenceIdentityKey/. Input:\r\n    code: 'ERR_ASSERTION',\r\n✖ a restored queue item reads only its own frozen outbox submission (0.6579ms)\r\n  Error: 存在属于其他队列项的群聊恢复记录；未借用其幂等键或内容。\r\n[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @agentos/web@0.1.0 test: `node scripts/run-tests.mjs`\r\nCOMMAND_EXIT=1\r\n",
+          "outputCapture": "All process output captured in memory; failure/summary lines printed. Not full raw stdout."
+        }
+      ],
+      "boundary": "Five source-wiring assertions and one outbox contract test fail; not browser E2E proof. The outbox no-queue-id expectation conflicts with current fail-closed behavior and needs contract resolution."
+    },
+    "controlTests": {
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-name-pattern 'F24|F25' src/services/CollaborationWorkflowService.control.test.ts",
+      "exitCode": 1,
+      "total": 31,
+      "passed": 19,
+      "failed": 12,
+      "skipped": 0,
+      "output": "✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (1/3) (1534.5502ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (2/3) (1537.3515ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (3/3) (1694.2239ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (1/3) (1797.7912ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (2/3) (1891.386ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (3/3) (1780.5141ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (1/3) (1661.0351ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (2/3) (1584.837ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (3/3) (1557.8591ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (1/3) (1535.1432ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (2/3) (1550.5002ms)\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (3/3) (1643.066ms)\r\nℹ tests 31\r\nℹ suites 0\r\nℹ pass 19\r\nℹ fail 12\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 74671.2754\r\n✖ failing tests:\r\n✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (1/3) (1534.5502ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (2/3) (1537.3515ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: safe-preimage (3/3) (1694.2239ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (1/3) (1797.7912ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (2/3) (1891.386ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: concurrent-user-edit (3/3) (1780.5141ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (1/3) (1661.0351ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (2/3) (1584.837ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: corrupt-journal (3/3) (1557.8591ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (1/3) (1535.1432ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (2/3) (1550.5002ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n✖ F25 recovered journal with pending control survives full startup twice: wrong-epoch (3/3) (1643.066ms)\r\n  AssertionError [ERR_ASSERTION]: terminal journal alone must not release the writer while its control is pending\r\n    code: 'ERR_ASSERTION',\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: node --import tsx --test --test-name-pattern \"F24|F25\" src/services/CollaborationWorkflowService.control.test.ts\r\nCOMMAND_EXIT=1\r\n",
+      "outputCapture": "Summary/failure lines; complete output captured in memory then filtered.",
+      "F24": {
+        "sixScenariosEachRepeated": 3,
+        "beyond100TaskCase": 1,
+        "allPassed": true,
+        "productionFlagAndStartupWiringNotProven": true
+      },
+      "F25": {
+        "fourScenariosEachRepeated": 3,
+        "allFailAt": "first SQLite reopen: startup admission must still be GRANTED before collaboration reconciliation",
+        "secondReopenReached": false
+      },
+      "boundary": "Isolated actual Git/SQLite/Admission Authority, Provider dispatch stub. No actual user candidate or Provider run."
+    },
+    "filterRace": {
+      "findingId": "F26",
+      "existingTestNamePrefix": "F23",
+      "command": "pnpm --filter @agentos/server exec node --import tsx --test --test-name-pattern 'F23 (?:never runs|explicitly rejects configured)' src/services/CollaborationCandidateSnapshot.test.ts",
+      "attempts": [
+        {
+          "repetition": 1,
+          "exitCode": 1,
+          "total": 3,
+          "passed": 1,
+          "failed": 2,
+          "skipped": 0
+        },
+        {
+          "repetition": 2,
+          "exitCode": 1,
+          "total": 3,
+          "passed": 1,
+          "failed": 2,
+          "skipped": 0
+        },
+        {
+          "repetition": 3,
+          "exitCode": 1,
+          "total": 3,
+          "passed": 1,
+          "failed": 2,
+          "skipped": 0
+        }
+      ],
+      "wrapperExitCode": 0,
+      "wrapperExitMeaning": "PowerShell loop completed; each child's COMMAND_EXIT=1 is retained; not a green test outcome",
+      "firstOutputChunk": "REPEAT=1\r\n✔ F23 explicitly rejects configured custom clean filters as unsupported (2950.425ms)\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3056.1523ms)\n",
+      "remainingOutput": "✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3037.2562ms)\nℹ tests 3\nℹ suites 0\nℹ pass 1\nℹ fail 2\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9156.4722\n\n✖ failing tests:\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:2943\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3056.1523ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:185:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:4343\n✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3037.2562ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:212:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: node --import tsx --test --test-name-pattern \"F23 (?:never runs|explicitly rejects configured)\" src/services/CollaborationCandidateSnapshot.test.ts\nCOMMAND_EXIT=1\r\nREPEAT=2\r\n✔ F23 explicitly rejects configured custom clean filters as unsupported (2939.8713ms)\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3126.2644ms)\n✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3074.089ms)\nℹ tests 3\nℹ suites 0\nℹ pass 1\nℹ fail 2\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9263.0922\n\n✖ failing tests:\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:2943\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3126.2644ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:185:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:4343\n✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3074.089ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:212:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: node --import tsx --test --test-name-pattern \"F23 (?:never runs|explicitly rejects configured)\" src/services/CollaborationCandidateSnapshot.test.ts\nCOMMAND_EXIT=1\r\nREPEAT=3\r\n✔ F23 explicitly rejects configured custom clean filters as unsupported (2849.7006ms)\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3072.7015ms)\n✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3140.5932ms)\nℹ tests 3\nℹ suites 0\nℹ pass 1\nℹ fail 2\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9180.1305\n\n✖ failing tests:\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:2943\n✖ F23 never runs a custom clean filter for a path created after attribute preflight (3072.7015ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:185:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\n\ntest at src\\services\\CollaborationCandidateSnapshot.test.ts:2:4343\n✖ F23 never runs a clean filter when .gitattributes changes after attribute preflight (3140.5932ms)\n  AssertionError [ERR_ASSERTION]: Missing expected rejection.\n      at async TestContext.<anonymous> (C:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server\\src\\services\\CollaborationCandidateSnapshot.test.ts:212:5)\n      at async Test.run (node:internal/test_runner/test:1332:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: { code: 'ENOENT' },\n    operator: 'rejects',\n    diff: 'simple'\n  }\nundefined\nC:\\Users\\Administrator\\.codex\\worktrees\\collaboration-workflow\\Multi-Agent\\agentos\\apps\\server:\r\n[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: node --import tsx --test --test-name-pattern \"F23 (?:never runs|explicitly rejects configured)\" src/services/CollaborationCandidateSnapshot.test.ts\nCOMMAND_EXIT=1\r\n",
+      "assertion": "Both race tests fail at assert.rejects(readFile(markerPath), ENOENT); marker exists after candidate rejection.",
+      "boundary": "Independent fresh temporary repositories and deterministic beforeGitAdd barrier; external filter only writes a fictitious marker and echoes stdin, no user secret or business database access. Index checks after failing marker assertions are not reached in main tests."
+    }
+  },
+  "delegatedEvidence": {
+    "frontend": {
+      "agentId": "01a0f10f-7dd0-78f3-ac46-0f941c075014",
+      "summary": "Partial draft lifecycle/controller/outbox implementation preserved. Agent reported no post-edit checks before interrupt; main fresh checks above are authoritative.",
+      "stillIncomplete": [
+        "original-identity direct send settlement",
+        "draftReady/warning and visible evidence identity gates",
+        "Run binding before Inspector",
+        "source-specific URL restoration"
+      ],
+      "providerRun": false,
+      "browserChecks": false
+    },
+    "processRuntime": {
+      "agentId": "01a0f10f-7e98-7e40-bef3-2188e23a17f8",
+      "source": "Agent final summary; not rerun by main in this documentation pass",
+      "modifiedPath": "packages/process-runtime/src/node-driver.test.ts",
+      "driverModified": false,
+      "baselineIsolated": [
+        {
+          "total": 16,
+          "passed": 16,
+          "failed": 0
+        },
+        {
+          "total": 16,
+          "passed": 15,
+          "failed": 1,
+          "pid": 40912
+        },
+        {
+          "total": 16,
+          "passed": 15,
+          "failed": 1,
+          "pid": 40340
+        }
+      ],
+      "historicalFailureIdentityAvailable": false,
+      "controlledExternalHelper": {
+        "pid": 38108,
+        "parentPid": 40836,
+        "commandFeature": "Start-Sleep",
+        "oldTestFalsePositiveReproduced": true
+      },
+      "postChangeTargeted": {
+        "passed": 4,
+        "skipped": 15
+      },
+      "postChangeIsolatedThreeRuns": [
+        {
+          "passed": 19,
+          "failed": 0,
+          "durationSeconds": 16.34
+        },
+        {
+          "passed": 19,
+          "failed": 0,
+          "durationSeconds": 16.48
+        },
+        {
+          "passed": 19,
+          "failed": 0,
+          "durationSeconds": 16.21
+        }
+      ],
+      "postChangeFullPackageRun": false,
+      "postChangeBuildRun": false,
+      "allHistoricalFailuresExplained": false,
+      "productCleanupGuaranteeProven": false
+    },
+    "candidateReview": {
+      "agentId": "01a0f12c-4ebe-7560-9f0f-ccc34dae3e5b",
+      "summary": "Independent two race probes reported external filter marker ran and real index unchanged. Added tests before this pass. Initial 36-pass scope/path/review combination preceded race tests and is not a current complete green result.",
+      "productSnapshotEditedByThisAgent": false
+    },
+    "controlTests": {
+      "agentId": "01a0f13c-b4ca-7da2-a35e-392d30e8841d",
+      "summary": "Expanded F24/F25 fixtures before this pass; main current execution recorded above."
+    }
+  },
+  "boundaries": {
+    "productOrTestFilesEditedInThisPass": false,
+    "serviceStarted": false,
+    "observedListeningPorts": [],
+    "realProviderRun": false,
+    "businessDatabaseMutated": false,
+    "realCandidateApplied": false,
+    "productionBuildRun": false,
+    "browserMatrixRun": false,
+    "currentServerFullSuiteRun": false,
+    "currentNativeFullSuiteRun": false,
+    "commit": false,
+    "push": false,
+    "merge": false,
+    "deploy": false
+  },
+  "documentationPaths": [
+    "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+    "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+    "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md"
+  ],
+  "snapshotAfterDocumentation": {
+    "capturedAt": "2026-09-30T19:35:57.0965382+08:00",
+    "nonDocumentationFileCount": 128,
+    "manifestSha256": "A1F8D4DFB10FEC3BCC8C92007E573A1A6B863F50D7CBDA758003EC1F3A12F5D2"
+  },
+  "nonDocumentationFilesUnchanged": true,
+  "changedNonDocumentationPaths": [],
+  "documentationValidation": [
+    {
+      "path": "docs/superpowers/reports/2026-09-30-collaboration-workflow-strict-reaudit.md",
+      "bytes": 45683,
+      "localLinks": 57,
+      "missingLinks": [],
+      "pairedFences": true,
+      "hasF26": true,
+      "findingsAllPresent": true
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-30-collaboration-workflow-audit-remediation.md",
+      "bytes": 48087,
+      "localLinks": 4,
+      "missingLinks": [],
+      "pairedFences": true,
+      "hasF26": true,
+      "findingsAllPresent": true
+    },
+    {
+      "path": "docs/superpowers/reports/2026-09-30-audit-remediation-verification.md",
+      "bytes": 19287,
+      "localLinks": 5,
+      "missingLinks": [],
+      "pairedFences": true,
+      "hasF26": true,
+      "findingsAllPresent": true
+    }
+  ],
+  "gitDiffCheck": {
+    "exitCode": 0,
+    "output": []
+  },
+  "notes": [
+    "All historical reports and evidence are preserved; current section supersedes older 'current' statements.",
+    "Non-documentation snapshot covers dirty/untracked paths within agentos, not the entire repository or release.",
+    "No claim that all 26 accumulated findings remain unfixed; current closure is evidence-specific.",
+    "Artifact is a repair plan, not authorization for product changes or publication."
+  ]
+}

@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: P2 Migration Registry contains exactly the registered migrations in contract order
+ok 1 - P2 Migration Registry contains exactly the registered migrations in contract order
+  ---
+  duration_ms: 0.9347
+  type: 'test'
+  ...
+# Subtest: LITE-10-001 fresh install and supported upgrade both apply the complete registry
+ok 2 - LITE-10-001 fresh install and supported upgrade both apply the complete registry
+  ---
+  duration_ms: 263.8689
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 417.2532

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-07-012-lite-07-012-lite-10-016-secret-like-memory-writes-emit-no-runtime-event-or-outbo-184",
+    "requirementId": "LITE-07-012",
+    "file": "apps/server/src/services/MemoryRuntimeEventEmitter.test.ts",
+    "name": "LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox",
+    "line": 393,
+    "expression": "assert.ok(error instanceof MemoryRuntimeEventEmissionError);",
+    "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-016-lite-07-012-lite-10-016-secret-like-memory-writes-emit-no-runtime-event-or-outbo-185",
+    "requirementId": "LITE-10-016",
+    "file": "apps/server/src/services/MemoryRuntimeEventEmitter.test.ts",
+    "name": "LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox",
+    "line": 393,
+    "expression": "assert.ok(error instanceof MemoryRuntimeEventEmissionError);",
+    "clause": "no secret persistence;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

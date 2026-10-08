@@ -41,6 +41,19 @@ test('generates, accepts, rejects, and isolates memory candidates through the AP
     assert.equal((await fetch(`${base}/workspace-a/memory-candidates/${generated.candidates[0]!.id}/reject`, { method: 'POST' })).status, 409);
     const memories = await fetch(`${base}/workspace-a/memories`).then(response => response.json()) as { memories: Array<{ title: string }> };
     assert.deepEqual(memories.memories.map(memory => memory.title), ['API 决策（确认）']);
+    // MF5W-A17: the legacy Candidate surface is NOT a Workspace stream producer.
+    // Its behaviour above is byte-for-byte what it was, and no Event or sequence
+    // was created for the Workspace it wrote to.
+    const db = store.getDatabase();
+    const legacyEvents = db.prepare('SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number | bigint };
+    assert.equal(Number(legacyEvents.n), 0);
+    const untouchedSequence = db.prepare('SELECT next_event_sequence AS n FROM workspaces WHERE id = ?')
+      .get('workspace-a') as { n: number | bigint };
+    assert.equal(Number(untouchedSequence.n), 1);
+    const legacyCandidates = db.prepare('SELECT COUNT(*) AS n FROM memory_candidates WHERE workspace_id = ?')
+      .get('workspace-a') as { n: number | bigint };
+    assert.equal(Number(legacyCandidates.n), 1);
   } finally {
     server.close();
     store.close();

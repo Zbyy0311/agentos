@@ -1,0 +1,20 @@
+✔ INSP-12 Run, Stage, Provider, Process and duration stay distinct (168.8033ms)
+✔ INSP-01 overview projects canonical run state (129.4973ms)
+✔ INSP-02 unknown run fails closed (126.4433ms)
+✔ INSP-03 invalid input fails closed (125.4653ms)
+✔ INSP-04 process PID is evidence-only (132.3363ms)
+✔ INSP-05 events are ordered and bounded (137.0935ms)
+✔ INSP-06 afterSequence cursor (137.6948ms)
+✔ INSP-07 inspect performs no writes (131.1524ms)
+✔ INSP-08 memory context projection (143.1488ms)
+✔ INSP-09 absent memory context is null (143.7504ms)
+✔ INSP-10 workspace isolation (145.6099ms)
+✔ INSP-11 stages are ordered (152.8315ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1914.0663

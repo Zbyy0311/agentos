@@ -1,0 +1,222 @@
+[
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A1",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 63,
+    "expression": "assert.equal(run.parentRunId, undefined);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A2",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 64,
+    "expression": "assert.equal(run.rootRunId, run.id);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A3",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 65,
+    "expression": "assert.equal(run.status, 'queued');",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A4",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 66,
+    "expression": "assert.equal(run.reason, 'initial');",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A5",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 67,
+    "expression": "assert.equal(run.origin, 'v2_api');",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A6",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 68,
+    "expression": "assert.equal(run.nextEventSequence, 1);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-311-A7",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 69,
+    "expression": "assert.equal(run.version, 1);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t32-retry-run-keeps-the-parent-root-chain-312-A1",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 82,
+    "expression": "assert.equal(retry.parentRunId, initial.id);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t32-retry-run-keeps-the-parent-root-chain-312-A2",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 83,
+    "expression": "assert.equal(retry.rootRunId, initial.rootRunId);",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-001-t32-retry-run-keeps-the-parent-root-chain-312-A3",
+    "requirementId": "LITE-01-001",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 84,
+    "expression": "assert.equal(retry.reason, 'retry');",
+    "clause": "each durable entity uses stable IDs and correct parent references;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A1",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 63,
+    "expression": "assert.equal(run.parentRunId, undefined);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A2",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 64,
+    "expression": "assert.equal(run.rootRunId, run.id);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A3",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 65,
+    "expression": "assert.equal(run.status, 'queued');",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A4",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 66,
+    "expression": "assert.equal(run.reason, 'initial');",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A5",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 67,
+    "expression": "assert.equal(run.origin, 'v2_api');",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A6",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 68,
+    "expression": "assert.equal(run.nextEventSequence, 1);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t31-initial-run-has-parentrunid-null-and-rootrunid-equal-to-its-own-id-313-A7",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T31 initial Run has parentRunId null and rootRunId equal to its own id",
+    "line": 69,
+    "expression": "assert.equal(run.version, 1);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t32-retry-run-keeps-the-parent-root-chain-314-A1",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 82,
+    "expression": "assert.equal(retry.parentRunId, initial.id);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t32-retry-run-keeps-the-parent-root-chain-314-A2",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 83,
+    "expression": "assert.equal(retry.rootRunId, initial.rootRunId);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-t32-retry-run-keeps-the-parent-root-chain-314-A3",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+    "name": "T32 retry Run keeps the parent/root chain",
+    "line": 84,
+    "expression": "assert.equal(retry.reason, 'retry');",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

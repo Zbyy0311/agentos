@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:only auto-anchors an already-following stream)",
+      "src/lib/chatScroll.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/assertions.json",
+      "sha256": "90ba4353a911796ea028ca0e7feea00ea807142683381df8f20c3ed80ae5ce3c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/execution.json",
+      "sha256": "89475a831cab7a23c64f86585ece75b557fe1f3e7b36905737988cdbff00fea8"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/55-apps-web-src-lib-chatscroll-test-ts/stdout.txt",
+      "sha256": "7d9cd326c2ac63b10f41ae94f6b85db55705b5ae911916af1cad737833c1de6a"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-005-only-auto-anchors-an-already-following-stream-364",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/chatScroll.test.ts",
+      "name": "only auto-anchors an already-following stream",
+      "line": 11,
+      "expression": "assert.equal(shouldKeepChatAnchor({ userInitiated: false, wasNearBottom: true }), true);",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-only-auto-anchors-an-already-following-stream-365",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/chatScroll.test.ts",
+      "name": "only auto-anchors an already-following stream",
+      "line": 11,
+      "expression": "assert.equal(shouldKeepChatAnchor({ userInitiated: false, wasNearBottom: true }), true);",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

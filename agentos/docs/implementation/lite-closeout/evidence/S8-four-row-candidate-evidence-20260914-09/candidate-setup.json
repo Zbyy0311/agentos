@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-09-14T07:40:01.745Z",
+  "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+  "workspaceId": "d7994c0c",
+  "taskId": "task_01M2FDQMQH1CVG4HEBS928P53X",
+  "runId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+  "admissionId": "candidate-admission-4fdfb577-42cd-478c-a4f5-654e59d56e83",
+  "cancelOperationId": "op_01M2FDQMRQE0WKDEMVW2C6WCNN",
+  "cancelOperationVersion": 1,
+  "stageIds": [
+    "stage_01M2FDQMR9BTBTS1113QP3GSDR",
+    "stage_01M2FDQMRAZJPM4P9HXWXWNPKY",
+    "stage_01M2FDQMRAZJPM4P9HXWXWNPKZ",
+    "stage_01M2FDQMRAZJPM4P9HXWXWNPM0"
+  ],
+  "stageKeys": [
+    "codex_manager",
+    "kimi_worker",
+    "opencode_reviewer",
+    "codex_final_review"
+  ],
+  "providerOutputModes": {
+    "codex": "structured",
+    "kimi": "structured",
+    "opencode": "parsed-text"
+  },
+  "routeModels": {
+    "codex": "deepseek/deepseek-flash",
+    "kimi": "opencodex/deepseek/deepseek-flash",
+    "opencode": "deepseek/deepseek-v4-flash"
+  },
+  "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。"
+}

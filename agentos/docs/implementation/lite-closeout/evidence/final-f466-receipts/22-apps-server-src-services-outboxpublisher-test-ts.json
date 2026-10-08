@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "baseline": "f466ab3c940c6d5ac792591315a1416da93a06ab",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event|M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events|M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence)",
+      "src/services/OutboxPublisher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/22-apps-server-src-services-outboxpublisher-test-ts/assertions.json",
+      "sha256": "ad7bf6617352d65dd8c54a0acf17ae653d61dc3176a0c33349de722440ac5bf1"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/22-apps-server-src-services-outboxpublisher-test-ts/execution.json",
+      "sha256": "ac2c7efcf1ef82ceadefcb4de1c64ed243a22b4ec20a14f3ba91a0d6e215f203"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/22-apps-server-src-services-outboxpublisher-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/22-apps-server-src-services-outboxpublisher-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/22-apps-server-src-services-outboxpublisher-test-ts/stdout.txt",
+      "sha256": "284f3a8fd11a676210ec8d024a770d775da6814e23b3d6c7673b57a10b565bd6"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-005-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--157",
+      "requirementId": "LITE-00-005",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-007-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--158",
+      "requirementId": "LITE-02-007",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "every durable Event has the required independent Outbox row;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-008-m3-p6a-p15-delivery-changes-only-outbox-dead-letter-notifier-state-never-domain--159",
+      "requirementId": "LITE-02-008",
+      "name": "M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events",
+      "line": 395,
+      "expression": "assert.deepEqual(",
+      "clause": "publication retry does not repeat a domain transition;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-008-m3-p6a-p04-f08-non-retryable-failure-creates-exact-atomic-dead-letter-evidence-160",
+      "requirementId": "LITE-02-008",
+      "name": "M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence",
+      "line": 212,
+      "expression": "assert.equal(",
+      "clause": "publication retry does not repeat a domain transition;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-011-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--161",
+      "requirementId": "LITE-02-011",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-02-017-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--162",
+      "requirementId": "LITE-02-017",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "failures preserve evidence and release authority only through committed transitions.",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-004-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--163",
+      "requirementId": "LITE-03-004",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "atomic current state, Event, version, and Outbox writes;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-005-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--164",
+      "requirementId": "LITE-03-005",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "exact multi-Event lifecycle ordering;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-006-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--165",
+      "requirementId": "LITE-03-006",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "one Outbox row per durable Event;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-007-m3-p6a-p15-delivery-changes-only-outbox-dead-letter-notifier-state-never-domain--166",
+      "requirementId": "LITE-03-007",
+      "name": "M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events",
+      "line": 395,
+      "expression": "assert.deepEqual(",
+      "clause": "reclaim, retry, and dead letter without duplicate domain transition;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-007-m3-p6a-p04-f08-non-retryable-failure-creates-exact-atomic-dead-letter-evidence-167",
+      "requirementId": "LITE-03-007",
+      "name": "M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence",
+      "line": 212,
+      "expression": "assert.equal(",
+      "clause": "reclaim, retry, and dead letter without duplicate domain transition;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-008-m3-p6a-p15-delivery-changes-only-outbox-dead-letter-notifier-state-never-domain--168",
+      "requirementId": "LITE-03-008",
+      "name": "M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events",
+      "line": 395,
+      "expression": "assert.deepEqual(",
+      "clause": "at-least-once delivery with idempotent consumers;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-03-008-m3-p6a-p04-f08-non-retryable-failure-creates-exact-atomic-dead-letter-evidence-169",
+      "requirementId": "LITE-03-008",
+      "name": "M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence",
+      "line": 212,
+      "expression": "assert.equal(",
+      "clause": "at-least-once delivery with idempotent consumers;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-007-m3-p6a-p06-p08-f04-f05-crash-like-lease-loss-reclaims-without-consuming-failure--170",
+      "requirementId": "LITE-10-007",
+      "name": "M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event",
+      "line": 263,
+      "expression": "assert.equal(",
+      "clause": "Event/Outbox atomicity and replay;",
+      "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+      "outcome": "passed"
+    }
+  ]
+}

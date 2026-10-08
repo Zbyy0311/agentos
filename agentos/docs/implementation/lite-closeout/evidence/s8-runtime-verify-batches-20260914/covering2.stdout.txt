@@ -1,0 +1,3 @@
+passed      apps/server/src/services/ConversationBridgeService.test.ts  rows=0  14 pass / 0 fail / 0 skip  exit=0  3203ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-2.json
+batches=1 passed=1 failed=0 provableRequirements=0/0

@@ -11,6 +11,8 @@ $startedProcesses = New-Object System.Collections.Generic.List[System.Diagnostic
 $originalProjectRoot = $env:AGENTOS_PROJECT_ROOT
 $originalE2EBase = $env:AGENTOS_E2E_BASE_URL
 $originalE2EPhase = $env:AGENTOS_E2E_PHASE
+$originalKimiApiKey = $env:AGENTOS_KIMI_API_KEY
+$originalKimiLegacyApiKey = $env:KIMI_API_KEY
 $createdAcceptanceRoot = $false
 $preExitCode = 1
 $recoveryExitCode = 1
@@ -75,6 +77,29 @@ function Resolve-ConfiguredCommand([string] $Command) {
   return $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
+function Set-RoutedModel([object] $Agent, [string] $Flag, [string] $Model) {
+  # Replace the model in place so the harness never depends on the machine's
+  # quota-limited default models. Appending at the end would break CLIs whose
+  # positional pairing matters: AgentOS appends the prompt after the configured
+  # args, so kimi's '-p <prompt>' must keep its position.
+  $current = @($Agent.cliArgs)
+  $result = New-Object System.Collections.Generic.List[string]
+  $replaced = $false
+  for ($index = 0; $index -lt $current.Count; $index++) {
+    if ($current[$index] -eq $Flag) {
+      $result.Add($Flag)
+      $result.Add($Model)
+      $replaced = $true
+      if ($index + 1 -lt $current.Count) { $index++ }
+      continue
+    }
+    $result.Add($current[$index])
+  }
+  if (-not $replaced) { $result.Add($Flag); $result.Add($Model) }
+  $Agent.cliArgs = $result.ToArray()
+  if ($Agent.PSObject.Properties['model']) { $Agent.model = $Model }
+}
+
 try {
   Assert-PortFree $ServerPort
   Normalize-ProcessPath
@@ -105,6 +130,25 @@ try {
   )
   $primary.agents = @($primary.agents | Where-Object { $_.id -notin @('e2e-failing', 'e2e-waiting', 'codex-failure') }) + $fixtureAgents
   $codex = $primary.agents | Where-Object { $_.id -eq 'codex' } | Select-Object -First 1
+
+  # Acceptance must not depend on ambient credentials or quota-limited default
+  # models. AgentOS switches the Kimi CLI to the official endpoint whenever
+  # AGENTOS_KIMI_API_KEY is present and drops the configured '-m' routing, so an
+  # ambient key silently changes which provider answers; the keys are removed
+  # for this run and every real agent is routed through the reviewed loopback
+  # models instead. Both facts are printed so the evidence names the models.
+  Remove-Item Env:AGENTOS_KIMI_API_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:KIMI_API_KEY -ErrorAction SilentlyContinue
+  $routedModels = [ordered]@{
+    codex    = if ($env:AGENTOS_E2E_CODEX_MODEL) { $env:AGENTOS_E2E_CODEX_MODEL } else { 'deepseek/deepseek-flash' }
+    kimi     = if ($env:AGENTOS_E2E_KIMI_MODEL) { $env:AGENTOS_E2E_KIMI_MODEL } else { 'opencodex/deepseek/deepseek-flash' }
+    opencode = if ($env:AGENTOS_E2E_OPENCODE_MODEL) { $env:AGENTOS_E2E_OPENCODE_MODEL } else { 'deepseek/deepseek-v4-flash' }
+  }
+  foreach ($realAgent in $primary.agents | Where-Object { $_.id -in @('codex', 'kimi', 'opencode') }) {
+    if ($realAgent.id -eq 'kimi') { Set-RoutedModel $realAgent '-m' $routedModels['kimi'] }
+    else { Set-RoutedModel $realAgent '--model' $routedModels[$realAgent.id] }
+    Write-Host "E2E model routing: $($realAgent.id)=$($routedModels[$realAgent.id])"
+  }
   if ($codex) {
     $failureArgs = @($codex.cliArgs) + @('--model', '__agentos_invalid_model_for_e2e__')
     $primary.agents += [pscustomobject]@{
@@ -159,6 +203,8 @@ try {
   if ($originalProjectRoot) { $env:AGENTOS_PROJECT_ROOT = $originalProjectRoot } else { Remove-Item Env:AGENTOS_PROJECT_ROOT -ErrorAction SilentlyContinue }
   if ($originalE2EBase) { $env:AGENTOS_E2E_BASE_URL = $originalE2EBase } else { Remove-Item Env:AGENTOS_E2E_BASE_URL -ErrorAction SilentlyContinue }
   if ($originalE2EPhase) { $env:AGENTOS_E2E_PHASE = $originalE2EPhase } else { Remove-Item Env:AGENTOS_E2E_PHASE -ErrorAction SilentlyContinue }
+  if ($originalKimiApiKey) { $env:AGENTOS_KIMI_API_KEY = $originalKimiApiKey } else { Remove-Item Env:AGENTOS_KIMI_API_KEY -ErrorAction SilentlyContinue }
+  if ($originalKimiLegacyApiKey) { $env:KIMI_API_KEY = $originalKimiLegacyApiKey } else { Remove-Item Env:KIMI_API_KEY -ErrorAction SilentlyContinue }
   if ($AcceptanceRoot) {
     Assert-PortReleased $ServerPort
     if ($createdAcceptanceRoot -and (Test-Path -LiteralPath $AcceptanceRoot)) {

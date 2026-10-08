@@ -1,0 +1,13 @@
+[
+  {
+    "id": "LITE-13-010-p5d-waiting-approval-uses-the-evidence-seam-and-preserves-approval-before-run-ev-75",
+    "requirementId": "LITE-13-010",
+    "file": "apps/server/src/routes/operations.test.ts",
+    "name": "P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering",
+    "line": 977,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

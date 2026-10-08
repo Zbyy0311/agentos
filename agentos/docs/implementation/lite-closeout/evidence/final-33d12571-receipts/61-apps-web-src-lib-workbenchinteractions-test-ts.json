@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-12-101 workbench actions remain explicit callback intents)",
+      "src/lib/workbenchInteractions.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/assertions.json",
+      "sha256": "620ba7501fe22e62c2bbe7c40f2863f7e0308f82612de8a55488866c2a433c16"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/execution.json",
+      "sha256": "f7223139bf0effeac1e6c6cd77259a206d3aa01ae97b8e0f753bb788c689dc8b"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/stdout.txt",
+      "sha256": "591d9272f0d3b2039e159592b2b4b424f8cfcba43104fb6c375899787d05ad17"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-101-lite-12-101-workbench-actions-remain-explicit-callback-intents-385-A1",
+      "requirementId": "LITE-12-101",
+      "file": "apps/web/src/lib/workbenchInteractions.test.ts",
+      "name": "LITE-12-101 workbench actions remain explicit callback intents",
+      "line": 15,
+      "expression": "assert.deepEqual(calls, ['agent:agent_1', 'conversation:conv_1', 'create']);",
+      "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

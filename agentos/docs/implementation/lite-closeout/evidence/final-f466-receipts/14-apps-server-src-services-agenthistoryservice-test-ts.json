@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references|CR6-A3 the q filter never searches message bodies \\(secrets excluded from search\\))",
+      "src/services/AgentHistoryService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/14-apps-server-src-services-agenthistoryservice-test-ts/assertions.json",
+      "sha256": "e32ca0914b854f12d93becbcd71d057c8d8bb60651bd80c094a9b0a8da95a8a8"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/14-apps-server-src-services-agenthistoryservice-test-ts/execution.json",
+      "sha256": "6d2f77cbbcfdd12dd9e531dee707a4bae71eb1c6a599fdf3a2a3d556308ce122"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/14-apps-server-src-services-agenthistoryservice-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/14-apps-server-src-services-agenthistoryservice-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/14-apps-server-src-services-agenthistoryservice-test-ts/stdout.txt",
+      "sha256": "4bbf2a4c5e335850947d6a17ec3b980c46e3cd16b62abb4dda0e5232c14a5094"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-013-lite-09-103-cr6-a1-history-unifies-one-agent-across-canonical-entities-and-expos-97",
+      "requirementId": "LITE-01-013",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references",
+      "line": 92,
+      "expression": "assert.ok(kinds.has(kind as never), 'missing kind: ' + kind);",
+      "clause": "Agent History links canonical records rather than provider-native history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-013-cr6-a3-the-q-filter-never-searches-message-bodies-secrets-excluded-from-search-98",
+      "requirementId": "LITE-01-013",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "line": 127,
+      "expression": "assert.equal(hits.length, 0);",
+      "clause": "Agent History links canonical records rather than provider-native history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-011-lite-09-103-cr6-a1-history-unifies-one-agent-across-canonical-entities-and-expos-99",
+      "requirementId": "LITE-11-011",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references",
+      "line": 92,
+      "expression": "assert.ok(kinds.has(kind as never), 'missing kind: ' + kind);",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-011-cr6-a3-the-q-filter-never-searches-message-bodies-secrets-excluded-from-search-100",
+      "requirementId": "LITE-11-011",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "line": 127,
+      "expression": "assert.equal(hits.length, 0);",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-013-lite-09-103-cr6-a1-history-unifies-one-agent-across-canonical-entities-and-expos-101",
+      "requirementId": "LITE-12-013",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references",
+      "line": 92,
+      "expression": "assert.ok(kinds.has(kind as never), 'missing kind: ' + kind);",
+      "clause": "Agent-unified History and secret-free Search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-013-cr6-a3-the-q-filter-never-searches-message-bodies-secrets-excluded-from-search-102",
+      "requirementId": "LITE-12-013",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "line": 127,
+      "expression": "assert.equal(hits.length, 0);",
+      "clause": "Agent-unified History and secret-free Search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

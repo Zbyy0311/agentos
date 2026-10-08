@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-12-016 no web module implements a deferred product surface|LITE-12-016 the workspace shells expose no deferred product entry point)",
+      "src/liteScopeBoundary.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/62-apps-web-src-litescopeboundary-test-ts/assertions.json",
+      "sha256": "d54c041833437be831be161e4471c20bb272047aacec21664224e840cd5e0414"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/62-apps-web-src-litescopeboundary-test-ts/execution.json",
+      "sha256": "32345b18d56b88c81e1e3cedde76d8bd26acf626dc698f2cb686db0046fe452d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/62-apps-web-src-litescopeboundary-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/62-apps-web-src-litescopeboundary-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/62-apps-web-src-litescopeboundary-test-ts/stdout.txt",
+      "sha256": "0454805a727371f08df5de868c3aff17a56c63feabf974bb571910c5c4e6a2ae"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-016-lite-12-016-no-web-module-implements-a-deferred-product-surface-386",
+      "requirementId": "LITE-12-016",
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "name": "LITE-12-016 no web module implements a deferred product surface",
+      "line": 61,
+      "expression": "assert.deepEqual(offenders, []);",
+      "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-016-lite-12-016-the-workspace-shells-expose-no-deferred-product-entry-point-387",
+      "requirementId": "LITE-12-016",
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "name": "LITE-12-016 the workspace shells expose no deferred product entry point",
+      "line": 73,
+      "expression": "assert.equal(surface.pattern.test(source), false, `${surface.label} must not appear in ${relative(webSrc, file)}`);",
+      "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-015-lite-12-016-no-web-module-implements-a-deferred-product-surface-388",
+      "requirementId": "LITE-08-015",
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "name": "LITE-12-016 no web module implements a deferred product surface",
+      "line": 61,
+      "expression": "assert.deepEqual(offenders, []);",
+      "clause": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-013-lite-12-016-no-web-module-implements-a-deferred-product-surface-389",
+      "requirementId": "LITE-11-013",
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "name": "LITE-12-016 no web module implements a deferred product surface",
+      "line": 61,
+      "expression": "assert.deepEqual(offenders, []);",
+      "clause": "deferred API families are not active requirements.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

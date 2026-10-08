@@ -1,0 +1,503 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import type { MemoryBudgetPolicyV1 } from '@agentos/shared';
+import { MigrationRegistry } from '../migrations/registry.js';
+import { MigrationRunner } from '../migrations/MigrationRunner.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { createFileBackupProvider } from '../migrations/backup.js';
+import type { MinimalDatabaseSync } from '../migrations/types.js';
+import type { TransactionDatabase } from '../store/Transaction.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
+import { MemoryRetrievalService } from './MemoryRetrievalService.js';
+import { MemoryLifecycleService } from './MemoryLifecycleService.js';
+import { MemoryFeedbackService } from './MemoryFeedbackService.js';
+import { MemoryContextBudgetSelector } from './MemoryContextBudgetSelector.js';
+import {
+  MemoryContextResolver,
+  DEFAULT_MEMORY_BUDGET_POLICY_V1,
+  MemoryContextResolverError,
+} from './MemoryContextResolver.js';
+
+interface SqliteStatement {
+  all(...params: unknown[]): unknown[];
+  get(...params: unknown[]): unknown;
+  run(...params: unknown[]): unknown;
+}
+interface SqliteDb {
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+  DatabaseSync: new (path: string) => SqliteDb;
+};
+
+const NOW = '2026-09-09T00:00:00.000Z';
+const WS = 'ws_mf4i';
+const TASK = 'task_mf4i';
+const RUN = 'run_mf4i';
+const STAGE = 'stage_mf4i';
+
+const BUDGET: MemoryBudgetPolicyV1 = {
+  maxTokens: 100,
+  maxEntries: 3,
+  perScopeLimits: {},
+  perCategoryLimits: {},
+  minConfidence: 0.5,
+  minImportance: 0.3,
+  maxTruncation: 1,
+  requireDiversity: false,
+};
+
+function fixture(clock?: () => number) {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-mf4-resolver-'));
+  const path = join(root, 'agentos.sqlite');
+  const db = new DatabaseSync(path);
+  db.prepare('PRAGMA foreign_keys = ON').run();
+  new MigrationRunner(db as unknown as MinimalDatabaseSync, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    backupProvider: createFileBackupProvider(join(root, 'backup')),
+  }).run();
+  db.prepare(
+    'INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(WS, WS, 'C:/tmp/ws_mf4i', 'C:/tmp/ws_mf4i', NOW, NOW, NOW);
+  db.prepare(
+    'INSERT INTO tasks (id, workspace_id, title, status, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+  ).run(TASK, WS, 'task', 'open', 'test', NOW, NOW);
+  db.prepare(
+    'INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+  ).run(RUN, WS, TASK, RUN, 'queued', 'initial', 'test', NOW, NOW);
+
+  const tx = db as unknown as TransactionDatabase;
+  const entries = new MemoryEntryRepository(tx);
+  const snapshots = new MemoryContextSnapshotRepository(tx);
+  const retrieval = new MemoryRetrievalService(entries, clock);
+  const selector = new MemoryContextBudgetSelector(retrieval, snapshots);
+  const resolver = new MemoryContextResolver({ store: { getDatabase: () => tx }, selector, entries, snapshots });
+  return { db, entries, retrieval, snapshots, resolver, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
+}
+
+let seq = 0;
+function addEntry(fx: ReturnType<typeof fixture>, overrides: Record<string, unknown> = {}): string {
+  seq += 1;
+  const id = 'mem_' + String(seq).padStart(4, '0') + 'i'.repeat(20);
+  fx.entries.createEntry({
+    id, workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'decision',
+    authority: 'system-verified', confidence: 0.9, importance: 0.5,
+    title: `entry ${seq}`, summary: 's', content: `content ${seq}`, tags: [],
+    status: 'active', pinned: true, sources: [{ kind: 'run', id: RUN }], createdAt: NOW, tokenEstimate: 10,
+    ...overrides,
+  } as never);
+  return id;
+}
+
+function resolveInput(overrides: Record<string, unknown> = {}) {
+  return { workspaceId: WS, runId: RUN, taskId: TASK, budget: BUDGET, createdAt: NOW, ...overrides } as never;
+}
+
+test('wrong feedback blocks new canonical scopes while replay preserves the original frozen version', async () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    const id = addEntry(fx, { title: '数据库迁移约定', content: '数据库迁移使用追加脚本' });
+    const original = await fx.resolver.resolvePrepared(resolveInput({ query: '数据库迁移约定' }));
+    assert.equal(original.snapshot.selected[0]?.memoryId, id);
+    const feedback = new MemoryFeedbackService(fx.db as unknown as TransactionDatabase);
+    const reported = feedback.add(WS, {
+      expectedVersion: 1, memoryId: id, memoryVersion: 1,
+      contextKind: 'run', contextId: original.snapshot.id, kind: 'wrong',
+    });
+    const blocked = await fx.resolver.resolvePrepared(resolveInput({ stageId: 'quarantined-stage', query: '数据库迁移约定' }));
+    assert.equal(blocked.contextText, '');
+    assert.deepEqual(blocked.snapshot.selected, []);
+    assert.ok(blocked.snapshot.exclusions.some(item => item.memoryId === id
+      && item.memoryVersion === 1 && item.reason === 'feedback-quarantined'));
+    const replay = await fx.resolver.resolvePrepared(resolveInput({ query: 'changed replay request' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, original.contextText);
+    assert.equal(replay.snapshot.selected[0]?.memoryVersion, 1);
+    feedback.resolveAction(WS, reported.action!.id, 1, 'rejected');
+    const released = await fx.resolver.resolvePrepared(resolveInput({ stageId: 'released-stage', query: '数据库迁移约定' }));
+    assert.equal(released.snapshot.selected[0]?.memoryId, id);
+    assert.equal(released.snapshot.selected[0]?.memoryVersion, 1);
+    assert.equal(fx.snapshots.readContextText(WS, blocked.snapshot.id), '');
+    assert.equal(fx.snapshots.readContextText(WS, original.snapshot.id), original.contextText);
+  } finally { fx.close(); }
+});
+
+test('M2 new canonical stages reflect edits and lifecycle while every previous scope replays its frozen version', () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    const id = addEntry(fx, { title:'checkpoint', content:'version one' });
+    const first = fx.resolver.resolve(resolveInput({stageId:'stage-before'}));
+    fx.entries.updateEntryWithinTransaction({ workspaceId:WS,entryId:id,expectedVersion:1,content:'version two',updatedAt:NOW });
+    const edited = fx.resolver.resolve(resolveInput({stageId:'stage-after-edit'}));
+    assert.match(edited.contextText,/version two/);
+    assert.equal(edited.snapshot.selected[0].memoryVersion,2);
+    const lifecycle = new MemoryLifecycleService(fx.db as unknown as TransactionDatabase, () => NOW);
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:2,action:'archive' });
+    assert.equal(fx.resolver.resolve(resolveInput({stageId:'stage-after-archive'})).contextText,'');
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:3,action:'restore' });
+    const restored = fx.resolver.resolve(resolveInput({stageId:'stage-after-restore'}));
+    assert.match(restored.contextText,/version two/);
+    assert.equal(restored.snapshot.selected[0].memoryVersion,4);
+    lifecycle.apply({ workspaceId:WS,entryId:id,expectedVersion:4,action:'set-validity',expiresAt:NOW });
+    assert.equal(fx.resolver.resolve(resolveInput({stageId:'stage-after-expiry'})).contextText,'');
+    const replay = fx.resolver.resolve(resolveInput({stageId:'stage-before',query:'a different request'}));
+    assert.equal(replay.reused,true);
+    assert.equal(replay.contextText,first.contextText);
+    assert.equal(replay.snapshot.selected[0].memoryVersion,1);
+    assert.equal(fx.snapshots.readContextText(WS,edited.snapshot.id),edited.contextText);
+  } finally { fx.close(); }
+});
+
+test('prepared Run resolution records semantic degradation and replay reads the saved snapshot without preparing again', async () => {
+  const fx = fixture(() => Date.parse(NOW));
+  try {
+    addEntry(fx, { title: 'prepared checkpoint', content: 'frozen context' });
+    const retrievePrepared = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    let prepareCalls = 0;
+    fx.retrieval.retrievePrepared = async input => {
+      prepareCalls += 1;
+      const baseline = await retrievePrepared(input);
+      return {
+        ...baseline,
+        degraded: true,
+        semantic: { degraded: true, reason: 'REMOTE_DISABLED', prepared: true },
+      };
+    };
+
+    const input = resolveInput({ stageId: 'prepared-stage', query: 'prepared checkpoint' });
+    const first = await fx.resolver.resolvePrepared(input);
+    assert.equal(first.reused, false);
+    assert.equal(prepareCalls, 1);
+    assert.equal(first.snapshot.retrievalDegraded, true);
+    assert.match(first.snapshot.retrievalStrategyVersion, /semantic-fallback:REMOTE_DISABLED/);
+    assert.match(first.contextText, /frozen context/);
+
+    const replay = await fx.resolver.resolvePrepared(resolveInput({
+      stageId: 'prepared-stage', query: 'different replay query',
+    }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, first.contextText);
+    assert.equal(replay.snapshot.id, first.snapshot.id);
+    assert.equal(prepareCalls, 1, 'replay must use the durable payload without another prepare/embed call');
+  } finally { fx.close(); }
+});
+
+// MF4I-01 — resolve persists a snapshot before returning context.
+test('MF4I-01 resolve persists a snapshot and returns bounded context', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'alpha', content: 'body alpha' });
+    const resolved = fx.resolver.resolve(resolveInput());
+    assert.equal(resolved.reused, false);
+    assert.ok(resolved.contextText.includes('body alpha'));
+    assert.ok(fx.snapshots.findById(WS, resolved.snapshot.id) !== undefined);
+    assert.equal(resolved.snapshot.runId, RUN);
+    assert.deepEqual(resolved.snapshot.budget, BUDGET);
+  } finally { fx.close(); }
+});
+
+// MF4I-02 — a second resolve for the same scope reuses the snapshot.
+test('MF4I-02 resolve is idempotent per run scope', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const first = fx.resolver.resolve(resolveInput());
+    const second = fx.resolver.resolve(resolveInput());
+    assert.equal(second.reused, true);
+    assert.equal(second.snapshot.id, first.snapshot.id);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 1);
+  } finally { fx.close(); }
+});
+
+// MF4I-03 — stage-scoped resolve is separate from the run-scoped snapshot.
+test('MF4I-03 stage scope is distinct from run scope', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const runLevel = fx.resolver.resolve(resolveInput());
+    const stageLevel = fx.resolver.resolve(resolveInput({ stageId: STAGE }));
+    assert.notEqual(stageLevel.snapshot.id, runLevel.snapshot.id);
+    assert.equal(stageLevel.snapshot.stageId, STAGE);
+    assert.equal(stageLevel.reused, false);
+    const again = fx.resolver.resolve(resolveInput({ stageId: STAGE }));
+    assert.equal(again.reused, true);
+  } finally { fx.close(); }
+});
+
+// MF4I-04 — snapshot persistence failure blocks injection.
+test('replaying an earlier scope after a later Stage does not recreate its snapshot', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const run = fx.resolver.resolve(resolveInput());
+    const stageA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a', createdAt: '2026-09-09T01:00:00.000Z' }));
+    fx.resolver.resolve(resolveInput({ stageId: 'stage_b', createdAt: '2026-09-09T02:00:00.000Z' }));
+    const replayA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a' }));
+    const replayRun = fx.resolver.resolve(resolveInput());
+    assert.equal(replayA.reused, true);
+    assert.equal(replayA.snapshot.id, stageA.snapshot.id);
+    assert.equal(replayRun.reused, true);
+    assert.equal(replayRun.snapshot.id, run.snapshot.id);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 3);
+    assert.equal(fx.snapshots.findLatestForScope('another-workspace', RUN, 'stage_a'), undefined);
+  } finally { fx.close(); }
+});
+
+test('MF4I-04 snapshot failure blocks injection', () => {
+  const fx = fixture();
+  try {
+    // Unknown Run: snapshot FK/write fails, so resolve must throw.
+    assert.throws(
+      () => fx.resolver.resolve(resolveInput({ runId: 'run_missing' })),
+      (error: unknown) => {
+        assert.ok(error instanceof MemoryContextResolverError);
+        assert.equal(error.code, 'SNAPSHOT_FAILED');
+        return true;
+      },
+    );
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// MF4I-05 — invalid input and budget fail closed.
+test('MF4I-05 invalid input fails closed', () => {
+  const fx = fixture();
+  try {
+    assert.throws(() => fx.resolver.resolve(resolveInput({ workspaceId: '' })));
+    assert.throws(() => fx.resolver.resolve(resolveInput({ budget: { ...BUDGET, maxTokens: 0 } })));
+  } finally { fx.close(); }
+});
+
+// MF4I-06 — the injection gate rejects an absent snapshot.
+test('MF4I-06 injection gate rejects absent snapshot', () => {
+  const fx = fixture();
+  try {
+    assert.equal(fx.resolver.isInjectable(undefined), false);
+    const resolved = fx.resolver.resolve(resolveInput());
+    assert.equal(fx.resolver.isInjectable(resolved), true);
+    assert.equal(fx.resolver.isInjectable({ ...resolved, contextText: 'unpersisted replacement' }), false);
+  } finally { fx.close(); }
+});
+
+// MF4I-07 — later entry edits do not change a resolved snapshot.
+test('MF4I-07 later entry edits do not rewrite the snapshot', () => {
+  const fx = fixture();
+  try {
+    const id = addEntry(fx, { title: 'before' });
+    const resolved = fx.resolver.resolve(resolveInput());
+    fx.entries.updateStatus({ workspaceId: WS, entryId: id, expectedVersion: 1, status: 'archived', updatedAt: NOW });
+    const reloaded = fx.snapshots.findById(WS, resolved.snapshot.id);
+    assert.equal(reloaded?.selected.length, resolved.snapshot.selected.length);
+    assert.equal(reloaded?.selected[0].memoryId, id);
+  } finally { fx.close(); }
+});
+
+// MF4I-08 — no memories still persists an empty snapshot (reproducible).
+test('frozen injection survives content edits and logical deletion of its Entry', () => {
+  const fx = fixture();
+  try {
+    const id = addEntry(fx, { title: 'original', content: 'original body' });
+    const first = fx.resolver.resolve(resolveInput());
+    assert.equal(first.contextText, '### original\noriginal body');
+    fx.db.prepare('UPDATE memory_entries SET title = ?, content = ?, version = version + 1 WHERE id = ?').run('changed', 'changed body', id);
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);
+    fx.entries.updateStatus({ workspaceId: WS, entryId: id, expectedVersion: 2, status: 'deleted', updatedAt: NOW });
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);
+    assert.equal(fx.snapshots.readContextText('wrong-workspace', first.snapshot.id), undefined);
+    assert.throws(() => fx.db.prepare('UPDATE memory_context_snapshot_payloads SET context_text = ? WHERE snapshot_id = ?').run('modified', first.snapshot.id), /IMMUTABLE/);
+    assert.throws(() => fx.db.prepare('DELETE FROM memory_context_snapshot_payloads WHERE snapshot_id = ?').run(first.snapshot.id), /IMMUTABLE/);
+  } finally { fx.close(); }
+});
+
+test('historical metadata-only snapshot is inspectable but blocks injection', () => {
+  const fx = fixture();
+  try {
+    fx.snapshots.createSnapshot({ id: 'historical', workspaceId: WS, runId: RUN,
+      queryHash: 'old', retrievalStrategyVersion: 'old', budget: BUDGET,
+      totalTokens: 0, truncated: false, createdAt: NOW, selected: [], exclusions: [] });
+    assert.ok(fx.snapshots.findById(WS, 'historical'));
+    assert.throws(() => fx.resolver.resolve(resolveInput()), (error: unknown) =>
+      error instanceof MemoryContextResolverError && error.code === 'INJECTION_BLOCKED');
+  } finally { fx.close(); }
+});
+
+test('payload failure rolls back the snapshot and its selections', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    fx.db.prepare("CREATE TRIGGER payload_fault BEFORE INSERT ON memory_context_snapshot_payloads BEGIN SELECT RAISE(ABORT, 'fault'); END").run();
+    assert.throws(() => fx.resolver.resolve(resolveInput()), /SNAPSHOT_FAILED/);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshot_entries').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+test('corrupt frozen payload blocks replay', () => {
+  const fx = fixture();
+  try {
+    const first = fx.resolver.resolve(resolveInput());
+    // Simulate out-of-band database corruption, not a supported mutation path.
+    fx.db.prepare('DROP TRIGGER memory_context_snapshot_payloads_immutable').run();
+    fx.db.prepare('UPDATE memory_context_snapshot_payloads SET content_sha256 = ? WHERE snapshot_id = ?').run('0'.repeat(64), first.snapshot.id);
+    assert.throws(() => fx.resolver.resolve(resolveInput()), /INJECTION_BLOCKED/);
+  } finally { fx.close(); }
+});
+
+test('MF4I-08 empty store still persists a snapshot', () => {
+  const fx = fixture();
+  try {
+    const resolved = fx.resolver.resolve(resolveInput());
+    assert.equal(resolved.snapshot.selected.length, 0);
+    assert.equal(resolved.contextText, '');
+    assert.equal(fx.snapshots.readContextText(WS, resolved.snapshot.id), '');
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, '');
+    assert.equal(fx.resolver.isInjectable(resolved), true);
+  } finally { fx.close(); }
+});
+
+// MF4I-09 — default budget is a frozen, valid policy.
+test('MF4I-09 default budget is frozen and valid', () => {
+  assert.equal(DEFAULT_MEMORY_BUDGET_POLICY_V1.maxEntries, 5);
+  assert.equal(DEFAULT_MEMORY_BUDGET_POLICY_V1.maxTokens, 6000);
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const resolved = fx.resolver.resolve({ workspaceId: WS, runId: RUN, taskId: TASK, createdAt: NOW } as never);
+    assert.deepEqual(resolved.snapshot.budget, DEFAULT_MEMORY_BUDGET_POLICY_V1);
+  } finally { fx.close(); }
+});
+
+// MF4I-10 — workspace isolation: another Workspace cannot reuse the snapshot.
+test('MF4I-10 workspace isolation', () => {
+  const fx = fixture();
+  try {
+    fx.db.prepare(
+      'INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('ws_other', 'ws_other', 'C:/tmp/ws_other', 'C:/tmp/ws_other', NOW, NOW, NOW);
+    addEntry(fx);
+    const resolved = fx.resolver.resolve(resolveInput());
+    assert.equal(fx.snapshots.findById('ws_other', resolved.snapshot.id), undefined);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen', () => {
+  let clockMs = Date.parse(NOW);
+  const fx = fixture(() => clockMs);
+  try {
+    const marker = 'restricted-resolver-fixture-not-a-real-secret';
+    addEntry(fx, { sensitivity: 'restricted', pinned: true, title: marker, content: marker });
+    addEntry(fx, { expiresAt: NOW, content: 'already-expired-fixture' });
+    const eligible = addEntry(fx, { expiresAt: new Date(clockMs + 1000).toISOString(),
+      content: 'previously-valid-fixture' });
+    const first = fx.resolver.resolve(resolveInput());
+    assert.deepEqual(first.snapshot.selected.map(row => row.memoryId), [eligible]);
+    assert.equal(first.contextText.includes(marker), false);
+    assert.equal(first.contextText.includes('already-expired-fixture'), false);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), first.contextText);
+    clockMs += 1000;
+    const next = fx.resolver.resolve(resolveInput({ stageId: STAGE }));
+    assert.equal(next.contextText, '');
+    assert.deepEqual(next.snapshot.selected, []);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), first.contextText);
+    assert.equal(first.contextText.includes('previously-valid-fixture'), true);
+    assert.equal(fx.entries.findById(WS, eligible)?.status, 'active');
+  } finally { fx.close(); }
+});
+
+// LITE-07-013: the real Context path must retain the degradation explanation. The
+// resolver is what a Run actually calls, so the persisted snapshot it writes has to say
+// whether its ranking ran with or without FTS.
+test('LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'alpha', content: 'body alpha' });
+    // Operators only: no usable FTS tokens, so FTS ranking is skipped while the
+    // structured ranking still runs. That is the degraded mode the row is about.
+    const degraded = fx.resolver.resolve(resolveInput({ query: "***", createdAt: '2026-09-14T01:00:00.000Z' }));
+    assert.equal(degraded.snapshot.retrievalDegraded, true);
+    assert.equal(fx.snapshots.findById(WS, degraded.snapshot.id)?.retrievalDegraded, true,
+      "the durable snapshot must carry the degradation, not just the in-memory record");
+
+    // The negative control on the same path: a healthy query is not reported as degraded.
+    const healthy = fx.resolver.resolve(resolveInput({
+      stageId: STAGE, query: 'alpha', createdAt: '2026-09-14T01:00:00.000Z',
+    }));
+    assert.equal(healthy.snapshot.retrievalDegraded, false);
+  } finally { fx.close(); }
+});
+
+test('concurrent prepared replays share one original snapshot and subsequent replays skip preparation', async () => {
+  const fx = fixture();
+  try {
+    const memoryId = addEntry(fx);
+    let calls = 0;
+    const original = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    fx.retrieval.retrievePrepared = async input => { calls += 1; return original(input); };
+    const [first, second] = await Promise.all([
+      fx.resolver.resolvePrepared(resolveInput()), fx.resolver.resolvePrepared(resolveInput()),
+    ]);
+    assert.equal(first.snapshot.id, second.snapshot.id);
+    assert.equal(second.contextText, first.contextText);
+    assert.equal(first.reused, false);
+    assert.equal(second.reused, true);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 1);
+    fx.db.prepare("UPDATE memory_entries SET status='archived',version=version+1 WHERE id=?").run(memoryId);
+    const previousCalls = calls;
+    const replay = await fx.resolver.resolvePrepared(resolveInput({ query: 'changed request must not replace invocation context' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, first.contextText);
+    assert.equal(calls, previousCalls);
+  } finally { fx.close(); }
+});
+
+test('new canonical scopes check the current workspace switch before retrieval and after preparation', async () => {
+  const fx = fixture();
+  try {
+    const memoryId = addEntry(fx);
+    let enabled = false;
+    let calls = 0;
+    const selector = new MemoryContextBudgetSelector(fx.retrieval, fx.snapshots);
+    const resolver = new MemoryContextResolver({
+      store: { getDatabase: () => fx.db as unknown as TransactionDatabase },
+      selector, snapshots: fx.snapshots, isMemoryEnabled: () => enabled,
+    });
+    const original = fx.retrieval.retrievePrepared.bind(fx.retrieval);
+    fx.retrieval.retrievePrepared = async input => { calls += 1; return original(input); };
+    fx.retrieval.retrieveWithStatus = () => { throw new Error('disabled synchronous retrieval must not run'); };
+    const disabledSync = resolver.resolve(resolveInput({ stageId: 'disabled-sync' }));
+    assert.equal(disabledSync.contextText, '');
+    assert.equal(disabledSync.snapshot.totalTokens, 0);
+    assert.match(disabledSync.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const disabledPrepared = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-prepared' }));
+    assert.deepEqual(disabledPrepared.snapshot.selected, []);
+    assert.equal(calls, 0);
+
+    enabled = true;
+    const first = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.deepEqual(first.snapshot.selected.map(row => row.memoryId), [memoryId]);
+    const firstBody = first.contextText;
+    fx.retrieval.retrievePrepared = async input => {
+      calls += 1;
+      const result = await original(input);
+      enabled = false;
+      return result;
+    };
+    const disabledAfterAwait = await resolver.resolvePrepared(resolveInput({ stageId: 'disabled-after-await' }));
+    assert.equal(disabledAfterAwait.contextText, '');
+    assert.equal(disabledAfterAwait.snapshot.totalTokens, 0);
+    assert.deepEqual(disabledAfterAwait.snapshot.selected, []);
+    assert.match(disabledAfterAwait.snapshot.retrievalStrategyVersion, /memory-disabled/);
+    const beforeReplay = calls;
+    const replay = await resolver.resolvePrepared(resolveInput({ stageId: 'enabled-stage' }));
+    assert.equal(replay.reused, true);
+    assert.equal(replay.contextText, firstBody);
+    assert.equal(calls, beforeReplay);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), firstBody);
+  } finally { fx.close(); }
+});

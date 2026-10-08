@@ -1,0 +1,1130 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:20:53.580Z",
+  "evidencePackage": "S8-runtime-verify-triage-summary",
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "summary": {
+    "ledgerRows": 205,
+    "ledgerCandidateSupported": 99,
+    "ledgerOpen": 106,
+    "judged": 107,
+    "effectiveJudgments": 106,
+    "superseded": 1,
+    "accepted": 75,
+    "rejected": 31,
+    "unjudged": 0,
+    "batches": 12
+  },
+  "accepted": [
+    {
+      "id": "LITE-00-004",
+      "clause": "a Run survives browser disconnect;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "coveringAssertion": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "currentPointer": "（未记录可运行测试文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-008",
+      "clause": "one Workspace cannot admit two modifying Runs;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（内容为 ULID 身份测试，不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-010",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "coveringAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-005",
+      "clause": "retry creates a new Run lineage;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-00-007",
+      "clause": "recovery classifies uncertainty without guessing completion;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "coveringAssertion": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "currentPointer": "（未记录可运行测试文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-00-006",
+      "clause": "Windows cancellation handles the owned process tree;",
+      "batch": "triage-00.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "currentPointer": null,
+      "limits": null
+    },
+    {
+      "id": "LITE-00-010",
+      "clause": "Memory selection is reproducible and explainable;",
+      "batch": "triage-02.json",
+      "coveringFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "coveringAssertion": "MF4I-02 resolve is idempotent per run scope",
+      "currentPointer": "同一文件（指针正确，断言名不含条款词元）",
+      "limits": null
+    },
+    {
+      "id": "LITE-07-101",
+      "clause": "显式用户保存触发",
+      "batch": "triage-01.json",
+      "coveringFile": "apps/server/src/routes/memoryRuntime.test.ts",
+      "coveringAssertion": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "currentPointer": "同一文件（指针正确，只是断言名不含条款词元）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-101",
+      "clause": "有界Workflow templates及真实实例化",
+      "batch": "triage-01.json",
+      "coveringFile": "packages/shared/wf-template-instantiation.test.ts",
+      "coveringAssertion": "WFI-10 every template compiles",
+      "currentPointer": null,
+      "limits": "覆盖的是模板→payload 的实例化契约，不创建 canonical Run（Run 创建由 02/11 的行覆盖）。"
+    },
+    {
+      "id": "LITE-01-011",
+      "clause": "Stage remains optional and bounded;",
+      "batch": "triage-02.json",
+      "coveringFile": "packages/shared/wf-template-instantiation.test.ts",
+      "coveringAssertion": "WFI-04 optional security review",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）",
+      "limits": "同一行为的另一份断言 WFT-12（packages/shared/wf-templates.test.ts）不在本批次文件集内、未执行，故不作为取证依据（避免引用未执行断言）。"
+    },
+    {
+      "id": "LITE-02-013",
+      "clause": "Process exit does not falsely complete a Run;",
+      "batch": "triage-02.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "limits": null
+    },
+    {
+      "id": "LITE-00-013",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "batch": "triage-02.json",
+      "coveringFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "coveringAssertion": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "currentPointer": "同一文件（群聊半句覆盖；模板半句在另一文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-02-006",
+      "clause": "transition-to-Event mappings remain exact;",
+      "batch": "triage-03.json",
+      "coveringFile": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "coveringAssertion": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "currentPointer": "同一文件（指针正确）",
+      "limits": null
+    },
+    {
+      "id": "LITE-02-012",
+      "clause": "retry creates a new Run with preserved lineage;",
+      "batch": "triage-03.json",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "limits": null
+    },
+    {
+      "id": "LITE-02-002",
+      "clause": "Task creation is idempotent and separate from Run creation;",
+      "batch": "triage-03.json",
+      "coveringFile": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "coveringAssertion": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-004",
+      "clause": "Task supports zero or many Runs;",
+      "batch": "triage-04.json",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（内容为 ULID 身份测试，不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-01-006",
+      "clause": "Run and Process can be queried independently;",
+      "batch": "triage-04.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）",
+      "limits": "这是投影层证据（Inspector 端口），不是「两个独立 repository 查询 API」的直接断言；若要求更严格的 repository 级独立性，需要补一条针对 RunRepository/ProcessRepository 分别查询的断言。"
+    },
+    {
+      "id": "LITE-06-006",
+      "clause": "non-Git Workspaces report `not-git` without silent fallback;",
+      "batch": "triage-04.json",
+      "coveringFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "coveringAssertion": "non-Git directory yields the exact C-locale NOT_GIT snapshot",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（属准入子系统，不覆盖 Git 观测）",
+      "limits": null
+    },
+    {
+      "id": "LITE-06-007",
+      "clause": "diff Artifacts are immutable and checksummed;",
+      "batch": "triage-04.json",
+      "coveringFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "coveringAssertion": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "limits": "断言覆盖「不可变终态门禁与崩溃顺序」；未看到对 diff 内容做校验和（hash）字段的断言，若规范要求校验和字段本身，需要补一条。"
+    },
+    {
+      "id": "LITE-06-008",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "batch": "triage-04.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+      "coveringAssertion": "WorkflowDefinitionRepository selects and exposes exact V2 metadata",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "limits": "覆盖「历史 worktree 字段可读」；条款并列的「Events remain readable」在本断言中未直接体现，若需要应补一条历史 Event 读取断言。"
+    },
+    {
+      "id": "LITE-06-010",
+      "clause": "no automatic or destructive Git command is executed by observation;",
+      "batch": "triage-04.json",
+      "coveringFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "coveringAssertion": "L1C-M1-04 GitCommandPort accepts only structured read families",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "limits": "「mutation 族不可表达」是**编译期**保证（@ts-expect-error 由 typecheck 而非本收据的运行时断言验证）；运行时收据证明的是结构化读族请求可被正常执行。两者合起来才覆盖该条款。"
+    },
+    {
+      "id": "LITE-05-001",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "batch": "triage-05.json",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "only the winning created->starting CAS calls spawn; losers join without spawning",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（FILETIME 身份分类，与本条无关）",
+      "limits": null
+    },
+    {
+      "id": "LITE-05-008",
+      "clause": "browser disconnect leaves the Process running;",
+      "batch": "triage-05.json",
+      "coveringFile": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json",
+      "coveringAssertion": "LITE-02-009-A2 runtime-inspector-process-active-after-disconnect",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）",
+      "limits": "证据是真实 HTTP 断言收据（非单元测试）；单元层未见等价断言（检索 'browser disconnect leaves Process running' 无命中），若要求单元级复现需补一条。"
+    },
+    {
+      "id": "LITE-05-011",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "batch": "triage-05.json",
+      "coveringFile": "apps/server/src/taskRecovery.test.ts",
+      "coveringAssertion": "P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）",
+      "limits": "这是**结构性**证据（端口注入模式）＋结果断言，不是「断言某函数内部没有发起 OS 调用」的直接断言。若要求更强的直接证据（例如在写事务内断言无 verifier 调用计数），需补一条。"
+    },
+    {
+      "id": "LITE-07-002",
+      "clause": "source requirement for automatic Entries;",
+      "batch": "triage-05.json",
+      "coveringFile": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "coveringAssertion": "MF2R-03 automatic candidate without source rejects",
+      "currentPointer": "apps/server/src/services/MemoryContextResolver.test.ts（快照/注入契约，不覆盖 source 要求）",
+      "limits": null
+    },
+    {
+      "id": "LITE-07-006",
+      "clause": "deterministic ranking with reasons;",
+      "batch": "triage-05.json",
+      "coveringFile": "apps/server/src/routes/memoryRuntime.test.ts",
+      "coveringAssertion": "MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag",
+      "currentPointer": "apps/server/src/services/MemoryContextResolver.test.ts（指针正确，断言名不含条款词元）",
+      "limits": null
+    },
+    {
+      "id": "LITE-07-010",
+      "clause": "no bulk transcript or Provider-history promotion;",
+      "batch": "triage-05.json",
+      "coveringFile": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+      "coveringAssertion": "MF2R-G1 completed Run generates a review-required Candidate with bounded evidence",
+      "currentPointer": "同一文件（指针正确，断言名不含条款词元）",
+      "limits": "「不提升 bulk transcript」由内容组成断言间接覆盖（内容只由 Run/Stage 记录拼装）；若要求一条对超长 transcript 输入的直接否证断言，需补一条。"
+    },
+    {
+      "id": "LITE-09-002",
+      "clause": "Task creation and Run creation are distinct and idempotent;",
+      "batch": "triage-06.json",
+      "coveringFile": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "coveringAssertion": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（Turn 流式/取消/快照，不覆盖本条）",
+      "limits": "同一断言同时覆盖 09-002 与 02-002 两句；若要求 09 文档语境的独立复现，需要补一条在该语境下的断言。"
+    },
+    {
+      "id": "LITE-09-018",
+      "clause": "search excludes secrets.",
+      "batch": "triage-06.json",
+      "coveringFile": "apps/server/src/services/AgentHistoryService.test.ts",
+      "coveringAssertion": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-002",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "batch": "triage-06.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+      "coveringAssertion": "T14 PRAGMA integrity_check returns ok after 005/006",
+      "currentPointer": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts（仅 2 条断言，只覆盖注册顺序）",
+      "limits": "「backup」一项由运行器必须注入 backupProvider 这一结构性约束体现（各迁移测试均如此构造），未见专门断言「备份内容可读回并校验哈希」的用例；若要求更强的备份完整性证据，需要补一条。"
+    },
+    {
+      "id": "LITE-09-007",
+      "clause": "browser disconnect leaves Run and Process active;",
+      "batch": "triage-06.json",
+      "coveringFile": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json",
+      "coveringAssertion": "LITE-02-009-A2 runtime-inspector-process-active-after-disconnect",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）",
+      "limits": "证据是真实 HTTP 断言收据（非单元测试）；单元层未见等价断言。"
+    },
+    {
+      "id": "LITE-09-012",
+      "clause": "budgets, stop, and loop guard terminate every group interaction;",
+      "batch": "triage-06.json",
+      "coveringFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "coveringAssertion": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-09-015",
+      "clause": "@all never launches parallel modification;",
+      "batch": "triage-06.json",
+      "coveringFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "coveringAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）",
+      "limits": "「不并行」由「class 恒为 modifying」+ 驱动串行实现推出，而非一条直接断言「并发度 ≤ 1」的用例；本轮 S5 群聊候选证据包（#168 已合并）在真实驱动上观测到 maxConcurrent===1，可作为更强的补充证据。"
+    },
+    {
+      "id": "LITE-11-010",
+      "clause": "optimistic races have one winner;",
+      "batch": "triage-07.json",
+      "coveringFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "coveringAssertion": "P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（SSE 流契约，不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-11-002",
+      "clause": "create-task and start-run are separate and idempotent;",
+      "batch": "triage-07.json",
+      "coveringFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "coveringAssertion": "create-task and start-run bridge a Message into durable work",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖本条）",
+      "limits": "start-run 的**单请求重放**幂等（同 key 返回同一 Operation）由 R27 之外的用例覆盖（本轮未逐条核对），此处依据的是并发竞争收敛。"
+    },
+    {
+      "id": "LITE-11-011",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "batch": "triage-07.json",
+      "coveringFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "coveringAssertion": "history endpoint returns the agent unified references",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-11-013",
+      "clause": "deferred API families are not active requirements.",
+      "batch": "triage-07.json",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 no web module implements a deferred product surface",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "limits": "扫描对象是 web 侧路由与模块；服务端是否暴露对应路由未在本断言范围内（若要求服务端侧同口径断言，需补一条）。"
+    },
+    {
+      "id": "LITE-11-008",
+      "clause": "one Workspace never admits two modifying Runs;",
+      "batch": "triage-07.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-006",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/web/src/lib/directConversation.test.ts",
+      "coveringAssertion": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（布局，不覆盖本条）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-009",
+      "clause": "bounded Group controls;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+      "coveringAssertion": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-011",
+      "clause": "Memory selection explanation;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "coveringAssertion": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-014",
+      "clause": "keyboard core flow and stable focus;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/web/src/lib/uiFoundation.test.ts",
+      "coveringAssertion": "UIF-13 accessibility rules",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（布局断言不覆盖键盘流）",
+      "limits": "这是**契约常量**断言，不证明组件在真实浏览器中的实际焦点行为（无 DOM/浏览器运行时断言）。WorkbenchShell 另断言 CSS 暴露 `--focus-ring` 变量，属同一契约面。"
+    },
+    {
+      "id": "LITE-12-002",
+      "clause": "shared semantic token coverage;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/web/src/lib/uiFoundation.test.ts",
+      "coveringAssertion": "UIF-14 uiCssVariables flattens all semantic tokens",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（同一主题的组件侧断言存在，但 token 完备性在本文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-013",
+      "clause": "Agent-unified History and secret-free Search;",
+      "batch": "triage-08.json",
+      "coveringFile": "apps/server/src/services/AgentHistoryService.test.ts",
+      "coveringAssertion": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "limits": "覆盖服务端契约；**未**覆盖 UI 组件对这两项的实际渲染（HistorySearchView/HistorySearch 的组件断言在 apps/web/src/lib/historySearch.test.tsx，本轮未纳入判读的覆盖文件）。"
+    },
+    {
+      "id": "LITE-13-002",
+      "clause": "Run, Stage, Provider, Process, and duration are distinct;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（同一投影的 HTTP 面，仅 4 条断言）",
+      "limits": null
+    },
+    {
+      "id": "LITE-13-003",
+      "clause": "Process ID is never confused with PID;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-13-004",
+      "clause": "strict Event order, gap recovery, and deduplication;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-05 events are ordered and bounded",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "limits": "「缺口恢复」以游标语义断言体现（INSP-06），未构造真实缺帧并断言补齐行为。"
+    },
+    {
+      "id": "LITE-13-014",
+      "clause": "browser disconnect leaves execution active;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "coveringAssertion": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-13-015",
+      "clause": "replay has zero external side effects;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-07 inspect performs no writes",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "limits": "覆盖的是 Inspector 投影的只读性；条款若指其他重放路径（如 Event 重放），其零副作用由 m3-p6 的 outbox/event 断言覆盖，本包未逐条重放。"
+    },
+    {
+      "id": "LITE-13-008",
+      "clause": "recovery never guesses success;",
+      "batch": "triage-09.json",
+      "coveringFile": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "coveringAssertion": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-003",
+      "clause": "opaque IDs and Process ID/PID distinction;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（仅注册顺序，不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-004",
+      "clause": "Task zero/many Runs and retry child lineage;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-006",
+      "clause": "Event append-only and per-Run ordering;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "coveringAssertion": "runtime Events are append-only and preserve Run correlation constraints",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-007",
+      "clause": "Event/Outbox atomicity and replay;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "coveringAssertion": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-008",
+      "clause": "idempotency convergence;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "coveringAssertion": "P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-009",
+      "clause": "optimistic race winner;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/store/__tests__/RunRepository.test.ts",
+      "coveringAssertion": "T48 concurrent transitions produce exactly one winner",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-010",
+      "clause": "Process reserve-before-spawn;",
+      "batch": "triage-10.json",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "only the winning created->starting CAS calls spawn; losers join without spawning",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-011",
+      "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "coveringAssertion": "L1D-U03 frozen classifier, not requested class, is effective authority",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-012",
+      "clause": "fail-closed recovery evidence;",
+      "batch": "triage-10.json",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "cleanup terminateTree throw fails closed as unknown platform uncertainty",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-013",
+      "clause": "bounded finalized output references;",
+      "batch": "triage-10.json",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "retained cap fails closed BEFORE any byte commit",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-014",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/store/SqliteStore.test.ts",
+      "coveringAssertion": "records the tombstone schema through MigrationRunner and keeps it after restart",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-015",
+      "clause": "compatibility reads without data loss;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+      "coveringAssertion": "[M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": "覆盖 Workspace 兼容复制路径；其他兼容读取面（如 legacy task 读取）由 m2-7 其它套件覆盖，本包未逐条重放。"
+    },
+    {
+      "id": "LITE-10-016",
+      "clause": "no secret persistence;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/store/MemoryEntryRepository.test.ts",
+      "coveringAssertion": "MF1R-15 record exposes no secret value field",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-10-017",
+      "clause": "no clean-sheet schema replacement;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "coveringAssertion": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "currentPointer": "同一文件（本条是唯一指针正确的行）",
+      "limits": "「无 clean-sheet 替换」由注册表顺序 + 各迁移的增量对比断言共同支撑；没有一条单独的「禁止重写历史迁移」断言。"
+    },
+    {
+      "id": "LITE-00-003",
+      "clause": "Task, Run, Process, and Event remain distinct and traceable;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "currentPointer": "（未记录可运行测试文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-00-009",
+      "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "batch": "triage-10.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn",
+      "currentPointer": "（未记录可运行测试文件）",
+      "limits": null
+    },
+    {
+      "id": "LITE-08-001",
+      "clause": "every high-impact action at an AgentOS-controlled or verified Provider pre-action boundary is decided before execution;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（审批生命周期，不是闸门前置性）",
+      "limits": null
+    },
+    {
+      "id": "LITE-08-002",
+      "clause": "DENY blocks AgentOS-owned spawn, destructive filesystem action, merge, push, and secret export;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "limits": "断言覆盖「拒绝阻断 AgentOS 拥有的执行」；条款并列的破坏性文件操作/merge/push/秘密导出四类**具体动作类型**没有逐类断言（它们由 Policy 延后范围界定，见 08-015）。"
+    },
+    {
+      "id": "LITE-08-008",
+      "clause": "snapshot hashes detect changed actions;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-08-013",
+      "clause": "no policy path bypasses single-writer admission;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-08-014",
+      "clause": "modifying execution succeeds without an AgentOS-owned Worktree;",
+      "batch": "triage-11.json",
+      "coveringFile": "docs/implementation/lite-closeout/S2S3-live-candidate-evidence.json",
+      "coveringAssertion": "S2E-ARTIFACT-01 / S2E-COMPLETION-01（真实运行）",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "limits": "证据来自真实 gate 运行（非单元断言）；单元层未见「无 Worktree 仍成功」的具名断言。"
+    },
+    {
+      "id": "LITE-08-015",
+      "clause": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 no web module implements a deferred product surface",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "limits": "扫描面是 web 路由与模块；服务端是否暴露 DSL/模拟接口不在该断言内（本轮未找到服务端侧同口径断言）。"
+    },
+    {
+      "id": "LITE-12-004",
+      "clause": "reduced-motion behavior;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "coveringAssertion": "SHELL-05 reduced motion collapses panel transitions to zero",
+      "currentPointer": "同一文件（指针正确）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-008",
+      "clause": "explicit Chat/Task/Run actions;",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/web/src/lib/directConversation.test.ts",
+      "coveringAssertion": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "currentPointer": "WorkbenchShell.test.tsx（布局，不覆盖）",
+      "limits": null
+    },
+    {
+      "id": "LITE-12-016",
+      "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+      "batch": "triage-11.json",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 the UI ships only the Lite route surface",
+      "currentPointer": "WorkbenchShell.test.tsx（不覆盖）",
+      "limits": null
+    }
+  ],
+  "rejected": [
+    {
+      "id": "LITE-00-011",
+      "clause": "Git changes are observable without AgentOS owning Git workflow execution;",
+      "batch": "triage-00.json",
+      "candidateFile": "apps/server/src/services/m3-p3e-integrated-verification.test.ts",
+      "candidateAssertion": "P3E-I01 HTTP start acceptance drives real engine execution to terminal with HTTP operation read and immutable replay",
+      "rationale": "断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-00-002",
+      "clause": "Conversation and Message records survive reconnect and restart;",
+      "batch": "triage-00.json",
+      "candidateFile": "apps/server/src/migrations/__tests__/cr5-migration-023.test.ts",
+      "candidateAssertion": "CR5-A6 reply rows require a real Message and are cascaded with the Conversation",
+      "rationale": "断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-01-015",
+      "clause": "archived or compatibility records do not disappear destructively;",
+      "batch": "triage-00.json",
+      "candidateFile": "apps/server/src/migrations/__tests__/m2-7-legacy-task-roundtrip.test.ts",
+      "candidateAssertion": "[M27-P3-T016] tasks apply writes only compatibility rows, synthesizes no canonical records, reruns as no-op, and maps backup failure and quarantine to stable exit codes",
+      "rationale": "断言体覆盖 legacy 导入只写兼容行、可重跑为 no-op 与退出码；与「归档/兼容记录不被破坏性移除」不是同一命题。需另找断言。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-04-006",
+      "clause": "errors normalize to stable codes with retryability;",
+      "batch": "triage-01.json",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "keeps precise auth-required, auth-expired, and generic session classifications",
+      "rationale": "断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-04-007",
+      "clause": "capability declarations match tested behavior;",
+      "batch": "triage-01.json",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "freezes an absent persisted Kimi version to the manifest compatibility version",
+      "rationale": "该文件的断言集中在版本冻结、启动计划、环境语义与鉴权分类；没有任何断言把「能力声明」与「被测试行为」对齐（例如声明 sessionResume 就必须有对应行为断言）。需另找或按缺口记录。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-04-008",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "batch": "triage-01.json",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "（关键词巧合）",
+      "rationale": "条款属于准入/只读资格（admission）子系统，而该文件是 Provider 适配器测试。真正的候选在 WorkspaceAdmissionAuthority.test.ts（L1D-I17/I18 关于 GRANTED READ_ONLY 与零副作用）或 p6-l1b-migration-016.test.ts。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-13-102",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "batch": "triage-01.json",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "INSP-01..INSP-12（overview/events/stages/processes/memory sections）",
+      "rationale": "断言体覆盖各 section 的投影字段与顺序（含 INSP-12 身份区分），但**没有任何断言覆盖条款后半句 Cancel/Retry 源链**（即 Inspector 是否暴露取消/重试的来源链）。条款两部分，缺一不可。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-04-101",
+      "clause": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
+      "batch": "triage-01.json",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "candidateAssertion": "drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage",
+      "rationale": "该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。",
+      "currentPointer": null,
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-02-001",
+      "clause": "Message-only turns do not create modifying Runs;",
+      "batch": "triage-02.json",
+      "candidateFile": "apps/web/src/lib/directConversation.test.ts",
+      "candidateAssertion": "DCUX-P01 chat send produces no Task and no Run",
+      "rationale": "仅有 UI 意图层断言（resolveComposerAction 的 actionCreatesWork===false），它证明的是 Composer 不会把 chat 模式映射成建 Task/Run 的动作，**不证明运行时**在 message-only turn 后不产生 Task/Run 行。全仓检索未找到运行时段言该行为的断言（ConversationTurnDriver.test.ts 的 TD-01..06 也不含此类断言）。按缺口记录：需要一条「chat turn 后 cr_agent_turns 之外的 Task/Run 行数不变」的断言。",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-02-016",
+      "clause": "Worktree absence does not block a modifying Run after Workspace admission;",
+      "batch": "triage-03.json",
+      "candidateFile": "apps/server/src/services/WorktreeManager.test.ts",
+      "candidateAssertion": "reconciles missing paths as failed without deleting worktrees",
+      "rationale": "断言体覆盖 WorktreeManager 对缺失路径的**协调与失败标记**，与「无 Worktree 时被准入的 modifying Run 仍可继续」不是同一命题。全仓检索未见断言「worktree 缺失 + 已准入 → Run 照常执行」的断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-06-011",
+      "clause": "Git observation wording never implies AgentOS-owned Git workflow.",
+      "batch": "triage-04.json",
+      "candidateFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "candidateAssertion": "truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot",
+      "rationale": "断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-05-009",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "batch": "triage-05.json",
+      "candidateFile": "packages/process-runtime/src/manager.test.ts",
+      "candidateAssertion": "idle timeout resets on activity",
+      "rationale": "三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）",
+      "partialCoverage": [
+        {
+          "item": "timeout",
+          "file": "packages/process-runtime/src/manager.test.ts",
+          "name": "idle timeout resets on activity",
+          "status": "有具名断言"
+        },
+        {
+          "item": "race-safe terminal transitions",
+          "file": "packages/process-runtime/src/races.test.ts",
+          "name": "RACE-S5: terminal boundary joins every late caller",
+          "status": "有具名断言（另有 RACE-S1..S4 与 durable-coordinator 的 late-success never running）"
+        },
+        {
+          "item": "approval-wait exclusion",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-09-008",
+      "clause": "Event projection never duplicates cards;",
+      "batch": "triage-06.json",
+      "candidateFile": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "candidateAssertion": "no duplicate sequence delivery",
+      "rationale": "候选断言覆盖的是「SSE 重放不重复投递同一 sequence」（传输层去重），而条款要求的是**投影层不产生重复卡片**（同一 canonical 事实在 UI 投影中只出现一次）。两者不是同一层。全仓检索未见「投影/卡片去重」的具名断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-11-001",
+      "clause": "Message post creates no Task or Run;",
+      "batch": "triage-07.json",
+      "candidateFile": "apps/web/src/lib/directConversation.test.ts",
+      "candidateAssertion": "DCUX-P01 chat send produces no Task and no Run",
+      "rationale": "与 LITE-02-001 同一情形：候选断言只覆盖 Composer 意图层（actionCreatesWork===false），不覆盖运行时「POST 消息后 Task/Run 行数不变」。全仓检索未见该运行时断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-11-012",
+      "clause": "Artifact DTOs leak no storage path;",
+      "batch": "triage-07.json",
+      "candidateFile": "apps/server/src/routes/artifacts.test.ts",
+      "candidateAssertion": "serves owned artifact content and rejects metadata-only artifacts",
+      "rationale": "该文件唯一的断言覆盖 content 服务（200、nosniff、CSP、metadata-only 409）与跨 Workspace 404，**没有任何断言检查 DTO 字段中不含存储路径**（例如 job 目录、绝对路径或内部文件名）。按缺口记录：需要一条对 Artifact DTO 字段集合/敏感字段的断言。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-11-005",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "batch": "triage-07.json",
+      "candidateFile": "apps/server/src/routes/canonicalRuns.test.ts",
+      "candidateAssertion": "P4B-R31 canonical routes do not shadow the frozen Start route",
+      "rationale": "候选断言只覆盖「新路由不遮蔽既有 Start 路由」这一条存在性/路由表性质，**没有断言 start/retry/cancel 的具体语义与错误码保持不变**（例如同一输入仍返回相同 httpStatus + error code 组合、字段形状不变）。虽然 R27/RY-C03 覆盖了 start/retry 的竞争错误码，但缺少一条对三者语义的**冻结基线对照**断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-11-009",
+      "clause": "API clients cannot obtain concurrent read-only admission through prompt or unverified claims;",
+      "batch": "triage-07.json",
+      "candidateFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "candidateAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "rationale": "发言者侧的「声明不等于资格」有断言；但条款主语是 **API 客户端**，需要通过准入接口提交能力声明并被拒的断言（例如 POST admission 携带未验证 enforcedWorkspaceReadOnly 时得到 MODIFYING/拒绝）。全仓检索未见该 API 侧断言。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "partialCoverage": [
+        {
+          "item": "prompt/声明不足以获得只读资格",
+          "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+          "name": "CG-S1/CG-S9 ...",
+          "status": "有具名断言（发言者侧）"
+        },
+        {
+          "item": "API 客户端无法通过未验证声明获得并发只读准入",
+          "file": "（未找到 API 侧断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-005",
+      "clause": "batched streaming and stable scroll;",
+      "batch": "triage-08.json",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-08 the Canvas keeps its minimum width",
+      "rationale": "全仓检索 `batched streaming` / `stable scroll` / `autoscroll` 均无命中；布局断言与流式批处理、滚动稳定性无关。条款两项（批处理流式、滚动稳定）都没有具名断言。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-12-007",
+      "clause": "complete async states;",
+      "batch": "triage-08.json",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-03 standard mode collapses the Inspector into an affordance",
+      "rationale": "检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-12-015",
+      "clause": "API-client-only access;",
+      "batch": "triage-08.json",
+      "candidateFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "candidateAssertion": "LITE-12-016 the UI ships only the Lite route surface",
+      "rationale": "候选断言覆盖的是「只发布 Lite 路由面」（范围边界），不是「访问仅经 API 客户端」（即 UI 不直连数据库/文件系统、所有数据经 HTTP API）。全仓检索未见该断言。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-12-101",
+      "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+      "batch": "triage-08.json",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-01 wide mode renders all four columns with landmarks",
+      "rationale": "四项中只有「四栏布局」有组件级断言；导航与通知状态缺具名断言，键盘流只有契约常量（非组件/浏览器行为）。按复合条款口径记驳回：需补导航、通知状态与组件级键盘流断言。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（仅覆盖布局一项）",
+      "partialCoverage": [
+        {
+          "item": "四栏布局与 landmark",
+          "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "status": "有具名断言"
+        },
+        {
+          "item": "导航",
+          "file": "（未找到 UI 导航断言）",
+          "name": "—",
+          "status": "缺"
+        },
+        {
+          "item": "通知状态",
+          "file": "（未找到通知状态断言）",
+          "name": "—",
+          "status": "缺"
+        },
+        {
+          "item": "键盘流",
+          "file": "apps/web/src/lib/uiFoundation.test.ts",
+          "name": "UIF-13 accessibility rules（契约常量）",
+          "status": "仅有契约层断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-005",
+      "clause": "bounded output without unbounded client state;",
+      "batch": "triage-09.json",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "INSP-05 events are ordered and bounded",
+      "rationale": "「bounded output」由 INSP-05 覆盖（截断并显式置 truncated）；「without unbounded client state」需要 UI 侧断言（组件在超长流下不累积状态），全仓检索未见该断言。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "partialCoverage": [
+        {
+          "item": "服务端输出有界",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-05 events are ordered and bounded（maxEvents=3 → events.length===3 且 truncated===true）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "客户端状态不无界增长",
+          "file": "（未找到 UI 侧断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-010",
+      "clause": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+      "batch": "triage-09.json",
+      "candidateFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "candidateAssertion": "P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201",
+      "rationale": "四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "partialCoverage": [
+        {
+          "item": "API",
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY01 … returns HTTP 201",
+          "status": "有具名断言"
+        },
+        {
+          "item": "Runtime",
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY-C03 … one 201 and one RUN_ACTIVE_EXISTS 409（存活 Run 数为 1）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "Policy",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        },
+        {
+          "item": "committed Event",
+          "file": "（未找到针对 cancel/retry 的 committed Event 断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-009",
+      "clause": "no reattach/takeover/direct-kill control;",
+      "batch": "triage-09.json",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（未找到候选）",
+      "rationale": "全仓检索 Inspector 断言中无 control/kill/reattach/takeover 相关断言；`process-reattach` 只出现在 m3-runtime 的**恢复模式事件载荷**枚举里，与「Inspector 不提供重连/接管/直接杀进程控件」不是同一命题。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-13-013",
+      "clause": "no secrets in DTOs;",
+      "batch": "triage-09.json",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（无直接断言）",
+      "rationale": "投影测试插入 `args_redacted_json`（结构上使用已脱敏列），但**没有一条断言检查 DTO 内不含秘密值**（例如断言投影字段集合、或断言某秘密串不出现在序列化结果中）。记忆侧的 `MF2R-11 record exposes no secret value field` 覆盖的是记忆记录形状，不是 Inspector/Artifact DTO。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-13-007",
+      "clause": "Git wording never implies ownership;",
+      "batch": "triage-09.json",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（未找到候选）",
+      "rationale": "与 LITE-06-011 同一缺口：全仓未见「Git 观测措辞不得暗示 AgentOS 拥有 Git 工作流」的文案/接口层断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-10-005",
+      "clause": "Snapshot immutability and child remapping;",
+      "batch": "triage-10.json",
+      "candidateFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "candidateAssertion": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "rationale": "不可变性有两条具名断言（契约冻结 + resolver 的不改写断言）；但「child remapping」（子实体在迁移/复述时的 ID 重映射）在全仓检索（child.*remap / remaps / 重映射断言）无命中。按复合条款口径记驳回。",
+      "currentPointer": "M2MigrationRegistryAcceptance.test.ts（不覆盖）",
+      "partialCoverage": [
+        {
+          "item": "快照不可变",
+          "file": "packages/shared/mf0-memory-contracts.test.ts",
+          "name": "MF0-19 snapshot immutability and event payload rules are frozen（mutable=false、rewrittenByLaterEntryEdits=false）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "child remapping",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ]
+    },
+    {
+      "id": "LITE-08-003",
+      "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+      "batch": "triage-11.json",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "candidateAssertion": null,
+      "rationale": "检索未找到「Provider 原生 merge/push 的可执行前置桥」相关断言；现有断言覆盖的是 AgentOS 控制的 spawn 闸门，不覆盖「Provider 原生动作 + 已验证可执行桥」这一条件式。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-08-004",
+      "clause": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "batch": "triage-11.json",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "candidateAssertion": null,
+      "rationale": "检索 `un-interceptable` / `never reported as blocked` 无命中；未找到「不可拦截动作不得被报告为已阻断」的断言，也未找到「不可用执行能力必须可见」的断言。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-08-012",
+      "clause": "browser disconnect does not decide;",
+      "batch": "triage-11.json",
+      "candidateFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "candidateAssertion": null,
+      "rationale": "检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。",
+      "currentPointer": "m3-p2c2b-composite-lifecycle.test.ts（不覆盖）",
+      "partialCoverage": null
+    },
+    {
+      "id": "LITE-09-001",
+      "clause": "Message-only Turns create no Task and no Run;",
+      "batch": "triage-11.json",
+      "candidateFile": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "candidateAssertion": null,
+      "rationale": "与 LITE-02-001/11-001 同一缺口：ConversationTurnDriver 的 14 条断言覆盖流式、失败、取消、快照与冻结选择，**没有**「message-only Turn 之后 Task/Run 行数不变」的运行时断言；唯一相关候选是 Composer 意图层断言（DCUX-P01），不在运行时。按缺口记录。",
+      "currentPointer": "同一文件（不覆盖本条）",
+      "partialCoverage": null
+    }
+  ],
+  "unjudged": [],
+  "superseded": [
+    {
+      "id": "LITE-00-010",
+      "earlierBatch": "triage-00.json",
+      "earlierVerdict": "rejected",
+      "laterBatch": "triage-02.json",
+      "laterVerdict": "accepted"
+    }
+  ],
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false,
+    "note": "accepted 表示已找到源码级、且在执行收据中通过的具名覆盖断言；rejected 表示按复合条款口径缺项。两者都不改矩阵。"
+  }
+}

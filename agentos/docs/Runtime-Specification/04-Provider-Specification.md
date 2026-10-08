@@ -872,7 +872,7 @@ interface ProviderValidationResult {
 Validation 可以：
 
 - 执行 version；
-- 执行 auth status；
+- 执行有界非交互认证证据探针（官方 CLI 的 -p --output-format stream-json）；
 - 读取配置状态；
 - 执行只读诊断。
 

@@ -1,0 +1,211 @@
+[
+  {
+    "id": "LITE-01-005-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-217",
+    "requirementId": "LITE-01-005",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "retry creates a new Run lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-005-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--218",
+    "requirementId": "LITE-01-005",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "retry creates a new Run lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-011-taskrunservice-captures-four-legacy-stages-on-initial-and-retry-with-latest-line-219",
+    "requirementId": "LITE-01-011",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "TaskRunService captures four Legacy stages on initial and retry with latest lineage",
+    "line": 141,
+    "expression": "assert.ok(first.snapshot);",
+    "clause": "Stage remains optional and bounded;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-002-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-220",
+    "requirementId": "LITE-02-002",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "Task creation is idempotent and separate from Run creation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-002-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--221",
+    "requirementId": "LITE-02-002",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "Task creation is idempotent and separate from Run creation;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-012-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-222",
+    "requirementId": "LITE-02-012",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "retry creates a new Run with preserved lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-012-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--223",
+    "requirementId": "LITE-02-012",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "retry creates a new Run with preserved lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-015-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-224",
+    "requirementId": "LITE-03-015",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "Conversation bridge deduplication;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-015-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--225",
+    "requirementId": "LITE-03-015",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "Conversation bridge deduplication;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-226",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-004-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--227",
+    "requirementId": "LITE-10-004",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "Task zero/many Runs and retry child lineage;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-008-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-228",
+    "requirementId": "LITE-10-008",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "idempotency convergence;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-008-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--229",
+    "requirementId": "LITE-10-008",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "idempotency convergence;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-002-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-230",
+    "requirementId": "LITE-11-002",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "create-task and start-run are separate and idempotent;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-002-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--231",
+    "requirementId": "LITE-11-002",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "create-task and start-run are separate and idempotent;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-003-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-232",
+    "requirementId": "LITE-11-003",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "Start returns durable acceptance;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-003-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--233",
+    "requirementId": "LITE-11-003",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "Start returns durable acceptance;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-010-p3c1-ry-s01-retry-acceptance-creates-a-queued-child-and-completed-v3-operation-234",
+    "requirementId": "LITE-11-010",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+    "line": 2060,
+    "expression": "assert.equal(result.httpStatus, 201);",
+    "clause": "optimistic races have one winner;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-010-p3c1-ry-s02-retry-persists-the-exact-fingerprint-child-fields-events-and-outbox--235",
+    "requirementId": "LITE-11-010",
+    "file": "apps/server/src/services/TaskRunService.test.ts",
+    "name": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+    "line": 2172,
+    "expression": "assert.equal(child.workspaceId, parent.workspaceId);",
+    "clause": "optimistic races have one winner;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

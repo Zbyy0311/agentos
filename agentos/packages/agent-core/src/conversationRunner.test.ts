@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentProfile, ExecutionStatus } from '@agentos/shared';
+import type { AgentProfile, ConversationMessage, ExecutionStatus, RunIntent } from '@agentos/shared';
 import type { NormalizedCliEvent } from './adapters/types.js';
-import { ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
+import { buildConversationPrompt, ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
 import { CLIError, CLIExecutor } from './executor.js';
 
 const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
@@ -22,6 +22,96 @@ afterEach(() => {
 });
 
 describe('ConversationAgentRunner', () => {
+  it('keeps the conversation contract domain-neutral across common request styles', () => {
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '协作 Agent',
+      systemPrompt: '提供清晰、可靠的帮助。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+    const cases: Array<{ readonly intent: RunIntent; readonly message: string }> = [
+      { intent: 'ask', message: '这个方案有哪些利弊？' },
+      { intent: 'ask', message: '帮我设计一份发布流程' },
+      { intent: 'review', message: '请分析这段产品需求并指出风险' },
+      { intent: 'execute', message: '请把这份 Markdown 导入当前工作区' },
+    ];
+
+    for (const item of cases) {
+      const prompt = buildConversationPrompt(agent, [], item.message, undefined, item.intent);
+      expect(prompt).toContain('你是 AgentOS 的通用协作 Agent。');
+      expect(prompt).toContain('不要把用户请求默认解释成编码、项目维护或文件修改任务');
+      expect(prompt).toContain(`本轮运行意图：${item.intent}`);
+      expect(prompt).toContain(item.message);
+      expect(prompt).toContain('问候、在线确认、简单问答、解释、比较和方案讨论应直接完成');
+      expect(prompt).not.toContain('请提供目标文件');
+    }
+  });
+
+  it('keeps historical Agent messages attributed to their durable sender', () => {
+    const agent: AgentProfile = {
+      id: 'agent_current', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '协作 Agent',
+      systemPrompt: '提供清晰、可靠的帮助。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+    const history: ConversationMessage[] = [
+      {
+        id: 'message-other', conversationId: 'conversation-1', workspaceId: 'workspace-1',
+        senderType: 'agent', senderAgentId: 'agent_other', content: '来自其他 Agent 的意见', createdAt: '2026-07-12T00:00:00.000Z',
+      },
+      {
+        id: 'message-current', conversationId: 'conversation-1', workspaceId: 'workspace-1',
+        senderType: 'agent', senderAgentId: 'agent_current', content: '当前 Agent 的意见', createdAt: '2026-07-12T00:00:01.000Z',
+      },
+      {
+        id: 'message-missing-sender', conversationId: 'conversation-1', workspaceId: 'workspace-1',
+        senderType: 'agent', content: '旧记录没有发送者标识', createdAt: '2026-07-12T00:00:02.000Z',
+      },
+      {
+        id: 'message-unknown-sender', conversationId: 'conversation-1', workspaceId: 'workspace-1',
+        senderType: 'agent', senderAgentId: 'agent_removed', content: '已不存在的 Agent 的意见', createdAt: '2026-07-12T00:00:03.000Z',
+      },
+    ];
+
+    const prompt = buildConversationPrompt(agent, history, '继续处理');
+
+    expect(prompt).toContain('Agent(agent_other): 来自其他 Agent 的意见');
+    expect(prompt).toContain('Codex: 当前 Agent 的意见');
+    expect(prompt).toContain('Agent(unknown): 旧记录没有发送者标识');
+    expect(prompt).toContain('Agent(agent_removed): 已不存在的 Agent 的意见');
+    expect(prompt).not.toContain('Codex: 来自其他 Agent 的意见');
+    expect(prompt).not.toContain('Codex: 旧记录没有发送者标识');
+  });
+
+  // LITE-09-101: the frozen Memory selection must reach the prompt the Provider sees.
+  it('places the frozen memory selection in the prompt and omits an empty one', async () => {
+    const prompts: string[] = [];
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, prompt) => {
+      prompts.push(prompt);
+      return {
+        stage: 'codex_manager', agentName: 'Codex', stdout: 'ok', stderr: '', exitCode: 0,
+        timestamp: '2026-07-12T00:00:00.000Z', duration: 1, mode: 'real',
+      };
+    });
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-memory-context', message: '继续做', history: [],
+      memoryContext: '### 上线约束\n端口必须显式校验',
+    }).run();
+    expect(prompts[0]).toContain('## 相关记忆');
+    expect(prompts[0]).toContain('端口必须显式校验');
+    // The block sits before the conversation sections and the current message.
+    expect(prompts[0]!.indexOf('## 相关记忆')).toBeLessThan(prompts[0]!.indexOf('## 当前用户消息'));
+
+    await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-memory-context-empty', message: '继续做', history: [],
+    }).run();
+    expect(prompts[1]).not.toContain('## 相关记忆');
+  });
+
   it('forwards each non-empty CLI output chunk as a streaming response event', async () => {
     process.env.AGENTOS_FORCE_MOCK = 'false';
     vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, _prompt, context) => {
@@ -290,6 +380,26 @@ describe('ConversationAgentRunner', () => {
 
     expect(result.status).toBe('failed');
     expect(result.error).toContain('exit code 1');
+  });
+
+  it('returns a bounded Provider timeout instead of an opaque CLI failure', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    vi.spyOn(CLIExecutor, 'execute').mockRejectedValue(new CLIError(
+      'OpenCode timed out', 'opencode_reviewer', null, '', undefined, 'inactivity_timeout',
+    ));
+    const agent: AgentProfile = {
+      id: 'opencode', workspaceId: 'workspace-1', name: 'OpenCode', role: 'opencode', roleTitle: 'Reviewer',
+      systemPrompt: 'Read-only review.', permissions: ['read', 'review'], enabled: true, cliCommand: 'opencode', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-provider-timeout', message: '检查项目', history: [],
+    }).run();
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('未收到 Provider 输出');
+    expect(result.error).toContain('限流');
   });
 
   it('reports cancellation separately from a CLI failure', async () => {

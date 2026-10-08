@@ -449,10 +449,12 @@ describe('M2.6 — Migration 010 idempotency_records schema', () => {
     }
   });
 
-  it('S26 registry order is exactly 001-013', () => {
+  it('S26 default registry order includes all registered migrations', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
-    assert.equal(new Set(ids).size, ids.length);
+    assert.deepEqual(ids, [...ids].sort());
+    assert.equal(new Set(ids).size, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.ok(ids.includes('052'));
+    assert.ok(ids.includes('053'));
   });
 
   it('S27 PRAGMA foreign_key_check passes after full migration', () => {

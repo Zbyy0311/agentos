@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -25,16 +25,54 @@ function createProjectRoot(): string {
   return root;
 }
 
+async function waitForFile(path: string, attempts = 500): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (existsSync(path)) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
+async function waitForRunStatus(
+  store: SqliteStore,
+  workspaceId: string,
+  conversationId: string,
+  status: 'completed' | 'failed' | 'cancelled',
+  attempts = 500,
+): Promise<ReturnType<SqliteStore['listRuns']>[number]> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const run = store.listRuns(workspaceId, conversationId)[0];
+    if (run?.status === status) return run;
+    if (run !== undefined && ['completed', 'failed', 'cancelled'].includes(run.status)) {
+      throw new Error(`Expected ${status} but observed ${run.status}`);
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for Run status ${status}`);
+}
+
 test('creates a direct conversation and streams a persisted response', async () => {
   const root = createProjectRoot();
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
   const store = new SqliteStore(root);
   const app = express();
   const server = app.listen(0);
+  const discovery: ModelDiscoveryService = {
+    async discover(input) {
+      const isKimi = /kimi/i.test(input.cliCommand);
+      return {
+        cliKind: isKimi ? 'kimi' : 'codex',
+        models: isKimi
+          ? [{ id: 'kimi-code/kimi-for-coding-highspeed', label: 'K2.7 Code Highspeed', thinkingEfforts: ['auto'], defaultThinkingEffort: 'auto' }]
+          : [{ id: 'selected-codex-model', label: 'Selected Codex Model', thinkingEfforts: ['auto', 'high'], defaultThinkingEffort: 'auto' }],
+        source: 'live', stale: false, discoveredAt: new Date().toISOString(),
+      };
+    },
+  };
   try {
     process.env.AGENTOS_FORCE_MOCK = 'true';
     app.use(express.json());
-    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store)));
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store), discovery));
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
@@ -74,7 +112,7 @@ test('creates a direct conversation and streams a persisted response', async () 
 
     const unsupportedEffort = await fetch(`${baseUrl}/agents/kimi`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ thinkingEffort: 'high' }),
+      body: JSON.stringify({ model: 'kimi-code/kimi-for-coding-highspeed', thinkingEffort: 'high' }),
     });
     assert.equal(unsupportedEffort.status, 400);
 
@@ -122,7 +160,10 @@ test('creates a direct conversation and streams a persisted response', async () 
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'route', mentionedAgentIds: ['outside'] }),
     });
-    assert.equal(invalidMention.status, 400);
+    // The legacy Runtime stream is intentionally closed for group discussions;
+    // new group turns must use the canonical bounded discussion endpoint so a
+    // second execution chain cannot be started accidentally.
+    assert.equal(invalidMention.status, 409);
 
     const renamedGroup = await fetch(`${baseUrl}/conversations/${group.conversation.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -135,8 +176,8 @@ test('creates a direct conversation and streams a persisted response', async () 
       body: JSON.stringify({ content: '修复登录模块' }),
     });
     const groupStream = await groupResponse.text();
-    assert.equal(groupResponse.status, 200);
-    assert.equal((groupStream.match(/^event: message$/gm) ?? []).length, 3);
+    assert.equal(groupResponse.status, 409);
+    assert.match(groupStream, /GROUP_DISCUSSION_REQUIRED/);
 
     const created = await fetch(`${baseUrl}/conversations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -462,6 +503,139 @@ test('reconnects to a completed Run without creating another message or executio
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps an initial Conversation execution alive after the client disconnects', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  const config = JSON.parse(readFileSync(join(root, 'workspace', 'workspaces.json'), 'utf8')) as { workspaces: Array<{ id: string; agents: Array<{ id: string; cliCommand: string; cliArgs: string[] }> }> };
+  const codex = config.workspaces.find(workspace => workspace.id === 'workspace-a')!.agents.find(agent => agent.id === 'codex')!;
+  const script = [
+    "const fs = require('node:fs');",
+    "const path = require('node:path');",
+    "const ready = path.join(process.cwd(), '.p5e-disconnect-ready');",
+    "const release = path.join(process.cwd(), '.p5e-disconnect-release');",
+    "fs.writeFileSync(ready, 'ready');",
+    "const timer = setInterval(() => { if (fs.existsSync(release)) { clearInterval(timer); console.log('transport survived'); } }, 5);",
+  ].join('');
+  codex.cliCommand = process.execPath;
+  codex.cliArgs = ['-e', script];
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(config), 'utf8');
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '架构师', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.createConversation({ id: 'disconnect-route-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Disconnect', agentId: 'codex', createdAt: '2026-07-14T02:00:00.000Z', updatedAt: '2026-07-14T02:00:00.000Z' });
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store)));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
+    const endpoint = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/conversations/disconnect-route-conversation/messages/stream`;
+
+    const requestController = new AbortController();
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ content: '断开连接后继续执行' }),
+      signal: requestController.signal,
+    });
+    assert.equal(response.status, 200);
+    await waitForFile(join(root, '.p5e-disconnect-ready'));
+
+    requestController.abort();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    writeFileSync(join(root, '.p5e-disconnect-release'), 'release');
+
+    const run = await waitForRunStatus(store, 'workspace-a', 'disconnect-route-conversation', 'completed');
+    assert.equal(store.listExecutions('workspace-a', 'disconnect-route-conversation').length, 1);
+    assert.equal(store.listMessages('workspace-a', 'disconnect-route-conversation').length, 2);
+    assert.equal(run.status, 'completed');
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LITE-GROUP-032 legacy group create and edit persist member runtime settings', async () => {
+  const root = createProjectRoot();
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  const discovery: ModelDiscoveryService = {
+    async discover(input) {
+      return {
+        cliKind: input.role === 'kimi' ? 'kimi' : 'codex',
+        models: [
+          { id: 'model-a', label: 'Model A', thinkingEfforts: ['auto', 'high'], defaultThinkingEffort: 'high' },
+          { id: 'model-b', label: 'Model B', thinkingEfforts: ['auto', 'low'], defaultThinkingEffort: 'low' },
+        ],
+        source: 'live', stale: false, discoveredAt: '2026-09-16T00:00:00.000Z',
+      };
+    },
+  };
+  try {
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store), discovery));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
+    const baseUrl = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a`;
+    const createdResponse = await fetch(`${baseUrl}/conversations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'group', title: '旧版可配置群聊', dispatchMode: 'leader_route',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '规划', sequence: 10, model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先拆解任务' },
+          { agentId: 'kimi', roleKind: 'worker', roleTitle: '执行', sequence: 20, model: 'model-b', thinkingEffort: 'low', additionalInstructions: '输出验证步骤' },
+        ],
+      }),
+    });
+    assert.equal(createdResponse.status, 201);
+    const created = await createdResponse.json() as { conversation: { id: string; settingsVersion: number }; members: Array<{ agentId: string; roleTitle: string; model?: string; thinkingEffort?: string; additionalInstructions?: string }> };
+    assert.equal(created.conversation.settingsVersion, 1);
+    const groupMembers = created.members.filter(member => member.agentId === 'codex' || member.agentId === 'kimi');
+    assert.deepEqual(groupMembers.map(member => ({ agentId: member.agentId, roleTitle: member.roleTitle, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions })), [
+      { agentId: 'codex', roleTitle: '规划', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '先拆解任务' },
+      { agentId: 'kimi', roleTitle: '执行', model: 'model-b', thinkingEffort: 'low', additionalInstructions: '输出验证步骤' },
+    ]);
+
+    const updatedResponse = await fetch(`${baseUrl}/conversations/${created.conversation.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expectedSettingsVersion: 1, dispatchMode: 'leader_route',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '新规划', sequence: 10, model: null, thinkingEffort: null, additionalInstructions: null },
+          { agentId: 'kimi', roleKind: 'worker', roleTitle: '新执行', sequence: 20, model: 'model-a', thinkingEffort: 'high', additionalInstructions: '只关注失败项' },
+        ],
+      }),
+    });
+    assert.equal(updatedResponse.status, 200);
+    const updated = await updatedResponse.json() as { conversation: { settingsVersion: number }; members: Array<{ agentId: string; model?: string; thinkingEffort?: string; additionalInstructions?: string }> };
+    assert.equal(updated.conversation.settingsVersion, 2);
+    assert.deepEqual(updated.members.filter(member => member.agentId === 'codex' || member.agentId === 'kimi').map(member => ({ agentId: member.agentId, model: member.model, thinkingEffort: member.thinkingEffort, additionalInstructions: member.additionalInstructions })), [
+      { agentId: 'codex', model: undefined, thinkingEffort: undefined, additionalInstructions: undefined },
+      { agentId: 'kimi', model: 'model-a', thinkingEffort: 'high', additionalInstructions: '只关注失败项' },
+    ]);
+
+    const staleResponse = await fetch(`${baseUrl}/conversations/${created.conversation.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedSettingsVersion: 1, members: [
+        { agentId: 'codex', roleKind: 'leader', roleTitle: '过期', sequence: 10 },
+        { agentId: 'kimi', roleKind: 'worker', roleTitle: '过期', sequence: 20 },
+      ] }),
+    });
+    assert.equal(staleResponse.status, 409);
+  } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     store.close();
     rmSync(root, { recursive: true, force: true });

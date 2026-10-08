@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:returns run list and aggregated details with workspace isolation and capped limit)",
+      "src/routes/runs.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/assertions.json",
+      "sha256": "6d9ff2b730073e4d4da6e4c59bdc85a648bceaad64977b2a444b9b5dd6a3ee98"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/execution.json",
+      "sha256": "0f67e2b243c59b638ca0c2bee67b0ef316493b0c7bf6d090a529105656af8b57"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/stdout.txt",
+      "sha256": "9f0903d4f70caa0063ef399765c0be8bbfaf0d37b9d70dd66ea4eb5627697fde"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A1",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 44,
+      "expression": "assert.deepEqual(list.runs.map(run => run.id), ['run-a']);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A2",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 51,
+      "expression": "assert.equal(details.run.resultSummary, '完成');",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A3",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 52,
+      "expression": "assert.equal(details.sourceMessage.content, '详情');",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A4",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 53,
+      "expression": "assert.equal(details.events[0]?.runId, 'run-a');",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A5",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 54,
+      "expression": "assert.equal(details.artifacts.length, 1);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A6",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 55,
+      "expression": "assert.equal(Object.hasOwn(details.artifacts[0]!, 'originalPath'), false);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A7",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 56,
+      "expression": "assert.equal(JSON.stringify(details).includes('C:/private/workspace/secret.txt'), false);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A8",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 57,
+      "expression": "assert.equal((await fetch(`${base}/workspace-b/runs/run-a`)).status, 404);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-11-012-returns-run-list-and-aggregated-details-with-workspace-isolation-and-capped-limi-102-A9",
+      "requirementId": "LITE-11-012",
+      "file": "apps/server/src/routes/runs.test.ts",
+      "name": "returns run list and aggregated details with workspace isolation and capped limit",
+      "line": 58,
+      "expression": "assert.equal((await fetch(`${base}/workspace-a/runs/unknown`)).status, 404);",
+      "clause": "Artifact DTOs leak no storage path;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

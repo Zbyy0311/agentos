@@ -1,0 +1,66 @@
+✔ MF2R-G1 completed Run generates a review-required Candidate with bounded evidence (160.6972ms)
+✔ MF2R-G2 replay converges on the existing Candidate (149.0859ms)
+✔ MF2R-G3 exact duplicate content converges with no new Candidate (141.5331ms)
+✔ MF2R-G4 normalized-hash near-duplicate forces review-required (145.8687ms)
+✔ MF2R-G4b FTS-similar near-duplicate forces review-required (145.0027ms)
+✔ LITE-07-003 LITE-07-107 terminal dedup ignores another task (147.7484ms)
+✔ LITE-07-003 LITE-07-107 terminal dedup ignores workspace scope (143.1589ms)
+✔ LITE-07-003 LITE-07-107 terminal dedup ignores another category (183.3599ms)
+✔ LITE-07-003 LITE-07-107 terminal dedup ignores archived (177.0359ms)
+✔ LITE-07-003 LITE-07-107 terminal dedup ignores deleted (178.6375ms)
+✔ LITE-07-107 exact terminal dedup adds source once without changing accepted content (166.8452ms)
+✔ MF2R-G5 non-terminal or unknown Run generates nothing (163.479ms)
+✔ MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run (163.5512ms)
+✔ MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code (157.1804ms)
+✔ MF2R input validation fails closed (151.4937ms)
+✔ LITE-07-102 restart sweep creates the missing Candidate through the real generator once (169.5727ms)
+✔ LITE-07-102 sweep proves causation from the persisted terminal Event (163.1289ms)
+✔ LITE-07-102 a terminal Run without a terminal Event is reported, never fabricated (153.384ms)
+✔ LITE-07-102 a failing generator is contained and the sweep continues (161.3633ms)
+✔ LITE-07-102 startup sweep is bounded per Workspace (163.9526ms)
+▶ RunEngineProviderDispatcher E2E
+  ✔ LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once (137.1946ms)
+  ✔ LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute (67.9688ms)
+  ✔ LITE-08-006: an approved request rejects a contradictory replay without changing the result (100.3588ms)
+  ✔ LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect (73.0177ms)
+  ✔ LITE-08-005: startup resume never bypasses a Run already marked recovery-required (65.6432ms)
+  ✔ LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation (98.3542ms)
+  ✔ LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence (66.4171ms)
+  ✔ LITE-07-104: completed adapter result reaches Artifact finalizer and Stage history before terminal Memory (136.056ms)
+  ✔ LITE-07-104: active execution cannot finalize a review Artifact (60.0163ms)
+  ✔ L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects (58.2077ms)
+  ✔ L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn (51.1006ms)
+  ✔ L1D-I18 freshly revalidated GRANTED READ_ONLY authority may pass the dispatcher gate (128.7342ms)
+  ✔ L1D-I19 QUEUED authorization never advances the queue and retains zero side effects (52.0925ms)
+  ✔ P5D maps only the exact proven stop identity into cancellation evidence (49.3558ms)
+  ✔ P5D rejects an unproven explicit stop before producing lifecycle evidence (45.5201ms)
+  ✔ consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle (57.1796ms)
+  ✔ drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage (130.2909ms)
+  ✔ MEDIUM-1A: joined-existing active stage causes ONE coordinator attempt per drive (no 128 no-progress loop) (53.4ms)
+  ✔ replay after terminal never re-dispatches or spawns again (125.1819ms)
+  ✔ P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once (78.953ms)
+  ✔ auth failure fails the Run canonically with zero spawns (67.144ms)
+  ﹣ current-machine Kimi gate: real kimi drives the full chain to completion (env-gated) (0.0731ms) # SKIP
+  ﹣ LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated) (0.0419ms) # SKIP
+  ﹣ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (0.0293ms) # SKIP
+  ﹣ LITE-04-101: real OpenCode completes the canonical production chain (env-gated) (0.0347ms) # SKIP
+  ✔ legacy-originated runs flow through the same authority to completion (legacy projection parity) (122.7414ms)
+  ✔ driveSafely drives one accepted run to completion (one spawn per stage) (124.8313ms)
+  ✔ driveSafely contains a post-claim coordinator failure into a canonical failure (no strand, no throw) (55.7402ms)
+  ✔ LITE-07-102: a contained post-claim failure still fires one terminal trigger for the failed Run (52.5226ms)
+  ✔ driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw) (61.696ms)
+  ✔ driveSafely is replay-safe: a second drive on a terminal run does not respawn (122.8623ms)
+  ✔ MF-4 integration: a configured resolver injects the persisted memory context into the stage prompt (126.5883ms)
+  ✔ MF-4 integration: a blocked injection prevents provider execution (57.5805ms)
+  ✔ MF-4 integration: a resolver snapshot failure prevents provider execution (59.6469ms)
+  ✔ MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped (128.4011ms)
+  ✔ MF-2R integration: a failing generator never changes the terminal Run (126.2201ms)
+✔ RunEngineProviderDispatcher E2E (2743.7161ms)
+ℹ tests 56
+ℹ suites 1
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 4
+ℹ todo 0
+ℹ duration_ms 6817.7096

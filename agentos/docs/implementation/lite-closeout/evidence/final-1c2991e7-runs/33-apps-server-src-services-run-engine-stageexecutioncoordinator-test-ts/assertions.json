@@ -1,0 +1,57 @@
+[
+  {
+    "id": "LITE-04-002-lite-04-002-mock-provider-success-one-session-one-process-completed-outcome-dura-232",
+    "requirementId": "LITE-04-002",
+    "file": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "name": "LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts",
+    "line": 1612,
+    "expression": "assert.equal(outcome.kind, 'completed');",
+    "clause": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-002-lite-04-002-mock-provider-auth-failure-fails-closed-before-claim-233",
+    "requirementId": "LITE-04-002",
+    "file": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "name": "LITE-04-002 Mock Provider auth failure fails closed before claim",
+    "line": 1638,
+    "expression": "assert.equal(outcome.kind, 'failed');",
+    "clause": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-002-lite-04-002-mock-provider-process-start-failure-compensates-durably-and-never-sp-234",
+    "requirementId": "LITE-04-002",
+    "file": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "name": "LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice",
+    "line": 1653,
+    "expression": "assert.equal(outcome.kind, 'failed');",
+    "clause": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-002-lite-04-002-mock-provider-non-zero-exit-maps-to-a-stable-provider-failure-with-e-235",
+    "requirementId": "LITE-04-002",
+    "file": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "name": "LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence",
+    "line": 1670,
+    "expression": "assert.equal(outcome.kind, 'failed');",
+    "clause": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-002-lite-04-002-mock-provider-process-crash-non-zero-termination-maps-to-failed-sess-236",
+    "requirementId": "LITE-04-002",
+    "file": "apps/server/src/services/run-engine/StageExecutionCoordinator.test.ts",
+    "name": "LITE-04-002 Mock Provider process crash (non-zero termination) maps to failed Session and exited Process evidence",
+    "line": 1697,
+    "expression": "assert.equal(outcome.kind, 'failed');",
+    "clause": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

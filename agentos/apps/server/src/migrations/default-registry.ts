@@ -11,6 +11,47 @@ import { migration010 } from './migrations/010-idempotency-records.js';
 import { migration011 } from './migrations/011-legacy-data-migration-foundation.js';
 import { migration012 } from './migrations/012-m3-runtime-schema.js';
 import { migration013 } from './migrations/013-workflow-creation-metadata-v2.js';
+import { migration014 } from './migrations/014-m4-process-runtime-schema.js';
+import { migration015 } from './migrations/015-p6-m3b-windows-native-birth-identity.js';
+import { migration016 } from './migrations/016-p6-l1-workspace-admission-persistence.js';
+import { migration017 } from './migrations/017-mf1-memory-entry-persistence.js';
+import { migration018 } from './migrations/018-mf4-memory-context-snapshot.js';
+import { migration019 } from './migrations/019-mf2-memory-candidate-conflict.js';
+import { migration020 } from './migrations/020-cr1-conversation-runtime-persistence.js';
+import { migration021 } from './migrations/021-cr2-agent-turn-persistence.js';
+import { migration022 } from './migrations/022-cr4-message-projection-persistence.js';
+import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js';
+import { migration024 } from './migrations/024-memory-snapshot-payloads.js';
+import { migration025 } from './migrations/025-mf5-workspace-event-stream.js';
+import { migration026 } from './migrations/026-mf2-approval-decision-persistence.js';
+import { migration027 } from './migrations/027-mf2-review-test-artifact.js';
+import { migration028 } from './migrations/028-lite-runtime-approval-requests.js';
+import { migration029 } from './migrations/029-s6-conversation-compaction.js';
+import { migration030 } from './migrations/030-s7-explicit-markdown-import.js';
+import { migration031 } from './migrations/031-mf5-retrieval-degraded.js';
+import { migration032 } from './migrations/032-group-member-runtime-settings.js';
+import { migration033 } from './migrations/033-group-runtime-settings-run-snapshot.js';
+import { migration034 } from './migrations/034-thinking-effort-max.js';
+import { migration035 } from './migrations/035-collaboration-workflow.js';
+import { migration036 } from './migrations/036-group-discussion-idempotency.js';
+import { migration037 } from './migrations/037-canonical-message-attachments.js';
+import { migration038 } from './migrations/038-collaboration-candidate-evidence.js';
+import { migration039 } from './migrations/039-collaboration-control.js';
+import { migration040 } from './migrations/040-collaboration-application-admission.js';
+import { migration041 } from './migrations/041-group-execution-ownership.js';
+import { migration042 } from './migrations/042-memory-turn-payloads.js';
+import { migration043 } from './migrations/043-memory-execution-contexts.js';
+import { migration044 } from './migrations/044-preference-confirmations.js';
+import { migration045 } from './migrations/045-memory-lifecycle-audit.js';
+import { migration046 } from './migrations/046-memory-verified-facts.js';
+import { migration047 } from './migrations/047-memory-version-feedback.js';
+import { migration048 } from './migrations/048-memory-vectors.js';
+import { migration049 } from './migrations/049-memory-lexical-index.js';
+import { migration050 } from './migrations/050-memory-feedback-resolutions.js';
+import { migration051 } from './migrations/051-memory-feedback-resolver-actor.js';
+import { migration052 } from './migrations/052-memory-entry-source-bindings.js';
+import { migration053 } from './migrations/053-collaboration-candidate-content-hash.js';
+import { migration054 } from './migrations/054-p2-recovery.js';
 import type { Migration } from './types.js';
 
 /**
@@ -28,6 +69,36 @@ import type { Migration } from './types.js';
  * 011: legacy data migration foundation registry + compatibility storage (M2.7)
  * 012: M3 Runtime Event, Operation, Stage, Outbox, Dead Letter and Recovery schema
  * 013: M3 Workflow creation metadata V2 definitions
+ * 014: M4 process runtime schema (provider sessions, runtime processes, output references)
+ * 015: P6-M3b Windows native process birth identity (additive canonical column)
+ * 016: P6-L1B Workspace Admission persistence (admissions, git observations,
+ *      runtime_artifacts provenance rebuild, same-Workspace legacy subject key)
+ * 017: MF-1 Memory Entry persistence (forward memory_entries, sources, FTS5)
+ * 018: MF-4 Memory Context Snapshot (immutable per-Run/Stage selection)
+ * 019: MF-2 Memory Candidate and Conflict persistence
+ * 020: CR-1 Conversation Runtime persistence (forward conversations/members/messages)
+ * 021: CR-2 Agent Turn and streaming checkpoint persistence
+ * 022: CR-4b idempotent Conversation message projection key persistence
+ * 023: CR-5 bounded Group Conversation persistence (budgets, stop, loop guard,
+ *      per-Agent Turn-scoped context snapshots)
+ * 024: MF-4 Memory Context Snapshot frozen injected-payload persistence
+ * 025: MF-5 Workspace Event stream (Run-less canonical Event history +
+ *      per-Workspace sequence allocator column)
+ * 026: MF-2 approval-decision persistence (durable approval decision record)
+ * 027: MF-2 unique immutable Artifact completion with Candidate provenance
+ * 028: Lite runtime approval request persistence and one-shot consumption
+ * 029: S6 Conversation Compaction
+ * 030: S7 explicit Markdown import
+ * 031: MF-5 degraded retrieval flag
+ * 032: CR-6 per-group-member runtime settings
+ * 033: CR-6 legacy group Run runtime-settings snapshot
+ * 034: provider-native max thinking effort for group members
+ * 035: durable collaboration task, candidate, and review state
+ * 036: idempotent canonical group discussion source-message binding
+ * 037: canonical Conversation Message attachment persistence
+ * 038: immutable collaboration candidate/review evidence and safe stage outputs
+ * 039: durable collaboration control claims and application recovery journals
+ * 053: canonical frozen collaboration candidate content hash
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -43,4 +114,45 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration011,
   migration012,
   migration013,
+  migration014,
+  migration015,
+  migration016,
+  migration017,
+  migration018,
+  migration019,
+  migration020,
+  migration021,
+  migration022,
+  migration023,
+  migration024,
+  migration025,
+  migration026,
+  migration027,
+  migration028,
+  migration029,
+  migration030,
+  migration031,
+  migration032,
+  migration033,
+  migration034,
+  migration035,
+  migration036,
+  migration037,
+  migration038,
+  migration039,
+  migration040,
+  migration041,
+  migration042,
+  migration043,
+  migration044,
+  migration045,
+  migration046,
+  migration047,
+  migration048,
+  migration049,
+  migration050,
+  migration051,
+  migration052,
+  migration053,
+  migration054,
 ];

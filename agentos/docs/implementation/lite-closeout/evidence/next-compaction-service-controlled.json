@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "services/ConversationCompactionService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-compaction-service-tap-capture/execution.json",
+      "sha256": "970f65f2e5310e24baacae945dea88efecb0b66f6c2e0b7ae30a3a80a1b99a98"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-compaction-service-tap-capture/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-compaction-service-tap-capture/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-compaction-service-tap-capture/stdout.txt",
+      "sha256": "de111185bf9305e5761bc75bcec604f38ba75bb0b0b7a53a9ba63cb66e9acd30"
+    }
+  ],
+  "counts": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "total": 8
+  },
+  "assertionCoverage": [
+    {
+      "id": "CMP-SERVICE-RETRY-PENDING",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 149,
+      "expression": "assert.equal(first.outcome, 'retry-pending');",
+      "clause": "A failed automatic compaction remains durably retry-pending before its bounded retry.",
+      "whyDirect": "The named production service test invokes the real compaction service with a failing summarizer and asserts the persisted-attempt outcome returned by the first automatic call.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-SERVICE-SAME-TASK",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 156,
+      "expression": "assert.equal(second.task?.id, first.task?.id, 'the retry resumes the existing attempt');",
+      "clause": "The automatic retry resumes the same durable compaction task.",
+      "whyDirect": "The service test compares the second attempt's durable task ID with the first task ID, proving retry recovery does not create an unrelated compaction chain.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-SERVICE-ATTEMPTS-EXHAUSTED",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 158,
+      "expression": "assert.equal(second.task?.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');",
+      "clause": "The automatic retry chain records exhaustion instead of scheduling indefinitely.",
+      "whyDirect": "The production service test observes the stable exhausted-retry failure code after the permitted automatic retry.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-SERVICE-ONE-AUTO-RETRY",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 159,
+      "expression": "assert.equal(calls, 2, 'one initial attempt plus exactly one automatic retry');",
+      "clause": "At most one automatic retry is spent for one failed source chain.",
+      "whyDirect": "The test counts actual summarizer invocations and directly asserts exactly the initial invocation plus one automatic retry.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-SERVICE-NO-THIRD-AUTO-CALL",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 165,
+      "expression": "assert.equal(calls, 2, 'a spent chain must not start a new Provider call');",
+      "clause": "An exhausted automatic chain does not schedule another Provider call on the next evaluation.",
+      "whyDirect": "The test invokes the service a third time and observes that the real summarizer call count remains two.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CMP-SERVICE-EXPLICIT-ONLY",
+      "requirementId": "LITE-09-107",
+      "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+      "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+      "line": 170,
+      "expression": "assert.notEqual(explicit.task?.id, first.task?.id, 'an explicit retry starts its own attempt');",
+      "clause": "A new attempt after automatic exhaustion requires an explicit retry request.",
+      "whyDirect": "The service test supplies resume=explicit and directly verifies that only that explicit path starts a new durable attempt.",
+      "outcome": "passed"
+    }
+  ]
+}

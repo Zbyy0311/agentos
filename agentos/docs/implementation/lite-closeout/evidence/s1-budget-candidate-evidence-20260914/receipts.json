@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T12:55:35.752Z",
+  "phases": {
+    "eligibility": {
+      "inWindow": "mem_001eeeeeeeeeeeeeeeeeeee",
+      "noWindow": "mem_002eeeeeeeeeeeeeeeeeeee",
+      "expired": "mem_003eeeeeeeeeeeeeeeeeeee",
+      "notYetValid": "mem_004eeeeeeeeeeeeeeeeeeee",
+      "restricted": "mem_005eeeeeeeeeeeeeeeeeeee",
+      "expiresLater": "mem_006eeeeeeeeeeeeeeeeeeee"
+    }
+  },
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S1E-PRICING-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "an Entry is priced by the text that is actually injected, not by its stored estimate",
+      "actual": {
+        "injectedText": "### short\ntiny",
+        "longInjectedTokens": 124,
+        "shortInjectedTokens": 4,
+        "storedEstimates": {
+          "long": 1,
+          "short": 9999
+        },
+        "selected": [
+          "mem_short"
+        ],
+        "totalTokens": 4,
+        "reasons": {
+          "mem_long": "token-budget"
+        }
+      },
+      "expected": {
+        "injectedText": "### short\ntiny",
+        "longInjectedTokens": 124,
+        "shortInjectedTokens": 4,
+        "storedEstimates": {
+          "long": 1,
+          "short": 9999
+        },
+        "selected": [
+          "mem_short"
+        ],
+        "totalTokens": 4,
+        "reasons": {
+          "mem_long": "token-budget"
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-THRESHOLD-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "confidence and importance thresholds exclude with their own reason",
+      "actual": {
+        "selected": [
+          "mem_ok"
+        ],
+        "reasons": {
+          "mem_low_confidence": "below-confidence",
+          "mem_low_importance": "below-importance"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_ok"
+        ],
+        "reasons": {
+          "mem_low_confidence": "below-confidence",
+          "mem_low_importance": "below-importance"
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-COUNT-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "the Entry count budget excludes the overflow and records every considered Entry",
+      "actual": {
+        "selected": [
+          "mem_a",
+          "mem_b"
+        ],
+        "reasons": {
+          "mem_c": "entry-budget"
+        },
+        "considered": 3
+      },
+      "expected": {
+        "selected": [
+          "mem_a",
+          "mem_b"
+        ],
+        "reasons": {
+          "mem_c": "entry-budget"
+        },
+        "considered": 3
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-SCOPE-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "a per-Scope limit is attributed to the Scope, not to the category",
+      "actual": {
+        "selected": [
+          "mem_task_1",
+          "mem_workspace"
+        ],
+        "reasons": {
+          "mem_task_2": "scope-excluded"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_task_1",
+          "mem_workspace"
+        ],
+        "reasons": {
+          "mem_task_2": "scope-excluded"
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-CATEGORY-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "a per-category limit is attributed to the category",
+      "actual": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge"
+        ],
+        "reasons": {
+          "mem_decision_2": "category-budget"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge"
+        ],
+        "reasons": {
+          "mem_decision_2": "category-budget"
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-DIVERSITY-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "requireDiversity keeps the set from being monopolized and explains the exclusion",
+      "actual": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge_1"
+        ],
+        "reasons": {
+          "mem_decision_2": "diversity-limit",
+          "mem_knowledge_2": "entry-budget"
+        }
+      },
+      "expected": {
+        "selected": [
+          "mem_decision_1",
+          "mem_knowledge_1"
+        ],
+        "reasons": {
+          "mem_decision_2": "diversity-limit",
+          "mem_knowledge_2": "entry-budget"
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-TRUNC-01",
+      "requirementId": "LITE-07-007",
+      "phase": "budget",
+      "step": "token-budget overflow is truncated explicitly and bounded, never silently",
+      "actual": {
+        "selected": [
+          "mem_t1"
+        ],
+        "reasons": {
+          "mem_t2": "truncated",
+          "mem_t3": "token-budget"
+        },
+        "truncated": true,
+        "totalTokens": 7,
+        "perEntryTokens": 7,
+        "budgetTokens": 13
+      },
+      "expected": {
+        "selected": [
+          "mem_t1"
+        ],
+        "reasons": {
+          "mem_t2": "truncated",
+          "mem_t3": "token-budget"
+        },
+        "truncated": true,
+        "totalTokens": 7,
+        "perEntryTokens": 7,
+        "budgetTokens": 13
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-ELIGIBILITY-01",
+      "requirementId": "LITE-07-109",
+      "phase": "eligibility",
+      "step": "temporal and access eligibility decide before ranking",
+      "actual": {
+        "now": "2026-09-14T00:00:00.000Z",
+        "returned": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "degraded": false,
+        "excludedIdsPresent": []
+      },
+      "expected": {
+        "now": "2026-09-14T00:00:00.000Z",
+        "returned": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "degraded": false,
+        "excludedIdsPresent": []
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S1E-DEGRADED-01",
+      "requirementId": "LITE-07-109",
+      "phase": "eligibility",
+      "step": "a query with no usable FTS tokens reports degraded while structured filters stay authoritative",
+      "actual": {
+        "degraded": true,
+        "rankedResults": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "sameSetAsRankedQuery": true,
+        "queryTextStored": 0
+      },
+      "expected": {
+        "degraded": true,
+        "rankedResults": [
+          "mem_001eeeeeeeeeeeeeeeeeeee",
+          "mem_002eeeeeeeeeeeeeeeeeeee",
+          "mem_006eeeeeeeeeeeeeeeeeeee"
+        ],
+        "sameSetAsRankedQuery": true,
+        "queryTextStored": 0
+      },
+      "outcome": "passed"
+    }
+  ]
+}

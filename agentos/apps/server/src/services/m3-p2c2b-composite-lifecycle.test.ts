@@ -368,6 +368,24 @@ function cancelForOperation(fixture: Fixture, overrides: Record<string, unknown>
   return inTransaction(fixture.db, () => method.call(fixture.service, operationCancellationInput(overrides)));
 }
 
+function cancelForOperationWithEvidence(
+  fixture: Fixture,
+  overrides: Record<string, unknown> = {},
+): CompositeLifecycleTransactionResult {
+  const method = (fixture.service as unknown as {
+    cancelRunForOperationWithEvidenceWithinTransaction(input: unknown): CompositeLifecycleTransactionResult;
+  }).cancelRunForOperationWithEvidenceWithinTransaction;
+  return inTransaction(fixture.db, () => method.call(fixture.service, {
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    correlationId: 'operation-evidence-correlation',
+    expectedRunVersion: 1,
+    terminatedProcessIds: ['proc_test_1'],
+    worktreePreserved: true,
+    ...overrides,
+  }));
+}
+
 function operationCancelStateSnapshot(fixture: Fixture): Record<string, unknown> {
   return {
     aggregate: stateSnapshot(fixture),
@@ -1652,6 +1670,152 @@ test('P2C-2B same-file concurrency permits only one composite cancellation', asy
     }
   } finally {
     rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test('HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+
+    const result = cancelForOperationWithEvidence(fixture, {
+      terminatedProcessIds: ['proc_test_1'],
+    });
+
+    assert.deepEqual(result.events.map(event => event.type), ['stage.cancelled', 'run.cancelled']);
+    assert.deepEqual(result.events.at(-1)?.payload, {
+      requestedBy: 'operation_api',
+      terminatedProcessIds: ['proc_test_1'],
+      worktreePreserved: true,
+    });
+    const persisted = fixture.runtimeEventRepository.queryByRun({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      afterSequence: 0,
+      limit: 20,
+    }).results;
+    assert.deepEqual((persisted.at(-1)?.event.payload as Record<string, unknown>).terminatedProcessIds, ['proc_test_1']);
+    assert.equal(result.run.status, 'cancelled');
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+    fixture.service.requestApproval(approvalInput({
+      stageId: STAGE_ID,
+      expectedStageVersion: 1,
+    }) as never);
+    const before = operationCancelStateSnapshot(fixture);
+    fixture.probe.nowCalls = 0;
+
+    assert.throws(
+      () => cancelForOperationWithEvidence(fixture, { expectedRunVersion: 1 }),
+      /runs run-composite-test: version conflict at version 1/,
+    );
+    assert.deepEqual(operationCancelStateSnapshot(fixture), before);
+    assert.equal(fixture.probe.nowCalls, 0);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence', () => {
+  const fixture = newFixture();
+  try {
+    insertStage(fixture, 'stage-z', 3, 'running');
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+    const requested = fixture.service.requestApproval(approvalInput({
+      stageId: STAGE_ID,
+      expectedStageVersion: 1,
+    }) as never);
+
+    const result = cancelForOperationWithEvidence(fixture, {
+      expectedRunVersion: requested.run.version,
+      terminatedProcessIds: ['proc_test_1'],
+      worktreePreserved: false,
+      reason: 'proof-backed approval cancellation',
+    });
+
+    assert.deepEqual(events(fixture).map(event => event.type).slice(1), [
+      'approval.resolved', 'stage.cancelled', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.equal((result.events[0]?.payload as Record<string, unknown>).decision, 'cancel_run');
+    assert.deepEqual((result.events.at(-1)?.payload as Record<string, unknown>).terminatedProcessIds, ['proc_test_1']);
+    assert.equal(result.run.status, 'cancelled');
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'waiting_approval');
+    const before = operationCancelStateSnapshot(fixture);
+
+    assert.throws(
+      () => inTransaction(fixture.db, () => fixture.service.cancelRunWithinTransaction(cancellationInput() as never)),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_STATE_MISMATCH',
+    );
+    assert.deepEqual(operationCancelStateSnapshot(fixture), before);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-05 new evidence seam is safe inside a caller-owned transaction', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+
+    assert.doesNotThrow(() => {
+      const result = cancelForOperationWithEvidence(fixture);
+      assert.equal(result.run.status, 'cancelled');
+    });
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+
+    const result = cancelForOperation(fixture);
+
+    assert.deepEqual(result.events.map(event => event.type), ['stage.cancelled', 'run.cancelled']);
+    assert.deepEqual(result.events.at(-1)?.payload, {
+      requestedBy: 'operation_api',
+      terminatedProcessIds: [],
+      worktreePreserved: true,
+    });
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('HANDOFF-07 evidence seam returns synchronously without an async transaction callback', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+
+    const result = cancelForOperationWithEvidence(fixture);
+
+    assert.equal(result instanceof Promise, false);
+  } finally {
+    closeFixture(fixture);
   }
 });
 

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction)",
+      "src/taskRecovery.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/assertions.json",
+      "sha256": "9771368aaa2cdf1b2eb4a789ae68510a6daf8cb801eb1e66ba8ce9e21e9c5f77"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/execution.json",
+      "sha256": "ccfbb526b81d6385220d74e95fb7eb6ffb53fd707b508e84a64a9ed3cf356263"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/47-apps-server-src-taskrecovery-test-ts/stdout.txt",
+      "sha256": "ced1e733baade0c16402a79dbd008a4ee8d27a2c5d00f14b137a09b15d79f1b8"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328",
+      "requirementId": "LITE-05-011",
+      "file": "apps/server/src/taskRecovery.test.ts",
+      "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+      "line": 745,
+      "expression": "assert.ok(callsAfterPreflight > 0, 'preflight must have invoked the verifier');",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

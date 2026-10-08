@@ -1,0 +1,79 @@
+[
+  {
+    "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-330-A1",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+    "line": 48,
+    "expression": "assert.ok(markup.includes('No messages in Release planning.'),",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-330-A2",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+    "line": 50,
+    "expression": "assert.ok(markup.includes('aria-label=\"Composer mode\"'),",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A1",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the error state is an announced alert, not silence",
+    "line": 56,
+    "expression": "assert.ok(markup.includes('role=\"alert\"'), 'an error is exposed as an alert role');",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A2",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the error state is an announced alert, not silence",
+    "line": 57,
+    "expression": "assert.ok(markup.includes('CONTEXT_SNAPSHOT_FAILED'), 'the error text is shown verbatim');",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A3",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 the error state is an announced alert, not silence",
+    "line": 58,
+    "expression": "assert.ok(markup.includes('Release planning'),",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-007-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-332-A1",
+    "requirementId": "LITE-12-007",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+    "line": 114,
+    "expression": "assert.ok(markup.length > 0, `state ${index} renders a surface`);",
+    "clause": "complete async states;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-101-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-333-A1",
+    "requirementId": "LITE-12-101",
+    "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+    "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+    "line": 114,
+    "expression": "assert.ok(markup.length > 0, `state ${index} renders a surface`);",
+    "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

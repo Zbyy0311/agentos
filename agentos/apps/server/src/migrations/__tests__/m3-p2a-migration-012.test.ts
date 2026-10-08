@@ -27,7 +27,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-02T00:00:00.000Z';
-const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
+const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -36,7 +36,16 @@ function freshDb(): Db {
 }
 
 function registryBefore012(): MigrationRegistry {
-  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '012' && migration.id !== '013'));
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id < '012'));
+}
+
+/**
+ * 001–015 (excludes 016). These M3-P2a tests build only the 011/012 schema and
+ * assert behavior through migration 012; 016's fail-closed prerequisite gate
+ * (correctly) refuses to apply onto that partial schema, so they stop at 015.
+ */
+function registryThrough015(): MigrationRegistry {
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id < '016'));
 }
 
 function migration012(): Migration {
@@ -215,7 +224,13 @@ function assertIntegrity(db: Db): void {
 }
 
 test('Migration Registry contains 012 in contract order', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), MIGRATION_IDS);
+  const ids = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  assert.deepEqual(ids.slice(0, MIGRATION_IDS.length), MIGRATION_IDS);
+  assert.equal(ids.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(ids, [...ids].sort());
+  assert.ok(ids.includes('052'), 'P1 source bindings migration 052 must be registered');
+  assert.ok(ids.includes('053'), 'Frozen candidate content hash migration 053 must be registered');
 });
 
 test('Migration 012 is destructive and a confirmed fresh database may skip an old-state backup', () => {
@@ -239,7 +254,7 @@ test('existing 001-011 file DB without backup fails before any Migration 012 DDL
     const idempotencyRow = ctx.db.prepare('SELECT id, operation, result_json FROM idempotency_records WHERE id = ?').get('idem_' + 'a'.repeat(26));
 
     assert.throws(
-      () => new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run(),
+      () => new MigrationRunner(ctx.db, registryThrough015()).run(),
       (error: unknown) => error instanceof MigrationError
         && error.code === 'MIGRATION_FAILED'
         && error.migrationId === '012'
@@ -283,12 +298,27 @@ test('existing 001-011 file DB is backed up under the lock before Migration 012'
   };
 
   try {
-    new MigrationRunner(observedDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), { backupProvider }).run();
+    // Stop at 015: this seeds only the 001-011 schema and asserts the 012/014
+    // backup sequence; 016 requires the full 015 schema and stays out of scope.
+    new MigrationRunner(observedDb, registryThrough015(), { backupProvider }).run();
     assert.deepEqual(events.slice(0, 2), ['lock', 'backup']);
 
+    // The full-registry run now crosses two destructive migrations: the runner
+    // takes one verified backup before 012 and another before 014.
     const backupFiles = readdirSync(backupDir).filter(file => file.endsWith('.db'));
-    assert.equal(backupFiles.length, 1);
-    const backupPath = join(backupDir, backupFiles[0]!);
+    assert.equal(backupFiles.length, 2);
+    let backupPath: string | undefined;
+    for (const file of backupFiles) {
+      const candidate = join(backupDir, file);
+      const candidateDb = new DatabaseSync(candidate);
+      try {
+        const ids = (candidateDb.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id);
+        if (ids.length === 11) backupPath = candidate;
+      } finally {
+        candidateDb.close();
+      }
+    }
+    assert.ok(backupPath, 'the pre-012 backup must contain only the 001-011 records');
     const firstBackupBytes = readFileSync(backupPath);
     const backupDb = new DatabaseSync(backupPath);
     try {
@@ -318,7 +348,7 @@ test('existing 001-011 file DB is backed up under the lock before Migration 012'
 
     fileProvider.backup(ctx.path);
     const backupFilesAfterSecondCopy = readdirSync(backupDir).filter(file => file.endsWith('.db'));
-    assert.equal(backupFilesAfterSecondCopy.length, 2, 'existing backup must not be overwritten');
+    assert.equal(backupFilesAfterSecondCopy.length, 3, 'existing backup must not be overwritten');
     assert.deepEqual(readFileSync(backupPath), firstBackupBytes);
   } finally {
     ctx.close();
@@ -359,7 +389,8 @@ test('legacy 001–011 rows and pending Stage data survive Migration 012', () =>
   const db = ctx.db;
   try {
     const before = db.prepare('SELECT id, status, version FROM run_stages WHERE id = ?').get('stage_p2a');
-    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    // Stop at 015: seeds the 001-011 schema and asserts 012 preservation only.
+    new MigrationRunner(db, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
     }).run();
     assert.deepEqual(db.prepare('SELECT id, status, version FROM run_stages WHERE id = ?').get('stage_p2a'), before);
@@ -374,7 +405,8 @@ test('Migration 012 checksum, order, repeat run and existing idempotency data ar
   const ctx = createLegacyFileDb();
   const db = ctx.db;
   try {
-    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    // Stop at 015: seeds the 001-011 schema and asserts 012 stability only.
+    new MigrationRunner(db, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
     }).run();
     const first = db.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all();
@@ -384,7 +416,8 @@ test('Migration 012 checksum, order, repeat run and existing idempotency data ar
     assert.equal((db.prepare("SELECT operation FROM idempotency_records WHERE id = ?").get('idem_' + 'a'.repeat(26)) as { operation: string }).operation, 'task.create');
     insertLegacyIdempotency(db, 'run.start', 'b');
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM idempotency_records WHERE operation = 'run.start'").get() as { count: number }).count, 1);
-    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    // Repeat run through 015 (no backup provider): must be a no-op for applied ids.
+    new MigrationRunner(db, registryThrough015()).run();
     const second = db.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all();
     assert.deepEqual(second, first);
   } finally {
@@ -407,7 +440,7 @@ test('Migration 012 rolls back the full existing-schema transition when CREATE o
     };
     assert.throws(() => new MigrationRunner(
       failingDb,
-      new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS]),
+      registryThrough015(),
       { backupProvider },
     ).run());
 
@@ -505,9 +538,9 @@ test('optional history references are not Foreign Keys and deleting their rows p
     `).run(NOW, NOW);
     db.prepare(`
       INSERT INTO runtime_artifacts (
-        id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title,
+        id, workspace_id, provenance_kind, run_id, source_execution_id, agent_id, artifact_type, title,
         size_bytes, content_available, created_at
-      ) VALUES ('artifact_p2a', 'ws_p2a', 'agent_run_p2a', 'execution_p2a', 'agent_p2a', 'text', 'Artifact', 0, 0, ?)
+      ) VALUES ('artifact_p2a', 'ws_p2a', 'LEGACY', 'agent_run_p2a', 'execution_p2a', 'agent_p2a', 'text', 'Artifact', 0, 0, ?)
     `).run(NOW);
     insertRuntimeEvent(db, 'evt_history_p2a', {
       agentId: 'agent_p2a',

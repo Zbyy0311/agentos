@@ -1,0 +1,2372 @@
+[
+  {
+    "id": "LITE-00-001",
+    "document": "00-Vision.md",
+    "sha256": "d744840298f69f83f50118c7cc8c241447db2c849461484e2191ce162da7ceb8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-002",
+    "document": "00-Vision.md",
+    "sha256": "d6a5819e51e10136ccd119e402c3d49ba5e0070ee37c6de2f14705517a50fbd4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-003",
+    "document": "00-Vision.md",
+    "sha256": "76b51ea4b99bd6b99bed70532be42fcb9e96ef79f2ce5f9155ea57cbbe09f62c",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-004",
+    "document": "00-Vision.md",
+    "sha256": "6f8afe939676271c11a18203420be6d7ebacb27bae89977b05f2183d75552bd1",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-005",
+    "document": "00-Vision.md",
+    "sha256": "944830743013bf72363a5ee11d645a60af3a5d57aec20263a935d6314d62db36",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-006",
+    "document": "00-Vision.md",
+    "sha256": "634098fd60511e457e06470b080d8e471c85f18c36251a9503c7680270208080",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-007",
+    "document": "00-Vision.md",
+    "sha256": "dc01303cfb70b9e573ca55268f078782f2c0de77d8824862d19c092e68f53fd2",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-008",
+    "document": "00-Vision.md",
+    "sha256": "f92370811b43a10d183b7ffd6bfe9f2ed74c337e12ebc29cf153c9f94c2b9412",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-009",
+    "document": "00-Vision.md",
+    "sha256": "da4e0a349b03e5b4b404a215bb0cfb6dc082cc14ae6157ede9c7917134699410",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-010",
+    "document": "00-Vision.md",
+    "sha256": "8f54ba62322e9c973c2feb6e66992e3c3c619b1d5f96b5a21dfa921910cb5bf9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-011",
+    "document": "00-Vision.md",
+    "sha256": "1274fa97ecf5ce29d5ea60851154e13ec0e13dbf2b02762a839c83b174c8a347",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-012",
+    "document": "00-Vision.md",
+    "sha256": "c0ff6bdcf6f0ddcd99706f5c5186b8da4cd89cfd5baa36af3997e5414f69790f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-013",
+    "document": "00-Vision.md",
+    "sha256": "a441f81c82434fcea8060ec10ca632521b40e3bd12526c7a3c1f748d1dbb60b0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-001",
+    "document": "01-Core-Concepts.md",
+    "sha256": "20083e4f50dd9340edb51a3e51d4d410f260b7e07340731f18f06383bae79be1",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-002",
+    "document": "01-Core-Concepts.md",
+    "sha256": "e4d5d062a006c87c4667b004b92d144532aadaf7f6b0ef675b33887fb5695525",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-003",
+    "document": "01-Core-Concepts.md",
+    "sha256": "d39313c21b3929ca4830ccbf90a82038a5fa090e3a2a36859bc5860aa94aefaf",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-004",
+    "document": "01-Core-Concepts.md",
+    "sha256": "581d3945d7c821659103c9e8a90b04fd85605703da2919410b5d318fa5033f9a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-005",
+    "document": "01-Core-Concepts.md",
+    "sha256": "32ae184783cda6fa56ff7cfc2840326699f1d3f79f37bad4ac049520c2b94237",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-006",
+    "document": "01-Core-Concepts.md",
+    "sha256": "d8b52c270e9d3fc08ec691e7240a4f0aceeb5b0fa120035dea71996f0ff112f3",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-007",
+    "document": "01-Core-Concepts.md",
+    "sha256": "4e34c7ed161a05f82a7d72f96247c3278d92f8e7141edd9665c228fe8e61d3a5",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-008",
+    "document": "01-Core-Concepts.md",
+    "sha256": "33689e8697e5d160da928e25987bc309f606f27c932a8de0c4c4018492d1938c",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-009",
+    "document": "01-Core-Concepts.md",
+    "sha256": "00d3ba5f35b8a6fdf89802ce99fc7b13203546b46c105eecb5287caeb307f65f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-010",
+    "document": "01-Core-Concepts.md",
+    "sha256": "7ef3fdda88706e9421738902d34044e77e70a422ec383b1124737d1d879afba5",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-011",
+    "document": "01-Core-Concepts.md",
+    "sha256": "8bae05909237c061abcaa00837705ea79a0c69c6c1b6cb5b7df5940d6cfd23b7",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-012",
+    "document": "01-Core-Concepts.md",
+    "sha256": "036b9847846843b6edeb3d5cd2c26641ac9bffd76ae75e358797ae432cbd71b5",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-013",
+    "document": "01-Core-Concepts.md",
+    "sha256": "c7ef1ae2ad4351a57f51b762031024d447416843d7da862c6fca770c22bfbbfb",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-014",
+    "document": "01-Core-Concepts.md",
+    "sha256": "05d64ef38e5a2c4873fc6c524829c038ee0b5c740f30d0faf5d492b545064047",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-015",
+    "document": "01-Core-Concepts.md",
+    "sha256": "f2c88ccab9c04bd651257d2c3712f5db25b87598f23c4c86e8414518d17825e0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-001",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "9293c736b75dc4adef1531ff437e9d6e56c0653fb7ad76d7d1577a776041db69",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-002",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "99eba5e6b4382c0d703a63612fa64319eb2e8c791055fe0ac6c79f91faf1b621",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-003",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "897c484380c9b4bcc27e1a3323c994f21ce6fb43dfb36f5009db3ce6c70c91e0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-004",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "0e999e5fbe0c7cc79b739526ca6c33e7ac096cf25c370383b77cee1a30b0ba27",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-005",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "e21fc1779d89080304d5a550d88585c157f95bc772032150853b5ced00e485be",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-02-006",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "df0471f69bb2a25d89393ccab935096835765837487719cbd022b2b2918dc479",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-02-007",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "f8c2a3ae21f94d68d26af4fd6cf0cd61a5d0ecd86344beba4bb7b8c990532117",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-02-008",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "86959b3379ef1fc5e844ed8d42d572d1bdf0292fc7cf59ae48f0322ab89d4c26",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-02-009",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "4a71bd0f95bc28dab55e986d8191ea655707c57b5708bd5fcc8e0ba176921017",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-010",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "6d4a0f67faafa13273f16d13fb9dcbacd047ca3a2d927dbff8188097c928ef56",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-011",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "63bc89b25fa1b500823d94c9fc1c206cdf889bf02df3c21cb2fa2604919c1194",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-012",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "3c4612768f87409f453fa30dd617a10dd612817fd93b51bb9c1de12f22f522ce",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-013",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "012edf0e4c4ac370dcade1385ff1d71ecdc42d62f0dfea9f1aae5d342d17a2ea",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-014",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "d21f21f90162a690897d2ffe28537043e5f4b615d215a0b1b37b1ec322aff75d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-015",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "7039a7a290dd984570ff60d81733534b218c606aa029b2d8fde6e2bb2cea22ba",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-016",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "9fe77acd4e17243bf4923ac881c8d8cd82f0707f750a47089d5186f6babdef5e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-02-017",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "14dbd55d7c95650e2817c0a201d33d03db091d7b1d5af246508444f2319b6c4d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-001",
+    "document": "03-Event-Model.md",
+    "sha256": "ba163c2e3f487d83e26f01a7eabb98d8780a6405d4bbbb04f5f97d1ccd62cdec",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-002",
+    "document": "03-Event-Model.md",
+    "sha256": "3efec83ec30c6972925cf70eb78037684797eff164a577e04c0f741e0db5e993",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-003",
+    "document": "03-Event-Model.md",
+    "sha256": "a7eab06dd6ac9bff87196e91676047798f83b6f6ab696e9f3394e34776099981",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-004",
+    "document": "03-Event-Model.md",
+    "sha256": "e15f758c238a3b71f548c0b477558098bd90cf93c03d7691fffa0fb47bd90503",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-03-005",
+    "document": "03-Event-Model.md",
+    "sha256": "9c860c48a26573a6cab9f6c4fdf468b338057076e073d0e6429fc929028f20f4",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-03-006",
+    "document": "03-Event-Model.md",
+    "sha256": "5234b5443820c12d4d08db75e5874645b6c8db0e72c06f8af5d1f47b10b0ac7e",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-03-007",
+    "document": "03-Event-Model.md",
+    "sha256": "4f07291d622745f83a775f6c467def516127d99b32f2ee1c0eea3cc611b01a9d",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-03-008",
+    "document": "03-Event-Model.md",
+    "sha256": "40e8ffedaa464a72c2ff7c196224d710492e55d5644d22719883b703ff78acaf",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-009",
+    "document": "03-Event-Model.md",
+    "sha256": "c83966214fc3e7dd95298c6a9ff9a8f88bc6fdd8a27eb6aeca62215de67165d5",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-010",
+    "document": "03-Event-Model.md",
+    "sha256": "2e0e9c58631e6388f5492a331a1417e3df20e14798aead02c09e09da01d5a492",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-011",
+    "document": "03-Event-Model.md",
+    "sha256": "13bae37dcc41644611dd384aa27fa7cc80929c31c6ee903ef0ed8dd6a9825bfd",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-012",
+    "document": "03-Event-Model.md",
+    "sha256": "857aac2620f2d617d4476173cb7548605ca2f86b107df34a54be083e890d1b79",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-013",
+    "document": "03-Event-Model.md",
+    "sha256": "fc38899c6233ef0a9b8dc83cc514ada5e4aa3a2a7de438881ffd5d6588ac4f8b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-014",
+    "document": "03-Event-Model.md",
+    "sha256": "138db2b2fc31d6a3aeb05468c9c4f75b20d071e6f1f84476e2173696ffb93f85",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-015",
+    "document": "03-Event-Model.md",
+    "sha256": "490324b18a5d59763e6c196b69c77496034022c43be10dc3c6f061f228c5943f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-016",
+    "document": "03-Event-Model.md",
+    "sha256": "c3e8414cb89c671e4ef84c47d3de8bc9db93fc34c18303d1dd141f80f0384d73",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-017",
+    "document": "03-Event-Model.md",
+    "sha256": "46597943a93e198f67e2c31056b87cb5e4a158d7d0478527363ab35d91d6ab46",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-018",
+    "document": "03-Event-Model.md",
+    "sha256": "a47b2ffe882010991ce3be958d04cecde3470488b24c0e920a6c079e3f661848",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-03-019",
+    "document": "03-Event-Model.md",
+    "sha256": "0d096cec9e71728ff3dd18a44686b55f00262b32c3571cbe67349e2f4d99ef23",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-001",
+    "document": "04-Provider-Specification.md",
+    "sha256": "fa65ad1e1bb3fb37a243bb83be4ff29d8eead93bcfa935875c069e02baa13c18",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-04-002",
+    "document": "04-Provider-Specification.md",
+    "sha256": "1b6736bae8e5ba91b7e440a9cb3e8bdd9a697a75f7349cf1d65b7d592c543296",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-003",
+    "document": "04-Provider-Specification.md",
+    "sha256": "2109349ed482c66790d6b62fd9e55a5a0f3ea8e780893f181071178fdb351bc0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-004",
+    "document": "04-Provider-Specification.md",
+    "sha256": "73d5df9f080a312b74fc426b77c3c9f2d0f1b7d0171c2a87192da1b2bb33e5c8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-005",
+    "document": "04-Provider-Specification.md",
+    "sha256": "b4388b44bc2e2460f103b825096bfa3a487e3050ed7ddabcd162b0833f3cb872",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-006",
+    "document": "04-Provider-Specification.md",
+    "sha256": "b054faef5db38fe29ca351db291348d622abea9c9823a39986e447e336bb0a6f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-007",
+    "document": "04-Provider-Specification.md",
+    "sha256": "7930bd7d9ae0485a49af0df89243d5f4ef7c889667384f20eefd51b4163d2b58",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-008",
+    "document": "04-Provider-Specification.md",
+    "sha256": "6c5fda07d7e52bd645fabe8dc9913bd2ef8e0f58cec39bfe2c7eae6f323c9c72",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-009",
+    "document": "04-Provider-Specification.md",
+    "sha256": "6ea7cd613efe6e716a66179c4c3da87c50bd574356a64e8e9e2d60661f68f94a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-010",
+    "document": "04-Provider-Specification.md",
+    "sha256": "7a0ca44b9d0eb32838f8be56c1c111b381b55826d1a063e93eeed3d22c3baf21",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-011",
+    "document": "04-Provider-Specification.md",
+    "sha256": "c782e4cf4f5acb1cc02fe3ec849e47a288a1534fb5bb238eacca84ea72cb946a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-012",
+    "document": "04-Provider-Specification.md",
+    "sha256": "e6ec46bf1b03ac41e3047737309e5608e940672b27beeb2d33bd997cd55ac11f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-001",
+    "document": "05-Process-Runtime.md",
+    "sha256": "d22caf5da90459ec2f8ea7f8171b35c0925b6fde6b5d80f88d839a8d2b67b1a9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-002",
+    "document": "05-Process-Runtime.md",
+    "sha256": "0221bd1d8d8922f8abdf0bac769d26cb0ae7c5b815af830b20a705255ca87817",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-003",
+    "document": "05-Process-Runtime.md",
+    "sha256": "9a2cd89e2d9c98c5de3fc3bdbcd7ee37cd30edefc2f9e1b7cb0a719909a6d1fe",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-004",
+    "document": "05-Process-Runtime.md",
+    "sha256": "c30243d4a8aa45b7c215327b8ce49f66eb6ff1626fc3d33366da8c1086306693",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-005",
+    "document": "05-Process-Runtime.md",
+    "sha256": "9ef752c30a2e009c581dfbd02a5ac7893b899792f996a7cc2ace868a1424eaa3",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-006",
+    "document": "05-Process-Runtime.md",
+    "sha256": "26020dee50c3f6fc56cb553d2ac25391de8162015bb4002bb2434b6413d1890d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-007",
+    "document": "05-Process-Runtime.md",
+    "sha256": "3a1752b572be975fd9cdfacbbd7cb6f5160d461dad645b9c27d81211085d8879",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-008",
+    "document": "05-Process-Runtime.md",
+    "sha256": "ca02396e1aedf82bb631280e82ce528d00dad1b535a449f1128345ffb7f08726",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-009",
+    "document": "05-Process-Runtime.md",
+    "sha256": "35c51cb6de6e9ebf0d5806b3c19007f84b5e85c63f145c7494804780c36ace8d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-010",
+    "document": "05-Process-Runtime.md",
+    "sha256": "44d7b6746b014f78ee178c8c101aaea4ae9d68e9348ae93d19cde03c77707d3a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-011",
+    "document": "05-Process-Runtime.md",
+    "sha256": "9d3f7522afab8ab651ce1b92e90a5caf1e0924fe4b92ac03df85177c7f3465e6",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-05-012",
+    "document": "05-Process-Runtime.md",
+    "sha256": "0bd16d1097d14950bb5c85b1e5f1b4871fcbd1e6df2078b1e6d0fcbc8768d590",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-001",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "aec367fe4f85a614b5ecfa4c2738f1544347822c01d39b9e9116b7b2af9272a8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-002",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "7a3d82bd8707a7b06f03de6b4be461375912165a59f05d2334d086a0af8f41e0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-003",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "b150d34646be1dca3c92c970ac8cab34b09d4d4a1934e7e5892ce42f5744d30d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-004",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "f95504116943d55c4dd056363fdc7bc3975adfe3e9c8aa5d309b891888409de9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-005",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "0849a5d9e32c60ea2b8a9530f0e07238826db0e0dd701692c846f359daba45c7",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-006",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "ac0bf2735ab435a405f53c4e13110f8e0ddad8c4f319deef76a381d54e391acb",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-007",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "933d7c64844345f0864bf313fa6d99a45304c508540a8c8a27bd568fe2645185",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-008",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "fdc9f252175abcc568a92d5d35b791ec73b4d206a6f983c615cba87d11c079ec",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-009",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "a102f5ddd82e881002d3609d6d76b4c7c71ac6e3c8eb4310f4cf30455917eeb9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-010",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "fa96766a889f73d65bad60226e71081d202de566c1cc7a0d69d06278449f5057",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-06-011",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "01af9fd833a411c072d29a2c4a574d964c1a64961e88206c814cb4b44ed94ae6",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-001",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "ef8e44a753872912fdec44b2fc8030b2a307afde4746c0ec533916b6f07d061d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-002",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "dfc695cc15a21a903d1871acfdc6572d31c5a00312cdff7eeb6db46ab09dd404",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-003",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "2693e675ea584e5649645f0224e8721ead9fddb7b3436526b603277fde5c41ca",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-004",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "ae770fc94c1927cfb15bbe4fa2ab9ce5f5aca84b8035460616bdae9ce9d9edaa",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-07-005",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "03592c617af67c984e9638c81b3b25881ccaf66d3e508191e0865271dadf9756",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-006",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "064077fc0168873f20f56bf4d9b5a827688698370d103d0e3c366bc30b29b298",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-007",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "116802ea2e391010db4db6b8bf15edca93075a61dfe05eeab0ea2c3f540a3702",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-008",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "d884b34b3164653d8a8181c014a4d1fed1de67d449c1f5f981f66ac70b672a33",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-07-009",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "f6eb82210c5aafdf417ca40646fb7c7a945fd8acf9ac4e468a3e23aaff948bc2",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-010",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "2a1764d4725a4af5fa26730bb4d767c7f9d5b396e491ee9ca17790f0da224a6e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-011",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "f23dd2a9d702fcbc34789dc2337b1682890d7cc5ecf372d18725e928b7b2b5a6",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-07-012",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "fb9436f7fac49ba87b2b0a635df021a3bf152fb3d7388599b1318a305b7c357f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-013",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "ff49a03ad9efad9cdbb4feeea9bef31b24534194a0c415f5bce35325f51d87c0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-014",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "dddbbe59c4c94eb1191dc3cdd6ae41f74d22354ed8e0df0182895280f9e7b575",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-001",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "4812ab2c47cfc777b4ac10475e19b89b70eeb3c1864be6e1111a4ff34886cb03",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-002",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "9f89ac26652a75ade340f1859e08051c107e311233a0853b56e95f0c3b628e3b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-003",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "fb4c345e7201107ee0fc4595903c2b8a72199b45d24261ecbdfa486a06db0ea0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-004",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "68b10a82c46690d86359780062d7008d36d25bbb2e7451667355394991b64ba9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-005",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "3ef635a19b636ed1dcd92bc987af9d5086368700612888531c39fc582a7eda81",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-08-006",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "5f36abbcf97f8d8171a0c33add03852b60f1f4ad6c9f36ef8a1259be82b3fbc1",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-08-007",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "89cda677142f56902a8d988e49c5a58745cfd02c5bc5aceb081ac49587be7253",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-08-008",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "0b1698acb9f89f44efd12a8c31a52a9b08a9505112c1b4889e28ac2ee1cd0604",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-009",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "f0f3b2b31359ff21d181a72aa32f6b779c1f46d8f063008ae2c3ca87611d0ebd",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-010",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "c98560dc7b5a8ce3fc07c882a153215b5e205917fcb27cbc20033c4f88ee34c0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-011",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "4fa464bdf3f7a00d01c82c36b2ba8f877837627ff1d7285fd8b9ad3e39cd4cc7",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-012",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "4cd3d58ab9884b394b81519d2c16c08b2c4c6532f33b4403ca7ce243c5835948",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-013",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "80d065fd93b7885eb607424e336477d0115b5f4e41a39a56b7a21aa5c2634369",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-014",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "174dddb4769202447674abdd7465c1d5cee1b7f2950d310a4d3c548fac9a1025",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-08-015",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "70c9d48bc2c768f7105f982ecddda8ae818d20cfa02c010f1727df1f885d2789",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-001",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "e4707a1742920a8d10f9364ff4d2e426f28e98305f9cc93c0a41dc1e35985390",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-002",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "7affb0769b8183896f452544e60bd8953ce0735f2de389673d9fe2e775a89e39",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-003",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "49a8c6960e7992ba8ecfa6f3a854eee2968c3eb1c588fc792da9cf75444b72b5",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-004",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "19b0f0f66abdfa76181deb9b144826f12e12d03926485b88114061caea1147e8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-005",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "d60920d12f84412a5d1f64e620c9e3aa81e04a177304c36b163e7cefd5803faf",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-006",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "7c3d5f5381fe1bac186ca82a01391301239dba419ad0b340f45b53f8ea0afd4d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-007",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "4a71bd0f95bc28dab55e986d8191ea655707c57b5708bd5fcc8e0ba176921017",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-008",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "d670c2af40369244c8d45f58c092511772c16a197aba3b5234b2bb9472e4d977",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-009",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "8649f7109dea7db0735c0950469479a7d7bd118363fdb0a5f282813ec94eb769",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-010",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "d6f15cc151a21f7142dc55a91d059d25a44d03e5a42abad688b02989b844d70e",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-011",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "68c674c3f1ef3772670daf953ed1f734d0ff77c8c53056187a909418fff99b1e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-012",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "18a98a9939e696a967efffd9612b7d2917a78a593ef8040478c76e66288589ef",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-013",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "31aee233dace9a31541ae1125150e0c45f6fc55813af46303feec41cf7841d1b",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-014",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "844fd63661076861a5dd6aa95ed002caa427aed168673f9893b62d9a4ffc8bc1",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-015",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "36e74e764dcb9dfb016e68693458f1cacd67fea9da27d105a5e055efd14284d0",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-016",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "16d8ecb356c759a0e0b396d6b43414c18e0d2248b7ac89f2e89aaf6d557afda9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-017",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "586aeadf961bd14b809737cf30a063c4c1160cdd056b6059f6d8259c8be2714d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-018",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "2146cb6e2bacc53bf88693b0d4206c8771c77cd5fba5d823787ded2ebbc87edd",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-001",
+    "document": "10-Data-Model.md",
+    "sha256": "ce5c7c7093c8994fc3f3867ebf6374719af0b59dfb40ccd022418c05709bd5c4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-002",
+    "document": "10-Data-Model.md",
+    "sha256": "24ed90817eefc5b7a7845b823d230415f00c79760421ea8235d37869b9060648",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-003",
+    "document": "10-Data-Model.md",
+    "sha256": "fe21bb5f21fc81497ebaa64bd32eae649c43a2235ef5e52462e114738096555e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-004",
+    "document": "10-Data-Model.md",
+    "sha256": "1da27aabe50ca4492711305129225a97314b2d6c1c184909f0440b28281919f9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-005",
+    "document": "10-Data-Model.md",
+    "sha256": "c7073baad0e56d5b7556be47c9de39205cedf7c737cc8e854763f4dc7df6c0e4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-006",
+    "document": "10-Data-Model.md",
+    "sha256": "0bb1290505021c684af5fea603b87595b087c05b3e87b50459c75a1e86559a57",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-007",
+    "document": "10-Data-Model.md",
+    "sha256": "a3d1dedb20673d7937bf123a4e0e6e7cd1873845278a5b939d25ce7baf0b471b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-008",
+    "document": "10-Data-Model.md",
+    "sha256": "255328cd2d50713ee06d4c78ba7a55943555b1ca75617352754f1221b5fdb3af",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-009",
+    "document": "10-Data-Model.md",
+    "sha256": "5e6743c505977db24147764ba3f09a96f575a29d9ea0586f64b7bdad4fa2f2c1",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-010",
+    "document": "10-Data-Model.md",
+    "sha256": "55b062ab54c24b2c2ed1483c72cf66611aab9b4b42f310bd35bdc85f8a33454a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-011",
+    "document": "10-Data-Model.md",
+    "sha256": "dc748c823b8aa96f01587848150a0f6e5831ec914f39bb7a4cc1c0fe6304d4c6",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-012",
+    "document": "10-Data-Model.md",
+    "sha256": "29f7631dceb6381f2c34c302e9479b495d0041a9e37a376e634497c8b1bcd004",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-013",
+    "document": "10-Data-Model.md",
+    "sha256": "e811f08ebd0a51aae3ee824ae8dea9b95929bdf4bbeeeeb94f0c8fb3154a8d2b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-014",
+    "document": "10-Data-Model.md",
+    "sha256": "572cce3f3a972be6e99c8fe70529210793054e9ab6ed6c47d5bd0355965ec404",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-015",
+    "document": "10-Data-Model.md",
+    "sha256": "c1dc000524f2dbbc4bab4c15c5b0ad59f8aa89baf971b433254959a05ba1627d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-016",
+    "document": "10-Data-Model.md",
+    "sha256": "9177f7256b15064d3a6dfc3c7eac9d47c99dd273fa42a5fcd5fe5415faa38e31",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-10-017",
+    "document": "10-Data-Model.md",
+    "sha256": "3a0ebcac106865df75c3d3c71412a34437d84e10d09bba9042b6a22111505755",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-001",
+    "document": "11-API-Specification.md",
+    "sha256": "58d2a794d0cca89635cf5da4909fdfa5aba2f917bddd3d6a5f3e169ea2dd2edd",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-002",
+    "document": "11-API-Specification.md",
+    "sha256": "e7677bb44d9f56c6ffbd8fdc1ad0eab88be12186ebb2f39968d3b099d3a27f39",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-003",
+    "document": "11-API-Specification.md",
+    "sha256": "81422d32ab8c9969b65fa1ab7dc05262e28b675e67d85fff34fc29543b18d77e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-004",
+    "document": "11-API-Specification.md",
+    "sha256": "ec0cba4ef17483f3937642f69119fc1f90a05688e9d3e70675e0634a8effb431",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-005",
+    "document": "11-API-Specification.md",
+    "sha256": "f94011f4cc4606c10d4da98d57b597a148e89ff5bd59ca83a806fa1157243d22",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-006",
+    "document": "11-API-Specification.md",
+    "sha256": "12341593c5dc0952fe6df1f207da404fbe2d22635645a09b07c47842dd86d1e4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-007",
+    "document": "11-API-Specification.md",
+    "sha256": "4d8c0ced0c02f1109d290a4eb206e460cc662f9af5038d22823723abe91e4ee0",
+    "initialState": "PASS"
+  },
+  {
+    "id": "LITE-11-008",
+    "document": "11-API-Specification.md",
+    "sha256": "9d88f6f631811f5418ed18ac8f5546e31465462abb5fb500a6a1ab7e419addc7",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-009",
+    "document": "11-API-Specification.md",
+    "sha256": "3c2c8a538c8f3d013e19cd80ea214298aa848e96f958a8be26fbc07eb19f8b81",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-010",
+    "document": "11-API-Specification.md",
+    "sha256": "7bc7a8f00e434d08bec54af3a43823351ac7be5514b876d7fa37a183b72d5a5c",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-011",
+    "document": "11-API-Specification.md",
+    "sha256": "11dad53b3331cdfa4481cb8be9b529d5cc7092d8cc0aa89f4a340e2e537ef8da",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-012",
+    "document": "11-API-Specification.md",
+    "sha256": "1f3b647f8b1b9578642c57182ac5b8e0155d87c359e6da001144385b21abb22d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-11-013",
+    "document": "11-API-Specification.md",
+    "sha256": "ee0c94ecdc739e75822b0d22b98842e4407010ae59bcf35cc305aaaf8e13bb2b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-001",
+    "document": "12-UI-Architecture.md",
+    "sha256": "1add52db1f9119e872ce766e28477d777832148ef63289d36fc63b77ffe5e7be",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-002",
+    "document": "12-UI-Architecture.md",
+    "sha256": "816598e99f96d857c1471c9d726b6305ea0ed04649552e96e96f06a65e103082",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-003",
+    "document": "12-UI-Architecture.md",
+    "sha256": "0849976104f9a7d0e3c44b6f1f8820e12f07d3448df77a2305b853c36902a4a4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-004",
+    "document": "12-UI-Architecture.md",
+    "sha256": "a2d718f7ce765e2bf2469855f29bb158aac7c8249473267539e14eba26e13d08",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-005",
+    "document": "12-UI-Architecture.md",
+    "sha256": "da172b726a678af5a517f04ab41d17e09a79e9eb9a6f764639626620b7f787d2",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-006",
+    "document": "12-UI-Architecture.md",
+    "sha256": "6bafab659d192e6efa2434623210a02641ce63b4c150e5422dc02413e4cb63ad",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-007",
+    "document": "12-UI-Architecture.md",
+    "sha256": "27be68a9f5dd0f0fc0dd71e4b1ecd1f900ea3b62fc430d5ae9a435ea463ed0bb",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-008",
+    "document": "12-UI-Architecture.md",
+    "sha256": "ed55ca961e0fa0cadabf885be55a077f0ab237d2736a42de22ba8e1d187905de",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-009",
+    "document": "12-UI-Architecture.md",
+    "sha256": "0619718a2a0ca169aed85ddec0b6f405def8453b4810258c1c115e8698cf81ac",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-010",
+    "document": "12-UI-Architecture.md",
+    "sha256": "9400a9b077a84f455b45770ff8bfc162b0cedbdb1c77ef200e1d4400ecf7d270",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-011",
+    "document": "12-UI-Architecture.md",
+    "sha256": "f78d89a551bd5b2859527339a40d94f6cca6b517e951a9d1d68e6a678c8483d2",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-012",
+    "document": "12-UI-Architecture.md",
+    "sha256": "08996d5f8f17209a15733aa44e817fe31eac74c4da39521b84c864d515310f6e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-013",
+    "document": "12-UI-Architecture.md",
+    "sha256": "83767c480f438946f6d879a124dc38d88806da96e3e702a6f11e9ce234a526c8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-014",
+    "document": "12-UI-Architecture.md",
+    "sha256": "782d05ab19202205ad703125ea5396c7577025617a15b65874149062f8f4c982",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-015",
+    "document": "12-UI-Architecture.md",
+    "sha256": "3822aab7dc8c7d509e7f13f4919744957db198770bb7cc83f603ae8c602a192f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-12-016",
+    "document": "12-UI-Architecture.md",
+    "sha256": "f770fa85da6f777beb27968136b31a01d66965807314b4528c68b3801781efe8",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-001",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "9019557c6b1ef01123ba21911e1685f50408500e6507f2387faa8d0f2ce1830e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-002",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "935b50e6eb3762b9f61e85c2a6a2a3d6fdd989f646131898572e87437619aadb",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-003",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "39e32c32ac23e5773ccc71a98de76a879c672cc3bbe4f6207a3705d9ab7634f9",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-004",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "861f3dcd31604b92e0eef38c1084c108808d91ec764e87354ab0de9e01f87e4c",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-005",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "574625010ce75330a1f44dd229eb5e2911d5c5a02f3cd948226e5bc734e119bb",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-006",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "8111914d587ea124dd27feb28566ccb3642061666ae044245d0abfc25a08db11",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-007",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "0e3357da1dfb81ee829579821cb9a29a0e84c6b81c692a96dab8ea041f002f5b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-008",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "86a21db35a5e0952766e922ddb351c9c7f9e82352b6676f86a1c36b322d23626",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-009",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "de1bf79da8184f01143111cb694995ee6f66cb81031e1fa373fa738dff7c861d",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-010",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "65ff7a3ef0acfcf9b89ec62c545ec61c4b0e546a1a0394853e714f5bb20d5416",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-011",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "1be1c23f086b656730af3d21a7f28c3512c831dbc149796f7625e5e951528e2e",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-012",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "bacf796aba579d99a1f9cc654d4bf9ecbe4f06d4646701228261375b55fa8456",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-013",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "145ca58e564276916cd4531e34fa75f3a2488388b34d4f6b20dbe64484ea8cc4",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-014",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "ec0cba4ef17483f3937642f69119fc1f90a05688e9d3e70675e0634a8effb431",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-015",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "b090fc354835fe078d0a00267af71198c3aa80781d846aae0c4c9f9042abe29f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-04-101",
+    "document": "04-Provider-Specification.md",
+    "sha256": "1919a776fa5be5a2900a1641706ab490b5179a038920df7ccf606b8187e79694",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-101",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "a6368feb1434aa4df5d4e93376c8de934f8f07f01bf259fd295dd4805d2ae18b",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-07-102",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "f3237837d6884ebe9355b62b1bf8e1d9d2e19bad281b2a3c75647d2f70338b2c",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-103",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "ba2c5ee884dfdd82450d9a76768afe4e0fc757c22feab90086e9b7308baac5d1",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-104",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "8656af1a082ce98e114ca106b68c278c9cb02a93851b59b6ebf67fbc029525ec",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-105",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "72e43b12658960dc7deaf5872e69b0db1849e1ae65fa15d6ebf4c3423b6c5702",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-106",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "16d9a3ef33861f3d4a66beacb71b135866998a4b60e6c42344260b0ab8a69385",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-107",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "831bbba30abad1a9e02e866d5851c15e3fc7d03b99e5f031f776eb5afe942c36",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-108",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "f46a25a40da62f92bcd1a68ea5e5eed840573a11dbff012c05c1223175be71c9",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-07-109",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "4e69a490657c174582188a6bffca31dd8c1d442e1492dcb98b11f137dd9b0b65",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-101",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "53928dcd03d57fcc68498faaf63cd88ab0c994ab5686834f9e6e54bd9c91f97d",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-102",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "a6f27b4a838f01b725d1909af3db0e8a6d85b5602610c3430437a1bf553f9abc",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-103",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "bee731af5e7c857252adc0e13f6afcb89d99f507c5b7743aa87ba4428886ca77",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-09-104",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "75f8509c78c5f086f79a7064ad0c4fc75da537edfbff08e47c4718e994803c46",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-105",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "a5eb0f4786753739357dcec331f404ea0631fde499c20e82eb242b8cf4cc39fa",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-106",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "fc982221507894edb99220913ef56a67be4fed1fede1921130a0db5e6e58f254",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-107",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "608c370a785fe51e811c6b8fd74dcd545efd0c5b33e82dade203c3472f8e00c6",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-108",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "1929d207487d92be19e9b747735acf6072be221a338742123ee0b800caa11355",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-109",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "117dbf5eb676c38a93e93deafdc5b569bf958b4db9d4f3174772e825c357a01e",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-09-110",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "9fc6252037783b2de8a182a2947c6736bb54134be368eff2c3c52074f67a68c6",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-13-101",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "5e75b4859b1b62507ecda16a77d4d52a38d14a1012a6dbebbb0f8a944086648f",
+    "initialState": "GAP"
+  },
+  {
+    "id": "LITE-12-101",
+    "document": "12-UI-Architecture.md",
+    "sha256": "c087eef35753ecce8a43914b9827229cc1b81b40e28293c7aff35f6a67f03c8f",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-13-102",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "29e56cb2fc81e04e5ccf903faa6d1d7f237838698c1c4405b1bc50f3c9fc9742",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-01-101",
+    "document": "01-Core-Concepts.md",
+    "sha256": "2dea70dea38e0f6af7f8237122c5c0868d38d21c378db4470c4193837bd6734a",
+    "initialState": "RUNTIME-VERIFY"
+  },
+  {
+    "id": "LITE-00-901",
+    "document": "00-Vision.md",
+    "sha256": "4551528af7e2befe647de30b98865006c8e526a8561fd066d296e9ecb68e065a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-902",
+    "document": "00-Vision.md",
+    "sha256": "b5030102c1c849041b4f26774d6fe408d661b4eccd9263dda3625f5d9a5e4941",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-903",
+    "document": "00-Vision.md",
+    "sha256": "339fb86ecbb0a1f2b4bca94e76c24020bd10dd89a81a3b644ce242f1dca140a3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-904",
+    "document": "00-Vision.md",
+    "sha256": "40328c4c2d8649498ffc0d853a7c6e5c2ebf4070781c01ba34de55548848ff6c",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-905",
+    "document": "00-Vision.md",
+    "sha256": "24f1c037121c51bc6308b89fea49c47340d07232909a87c7fafe632e9573257c",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-906",
+    "document": "00-Vision.md",
+    "sha256": "9a8733a725463e1e7583e8e62238516732aa16d2aea9002606978ef68a74bd0d",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-907",
+    "document": "00-Vision.md",
+    "sha256": "fb40787786d6fae2958d580642fedeeaec0824647fba8308b4e97595fbbdf443",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-908",
+    "document": "00-Vision.md",
+    "sha256": "59ded1b7a565f571c84f085342a8c0dc80e4544736481172bb1b8b1349eab854",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-909",
+    "document": "00-Vision.md",
+    "sha256": "3e4dc16107877b14c862c797d0e74a3625e37ab5569da037a34f4c31f98cba9b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-910",
+    "document": "00-Vision.md",
+    "sha256": "6ce7deda3893af8491effa152347456705dd3657d65e3917ab0d6152169d5879",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-911",
+    "document": "00-Vision.md",
+    "sha256": "91f2acd5f84c5f6277140e9886680a15d3652b69a1ebdf2c66fd3c3004efa8ea",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-912",
+    "document": "00-Vision.md",
+    "sha256": "e354fecc1f76d1dac739431c171813f6c71717b7377868872afebc52c2193335",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-913",
+    "document": "00-Vision.md",
+    "sha256": "632a6a85e43d5f68eb91e7c02407946ccb1cee826f35f1b38577c0134d60109e",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-00-914",
+    "document": "00-Vision.md",
+    "sha256": "e50551b7b9d2076b6fe0ff1c3b642e4b3d2161fd814b2e3369a7dbcf91958d2e",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-901",
+    "document": "01-Core-Concepts.md",
+    "sha256": "1f1e465fb85b5e4df3fe65e581dfe1a1923fe155750f8252c280aebd752f23c1",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-902",
+    "document": "01-Core-Concepts.md",
+    "sha256": "2d8fffe8b14fbc97dbd6a61d5ef36b71513bb2e56448cf6f51b28c1850bdcd36",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-903",
+    "document": "01-Core-Concepts.md",
+    "sha256": "aa4d67843110303bc0a096dae5e9e642f95e6b813dab7111f696c8cd1013e7d1",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-904",
+    "document": "01-Core-Concepts.md",
+    "sha256": "15285a950ef2a01071089f1afadc6ceea529cad3c8628dccd4f6faec8f9f1ae3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-905",
+    "document": "01-Core-Concepts.md",
+    "sha256": "9415a02bdc7b1dd8903a3aaf91430776f8bb9ef91600038e013fa7c13eb2877b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-906",
+    "document": "01-Core-Concepts.md",
+    "sha256": "04ff80727aafcfc4c9a96a80c0e45cec55863b126ea4fbd571a1583490eae016",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-01-907",
+    "document": "01-Core-Concepts.md",
+    "sha256": "c79a7d1bc2ffac277d6a195265d1e3ecbe914abffac48f2c30b5da83483c0c09",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-901",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "82578294fe23d69826731ab0ff3715e91c753a78244e46e3fbcc47e18e4456be",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-902",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "a822abe1453eba86e952b44a36eb7fadc09737fb919205fe41fc83f77f3c071b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-903",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "4863c3a5c27df78d71e8e9c0bb949188056673ebe7d47f6d6a3a007e95ad28a0",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-904",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "c22f8a8867c6cee7c24a5494eeb3f8b984eb1a1c060249456335a0a36110f7c7",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-905",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "aab8983d10701d451a39e27f64bda8a1fc02dbfe02eb8cd6a25d295ae504719e",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-906",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "62cddcfb12c098e0b0b00094ab577ba1a1de6d0bfed309189ddfdca37fb97e66",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-907",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "c1edc068788eaff8b099009151fd0603c2e8298bd707f41e2f9bf6f103cd0dc5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-02-908",
+    "document": "02-Runtime-Lifecycle.md",
+    "sha256": "4ec8e890a6b2724c2cf508ec2acc804a1ea81dd8996fc69a2358127c00462e08",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-901",
+    "document": "03-Event-Model.md",
+    "sha256": "e3bce8764be4bfb6e22f00b902999493b9c3eedfb9379d3c34f7b29aac275cb4",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-903",
+    "document": "03-Event-Model.md",
+    "sha256": "1a522b87591015097d81647386b7e6dd8c9321a0123d6bff31368e14df4dcdbe",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-904",
+    "document": "03-Event-Model.md",
+    "sha256": "cb05a357a7b4efb451e72fcf05be87dfdab39469d0307f38352ba407d6781a1d",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-905",
+    "document": "03-Event-Model.md",
+    "sha256": "286d62f1d9ce0290136ac4453598a7e48b5f3dd112a0cbd482b1f6f28c421207",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-906",
+    "document": "03-Event-Model.md",
+    "sha256": "f50ced2a83495c1d01f5f73b221766676b331d967e3cb35bd581b063094ea8da",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-907",
+    "document": "03-Event-Model.md",
+    "sha256": "d1976ae1eb1cb3c2b3916d2438b6270585792c7a1b0b9629850745633bccb74b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-908",
+    "document": "03-Event-Model.md",
+    "sha256": "210de20985d60dbb931d84cd9678c6c34d779fed715b4f94aeb2e0cf1516cfb6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-03-909",
+    "document": "03-Event-Model.md",
+    "sha256": "e1525e34f446944ca1ca10875b297de1fff930b6dcbdf270c3cc4f09039b2994",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-901",
+    "document": "04-Provider-Specification.md",
+    "sha256": "42f700d56068b2cbe92e91bd2f066e9058c320cc785f82b13abea1a08e5290d6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-902",
+    "document": "04-Provider-Specification.md",
+    "sha256": "98409d417e7606ff7c8847c7889e0c53d6507a4cc2864c7df3b32e860d77a00f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-903",
+    "document": "04-Provider-Specification.md",
+    "sha256": "b0c694c8181e323b0c00e2bf6cff9a044351e8851629c12da6ed472e633327a5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-904",
+    "document": "04-Provider-Specification.md",
+    "sha256": "6ce7deda3893af8491effa152347456705dd3657d65e3917ab0d6152169d5879",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-905",
+    "document": "04-Provider-Specification.md",
+    "sha256": "bebfd35548eccf8e3b01903fc286cfd506ef2c0fef057fc10a3278b3acde48cf",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-906",
+    "document": "04-Provider-Specification.md",
+    "sha256": "b5de2e0fbf920c4c5dbc8e9e2967cb67a71eaf51979322fc82d7b390c23e4804",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-907",
+    "document": "04-Provider-Specification.md",
+    "sha256": "48b3338a7ec15e70ec5b6d0c5051573b9e0154b8f1dda1002f72be16d1664c67",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-908",
+    "document": "04-Provider-Specification.md",
+    "sha256": "1d34887240b726aa7a086b680a49474af5356ce19735b23e7d919fa664ba8e6f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-909",
+    "document": "04-Provider-Specification.md",
+    "sha256": "585a4163fc8fa0616d7a1d62c479b9f97de5ab3812edc3d8d529f278bbaca334",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-04-910",
+    "document": "04-Provider-Specification.md",
+    "sha256": "9294e4c051467186054c3d3e0e6dd532349cc43a044a489e60f08d0d8e891071",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-901",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "a1a1970e016ae3b1ed543de097aa1d6807503655ffd4de4c7d393d9ca0d55fda",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-902",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "7c245d807d1e5cb5ae7a2509fdb215265efcae2b105991c41feb90fb3031b9ce",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-903",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "2f71a47d65c1be152abcad7b668ed7d63d8a38157deb3000893c724c135769e4",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-904",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "2beb5a165af0c70f362acfb8aa3262a18671b09cc990da36674a17eba1ef9af3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-905",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "a871793a786ef2497b0bc274828be2cf1197efe75750ae153553baf563d8bf6d",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-906",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "e8f1ceb93b0bf88e7e4249141cda8995cc8b5a20125d2fefd7279323f2bcca13",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-907",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "34f07bded97c33a3e21c34607b84ba6394dde570f1272fb76dfcf2c218cc9122",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-908",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "93eccac7e494836a5ea700d860d3ef312754e07bbfe74609b47cdd54035a1209",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-909",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "3b49e8fb5fc89390f6d665daef4ab7b6ddaafb714a299997b32fcbd063d93cc7",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-910",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "4c2e212be7af6dfc0b7199746c7da315e441fb797e33af53d4ad72edc1399ed3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-911",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "754f4dacdfa5e4883a02c206d0b7a5ae536098b9700ae55c2059eb1b35d40036",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-912",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "80acb8d887bafc23eed7e1c83558c1f08bf912512585845af836dcdc8715c4c9",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-913",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "9632ecdb78ea906c43237e9baeef9a72d433af5ff19ba3bbd8557455708a2acf",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-914",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "47b2ad3713b1e301d6edb4b2bacd14c3a60321817009e7a9e14d61e0791cc6e4",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-06-915",
+    "document": "06-Worktree-Runtime.md",
+    "sha256": "f6b8927517e3e38eaea9d8a53ec61f8ecc65e366fb9885edaf5b931e53f03bd5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-901",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "2d1091b37ba870d96cc71c52a320b4046e309f6311867f4d23625e736c8258cc",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-902",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "06882a283d44ee626385064827bc439f80d41242f64f1cd8fbd4ee11eea9682b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-903",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "3164c585254d117a8cb50a71fbeae4e5a6dc29feb289b045f5f2e2914454ede7",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-905",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "00bb56186329b5cf94c67eb92532046b53e4600b51a7ef9fe1f30d295e667d5a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-906",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "ea8589aa6e98c0f5557b9a44a8b2a193fba1ea4467f24390f7c441a8e636a045",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-907",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "3fb10c676f4d27fde0d3a14145f6d88c801f5b6ebb2e7180bdc344f76945de24",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-909",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "04ff80727aafcfc4c9a96a80c0e45cec55863b126ea4fbd571a1583490eae016",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-07-910",
+    "document": "07-Memory-Runtime.md",
+    "sha256": "9787374e0cbc2d071ff54b5624713f56115098aa6936236e7fe9e9df141da0c2",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-901",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "bd7e339fb7091ab1f0e000aa4c314c1dc564d6c008064567bb98a433c50b22f5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-902",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "ae857925444c89d7b0b318bbbf101a14ebd16e6f12dab5ff3a791c3f7334cbeb",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-903",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "bfa77f6ad3dfa6fffcfd77bf636b38fe0473852012b6abf3f398c45dbe018a4d",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-904",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "f849feb7785fbb919262b0e9e09744d8db61c3a923e745c1089b9383b3e91528",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-905",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "1717be7309cb452113e2cac644df7a1fef77b8267b977223368b550ba01cfa3d",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-906",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "080c8f80caa21146a83deb9d5e50fc64b5a52bb978ff6f8e8521dc3607d0c90a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-907",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "ef884e1463b5171b010a3f72f62b0d36daf282d1d0c205de29821d2005792741",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-908",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "9db1698a91ed61c7a8e351856be2752bb220be922cf335a2a38623a03929f2ff",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-909",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "4941ed0f82cae3217e4ac83a5f73a10d05dcf10b2ca45bb6894f972f155bbc6c",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-910",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "418cecfb8a38e4a19fd08126355d45f86fefb5eb64d69f09f5da17b856bf6e29",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-911",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "c9a94e46a9d2cb5f1feb66cdb7dff5878c8fd0e3c3dbc3f5799864eae62e7335",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-912",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "41c218459169f1f0b4aac6a608f9e0ef48540c09d932b3496773f536ec176bbd",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-913",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "1ea68492d141f371e8d9eca0a8c73af5eaf5a23809daff3e7b8e4a7a660dced2",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-914",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "c952950b144360d653a6ab2cfe87a63f60bc91dce5ee38091e1ff24e474f0bc3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-08-915",
+    "document": "08-Policy-Runtime.md",
+    "sha256": "86d19e773a7ee9e73ed23529d18679aaf97ce1312cfcce898c861f4418e1fa7c",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-901",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "699e8690c6f1768fe82022d08fae479492046a5714d4f67f47642b013c31d157",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-902",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "16cadfb68e2b788a4ecaea17b15e3019dff734ce8255109d6da7faba756f81bb",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-904",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "80b2b6ba53179e51f6f3c18aad3720c95b6b47cab8e26c81336d8b16c3e5b8ba",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-905",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "59ded1b7a565f571c84f085342a8c0dc80e4544736481172bb1b8b1349eab854",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-906",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "87df3e7dc2d5603df577dadb287eb29e48b057a4dc5b45805d7c2b8f3a8295f2",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-907",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "9cb70f75da74d86fb39d2d94ed40920904c622f49dfab03f326bb71194f495cf",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-908",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "fb40787786d6fae2958d580642fedeeaec0824647fba8308b4e97595fbbdf443",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-909",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "6cc7583050fab4d20834390fcd9b337c51c9179323cd58462dabcb57ca1dadfc",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-910",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "cbaf62e7f0ff6b16ab6550105c3e89dbb1ef5872d3d0a3d0c50b930e503d6672",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-911",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "738507ee7399e32338d53ae24a0bbbd94b81af7ca2583cb57a0ce6b4567edd26",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-912",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "56b1abcee09603879fedbc4dd21468bf2b6a3de31df24502bea8cbeac700a28b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-09-913",
+    "document": "09-Conversation-Runtime.md",
+    "sha256": "6b479a71aa5c3f251080ad87a981343d8e8e1296002678c931aea37ea613d078",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-901",
+    "document": "10-Data-Model.md",
+    "sha256": "43582bf4db97f04c40f5a4be8265a4032be0951a690da5fb81499ce31a71b513",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-902",
+    "document": "10-Data-Model.md",
+    "sha256": "156a60560a4818e11a497b54d3d8b456c5dba0780d4cc293e38e91cfa50f37f3",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-903",
+    "document": "10-Data-Model.md",
+    "sha256": "e97f01a925883567bdb910eb54c14c147792a177832e8e1225cbe2df82915f3c",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-904",
+    "document": "10-Data-Model.md",
+    "sha256": "5919b9d174858c8d35c64653c4380adb6e136d2edade0b68251a92b2d5da1aa2",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-905",
+    "document": "10-Data-Model.md",
+    "sha256": "a83eb0b35ef2d1c838f5603a702d7432b5314f840a102a9e5de9f8f9dcae4078",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-906",
+    "document": "10-Data-Model.md",
+    "sha256": "c1a6bef221123e78b9cd9cd3aff4ac50ec79b7d09915e124a37bfa8e5ce78b2f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-907",
+    "document": "10-Data-Model.md",
+    "sha256": "a9ec52e339c462fdf86a6e9f1ababaaa2f8c2b5668c41c91b21cc9c543a77fdc",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-908",
+    "document": "10-Data-Model.md",
+    "sha256": "aafe299287b73b6547b0316b44d9c980655c27be254f24b29ac718d9062d5a6f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-909",
+    "document": "10-Data-Model.md",
+    "sha256": "2d1091b37ba870d96cc71c52a320b4046e309f6311867f4d23625e736c8258cc",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-910",
+    "document": "10-Data-Model.md",
+    "sha256": "999dc147d560787950fea2ffb7f3082097a475bfc5c33cb79cc59505850e7da0",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-10-911",
+    "document": "10-Data-Model.md",
+    "sha256": "87e4b91235ef8dd4c9fd06336fb279a2a9589e631f3f1761bb3b3026d74de990",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-901",
+    "document": "11-API-Specification.md",
+    "sha256": "870b6a3e0c126c3cdd1600205d3976134fff77cd2160f6f01c20a63c0833d359",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-902",
+    "document": "11-API-Specification.md",
+    "sha256": "92e5904c6dec13c13113d0f2238e1eff92e5d7bf2feaebbe35d6374063432b17",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-903",
+    "document": "11-API-Specification.md",
+    "sha256": "65ad1e1c1f5bb54345261a363a4c5d66f82a77f77218f63e6bc0a0e1470d4efb",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-904",
+    "document": "11-API-Specification.md",
+    "sha256": "3ad493718de9a322d64e852f68243f2b3dbe251a315635f49cddfd340dcf07e8",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-905",
+    "document": "11-API-Specification.md",
+    "sha256": "eb749a6e10ded1b4072f73f50fb76afc443ddbc526e88a57738a658549bd36a5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-906",
+    "document": "11-API-Specification.md",
+    "sha256": "25a4a7b40c4dee3c828b5cd6b26478c94ffced8835c56dab9aed860609bf2b1f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-907",
+    "document": "11-API-Specification.md",
+    "sha256": "87b2d84f4869e1bc94e01cf53fa7d185af843681a66a05b555d60ea3f01e8073",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-908",
+    "document": "11-API-Specification.md",
+    "sha256": "70679802d0187e6cdc7d1a8d0fd325e6bb616399fcc9e054349204f439335d55",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-909",
+    "document": "11-API-Specification.md",
+    "sha256": "93d1236137bc89402c97a065a9a065a09691ad116c9e44855bf99069cc522213",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-910",
+    "document": "11-API-Specification.md",
+    "sha256": "547fe17149bd273b8a91b7d78c1919256cea193e273ca3dd43af2e6606ba7562",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-911",
+    "document": "11-API-Specification.md",
+    "sha256": "2353063400ccfa3b19333850d17c4c537e0fa38b973c1f9d4af7dc7830cc0306",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-912",
+    "document": "11-API-Specification.md",
+    "sha256": "50faef97e36d6e375b8a283867ad160f4e17a0709039ad8ec643cd7400b5fb85",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-913",
+    "document": "11-API-Specification.md",
+    "sha256": "41cc8ac2e1f55829bbb67031a61f5c5498500e4c71295cdff6ad6ca0a2937479",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-11-914",
+    "document": "11-API-Specification.md",
+    "sha256": "49603fa6f71b6b5b13d33d0b10e8c101b487022dc30cf70230800d788a98307e",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-901",
+    "document": "12-UI-Architecture.md",
+    "sha256": "37f09f6b758ad4cb144a43124c743b23ac4d41cb4442f07979349258579dd7ad",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-902",
+    "document": "12-UI-Architecture.md",
+    "sha256": "c9a705218025761ecd341d8ef4d4892839c02dfbc2b0fc72390c95dd41f63bc5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-903",
+    "document": "12-UI-Architecture.md",
+    "sha256": "43f73974797d9645637b3c4b9d399b98fb4533a125393a5633842ddfbb51e35b",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-904",
+    "document": "12-UI-Architecture.md",
+    "sha256": "de147f03600b25bd758e53fe79d80911d1d718c7016ddf9889c53a69bfa06feb",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-905",
+    "document": "12-UI-Architecture.md",
+    "sha256": "9f75b8c105ec46db107a8100662eb00e4eeb548808e44dc8446341570d7d3c48",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-906",
+    "document": "12-UI-Architecture.md",
+    "sha256": "30475e7b7165c8a5dd795a066b140f0d8efecc0355d02569a41ce033773b5375",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-907",
+    "document": "12-UI-Architecture.md",
+    "sha256": "612c7d6b678f6e431740877cce1b897aadd9c570f0ee139bc519a7b1aeac9172",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-908",
+    "document": "12-UI-Architecture.md",
+    "sha256": "93d1236137bc89402c97a065a9a065a09691ad116c9e44855bf99069cc522213",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-909",
+    "document": "12-UI-Architecture.md",
+    "sha256": "547fe17149bd273b8a91b7d78c1919256cea193e273ca3dd43af2e6606ba7562",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-910",
+    "document": "12-UI-Architecture.md",
+    "sha256": "debe271de7f40505f7af71035caef0fa03319b1436571d298683997b57a208fd",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-911",
+    "document": "12-UI-Architecture.md",
+    "sha256": "e7b5276e255fcfc10ca5f18f626600b145dba26a24b0d96e99c2f648b09f9f5f",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-912",
+    "document": "12-UI-Architecture.md",
+    "sha256": "6a5dc000f8ffc6ca2a96def6ef46ec1c8456aad2c59fe50976d609a8f7d794ac",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-913",
+    "document": "12-UI-Architecture.md",
+    "sha256": "93a0caa18128c15be80e787447aef109bc93d9e6044bd56ff870a73d15532a4a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-914",
+    "document": "12-UI-Architecture.md",
+    "sha256": "a93853e654eff660c865fe082f0fe0f5c6e38e015dd876b3fe6e48b396afa019",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-915",
+    "document": "12-UI-Architecture.md",
+    "sha256": "d9bf5219df9ceb55ee2aa500c2b97d8a98da44d8c1a91c7d47bfbfae687607a1",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-916",
+    "document": "12-UI-Architecture.md",
+    "sha256": "f737a521713fa166ffd963faf42d42fb098c5047a6436f4fe66e19e80d0aa5c5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-917",
+    "document": "12-UI-Architecture.md",
+    "sha256": "e1569a53d4e92b8481c61d1755533f150305bffa18b4ea17613943a8ce9b5d86",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-918",
+    "document": "12-UI-Architecture.md",
+    "sha256": "7950d7816e84c342cec2bff9f959a4e3f419a09fa84b16fa575ef33c828012b4",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-12-919",
+    "document": "12-UI-Architecture.md",
+    "sha256": "586b7a3367f27d098089b35994812aa9838416a48bb50263b583760b47324381",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-901",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "2e4b7ba870ad3410c75f885ed02986139b14086f2bec00ccaf4ec5547c6c504a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-902",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "a8cd2b77f5965c883bd14ce44de325bc94152f55339961f2f48f321dcf89f859",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-903",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "4f4f452b721c07f237bda6539589628477d82b0737c794a106eca8eb3f5fa431",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-904",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "21c99e16dcb5b833749f41627f8c9a5989be1937afb716967f0448c2d838c319",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-905",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "70679802d0187e6cdc7d1a8d0fd325e6bb616399fcc9e054349204f439335d55",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-906",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "b81ae771b911f29a4357b9eb7f8192892c864055dd3d7040b7bfdfff5ef3eb80",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-907",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "b496d8dfc87f59f0d367e80321e041664c689fbd9658d03eea9694c8461ad6f6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-908",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "93d1236137bc89402c97a065a9a065a09691ad116c9e44855bf99069cc522213",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-909",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "7d1bb9309213b71694f6af7dca6dfc811a36b59fa3a814ffad1a1988bea06043",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-910",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "956c9a2230e1cfc6de19105b4ab10f5eacde99ef40eae45158b205f87ec3b931",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-911",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "1b3b520057c4ad802a823bfd5f2f6bdc96d15f04cd9723ab69dd4f819eed978a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-912",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "c34c4e7656b3320dfb8a4e31a5ebbdde432b7e91cbdc0f5f29107a68dd14ddad",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-913",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "547fe17149bd273b8a91b7d78c1919256cea193e273ca3dd43af2e6606ba7562",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-914",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "b5fa1dd45886cd296e94277169ebd3a79fa603e6f0c40c24d28d54ab466541a5",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-915",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "d11941919371f502393a4cb6545d7dbb671543cdc8f09c4a36308a9667885ea6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-916",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "a32718961acd1ca7279880102b9fe445622a9642742780724a011b896aad9902",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-13-917",
+    "document": "13-Runtime-Inspector.md",
+    "sha256": "464b87867b26666c22c2e8ccd99228a329e18d7b554abb7a562490b16b50675a",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-901",
+    "document": "05-Process-Runtime.md",
+    "sha256": "3a26a2fa549e9cbf7f6736ce585e131f4fa125b9df59a29a060fca0423a3d5be",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-902",
+    "document": "05-Process-Runtime.md",
+    "sha256": "af85850847a7eb2cc464cb9325fa03e7f6518eadfd86e787bacad149e16e0eb6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-903",
+    "document": "05-Process-Runtime.md",
+    "sha256": "c69d3e4a022557e7ebd6e899f1180a9e4b75c9c30f789ce0ebc61a31d79db1f6",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-904",
+    "document": "05-Process-Runtime.md",
+    "sha256": "e9d7faaabc126207929daa89eac166fd64559558b9f1b36be0eed415ff28fc93",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-905",
+    "document": "05-Process-Runtime.md",
+    "sha256": "29b46bd3fec5eef7b035e94627b39e5146e68a1016e008dde97d86290d9c8be9",
+    "initialState": "DEFERRED"
+  },
+  {
+    "id": "LITE-05-906",
+    "document": "05-Process-Runtime.md",
+    "sha256": "afb3394feeaac420ce02527abf379383137682cd3f4d55619cf01300fe264fda",
+    "initialState": "DEFERRED"
+  }
+]

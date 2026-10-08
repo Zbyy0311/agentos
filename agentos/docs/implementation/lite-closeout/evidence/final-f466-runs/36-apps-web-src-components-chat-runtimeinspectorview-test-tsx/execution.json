@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration)",
+      "src/components/chat/RuntimeInspectorView.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

@@ -24,6 +24,11 @@ test('parseSseChunk joins multi-line data fields into one event payload', () => 
   assert.equal(result.remainder, '');
 });
 
+test('parseSseChunk retains the SSE id used for durable event replay', () => {
+  const result = parseSseChunk('', 'id: 42\nevent: group.checkpoint\ndata: {"cursor":42}\n\n');
+  assert.deepEqual(result.events, [{ id: '42', event: 'group.checkpoint', data: '{"cursor":42}' }]);
+});
+
 test('parseSseEventData returns null for malformed JSON payloads', () => {
   assert.equal(parseSseEventData<{ ok: boolean }>('{"ok":'), null);
 });

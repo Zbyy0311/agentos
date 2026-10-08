@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:L1A-05 READ_ONLY \\+ no enforcement -> MODIFYING|L1A-10 READ_ONLY \\+ verified technical denial \\+ no side effects -> READ_ONLY)",
+      "../../packages/shared/p6-l1a-admission.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

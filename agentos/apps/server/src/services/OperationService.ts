@@ -27,7 +27,7 @@ export interface OperationServiceOptions {
   readonly lifecycleTransactionService?: Pick<
     LifecycleTransactionService,
     'cancelRunForOperationWithinTransaction'
-  >;
+  > & Partial<Pick<LifecycleTransactionService, 'cancelRunForOperationWithEvidenceWithinTransaction'>>;
 }
 
 export interface CreateOperationInput {
@@ -49,6 +49,14 @@ export interface CancelOperationInput {
   readonly workspaceId: string;
   readonly operationId: string;
   readonly expectedVersion: number;
+  readonly evidence?: OperationCancellationEvidence;
+}
+
+export interface OperationCancellationEvidence {
+  readonly expectedRunVersion: number;
+  readonly processId?: string;
+  readonly terminatedProcessIds: string[];
+  readonly worktreePreserved: boolean;
 }
 
 const TERMINAL_STATUSES: readonly M3OperationStatus[] = ['completed', 'failed', 'cancelled'];
@@ -99,6 +107,15 @@ export class OperationIntegrityError extends Error {
   }
 }
 
+export class OperationCancellationEvidenceError extends Error {
+  readonly code = 'OPERATION_CANCELLATION_EVIDENCE_INVALID' as const;
+
+  constructor(message: string) {
+    super(`OPERATION_CANCELLATION_EVIDENCE_INVALID: ${message}`);
+    this.name = 'OperationCancellationEvidenceError';
+  }
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -114,6 +131,34 @@ function isOperationStatus(value: unknown): value is M3OperationStatus {
 function assertPositiveVersion(value: unknown): asserts value is number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
     throw new OperationValidationError('expectedVersion must be a positive safe integer');
+  }
+}
+
+function validateCancellationEvidence(evidence: OperationCancellationEvidence): void {
+  if (typeof evidence !== 'object' || evidence === null) {
+    throw new OperationCancellationEvidenceError('evidence is required');
+  }
+  if (!Number.isSafeInteger(evidence.expectedRunVersion) || evidence.expectedRunVersion < 1) {
+    throw new OperationCancellationEvidenceError('expectedRunVersion must be a positive safe integer');
+  }
+  if (!Array.isArray(evidence.terminatedProcessIds)
+    || evidence.terminatedProcessIds.some(id => !isNonEmptyString(id))
+    || new Set(evidence.terminatedProcessIds).size !== evidence.terminatedProcessIds.length) {
+    throw new OperationCancellationEvidenceError('terminatedProcessIds must contain unique strings');
+  }
+  if (evidence.processId === undefined) {
+    if (evidence.terminatedProcessIds.length !== 0) {
+      throw new OperationCancellationEvidenceError('Process identity is missing');
+    }
+  } else if (
+    !isNonEmptyString(evidence.processId)
+    || evidence.terminatedProcessIds.length !== 1
+    || evidence.terminatedProcessIds[0] !== evidence.processId
+  ) {
+    throw new OperationCancellationEvidenceError('terminatedProcessIds does not match Process identity');
+  }
+  if (typeof evidence.worktreePreserved !== 'boolean') {
+    throw new OperationCancellationEvidenceError('worktreePreserved is required');
   }
 }
 
@@ -257,6 +302,7 @@ export class OperationService {
       throw new OperationNotCancellableError(input.operationId);
     }
     if (!this.lifecycleTransactionService) throw new OperationLifecycleDependencyError();
+    if (input.evidence !== undefined) validateCancellationEvidence(input.evidence);
 
     const timestamp = assertTimestamp(this.now());
     const updated = this.repository.update({
@@ -271,11 +317,24 @@ export class OperationService {
       result: null,
       error: null,
     });
-    this.lifecycleTransactionService.cancelRunForOperationWithinTransaction({
-      workspaceId: current.workspaceId,
-      runId: current.runId,
-      correlationId: current.correlationId,
-    });
+    if (input.evidence !== undefined) {
+      const cancelWithEvidence = this.lifecycleTransactionService.cancelRunForOperationWithEvidenceWithinTransaction;
+      if (typeof cancelWithEvidence !== 'function') throw new OperationLifecycleDependencyError();
+      cancelWithEvidence.call(this.lifecycleTransactionService, {
+        workspaceId: current.workspaceId,
+        runId: current.runId,
+        correlationId: current.correlationId,
+        expectedRunVersion: input.evidence.expectedRunVersion,
+        terminatedProcessIds: input.evidence.terminatedProcessIds,
+        worktreePreserved: input.evidence.worktreePreserved,
+      });
+    } else {
+      this.lifecycleTransactionService.cancelRunForOperationWithinTransaction({
+        workspaceId: current.workspaceId,
+        runId: current.runId,
+        correlationId: current.correlationId,
+      });
+    }
     return updated;
   }
 

@@ -17,7 +17,9 @@ export type NormalizedCliEvent =
   | { type: 'status'; phase: 'starting' | 'thinking' | 'working' | 'finalizing'; label: string }
   | { type: 'assistant.message'; text: string; messageId?: string }
   | { type: 'tool.started'; callId: string; toolName: string; summary: string; inputPreview?: string }
-  | { type: 'tool.completed'; callId: string; toolName: string; success: boolean; summary: string; outputPreview?: string; durationMs?: number }
+  | { type: 'tool.completed'; callId: string; toolName: string; success: boolean; summary: string; outputPreview?: string; durationMs?: number;
+      /** Explicit command result, never reconstructed from a display preview or tool success. */
+      commandResult?: { command: string; exitCode: number } }
   | { type: 'usage'; source?: 'structured' | 'database_delta' | 'unavailable'; provider?: AgentProvider; model?: string; estimated?: boolean; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number }
   | { type: 'diagnostic'; level: 'warning' | 'error'; code: string; message: string }
   | { type: 'approval.requested'; requestId: string; toolName: string; riskLevel: 'low' | 'medium' | 'high' | 'critical'; summary: string; affectedPaths?: string[] }

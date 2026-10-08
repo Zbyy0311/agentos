@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P2 Migration Registry contains exactly the registered migrations in contract order|LITE-10-001 fresh install and supported upgrade both apply the complete registry)",
+      "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/assertions.json",
+      "sha256": "23739910a6d7945d1e9d4052b9e1717c0028ee2ee724e81ff217d406dbb5f630"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/execution.json",
+      "sha256": "0467b118974dc64af0bc77fc9ece206aad8ff680d587ea95b1cdee9c3ca63bcf"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-1c2991e7-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stdout.txt",
+      "sha256": "f28727aed26cd77860ff2657232a8f3dddb021c6c0fa0996e880af03549c24c4"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 62,
+      "expression": "assert.deepEqual(beforeUpgrade, expectedIds.filter(id => id <= '030'));",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

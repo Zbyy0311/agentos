@@ -1,0 +1,24 @@
+[
+  {
+    "id": "REC-MISMATCH-FLAG",
+    "requirementId": "LITE-13-008",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1189,
+    "expression": "assert.equal(run.recoveryRequired, true);",
+    "clause": "An uncertain recovery is durably flagged for operator handling.",
+    "whyDirect": "The production recovery test reads the persisted Run record and checks the explicit recoveryRequired flag after the mismatch path.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISMATCH-NO-TERMINAL",
+    "requirementId": "LITE-13-008",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1188,
+    "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+    "clause": "An uncertain recovery is not presented as successful completion or resumed execution.",
+    "whyDirect": "The production recovery test reads the canonical Run after mismatch handling and directly verifies that its status remains running and uncertain.",
+    "outcome": "passed"
+  }
+]

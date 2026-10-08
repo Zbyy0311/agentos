@@ -1,0 +1,222 @@
+[
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110-A1",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110-A2",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 92,
+    "expression": "assert.equal(body.projection.overview.runId, run.id);",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110-A3",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 93,
+    "expression": "assert.equal(body.projection.overview.status, 'queued');",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110-A4",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 94,
+    "expression": "assert.ok(Array.isArray(body.projection.stages));",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-001-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-110-A5",
+    "requirementId": "LITE-13-001",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 95,
+    "expression": "assert.ok(Array.isArray(body.projection.events));",
+    "clause": "view facts match canonical records;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111-A1",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111-A2",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 92,
+    "expression": "assert.equal(body.projection.overview.runId, run.id);",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111-A3",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 93,
+    "expression": "assert.equal(body.projection.overview.status, 'queued');",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111-A4",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 94,
+    "expression": "assert.ok(Array.isArray(body.projection.stages));",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-006-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-111-A5",
+    "requirementId": "LITE-13-006",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 95,
+    "expression": "assert.ok(Array.isArray(body.projection.events));",
+    "clause": "Memory view reproduces Snapshot and explanations;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112-A1",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112-A2",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 92,
+    "expression": "assert.equal(body.projection.overview.runId, run.id);",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112-A3",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 93,
+    "expression": "assert.equal(body.projection.overview.status, 'queued');",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112-A4",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 94,
+    "expression": "assert.ok(Array.isArray(body.projection.stages));",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-112-A5",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 95,
+    "expression": "assert.ok(Array.isArray(body.projection.events));",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113-A1",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 90,
+    "expression": "assert.equal(response.status, 200);",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113-A2",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 92,
+    "expression": "assert.equal(body.projection.overview.runId, run.id);",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113-A3",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 93,
+    "expression": "assert.equal(body.projection.overview.status, 'queued');",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113-A4",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 94,
+    "expression": "assert.ok(Array.isArray(body.projection.stages));",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-get-runs-runid-inspector-returns-the-redacted-projection-for-a-canonical-run-113-A5",
+    "requirementId": "LITE-13-012",
+    "file": "apps/server/src/routes/runtimeInspector.test.ts",
+    "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+    "line": 95,
+    "expression": "assert.ok(Array.isArray(body.projection.events));",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

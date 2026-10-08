@@ -1,0 +1,97 @@
+TAP version 13
+# browser screenshot=C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-13-101-qa\\wide-after.png
+# browser expected-aborts=0
+# Subtest: LITE-13-101 browser page identity and selected conversation
+not ok 1 - LITE-13-101 browser page identity and selected conversation
+  ---
+  duration_ms: 10381.6054
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:62:1'
+  failureType: 'hookFailed'
+  error: |-
+    locator.waitFor: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('section[data-column=conversations] button[data-conversation]').first() to be visible[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  name: 'TimeoutError'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:39:25)
+  ...
+# Subtest: LITE-13-101 browser renders the Run Inspector compaction section
+not ok 2 - LITE-13-101 browser renders the Run Inspector compaction section
+  ---
+  duration_ms: 0.3764
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:68:1'
+  failureType: 'hookFailed'
+  error: |-
+    locator.waitFor: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('section[data-column=conversations] button[data-conversation]').first() to be visible[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  name: 'TimeoutError'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:39:25)
+  ...
+# Subtest: LITE-13-101 browser explains trigger policy and budget
+not ok 3 - LITE-13-101 browser explains trigger policy and budget
+  ---
+  duration_ms: 0.0936
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:73:1'
+  failureType: 'hookFailed'
+  error: |-
+    locator.waitFor: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('section[data-column=conversations] button[data-conversation]').first() to be visible[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  name: 'TimeoutError'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:39:25)
+  ...
+# Subtest: LITE-13-101 browser explains source summary attempts and adoption snapshots
+not ok 4 - LITE-13-101 browser explains source summary attempts and adoption snapshots
+  ---
+  duration_ms: 0.0475
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:80:1'
+  failureType: 'hookFailed'
+  error: |-
+    locator.waitFor: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('section[data-column=conversations] button[data-conversation]').first() to be visible[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  name: 'TimeoutError'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:39:25)
+  ...
+# Subtest: LITE-13-101 browser has no unexplained application errors
+not ok 5 - LITE-13-101 browser has no unexplained application errors
+  ---
+  duration_ms: 0.0659
+  type: 'test'
+  location: 'E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\scripts\\verify-lite-13-101-browser.test.mjs:87:1'
+  failureType: 'hookFailed'
+  error: |-
+    locator.waitFor: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('section[data-column=conversations] button[data-conversation]').first() to be visible[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  name: 'TimeoutError'
+  stack: |-
+    TestContext.<anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-next-main-promotions\agentos\agentos\scripts\verify-lite-13-101-browser.test.mjs:39:25)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 0
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10927.1035

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "LITE-00-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-231",
+    "requirementId": "LITE-00-008",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-009-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-232",
+    "requirementId": "LITE-00-009",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-233",
+    "requirementId": "LITE-01-008",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "one Workspace cannot admit two modifying Runs;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-010-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-234",
+    "requirementId": "LITE-01-010",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-003-l1d-u09-an-active-modifying-admission-blocks-every-later-request-235",
+    "requirementId": "LITE-02-003",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "modifying admission never permits two active modifying Runs in one Workspace;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-004-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-236",
+    "requirementId": "LITE-02-004",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-008-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-237",
+    "requirementId": "LITE-04-008",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-001-l1d-u09-an-active-modifying-admission-blocks-every-later-request-238",
+    "requirementId": "LITE-06-001",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "one Workspace never admits two AgentOS modifying Runs concurrently;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-002-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-239",
+    "requirementId": "LITE-06-002",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-003-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-240",
+    "requirementId": "LITE-06-003",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "unknown classification is admitted as modifying;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-241",
+    "requirementId": "LITE-06-004",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-013-l1d-u09-an-active-modifying-admission-blocks-every-later-request-242",
+    "requirementId": "LITE-08-013",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "no policy path bypasses single-writer admission;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-003-l1d-u09-an-active-modifying-admission-blocks-every-later-request-243",
+    "requirementId": "LITE-09-003",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "Run start passes Workspace admission;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-011-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-244",
+    "requirementId": "LITE-09-011",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-014-l1d-u09-an-active-modifying-admission-blocks-every-later-request-245",
+    "requirementId": "LITE-09-014",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "no Workspace has two AgentOS modifying Runs;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-009-l1d-u09-an-active-modifying-admission-blocks-every-later-request-246",
+    "requirementId": "LITE-10-009",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "optimistic race winner;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-011-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-247",
+    "requirementId": "LITE-10-011",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-008-l1d-u09-an-active-modifying-admission-blocks-every-later-request-248",
+    "requirementId": "LITE-11-008",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "one Workspace never admits two modifying Runs;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-l1d-u09-an-active-modifying-admission-blocks-every-later-request-249",
+    "requirementId": "LITE-13-011",
+    "name": "L1D-U09 an active MODIFYING admission blocks every later request",
+    "line": 455,
+    "expression": "assert.deepEqual(",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-012-lite-04-008-concurrent-read-only-admission-requires-a-tested-technical-write-den-250",
+    "requirementId": "LITE-13-012",
+    "name": "LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial",
+    "line": 826,
+    "expression": "assert.equal(",
+    "clause": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

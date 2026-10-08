@@ -26,6 +26,13 @@ import {
   isCanonicalRuntimeTimestamp,
 } from './m3-runtime.js';
 import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
+import { MF5_MEMORY_EVENT_DEFINITIONS } from './mf5-memory-events.js';
+import {
+  WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS,
+  isWorkspaceEventStreamType,
+  type WorkspaceEventDraft,
+  type WorkspaceEventEnvelope,
+} from './mf5-workspace-events.js';
 
 export const CURRENT_RUNTIME_EVENT_SCHEMA_VERSION = 1;
 
@@ -58,6 +65,9 @@ export interface RuntimeEventDefinition<TPayload = unknown> {
   readonly validatePayload: RuntimeEventPayloadGuard<TPayload>;
   readonly requiresStageId?: boolean;
   readonly forbidsStageId?: boolean;
+  readonly requiresProcessId?: boolean;
+  readonly requiresProviderSessionId?: boolean;
+  readonly requiresArtifactId?: boolean;
   readonly requiresApprovalRequestId?: boolean;
   readonly source: RuntimeEventSource;
 }
@@ -84,9 +94,14 @@ export type RuntimeEventRegistryErrorCode =
   | 'INVALID_EVENT_PAYLOAD'
   | 'MISSING_STAGE_ID'
   | 'UNEXPECTED_STAGE_ID'
+  | 'MISSING_PROCESS_ID'
+  | 'MISSING_PROCESS_OR_SESSION_ID'
+  | 'MISSING_PROVIDER_SESSION_ID'
+  | 'MISSING_ARTIFACT_ID'
   | 'MISSING_APPROVAL_REQUEST_ID'
   | 'INVALID_EVENT_TIMESTAMP'
-  | 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE';
+  | 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE'
+  | 'WORKSPACE_EVENT_TYPE_NOT_ALLOWED';
 
 export class RuntimeEventRegistryError extends Error {
   constructor(
@@ -100,6 +115,26 @@ export class RuntimeEventRegistryError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Clone JSON-shaped values before freezing so callers cannot mutate an
+ * already-published draft through a nested payload/metadata reference. */
+function cloneAndFreeze<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (value === null || typeof value !== 'object') return value;
+  const existing = seen.get(value as object);
+  if (existing !== undefined) return existing as T;
+  if (Array.isArray(value)) {
+    const clone: unknown[] = [];
+    seen.set(value, clone);
+    for (const item of value) clone.push(cloneAndFreeze(item, seen));
+    return Object.freeze(clone) as T;
+  }
+  const clone: Record<string, unknown> = {};
+  seen.set(value as object, clone);
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    clone[key] = cloneAndFreeze(item, seen);
+  }
+  return Object.freeze(clone) as T;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -129,6 +164,10 @@ function validateDefinition(definition: RuntimeEventDefinition): void {
     || !Array.isArray(definition.payloadSchema.optional)
     || (definition.requiresStageId !== undefined && typeof definition.requiresStageId !== 'boolean')
     || (definition.forbidsStageId !== undefined && typeof definition.forbidsStageId !== 'boolean')
+    || (definition.requiresProcessId !== undefined && typeof definition.requiresProcessId !== 'boolean')
+    || (definition.requiresProviderSessionId !== undefined
+      && typeof definition.requiresProviderSessionId !== 'boolean')
+    || (definition.requiresArtifactId !== undefined && typeof definition.requiresArtifactId !== 'boolean')
     || (definition.requiresApprovalRequestId !== undefined
       && typeof definition.requiresApprovalRequestId !== 'boolean')
   ) {
@@ -158,7 +197,18 @@ function keysAreKnown(value: Record<string, unknown>, schema: RuntimeEventPayloa
 }
 
 function hasInvalidPayloadTimestamp(value: Record<string, unknown>): boolean {
-  return ['dequeuedAt', 'startedAt', 'startingAt', 'expiresAt', 'decidedAt'].some(
+  return [
+    'dequeuedAt',
+    'startedAt',
+    'startingAt',
+    'expiresAt',
+    'decidedAt',
+    'nativeStartedAt',
+    'exitedAt',
+    'stoppingAt',
+    'finalizedAt',
+    'updatedAt',
+  ].some(
     key => value[key] !== undefined && !isCanonicalRuntimeTimestamp(value[key]),
   );
 }
@@ -202,6 +252,57 @@ export class CentralRuntimeEventRegistry {
       );
     }
     return this.validateKnownDraft(draft, definition as RuntimeEventDefinition<TPayload>);
+  }
+
+  /**
+   * Workspace Event stream entry point (authorization section 7.2).
+   *
+   * It applies the Run envelope checks with the Workspace difference: the
+   * binding the envelope must carry is a non-empty `workspaceId`, and every
+   * Run-bound reference is refused instead of ignored. Payload validation
+   * reuses the registered definition through `validateKnownDraft` unchanged,
+   * and the type must be on the frozen Workspace allowlist (section 7.3). The
+   * Run `publish` path and every existing definition stay untouched.
+   */
+  publishWorkspace<TPayload>(draft: WorkspaceEventDraft<TPayload>): WorkspaceEventEnvelope<TPayload> {
+    if (!isRecord(draft)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event draft must be an object',
+      );
+    }
+
+    if (draft.schemaVersion > CURRENT_RUNTIME_EVENT_SCHEMA_VERSION) {
+      throw new RuntimeEventRegistryError(
+        'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE',
+        'Future Workspace Event cannot be published by the current Registry: ' + draft.type,
+      );
+    }
+
+    this.validateWorkspaceEnvelopeShape(draft);
+
+    if (!isWorkspaceEventStreamType(draft.type)) {
+      throw new RuntimeEventRegistryError(
+        'WORKSPACE_EVENT_TYPE_NOT_ALLOWED',
+        'Runtime Event type is not appendable to the Workspace stream: ' + draft.type,
+      );
+    }
+
+    const definition = this.definitions.get(draft.type);
+    if (!definition) {
+      throw new RuntimeEventRegistryError(
+        'UNREGISTERED_CORE_EVENT',
+        'Core Runtime Event type is not registered: ' + draft.type,
+      );
+    }
+
+    // The Workspace envelope is the Run envelope minus every Run-bound
+    // reference, so shared payload and definition validation applies as-is;
+    // only attribution (source/severity/visibility/durability) is defaulted.
+    return this.validateKnownDraft(
+      draft as unknown as RuntimeEventDraft<TPayload>,
+      definition as RuntimeEventDefinition<TPayload>,
+    ) as unknown as WorkspaceEventEnvelope<TPayload>;
   }
 
   consume(record: unknown): RuntimeEventConsumptionResult {
@@ -279,6 +380,50 @@ export class CentralRuntimeEventRegistry {
       );
     }
 
+    if (definition.requiresProcessId && !isNonEmptyString(draft.processId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROCESS_ID',
+        'Process Runtime Event requires an envelope processId: ' + draft.type,
+      );
+    }
+
+    if (
+      draft.type === 'process.claim_transferred'
+      && !isNonEmptyString(draft.processId)
+      && !isNonEmptyString(draft.providerSessionId)
+    ) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROCESS_OR_SESSION_ID',
+        'Claim transfer Runtime Event requires a processId or providerSessionId',
+      );
+    }
+
+    if (definition.requiresProviderSessionId && !isNonEmptyString(draft.providerSessionId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROVIDER_SESSION_ID',
+        'Process Runtime Event requires an envelope providerSessionId: ' + draft.type,
+      );
+    }
+
+    if (
+      draft.type === 'process.launch_requested'
+      && isRecord(draft.payload)
+      && draft.payload.authorityRole === 'primary-provider'
+      && (!isNonEmptyString(draft.stageId) || !isNonEmptyString(draft.providerSessionId))
+    ) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_STAGE_ID',
+        'Provider-root launch Runtime Event requires stageId and providerSessionId',
+      );
+    }
+
+    if (definition.requiresArtifactId && !isNonEmptyString(draft.artifactId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_ARTIFACT_ID',
+        'Process Runtime Event requires an envelope artifactId: ' + draft.type,
+      );
+    }
+
     if (definition.requiresApprovalRequestId && !isNonEmptyString(draft.approvalRequestId)) {
       throw new RuntimeEventRegistryError(
         'MISSING_APPROVAL_REQUEST_ID',
@@ -314,13 +459,19 @@ export class CentralRuntimeEventRegistry {
       );
     }
 
-    return {
+    const payload = cloneAndFreeze(draft.payload);
+    const metadata = draft.metadata === undefined
+      ? undefined
+      : cloneAndFreeze(draft.metadata);
+    return Object.freeze({
       ...draft,
       source: draft.source ?? definition.source,
       severity: draft.severity ?? definition.defaultSeverity,
       visibility: draft.visibility ?? definition.defaultVisibility,
       durability: draft.durability ?? definition.defaultDurability,
-    };
+      payload,
+      ...(metadata === undefined ? {} : { metadata }),
+    });
   }
 
   private toDraft(record: unknown): RuntimeEventDraft {
@@ -422,6 +573,87 @@ export class CentralRuntimeEventRegistry {
       throw new RuntimeEventRegistryError(
         'INVALID_EVENT_TIMESTAMP',
         'Runtime Event timestamp must use canonical UTC milliseconds: ' + draft.timestamp,
+      );
+    }
+
+    if (draft.source !== undefined && !hasValue(RUNTIME_EVENT_SOURCES, draft.source)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event source: ' + draft.source,
+      );
+    }
+
+    if (draft.severity !== undefined && !hasValue(RUNTIME_EVENT_SEVERITIES, draft.severity)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event severity: ' + draft.severity,
+      );
+    }
+
+    if (draft.visibility !== undefined && !hasValue(RUNTIME_EVENT_VISIBILITIES, draft.visibility)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event visibility: ' + draft.visibility,
+      );
+    }
+
+    if (draft.durability !== undefined && !hasValue(RUNTIME_EVENT_DURABILITIES, draft.durability)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event durability: ' + draft.durability,
+      );
+    }
+  }
+
+  /**
+   * The Run envelope checks (section 7.2), with the two Workspace rules:
+   * `workspaceId` is the binding that must be present, and no Run-bound
+   * reference key may appear at all. `source`, `severity`, `visibility`, and
+   * `durability` stay optional here because `validateKnownDraft` fills them
+   * from the registered definition, exactly as it does for the Run stream.
+   *
+   * `causationId` is required rather than optional: the frozen Workspace
+   * envelope (section 7.1) only accepts an origin proven against a durable row
+   * in the same Workspace (section 8.1), and the table stores it NOT NULL.
+   * Requiring it here fails closed in the Registry instead of at the INSERT.
+   */
+  private validateWorkspaceEnvelopeShape(draft: WorkspaceEventDraft): void {
+    if (!isPositiveSafeInteger(draft.schemaVersion)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_SCHEMA_VERSION',
+        'Workspace Event schemaVersion must be a positive safe integer',
+      );
+    }
+
+    if (
+      !isNonEmptyString(draft.id)
+      || !isNonEmptyString(draft.type)
+      || !isNonEmptyString(draft.workspaceId)
+      || !isNonEmptyString(draft.correlationId)
+      || !isNonEmptyString(draft.causationId)
+      || !isNonEmptyString(draft.timestamp)
+      || !isPositiveSafeInteger(draft.sequence)
+    ) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event envelope is incomplete',
+      );
+    }
+
+    const runBound = WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS.filter(
+      key => (draft as unknown as Record<string, unknown>)[key] !== undefined,
+    );
+    if (runBound.length > 0) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event must not carry Run-bound references: ' + runBound.join(', '),
+      );
+    }
+
+    if (!isCanonicalRuntimeTimestamp(draft.timestamp)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_TIMESTAMP',
+        'Workspace Event timestamp must use canonical UTC milliseconds: ' + draft.timestamp,
       );
     }
 
@@ -1048,6 +1280,371 @@ export function isTextCompletedPayload(value: unknown): value is TextCompletedPa
   );
 }
 
+/* ------------------------------------------------------------------------- *
+ * M4-P2B Process facts
+ * ------------------------------------------------------------------------- */
+
+export interface ProcessSessionClaimedPayload {
+  readonly stageAttempt: number;
+  readonly authorityRole: 'primary-provider';
+  readonly claimEpoch: number;
+  readonly runtimeMode: 'cli' | 'api' | 'ssh' | 'container';
+}
+
+export interface ProcessSessionStateChangedPayload {
+  readonly from: string;
+  readonly to: string;
+  readonly adapterStartRequested: boolean;
+  readonly terminal: boolean;
+  readonly errorCode?: string;
+}
+
+export interface ProcessClaimTransferredPayload {
+  readonly claimEpoch: number;
+  readonly authorityRole: 'primary-provider';
+  readonly ownerChanged: boolean;
+}
+
+export interface ProcessLaunchRequestedPayload {
+  readonly processType: 'provider' | 'tool' | 'command' | 'git' | 'test' | 'system' | 'extension';
+  readonly executable: string;
+  readonly argsRedacted: string[];
+  readonly cwd: string;
+  readonly shell: boolean;
+  readonly timeoutPolicyDigest: string;
+  readonly claimEpoch: number;
+  readonly authorityRole?: 'primary-provider';
+}
+
+export interface ProcessStartingPayload {
+  readonly from: 'created';
+  readonly to: 'starting';
+  readonly spawnRightConsumed: true;
+}
+
+export interface ProcessStartedPayload {
+  readonly nativePid: number;
+  readonly nativeStartedAt: string;
+  readonly platform: string;
+  readonly treeOwnershipMode?: string;
+  readonly startedAt: string;
+}
+
+export interface ProcessStateChangedPayload {
+  readonly from: string;
+  readonly to: string;
+  readonly updatedAt: string;
+  readonly cleanupResult?: string;
+}
+
+export interface ProcessStoppingPayload {
+  readonly reason: string;
+  readonly nativeIdentityPending: boolean;
+  readonly stoppingAt: string;
+  readonly gracefulRequested: boolean;
+  readonly graceDeadline: string;
+  readonly forceDeadline: string;
+  readonly idempotencyKeyHash: string;
+  readonly cleanupResult?: string;
+}
+
+export interface ProcessExitedPayload {
+  readonly exitCode: number | null;
+  readonly exitSignal: string | null;
+  readonly terminationReason: string | null;
+  readonly cleanupResult: string | null;
+  readonly exitedAt: string;
+  readonly durationMs: number;
+  readonly graceful: boolean;
+  readonly force: boolean;
+  readonly outputReferenceIds: string[];
+}
+
+export interface ProcessFailedPayload {
+  readonly errorCode: string;
+  readonly failedAt: string;
+  readonly outcome:
+    | 'spawn-failure'
+    | 'spawn-failure-after-cancel'
+    | 'registration-failure'
+    | 'cancelled-before-spawn';
+  readonly detailRedacted?: string;
+  readonly cleanupResult?: string;
+  readonly cancelReason?: string;
+  readonly cancelCausationId?: string;
+  readonly spawnFailureEvidence?: string;
+}
+
+export interface ProcessCleanupRequiredPayload {
+  readonly cleanupResult: string;
+  readonly survivorCount: number;
+  readonly reason: string;
+  readonly checkedAt: string;
+}
+
+export interface ProcessOrphanedPayload {
+  readonly classification: 'mismatch' | 'unknown' | 'survivors';
+  readonly cleanupRequired: boolean;
+  readonly reason: string;
+}
+
+export interface ProcessOutputReferenceAdvancedPayload {
+  readonly stream: 'stdout' | 'stderr';
+  readonly artifactId: string;
+  readonly priorSourceOffset: number;
+  readonly nextSourceOffset: number;
+  readonly retainedBytes: number;
+  readonly segmentCount: number;
+  readonly truncated: boolean;
+  readonly finalized: boolean;
+  readonly truncationReason?: string;
+  readonly finalizedAt?: string;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isNullableSafeInteger(value: unknown): value is number | null {
+  return value === null || isNonNegativeSafeInteger(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || isNonEmptyString(value);
+}
+
+function isHexDigest(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function isProcessTransitionPayload(value: unknown): value is ProcessStateChangedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['from', 'to', 'updatedAt', 'cleanupResult'])
+    && hasLifecycleString(value, 'from')
+    && hasLifecycleString(value, 'to')
+    && hasLifecycleCanonicalTimestamp(value, 'updatedAt')
+    && (value.cleanupResult === undefined || hasLifecycleString(value, 'cleanupResult'))
+  );
+}
+
+export function isProcessSessionClaimedPayload(value: unknown): value is ProcessSessionClaimedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['stageAttempt', 'authorityRole', 'claimEpoch', 'runtimeMode'])
+    && isPositiveSafeInteger(value.stageAttempt)
+    && value.authorityRole === 'primary-provider'
+    && isPositiveSafeInteger(value.claimEpoch)
+    && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
+  );
+}
+
+export function isProcessSessionStateChangedPayload(value: unknown): value is ProcessSessionStateChangedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['from', 'to', 'adapterStartRequested', 'terminal', 'errorCode'])
+    && hasLifecycleString(value, 'from')
+    && hasLifecycleString(value, 'to')
+    && typeof value.adapterStartRequested === 'boolean'
+    && typeof value.terminal === 'boolean'
+    && hasOptionalLifecycleString(value, 'errorCode')
+  );
+}
+
+export function isProcessClaimTransferredPayload(value: unknown): value is ProcessClaimTransferredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['claimEpoch', 'authorityRole', 'ownerChanged'])
+    && isPositiveSafeInteger(value.claimEpoch)
+    && value.authorityRole === 'primary-provider'
+    && typeof value.ownerChanged === 'boolean'
+  );
+}
+
+export function isProcessLaunchRequestedPayload(value: unknown): value is ProcessLaunchRequestedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'processType',
+      'executable',
+      'argsRedacted',
+      'cwd',
+      'shell',
+      'timeoutPolicyDigest',
+      'claimEpoch',
+      'authorityRole',
+    ])
+    && hasValue(['provider', 'tool', 'command', 'git', 'test', 'system', 'extension'], value.processType)
+    && hasLifecycleString(value, 'executable')
+    && isLifecycleStringArray(value.argsRedacted)
+    && hasLifecycleString(value, 'cwd')
+    && typeof value.shell === 'boolean'
+    && isHexDigest(value.timeoutPolicyDigest)
+    && isPositiveSafeInteger(value.claimEpoch)
+    && (value.authorityRole === undefined || value.authorityRole === 'primary-provider')
+  );
+}
+
+export function isProcessStartingPayload(value: unknown): value is ProcessStartingPayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['from', 'to', 'spawnRightConsumed'])
+    && value.from === 'created'
+    && value.to === 'starting'
+    && value.spawnRightConsumed === true;
+}
+
+export function isProcessStartedPayload(value: unknown): value is ProcessStartedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['nativePid', 'nativeStartedAt', 'platform', 'treeOwnershipMode', 'startedAt'])
+    && isPositiveSafeInteger(value.nativePid)
+    && hasLifecycleCanonicalTimestamp(value, 'nativeStartedAt')
+    && hasLifecycleString(value, 'platform')
+    && hasOptionalLifecycleString(value, 'treeOwnershipMode')
+    && hasLifecycleCanonicalTimestamp(value, 'startedAt')
+  );
+}
+
+export function isProcessStateChangedPayload(value: unknown): value is ProcessStateChangedPayload {
+  return isProcessTransitionPayload(value);
+}
+
+export function isProcessStoppingPayload(value: unknown): value is ProcessStoppingPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'reason',
+      'nativeIdentityPending',
+      'stoppingAt',
+      'gracefulRequested',
+      'graceDeadline',
+      'forceDeadline',
+      'idempotencyKeyHash',
+      'cleanupResult',
+    ])
+    && hasLifecycleString(value, 'reason')
+    && typeof value.nativeIdentityPending === 'boolean'
+    && hasLifecycleCanonicalTimestamp(value, 'stoppingAt')
+    && typeof value.gracefulRequested === 'boolean'
+    && hasLifecycleCanonicalTimestamp(value, 'graceDeadline')
+    && hasLifecycleCanonicalTimestamp(value, 'forceDeadline')
+    && isHexDigest(value.idempotencyKeyHash)
+    && (value.cleanupResult === undefined || hasLifecycleString(value, 'cleanupResult'))
+  );
+}
+
+export function isProcessExitedPayload(value: unknown): value is ProcessExitedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'exitCode',
+      'exitSignal',
+      'terminationReason',
+      'cleanupResult',
+      'exitedAt',
+      'durationMs',
+      'graceful',
+      'force',
+      'outputReferenceIds',
+    ])
+    && isNullableSafeInteger(value.exitCode)
+    && isNullableString(value.exitSignal)
+    && isNullableString(value.terminationReason)
+    && isNullableString(value.cleanupResult)
+    && hasLifecycleCanonicalTimestamp(value, 'exitedAt')
+    && isNonNegativeSafeInteger(value.durationMs)
+    && typeof value.graceful === 'boolean'
+    && typeof value.force === 'boolean'
+    && isLifecycleStringArray(value.outputReferenceIds)
+  );
+}
+
+export function isProcessFailedPayload(value: unknown): value is ProcessFailedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'errorCode',
+      'failedAt',
+      'outcome',
+      'detailRedacted',
+      'cleanupResult',
+      'cancelReason',
+      'cancelCausationId',
+      'spawnFailureEvidence',
+    ])
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleCanonicalTimestamp(value, 'failedAt')
+    && hasValue([
+      'spawn-failure',
+      'spawn-failure-after-cancel',
+      'registration-failure',
+      'cancelled-before-spawn',
+    ], value.outcome)
+    && hasOptionalLifecycleString(value, 'detailRedacted')
+    && hasOptionalLifecycleString(value, 'cleanupResult')
+    && hasOptionalLifecycleString(value, 'cancelReason')
+    && hasOptionalLifecycleString(value, 'cancelCausationId')
+    && hasOptionalLifecycleString(value, 'spawnFailureEvidence')
+    && (value.outcome !== 'spawn-failure-after-cancel'
+      || (value.cancelReason !== undefined
+        && value.cancelCausationId !== undefined
+        && value.spawnFailureEvidence === 'PROCESS_SPAWN_FAILED'))
+    && (value.outcome !== 'spawn-failure'
+      || value.spawnFailureEvidence === 'PROCESS_SPAWN_FAILED')
+  );
+}
+
+export function isProcessCleanupRequiredPayload(value: unknown): value is ProcessCleanupRequiredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['cleanupResult', 'survivorCount', 'reason', 'checkedAt'])
+    && hasLifecycleString(value, 'cleanupResult')
+    && isNonNegativeSafeInteger(value.survivorCount)
+    && hasLifecycleString(value, 'reason')
+    && hasLifecycleCanonicalTimestamp(value, 'checkedAt')
+  );
+}
+
+export function isProcessOrphanedPayload(value: unknown): value is ProcessOrphanedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['classification', 'cleanupRequired', 'reason'])
+    && hasValue(['mismatch', 'unknown', 'survivors'], value.classification)
+    && typeof value.cleanupRequired === 'boolean'
+    && hasLifecycleString(value, 'reason')
+  );
+}
+
+export function isProcessOutputReferenceAdvancedPayload(
+  value: unknown,
+): value is ProcessOutputReferenceAdvancedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'stream',
+      'artifactId',
+      'priorSourceOffset',
+      'nextSourceOffset',
+      'retainedBytes',
+      'segmentCount',
+      'truncated',
+      'finalized',
+      'truncationReason',
+      'finalizedAt',
+    ])
+    && hasValue(['stdout', 'stderr'], value.stream)
+    && hasLifecycleString(value, 'artifactId')
+    && isNonNegativeSafeInteger(value.priorSourceOffset)
+    && isNonNegativeSafeInteger(value.nextSourceOffset)
+    && isNonNegativeSafeInteger(value.retainedBytes)
+    && isNonNegativeSafeInteger(value.segmentCount)
+    && typeof value.truncated === 'boolean'
+    && typeof value.finalized === 'boolean'
+    && hasOptionalLifecycleString(value, 'truncationReason')
+    && hasOptionalLifecycleCanonicalTimestamp(value, 'finalizedAt')
+  );
+}
+
 export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   {
     type: 'run.created',
@@ -1465,9 +2062,594 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   },
 ];
 
+/**
+ * P2B is additive: these definitions use the existing M3 envelope and
+ * persistence path, but are kept outside the M3 lifecycle type list so Run /
+ * Stage transition contracts remain unchanged.
+ */
+export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'process.session_claimed',
+    domain: 'process',
+    description: 'A Provider Session reservation was durably claimed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    requiresProviderSessionId: true,
+    payloadSchema: {
+      required: ['stageAttempt', 'authorityRole', 'claimEpoch', 'runtimeMode'],
+      optional: [],
+    },
+    validatePayload: isProcessSessionClaimedPayload,
+  },
+  {
+    type: 'process.session_state_changed',
+    domain: 'process',
+    description: 'A Provider Session storage state or start marker changed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    requiresProviderSessionId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'adapterStartRequested', 'terminal'],
+      optional: ['errorCode'],
+    },
+    validatePayload: isProcessSessionStateChangedPayload,
+  },
+  {
+    type: 'process.claim_transferred',
+    domain: 'process',
+    description: 'A fenced Process or Session claim ownership transfer committed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['claimEpoch', 'authorityRole', 'ownerChanged'],
+      optional: [],
+    },
+    validatePayload: isProcessClaimTransferredPayload,
+  },
+  {
+    type: 'process.launch_requested',
+    domain: 'process',
+    description: 'A Runtime Process reservation was durably created before spawn.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: [
+        'processType',
+        'executable',
+        'argsRedacted',
+        'cwd',
+        'shell',
+        'timeoutPolicyDigest',
+        'claimEpoch',
+      ],
+      optional: ['authorityRole'],
+    },
+    validatePayload: isProcessLaunchRequestedPayload,
+  },
+  {
+    type: 'process.starting',
+    domain: 'process',
+    description: 'A fenced Process CAS consumed its single spawn right.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'spawnRightConsumed'],
+      optional: [],
+    },
+    validatePayload: isProcessStartingPayload,
+  },
+  {
+    type: 'process.started',
+    domain: 'process',
+    description: 'A native identity was bound to the same Runtime Process.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['nativePid', 'nativeStartedAt', 'platform', 'startedAt'],
+      optional: ['treeOwnershipMode'],
+    },
+    validatePayload: isProcessStartedPayload,
+  },
+  {
+    type: 'process.state_changed',
+    domain: 'process',
+    description: 'A non-terminal Runtime Process state transition committed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'updatedAt'],
+      optional: ['cleanupResult'],
+    },
+    validatePayload: isProcessStateChangedPayload,
+  },
+  {
+    type: 'process.stopping',
+    domain: 'process',
+    description: 'A Runtime Process stop transition was durably accepted.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: [
+        'reason',
+        'nativeIdentityPending',
+        'stoppingAt',
+        'gracefulRequested',
+        'graceDeadline',
+        'forceDeadline',
+        'idempotencyKeyHash',
+      ],
+      optional: ['cleanupResult'],
+    },
+    validatePayload: isProcessStoppingPayload,
+  },
+  {
+    type: 'process.exited',
+    domain: 'process',
+    description: 'A Runtime Process reached an authoritative terminal exit fact.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: [
+        'exitCode',
+        'exitSignal',
+        'terminationReason',
+        'cleanupResult',
+        'exitedAt',
+        'durationMs',
+        'graceful',
+        'force',
+        'outputReferenceIds',
+      ],
+      optional: [],
+    },
+    validatePayload: isProcessExitedPayload,
+  },
+  {
+    type: 'process.failed',
+    domain: 'process',
+    description: 'A Runtime Process ended before a managed running identity existed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'error',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['errorCode', 'failedAt', 'outcome'],
+      optional: [
+        'detailRedacted',
+        'cleanupResult',
+        'cancelReason',
+        'cancelCausationId',
+        'spawnFailureEvidence',
+      ],
+    },
+    validatePayload: isProcessFailedPayload,
+  },
+  {
+    type: 'process.cleanup_required',
+    domain: 'process',
+    description: 'Cleanup evidence requires further bounded recovery work.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['cleanupResult', 'survivorCount', 'reason', 'checkedAt'],
+      optional: [],
+    },
+    validatePayload: isProcessCleanupRequiredPayload,
+  },
+  {
+    type: 'process.orphaned',
+    domain: 'process',
+    description: 'A Runtime Process is alive or uncertain without safe control.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['classification', 'cleanupRequired', 'reason'],
+      optional: [],
+    },
+    validatePayload: isProcessOrphanedPayload,
+  },
+  {
+    type: 'process.output_reference_advanced',
+    domain: 'process',
+    description: 'A restricted Process output reference advanced or finalized.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    requiresArtifactId: true,
+    payloadSchema: {
+      required: [
+        'stream',
+        'artifactId',
+        'priorSourceOffset',
+        'nextSourceOffset',
+        'retainedBytes',
+        'segmentCount',
+        'truncated',
+        'finalized',
+      ],
+      optional: ['truncationReason', 'finalizedAt'],
+    },
+    validatePayload: isProcessOutputReferenceAdvancedPayload,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// P6-L1A Workspace Admission / Git Observation / Artifact event vocabulary.
+//
+// These definitions are additive and registered by createM3RuntimeEventRegistry.
+// The run.mutation_class.resolved and run.read_only_enforcement.unavailable
+// events stay in the Run domain; the workspace.admission.*, git.observation.*
+// and artifact.diff.* families use the new workspace / git / artifact domains.
+// P6-L1A registers the vocabulary only; no Admission event is written yet.
+//
+// Canonical subject restriction (frozen observability contract): a CANONICAL
+// Run may publish canonical Runtime/Outbox events, while a LEGACY_AGENT_RUN
+// MUST NOT publish canonical Runtime Events under an agent_runs.id and MUST
+// NOT require a fake canonical Run (legacy compatibility telemetry only; the
+// workspace_admissions row stays the authority). The shared
+// WorkspaceAdmissionSubject union therefore remains dual-subject, but the
+// CANONICAL Runtime Event payloads below require subjectKind CANONICAL_RUN.
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceAdmissionRequestedPayload {
+  readonly subjectKind: 'CANONICAL_RUN';
+  readonly requestedMutationClass: 'READ_ONLY' | 'MODIFYING';
+}
+
+export interface WorkspaceAdmissionGrantedPayload {
+  readonly subjectKind: 'CANONICAL_RUN';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly requestOrder: number;
+}
+
+export interface WorkspaceAdmissionQueuedPayload {
+  readonly subjectKind: 'CANONICAL_RUN';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly requestOrder: number;
+  readonly queueReason: string;
+}
+
+export interface WorkspaceAdmissionReleasedPayload {
+  readonly subjectKind: 'CANONICAL_RUN';
+  readonly releaseReason: string;
+}
+
+export interface RunMutationClassResolvedPayload {
+  readonly requestedMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+}
+
+export interface RunReadOnlyEnforcementUnavailablePayload {
+  readonly reason: string;
+}
+
+export interface GitObservationCompletedPayload {
+  readonly observationState: 'GIT' | 'NOT_GIT';
+  readonly dirtyState: 'clean' | 'dirty' | 'unknown';
+}
+
+export interface GitObservationUnavailablePayload {
+  readonly errorCode: string;
+}
+
+export interface ArtifactDiffRegisteredPayload {
+  readonly artifactId: string;
+  readonly contentHash: string;
+  readonly sizeBytes: number;
+}
+
+// The canonical Workspace Admission Runtime Event payloads accept ONLY the
+// CANONICAL_RUN subject kind. LEGACY_AGENT_RUN admission telemetry belongs to
+// the legacy compatibility path (outside this registry) and must be rejected
+// here as INVALID_EVENT_PAYLOAD.
+const CANONICAL_ADMISSION_SUBJECT_KIND = 'CANONICAL_RUN';
+
+const MUTATION_CLASSES: readonly string[] = Object.freeze(['READ_ONLY', 'MODIFYING']);
+
+export function isWorkspaceAdmissionRequestedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionRequestedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'requestedMutationClass'])
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
+    && hasValue(MUTATION_CLASSES, value.requestedMutationClass)
+  );
+}
+
+export function isWorkspaceAdmissionGrantedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionGrantedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder'])
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+    && isPositiveSafeInteger(value.requestOrder)
+  );
+}
+
+export function isWorkspaceAdmissionQueuedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionQueuedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder', 'queueReason'])
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+    && isPositiveSafeInteger(value.requestOrder)
+    && isNonEmptyString(value.queueReason)
+  );
+}
+
+export function isWorkspaceAdmissionReleasedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionReleasedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'releaseReason'])
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
+    && isNonEmptyString(value.releaseReason)
+  );
+}
+
+export function isRunMutationClassResolvedPayload(
+  value: unknown,
+): value is RunMutationClassResolvedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['requestedMutationClass', 'effectiveMutationClass'])
+    && hasValue(MUTATION_CLASSES, value.requestedMutationClass)
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+  );
+}
+
+export function isRunReadOnlyEnforcementUnavailablePayload(
+  value: unknown,
+): value is RunReadOnlyEnforcementUnavailablePayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['reason']) && isNonEmptyString(value.reason);
+}
+
+export function isGitObservationCompletedPayload(
+  value: unknown,
+): value is GitObservationCompletedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['observationState', 'dirtyState'])
+    && hasValue(['GIT', 'NOT_GIT'], value.observationState)
+    && hasValue(['clean', 'dirty', 'unknown'], value.dirtyState)
+  );
+}
+
+export function isGitObservationUnavailablePayload(
+  value: unknown,
+): value is GitObservationUnavailablePayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['errorCode']) && isNonEmptyString(value.errorCode);
+}
+
+export function isArtifactDiffRegisteredPayload(
+  value: unknown,
+): value is ArtifactDiffRegisteredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['artifactId', 'contentHash', 'sizeBytes'])
+    && isNonEmptyString(value.artifactId)
+    && isHexDigest(value.contentHash)
+    && typeof value.sizeBytes === 'number'
+    && Number.isSafeInteger(value.sizeBytes)
+    && value.sizeBytes >= 0
+  );
+}
+
+export const P6_L1_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'workspace.admission.requested',
+    domain: 'workspace',
+    description: 'A Workspace Admission was requested for a Run subject.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'requestedMutationClass'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionRequestedPayload,
+  },
+  {
+    type: 'workspace.admission.granted',
+    domain: 'workspace',
+    description: 'A Workspace Admission was granted, establishing single-writer authority.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'effectiveMutationClass', 'requestOrder'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionGrantedPayload,
+  },
+  {
+    type: 'workspace.admission.queued',
+    domain: 'workspace',
+    description: 'A Workspace Admission was durably queued behind another modifying Run.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'effectiveMutationClass', 'requestOrder', 'queueReason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionQueuedPayload,
+  },
+  {
+    type: 'workspace.admission.released',
+    domain: 'workspace',
+    description: 'A Workspace Admission was released after a committed terminal state.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'releaseReason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionReleasedPayload,
+  },
+  {
+    type: 'run.mutation_class.resolved',
+    domain: 'run',
+    description: 'The requested and effective mutation classes were resolved for a Run.',
+    schemaVersion: 1,
+    source: 'run-engine',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['requestedMutationClass', 'effectiveMutationClass'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunMutationClassResolvedPayload,
+  },
+  {
+    type: 'run.read_only_enforcement.unavailable',
+    domain: 'run',
+    description: 'enforcedWorkspaceReadOnly could not be proven, so the Run is modifying.',
+    schemaVersion: 1,
+    source: 'run-engine',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['reason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunReadOnlyEnforcementUnavailablePayload,
+  },
+  {
+    type: 'git.observation.completed',
+    domain: 'git',
+    description: 'A bounded Git observation completed for a Workspace.',
+    schemaVersion: 1,
+    source: 'git-runtime',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['observationState', 'dirtyState'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isGitObservationCompletedPayload,
+  },
+  {
+    type: 'git.observation.unavailable',
+    domain: 'git',
+    description: 'A Git observation failed or was unavailable; no clean state is inferred.',
+    schemaVersion: 1,
+    source: 'git-runtime',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['errorCode'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isGitObservationUnavailablePayload,
+  },
+  {
+    type: 'artifact.diff.registered',
+    domain: 'artifact',
+    description: 'A Git diff Artifact was registered with canonical provenance.',
+    schemaVersion: 1,
+    source: 'artifact-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['artifactId', 'contentHash', 'sizeBytes'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isArtifactDiffRegisteredPayload,
+  },
+];
+
 export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
   const registry = new CentralRuntimeEventRegistry();
   for (const definition of M3_CORE_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of M4_PROCESS_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of P6_L1_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of MF5_MEMORY_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   return registry;

@@ -1,0 +1,167 @@
+[
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409-A1",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409-A2",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 136,
+    "expression": "expect(authResult.authentication).toBe('unauthenticated');",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409-A3",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 140,
+    "expression": "expect(mismatchResult.errors.map(error => error.code)).toEqual(expect.arrayContaining([",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409-A4",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 144,
+    "expression": "expect(JSON.stringify(mismatchResult)).not.toContain('PROVIDER_VALIDATION_FAILED');",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-409-A5",
+    "requirementId": "LITE-04-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 145,
+    "expression": "expect(mismatchResult.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);",
+    "clause": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410-A1",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410-A2",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 136,
+    "expression": "expect(authResult.authentication).toBe('unauthenticated');",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410-A3",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 140,
+    "expression": "expect(mismatchResult.errors.map(error => error.code)).toEqual(expect.arrayContaining([",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410-A4",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 144,
+    "expression": "expect(JSON.stringify(mismatchResult)).not.toContain('PROVIDER_VALIDATION_FAILED');",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-003-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-410-A5",
+    "requirementId": "LITE-08-003",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 145,
+    "expression": "expect(mismatchResult.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);",
+    "clause": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411-A1",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 135,
+    "expression": "expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411-A2",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 136,
+    "expression": "expect(authResult.authentication).toBe('unauthenticated');",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411-A3",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 140,
+    "expression": "expect(mismatchResult.errors.map(error => error.code)).toEqual(expect.arrayContaining([",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411-A4",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 144,
+    "expression": "expect(JSON.stringify(mismatchResult)).not.toContain('PROVIDER_VALIDATION_FAILED');",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-010-preserves-auth-states-reports-capability-output-mismatches-and-never-emits-gener-411-A5",
+    "requirementId": "LITE-08-010",
+    "file": "packages/agent-core/src/providers/validation.test.ts",
+    "name": "preserves auth states, reports capability/output mismatches, and never emits generic validation failed",
+    "line": 145,
+    "expression": "expect(mismatchResult.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);",
+    "clause": "Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

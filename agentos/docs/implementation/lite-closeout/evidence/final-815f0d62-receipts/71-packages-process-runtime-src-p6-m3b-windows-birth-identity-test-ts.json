@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 1,
+  "format": "vitest",
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "vitest",
+      "run",
+      "--reporter=verbose",
+      "src/p6-m3b-windows-birth-identity.test.ts"
+    ]
+  },
+  "cwd": "packages/process-runtime",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/assertions.json",
+      "sha256": "477ccdc44579c49e15aa94f1231b088526e2258dacede4dbe090d8a2899b963f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/execution.json",
+      "sha256": "1ae45697b91cf2712d23218f50308eeabb906894ba6961c6bc7cff7ce4064030"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/stdout.txt",
+      "sha256": "0034ecb88f1ed55dad9a3908f042b1be9637dd17a0e9e6fa7aa286a40a91feda"
+    }
+  ],
+  "counts": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "total": 10
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-05-001-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-440",
+      "requirementId": "LITE-05-001",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-001-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-441",
+      "requirementId": "LITE-05-001",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-002-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-442",
+      "requirementId": "LITE-05-002",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-002-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-443",
+      "requirementId": "LITE-05-002",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-003-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-444",
+      "requirementId": "LITE-05-003",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-003-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-445",
+      "requirementId": "LITE-05-003",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-004-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-446",
+      "requirementId": "LITE-05-004",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-004-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-447",
+      "requirementId": "LITE-05-004",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-005-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-448",
+      "requirementId": "LITE-05-005",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-005-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-449",
+      "requirementId": "LITE-05-005",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-006-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-450",
+      "requirementId": "LITE-05-006",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-006-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-451",
+      "requirementId": "LITE-05-006",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-452",
+      "requirementId": "LITE-05-007",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-007-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-453",
+      "requirementId": "LITE-05-007",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "cancel terminates the owned Windows process tree with survivor verification;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-009-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-454",
+      "requirementId": "LITE-05-009",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-009-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-455",
+      "requirementId": "LITE-05-009",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-012-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-456",
+      "requirementId": "LITE-05-012",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-05-012-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-457",
+      "requirementId": "LITE-05-012",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-010-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-458",
+      "requirementId": "LITE-10-010",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "Process reserve-before-spawn;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-010-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-459",
+      "requirementId": "LITE-10-010",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "Process reserve-before-spawn;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-012-w1-kill-on-close-ownership-loss-via-session-close-reaps-the-provider-recovery-se-460",
+      "requirementId": "LITE-10-012",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)",
+      "line": 108,
+      "expression": "expect(owned.nativeBirthIdentity).toMatch(CANONICAL_PATTERN);",
+      "clause": "fail-closed recovery evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-012-w4-persisted-filetime-a-vs-observed-filetime-b-b-a-mismatch-classification-only-461",
+      "requirementId": "LITE-10-012",
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "name": "W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only",
+      "line": 221,
+      "expression": "expect(result.classification).toBe('mismatch');",
+      "clause": "fail-closed recovery evidence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

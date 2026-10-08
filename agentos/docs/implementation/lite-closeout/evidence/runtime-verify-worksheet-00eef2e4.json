@@ -1,0 +1,2450 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-15T21:03:54.041Z",
+  "source": {
+    "batches": "docs/implementation/lite-closeout/evidence/verification-batches-00eef2e4.json",
+    "ledger": "docs/implementation/lite-closeout/evidence/runtime-verify-ledger-00eef2e4.json"
+  },
+  "window": {
+    "from": 0,
+    "count": 52,
+    "openRows": 52
+  },
+  "entries": [
+    {
+      "id": "LITE-00-010",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Memory selection is reproducible and explainable;",
+      "namedTestFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-02 resolve is idempotent per run scope",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-03 stage scope is distinct from run scope",
+          "outcome": "pass"
+        },
+        {
+          "name": "replaying an earlier scope after a later Stage does not recreate its snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-04 snapshot failure blocks injection",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-05 invalid input fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-06 injection gate rejects absent snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "frozen injection survives content edits and logical deletion of its Entry",
+          "outcome": "pass"
+        },
+        {
+          "name": "historical metadata-only snapshot is inspectable but blocks injection",
+          "outcome": "pass"
+        },
+        {
+          "name": "payload failure rolls back the snapshot and its selections",
+          "outcome": "pass"
+        },
+        {
+          "name": "corrupt frozen payload blocks replay",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-08 empty store still persists a snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-09 default budget is frozen and valid",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-10 workspace isolation",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-00-011",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Git changes are observable without AgentOS owning Git workflow execution;",
+      "namedTestFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "gitSnapshot reports stable state/code facts without cwd or raw diagnostics",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector integration failure diagnostics",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a clean committed repository: canonical root/HEAD, clean complete status, available empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a tracked dirty file: dirty status entry and non-empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes an untracked file: untracked status entry with an available empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a staged rename with the NUL-framed previous path",
+          "outcome": "pass"
+        },
+        {
+          "name": "nested Workspace A excludes dirty and untracked sibling Workspace B in status and diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-Git directory yields the exact C-locale NOT_GIT snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "unborn git init repository: GIT, null commits, complete clean status, diff not_applicable",
+          "outcome": "pass"
+        },
+        {
+          "name": "unborn repository with an untracked file: complete dirty status while diff stays not_applicable",
+          "outcome": "pass"
+        },
+        {
+          "name": "workspace, repository, and file paths containing spaces and Unicode",
+          "outcome": "pass"
+        },
+        {
+          "name": "junction at the Workspace path is resolved first and never reports the lexical repository (fail closed)",
+          "outcome": "pass"
+        },
+        {
+          "name": "junction inside the Workspace is fail-closed: escaped sibling content never appears in status or diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector real Git integration (production factory)",
+          "outcome": "pass"
+        },
+        {
+          "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+          "outcome": "pass"
+        },
+        {
+          "name": "malformed HEAD output stays unavailable and is never unborn",
+          "outcome": "pass"
+        },
+        {
+          "name": "legacy ambiguous rev-parse HEAD diagnostic stays unavailable and is never unborn evidence",
+          "outcome": "pass"
+        },
+        {
+          "name": "missing executable maps through the controlled driver seam to not_found -> GIT_EXECUTABLE_UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "unknown spawn failure maps through the controlled driver seam to frozen unknown -> GIT_COMMAND_SPAWN_FAILED",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector controlled seams around real command results",
+          "outcome": "pass"
+        },
+        {
+          "name": "holds real NodeProcessDriver spawn resolution under launch budget, then arms family runtime",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitCommandAdapter real Windows launch/runtime deadline separation",
+          "outcome": "pass"
+        },
+        {
+          "name": "deterministic timeout on a live real Git command after real handle/identity observation",
+          "outcome": "pass"
+        },
+        {
+          "name": "deterministic cancellation of a live real Git command after real handle/identity observation",
+          "outcome": "pass"
+        },
+        {
+          "name": "bounded_diff beyond 4 MiB maps to adapter output_limit with bounded retained stdout and proven owned-tree cleanup",
+          "outcome": "pass"
+        },
+        {
+          "name": "bounded_diff beyond 4 MiB yields a truncated collector diff with diffBytes null and the same owned cleanup proof",
+          "outcome": "pass"
+        },
+        {
+          "name": "porcelain_v2_status beyond 1 MiB maps to adapter output_limit with bounded retained stdout",
+          "outcome": "pass"
+        },
+        {
+          "name": "porcelain_v2_status beyond 1 MiB is never clean or complete in the collector snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": ">16 KiB stderr on a real owned Git command stays bounded and truncated while stdout stays intact",
+          "outcome": "pass"
+        },
+        {
+          "name": "truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "a truncated discovery diagnostic on a non-Git directory fails closed as UNAVAILABLE, never NOT_GIT",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector real Git bounds and Windows process ownership (Phase B)",
+          "outcome": "pass"
+        },
+        {
+          "name": "real adapter + controlled unproven verification aborts collection after first HEAD, with no status/diff/final HEAD",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector cleanup-unproven through the real adapter (HIGH-1)",
+          "outcome": "pass"
+        },
+        {
+          "name": "real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-00-013",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Group Conversation and workflow templates remain bounded.",
+      "namedTestFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-02 recording replies increments counters transactionally",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-05 a per-Agent budget breach ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-06 a distinct-Agent budget breach ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-09 repeated content terminates the interaction with loop-guard",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-11 a repeated mention with no new information terminates the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-13 per-Agent snapshots are isolated for the same interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-14 reply content is stored as a hash only, never as text",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-15 the timeout budget ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-16 unknown interaction and invalid input fail closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-17 within-transaction composition rolls back atomically",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-01-014",
+      "document": "01-Core-Concepts.md",
+      "section": "16. Acceptance Expectations",
+      "requirement": "unknown Provider details do not become invented facts;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-01-015",
+      "document": "01-Core-Concepts.md",
+      "section": "16. Acceptance Expectations",
+      "requirement": "archived or compatibility records do not disappear destructively.",
+      "namedTestFile": "apps/server/src/store/Identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "all prefix constants map to valid EntityIdKind",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId produces prefix_ulid format",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID body is 26 Crockford Base32 characters, no ILOU",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs under heavy load",
+          "outcome": "pass"
+        },
+        {
+          "name": "different kinds have different prefixes",
+          "outcome": "pass"
+        },
+        {
+          "name": "isValidEntityId validates prefix and body",
+          "outcome": "pass"
+        },
+        {
+          "name": "no database dependency",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID matches known reference (timestamp=0, random=0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "first character always in 0–7 range",
+          "outcome": "pass"
+        },
+        {
+          "name": "real 13-digit Unix-ms timestamp round-trips",
+          "outcome": "pass"
+        },
+        {
+          "name": "maximum timestamp 2^48-1 round-trips and first char is 7",
+          "outcome": "pass"
+        },
+        {
+          "name": "timestamp = 2^48 is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "negative timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "NaN timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "Infinity timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-integer timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "randomness not exactly 10 bytes is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "time increase: same random, larger timestamp → strictly larger ID",
+          "outcome": "pass"
+        },
+        {
+          "name": "same ms: 200 IDs within single generator are strictly increasing",
+          "outcome": "pass"
+        },
+        {
+          "name": "clock regression: same generator with clock [100, 50] produces id1 < id2",
+          "outcome": "pass"
+        },
+        {
+          "name": "two generators do not share state",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — canonical entity IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot kind exists with snapshot prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId snapshot starts with snapshot_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot prefix is not confused with other kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.5 snapshot kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency kind exists with idem prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId idempotency starts with idem_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ID is not recognized as snapshot/run/task",
+          "outcome": "pass"
+        },
+        {
+          "name": "all pre-import kinds remain unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.6 idempotency kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation kind exists with op prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId operation starts with op_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation IDs remain distinct from all existing kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M3 P3A operation kind",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-02-006",
+      "document": "02-Runtime-Lifecycle.md",
+      "section": "21. Acceptance Expectations",
+      "requirement": "transition-to-Event mappings remain exact;",
+      "namedTestFile": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run starting -> failed persists failure fields and emits run.failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run running -> paused emits run.paused",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run running -> failed emits run.failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run paused -> running emits run.resumed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run paused -> failed emits run.failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage pending -> ready emits stage.ready",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage pending -> skipped writes completed_at and emits stage.skipped",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage ready -> starting emits stage.starting with service timestamp",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage starting -> failed persists failure fields and emits stage.failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage running -> paused emits stage.paused",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage running -> completed writes completed_at without run completion",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage running -> failed persists failure fields and emits stage.failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage paused -> running emits stage.resumed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A rejects supported Run composite transitions without writes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A rejects all unsupported Stage composite transitions without writes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A transition classification is exhaustive for every Run and Stage pair",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A invalid and composite routing never calls now",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A captures one canonical timestamp only after BEGIN IMMEDIATE",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A service validation errors are stable and do not leak repository errors",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A stored Stage not found has a stable error and does not call the clock",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage/Run mismatch is reported before parent-state or clock checks",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Run stale version fails before clock or mutation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A Stage stale version fails before clock or mutation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A caller lifecycle fields cannot override derived Event boundaries",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A caller Stage lifecycle fields cannot override derived Event boundaries",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A terminal parent Run fences all 8 Stage Single transitions",
+          "outcome": "pass"
+        },
+        {
+          "name": "RunStageRepository reports non-Matrix transitions as INVALID_RUN_STAGE_TRANSITION",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2A file database concurrency allows one conditional transition and rejects the other",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-02-016",
+      "document": "02-Runtime-Lifecycle.md",
+      "section": "21. Acceptance Expectations",
+      "requirement": "Worktree absence does not block a modifying Run after Workspace admission;",
+      "namedTestFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2C-2B completeRunStartup commits Stage then Run started events with snapshots",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToRunning emits only approval.resolved",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToCancellation fans out affected Stages in stable order",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolution retries return already-resolved before state, Stage, or version checks",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B all three approval running decisions and strict composite version contract pass",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 unsafe unknown approval history fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 invalid approvalRequestId history fails closed and rolls back",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation approval Event and Outbox failures roll back all state",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B completeRun derives completedStageIds and enforces the completion rule",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B same-file concurrency permits only one composite cancellation",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-05 new evidence seam is safe inside a caller-owned transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-07 evidence seam returns synchronously without an async transaction callback",
+          "outcome": "pass"
+        },
+        {
+          "name": "P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-04-001",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-002",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-003",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "Kimi Code invocation does not route through OpenCode;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-006",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "errors normalize to stable codes with retryability;",
+      "namedTestFile": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-007",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "capability declarations match tested behavior;",
+      "namedTestFile": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-008",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-009",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "unknown capability, prompt-only intent, user-forced values, `nativeSandbox`, and Provider-native worktrees never imply `enforcedWorkspaceReadOnly`;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-010",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "`nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-011",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "secrets are absent from Events, Snapshots, and debug bundles;",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-04-012",
+      "document": "04-Provider-Specification.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "no invented provider telemetry appears in canonical Events.",
+      "namedTestFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-001",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "reserve-before-spawn ordering and idempotency;",
+      "namedTestFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-002",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-003",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-004",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-005",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-006",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "evidence-version gates: v1 rows keep `MISSING`/`UNKNOWN`, v2 rows reach `SAME`/`MISMATCH`/`UNKNOWN`;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-007",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "cancel terminates the owned Windows process tree with survivor verification;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-009",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "namedTestFile": "packages/process-runtime/src/manager.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-010",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "bounded independent stdout/stderr with Artifact fallback;",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-05-012",
+      "document": "05-Process-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "classification never activates reattach, adoption, ownership transfer, or takeover.",
+      "namedTestFile": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-06-007",
+      "document": "06-Worktree-Runtime.md",
+      "section": "13. Acceptance Expectations",
+      "requirement": "diff Artifacts are immutable and checksummed;",
+      "namedTestFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 26,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "L1C-M1-01 versioned snapshot and changed-files contracts omit raw stderr",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-02 changed files serialize deterministically with explicit limits",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-03 command execution contract freezes C locale and side-effect guards",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-04 GitCommandPort accepts only structured read families",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-R01 raw stdout limits are finite per read family and not caller-sized",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-05 ordinary bounded C-locale non-repository diagnostic maps to NOT_GIT",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-06 dubious ownership maps to UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-07 permission-like discovery failure maps to UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-08 unknown exit 128 never maps to NOT_GIT",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-R02 truncated discovery diagnostics cannot prove NOT_GIT",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-09 timeout, cancellation, output overflow and spawn failure remain distinct",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-10 successful repository discovery requires an absolute root",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-R03 repository root output is one valid UTF-8 absolute record",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-R04 HEAD classifier distinguishes valid, exact unborn and unavailable results",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-R06 commit object IDs accept only lowercase 40/64 hex",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-11 complete status maps zero entries to clean and entries to dirty",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-12 incomplete status is never clean",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-13 NOT_GIT has public not-applicable dirty state and Event unknown mapping",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-13b snapshot union rejects contradictory state combinations",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-14 malformed status fails the whole observation closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-15 diff failure preserves successful GIT status facts",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-16 truncated diff is explicit and never equivalent to no changes",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-17 unborn repository remains GIT with null commits and non-applicable diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-18 snapshot serialization is deterministic across subfailure order",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-19 Event source and canonical causal-context seam are frozen",
+          "outcome": "pass"
+        },
+        {
+          "name": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-08-003",
+      "document": "08-Policy-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
+      "namedTestFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2C-2B completeRunStartup commits Stage then Run started events with snapshots",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToRunning emits only approval.resolved",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToCancellation fans out affected Stages in stable order",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolution retries return already-resolved before state, Stage, or version checks",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B all three approval running decisions and strict composite version contract pass",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 unsafe unknown approval history fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 invalid approvalRequestId history fails closed and rolls back",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation approval Event and Outbox failures roll back all state",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B completeRun derives completedStageIds and enforces the completion rule",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B same-file concurrency permits only one composite cancellation",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-05 new evidence seam is safe inside a caller-owned transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-07 evidence seam returns synchronously without an async transaction callback",
+          "outcome": "pass"
+        },
+        {
+          "name": "P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-08-004",
+      "document": "08-Policy-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "namedTestFile": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2C-2B completeRunStartup commits Stage then Run started events with snapshots",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToRunning emits only approval.resolved",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToCancellation fans out affected Stages in stable order",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolution retries return already-resolved before state, Stage, or version checks",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B all three approval running decisions and strict composite version contract pass",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 unsafe unknown approval history fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 invalid approvalRequestId history fails closed and rolls back",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states",
+          "outcome": "pass"
+        },
+        {
+          "name": "P3D-2 operation approval Event and Outbox failures roll back all state",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B completeRun derives completedStageIds and enforces the completion rule",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2C-2B same-file concurrency permits only one composite cancellation",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-05 new evidence seam is safe inside a caller-owned transaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible",
+          "outcome": "pass"
+        },
+        {
+          "name": "HANDOFF-07 evidence seam returns synchronously without an async transaction callback",
+          "outcome": "pass"
+        },
+        {
+          "name": "P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-08-014",
+      "document": "08-Policy-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "modifying execution succeeds without an AgentOS-owned Worktree;",
+      "namedTestFile": "apps/server/src/services/run-engine/CanonicalArtifactResult.liveGate.test.ts",
+      "fileStatus": "not-clean",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-08-015",
+      "document": "08-Policy-Runtime.md",
+      "section": "15. Acceptance Expectations",
+      "requirement": "no full DSL, grants, simulation, or RBAC feature is active Lite scope.",
+      "namedTestFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "LITE-12-016 the UI ships only the Lite route surface",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-016 no web module implements a deferred product surface",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-016 the workspace shells expose no deferred product entry point",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-09-008",
+      "document": "09-Conversation-Runtime.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "Event projection never duplicates cards;",
+      "namedTestFile": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "outcome": "pass"
+        },
+        {
+          "name": "TD-02 a provider failure finalizes failed and preserves the checkpoints",
+          "outcome": "pass"
+        },
+        {
+          "name": "TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed",
+          "outcome": "pass"
+        },
+        {
+          "name": "TD-04 an unknown Agent fails closed without reserving a stream",
+          "outcome": "pass"
+        },
+        {
+          "name": "TD-05 waiting_user finalizes the Turn final with the question as content",
+          "outcome": "pass"
+        },
+        {
+          "name": "TD-06 a runner crash finalizes failed instead of leaving an open stream",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-102 chat refuses while another subject holds the Workspace modifying authority",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-109 TD-12 an unchanged source still adopts the summary and records it",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-09-101 TD-10 an empty selection injects no context block",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-09-015",
+      "document": "09-Conversation-Runtime.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "@all never launches parallel modification;",
+      "namedTestFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "CG-S1: eligibility excludes muted, removed, never, and human members with stable reasons",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S1: a non-group or archived Conversation never yields speakers",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S2: sequential order is membership order; mentions always win and are reported",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S2: manual mode follows the caller order and reports the rest",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S3: orchestrated mode resolves the template order deterministically",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S4: the plan ends with the same stable budget reason recordReply would return",
+          "outcome": "pass"
+        },
+        {
+          "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-10-005",
+      "document": "10-Data-Model.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "Snapshot immutability and child remapping;",
+      "namedTestFile": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2 Migration Registry preserves the exact padded order when instantiated",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-10-010",
+      "document": "10-Data-Model.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "Process reserve-before-spawn;",
+      "namedTestFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-10-012",
+      "document": "10-Data-Model.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "fail-closed recovery evidence;",
+      "namedTestFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-10-013",
+      "document": "10-Data-Model.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "bounded finalized output references;",
+      "namedTestFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-10-017",
+      "document": "10-Data-Model.md",
+      "section": "18. Acceptance Expectations",
+      "requirement": "no clean-sheet schema replacement.",
+      "namedTestFile": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+          "outcome": "pass"
+        },
+        {
+          "name": "P2 Migration Registry preserves the exact padded order when instantiated",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-11-005",
+      "document": "11-API-Specification.md",
+      "section": "20. Acceptance Expectations",
+      "requirement": "frozen start/retry/cancel semantics and errors remain exact;",
+      "namedTestFile": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C Last-Event-ID-only cursor resolves the persisted Event sequence",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown persisted runtime events stream losslessly with kind/raw/warning",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C overflow closes the SSE transport without synthetic frames or durable writes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C stream route does not shadow canonical Run, Events or Replay routes",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-11-009",
+      "document": "11-API-Specification.md",
+      "section": "20. Acceptance Expectations",
+      "requirement": "API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;",
+      "namedTestFile": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C afterSequence-only cursor replays strictly greater durable sequences",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C Last-Event-ID-only cursor resolves the persisted Event sequence",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C live durable commits after subscribe are delivered exactly once with the persisted id",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C unknown persisted runtime events stream losslessly with kind/raw/warning",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C overflow closes the SSE transport without synthetic frames or durable writes",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable)",
+          "outcome": "pass"
+        },
+        {
+          "name": "P5C stream route does not shadow canonical Run, Events or Replay routes",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-004",
+      "document": "12-UI-Architecture.md",
+      "section": "22. Acceptance Expectations",
+      "requirement": "reduced-motion behavior;",
+      "namedTestFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-02 the shell consumes the token system through CSS variables",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-03 standard mode collapses the Inspector into an affordance",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-04 compact mode keeps Agents and Canvas only",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-07 dark and light themes emit their own token values",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-08 the Canvas keeps its minimum width",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-09 an optional toolbar renders above the columns",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-005",
+      "document": "12-UI-Architecture.md",
+      "section": "22. Acceptance Expectations",
+      "requirement": "batched streaming and stable scroll;",
+      "namedTestFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-02 the shell consumes the token system through CSS variables",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-03 standard mode collapses the Inspector into an affordance",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-04 compact mode keeps Agents and Canvas only",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-07 dark and light themes emit their own token values",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-08 the Canvas keeps its minimum width",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-09 an optional toolbar renders above the columns",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-014",
+      "document": "12-UI-Architecture.md",
+      "section": "22. Acceptance Expectations",
+      "requirement": "keyboard core flow and stable focus;",
+      "namedTestFile": "apps/web/src/lib/uiFoundation.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "UIF-01 both themes share semantic token names",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-02 color tokens are valid hex",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-03 body contrast meets 4.5:1 in both themes",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-04 contrast math",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-05 typography scale and stacks",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-06 spacing scale",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-07 radius tokens",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-08 four-column width guidance",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-09 adaptive layout modes",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-10 visible columns include canvas",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-11 canvas keeps its minimum width",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-12 reduced motion",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-13 accessibility rules",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-14 uiCssVariables flattens all semantic tokens",
+          "outcome": "pass"
+        },
+        {
+          "name": "UIF-15 columnWidthPx follows guidance and visibility",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-015",
+      "document": "12-UI-Architecture.md",
+      "section": "22. Acceptance Expectations",
+      "requirement": "API-client-only access;",
+      "namedTestFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-02 the shell consumes the token system through CSS variables",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-03 standard mode collapses the Inspector into an affordance",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-04 compact mode keeps Agents and Canvas only",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-07 dark and light themes emit their own token values",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-08 the Canvas keeps its minimum width",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-09 an optional toolbar renders above the columns",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-016",
+      "document": "12-UI-Architecture.md",
+      "section": "22. Acceptance Expectations",
+      "requirement": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+      "namedTestFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "LITE-12-016 the UI ships only the Lite route surface",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-016 no web module implements a deferred product surface",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-016 the workspace shells expose no deferred product entry point",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-004",
+      "document": "13-Runtime-Inspector.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "strict Event order, gap recovery, and deduplication;",
+      "namedTestFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-01 overview projects canonical run state",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-02 unknown run fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-03 invalid input fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-04 process PID is evidence-only",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-01-006 Run and Process records remain independently queryable",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-05 events are ordered and bounded",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-06 afterSequence cursor",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-07 inspect performs no writes",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-08 memory context projection",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-09 absent memory context is null",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-10 workspace isolation",
+          "outcome": "pass"
+        },
+        {
+          "name": "INSP-11 stages are ordered",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-010 unknown or unavailable admission is projected as modifying",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-12-010 only complete verified enforcement is presented as read-only",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-13-102 Inspector projects canonical operation identity and version for actions",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-005",
+      "document": "13-Runtime-Inspector.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "bounded output without unbounded client state;",
+      "namedTestFile": "apps/server/src/routes/runtimeInspector.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state",
+          "outcome": "pass"
+        },
+        {
+          "name": "GET /runs/:runId/inspector returns the redacted projection for a canonical Run",
+          "outcome": "pass"
+        },
+        {
+          "name": "GET /runs/:runId/inspector fails closed for an unknown Run and workspace",
+          "outcome": "pass"
+        },
+        {
+          "name": "GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring)",
+          "outcome": "pass"
+        },
+        {
+          "name": "GET /runs/:runId/inspector explains the compaction of the Conversation behind the Run",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-007",
+      "document": "13-Runtime-Inspector.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "Git wording never implies ownership;",
+      "namedTestFile": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-13-013",
+      "document": "13-Runtime-Inspector.md",
+      "section": "19. Acceptance Expectations",
+      "requirement": "no secrets in DTOs;",
+      "namedTestFile": "apps/server/src/routes/runtimeInspector.redaction.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "LITE-13-013 the Inspector projection exposes no secret material and a frozen key set",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-13-009 the Inspector is read-only and carries no process control field",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-12-101",
+      "document": "12-UI-Architecture.md",
+      "section": "§5–§6; §16; §19",
+      "requirement": "四栏正文要求的导航、通知状态及键盘流覆盖",
+      "namedTestFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-02 the shell consumes the token system through CSS variables",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-03 standard mode collapses the Inspector into an affordance",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-04 compact mode keeps Agents and Canvas only",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-05 reduced motion collapses panel transitions to zero",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-07 dark and light themes emit their own token values",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-08 the Canvas keeps its minimum width",
+          "outcome": "pass"
+        },
+        {
+          "name": "SHELL-09 an optional toolbar renders above the columns",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-01-101",
+      "document": "01-Core-Concepts.md",
+      "section": "§9; 00 §10; 09 §14",
+      "requirement": "有界Workflow templates及真实实例化",
+      "namedTestFile": "packages/shared/wf-template-instantiation.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "WFI-01 single agent compiles",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-02 plan-implement-review compiles",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-03 parallel-analysis compiles",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-04 optional security review",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-05 unbound role fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-06 invalid role fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-07 definition overrides",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-08 invalid input fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-09 deterministic and non-mutating",
+          "outcome": "pass"
+        },
+        {
+          "name": "WFI-10 every template compiles",
+          "outcome": "pass"
+        }
+      ]
+    }
+  ]
+}

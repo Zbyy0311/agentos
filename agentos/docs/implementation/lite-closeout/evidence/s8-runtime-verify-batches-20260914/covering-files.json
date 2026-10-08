@@ -1,0 +1,7 @@
+[
+  "apps/server/src/services/TaskRunService.test.ts",
+  "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+  "apps/server/src/services/GroupSpeakerResolver.test.ts",
+  "apps/server/src/services/TaskRunRecoveryService.test.ts"
+]
+

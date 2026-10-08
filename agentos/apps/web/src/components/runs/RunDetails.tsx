@@ -5,6 +5,7 @@ import { getRunDurationMs, getRunFailureReason, normalizeRunDetails } from '@/li
 import { ArtifactShelf } from './ArtifactShelf';
 import { RunTaskTree } from './RunTaskTree';
 import { ExecutionArchive } from './ExecutionArchive';
+import { uiLayerClass } from '@/lib/uiLayers';
 
 interface RunDetailsProps {
   details: AgentRunDetails;
@@ -22,9 +23,9 @@ export function RunDetails({ details: sourceDetails, apiBase, onClose, onGenerat
   const details = normalizeRunDetails(sourceDetails);
   const duration = getRunDurationMs(details);
   const failureReason = getRunFailureReason(details);
-  return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/50 p-6" role="dialog" aria-modal="true" aria-label="本次执行详情">
+  return <div className={`fixed inset-0 ${uiLayerClass('runDetails')} grid place-items-center bg-black/50 p-6`} role="dialog" aria-modal="true" aria-label="本次执行详情">
     <section className="ui-panel max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border p-6 shadow-[var(--app-shadow)]">
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="ui-modal-sticky-header mb-6 flex items-start justify-between gap-4">
         <div><div className="text-[11px] tracking-[0.16em] ui-dim">RUN DETAILS</div><h2 className="mt-1 text-lg font-semibold ui-text">本次执行详情</h2></div>
         <div className="flex items-center gap-2"><button type="button" onClick={() => onGenerateCandidates?.(details.run.id)} disabled={details.run.status !== 'completed' || generatingCandidates} className="ui-button-ghost rounded-lg px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">{generatingCandidates ? '生成中…' : '生成记忆候选'}</button><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
       </div>

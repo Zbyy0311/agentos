@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:INS-07 Memory Context explains selection and exclusion from the frozen Snapshot|INS-08 Compaction explains WHY it ran and WHO adopted the summary|INS-01 the Run overview is distinct from Task/Process and shows duration|LITE-12-010 unknown or unavailable read-only enforcement renders modifying|LITE-13-102 Inspector action controls are exposed only through callbacks)",
+      "src/components/chat/RuntimeInspectorView.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/assertions.json",
+      "sha256": "64dd31248d322c2813b9b04442857e20af1e94e0d03ad2739377b71ff869804b"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/execution.json",
+      "sha256": "fe5d131724e311fada3fa7386934ace3260627dd0b682d138f83d6ef21d1867f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stdout.txt",
+      "sha256": "dfceb4db53690f5ad668175497aeb257892c156f17364075660654e69a917a2b"
+    }
+  ],
+  "counts": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "total": 5
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-011-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-337",
+      "requirementId": "LITE-12-011",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-011-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-338",
+      "requirementId": "LITE-12-011",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-011-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-339",
+      "requirementId": "LITE-12-011",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+      "clause": "Memory selection explanation;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-340",
+      "requirementId": "LITE-12-012",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-341",
+      "requirementId": "LITE-12-012",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-012-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-342",
+      "requirementId": "LITE-12-012",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+      "clause": "Inspector parity with canonical data;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-07-memory-context-explains-selection-and-exclusion-from-the-frozen-snapshot-343",
+      "requirementId": "LITE-13-006",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "line": 117,
+      "expression": "assert.ok(markup.includes('data-agentos=\"memory-explanation\"'));",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-08-compaction-explains-why-it-ran-and-who-adopted-the-summary-344",
+      "requirementId": "LITE-13-006",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-08 Compaction explains WHY it ran and WHO adopted the summary",
+      "line": 137,
+      "expression": "assert.ok(markup.includes('data-agentos=\"compaction-explanation\"'));",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-006-ins-01-the-run-overview-is-distinct-from-task-process-and-shows-duration-345",
+      "requirementId": "LITE-13-006",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "INS-01 the Run overview is distinct from Task/Process and shows duration",
+      "line": 78,
+      "expression": "assert.ok(markup.includes('data-agentos=\"runtime-inspector\"'));",
+      "clause": "Memory view reproduces Snapshot and explanations;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-08-004-lite-12-010-unknown-or-unavailable-read-only-enforcement-renders-modifying-346",
+      "requirementId": "LITE-08-004",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "LITE-12-010 unknown or unavailable read-only enforcement renders modifying",
+      "line": 173,
+      "expression": "assert.ok(unknown.includes('data-admission-state=\"unknown\"'));",
+      "clause": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-010-lite-12-010-unknown-or-unavailable-read-only-enforcement-renders-modifying-347",
+      "requirementId": "LITE-12-010",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "LITE-12-010 unknown or unavailable read-only enforcement renders modifying",
+      "line": 173,
+      "expression": "assert.ok(unknown.includes('data-admission-state=\"unknown\"'));",
+      "clause": "truthful parallel-read-only availability and modifying admission when write denial cannot be enforced;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-action-controls-are-exposed-only-through-callbacks-348",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "name": "LITE-13-102 Inspector action controls are exposed only through callbacks",
+      "line": 193,
+      "expression": "assert.ok(markup.includes('data-inspector-action=\"cancel\"'));",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

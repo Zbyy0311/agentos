@@ -1,0 +1,22 @@
+✔ the recorded deferral amendment authorizes exactly the LITE-04-101 change (3.1156ms)
+✔ an amendment may never promote a row or leave DEFERRED (1.0709ms)
+✔ an amendment requires its authority, a reopen condition and a boundary (0.6987ms)
+✔ an amendment cannot be added or edited without moving the outside anchor (0.7166ms)
+✔ a line-less requirement cannot be deferred without its own amendment (20.7694ms)
+✔ scope accepts the frozen matrix with zero PASS rows (29.8549ms)
+✔ freeze anchor rejects a rewritten original state (1.6925ms)
+✔ freeze rejects old PASS re-upgrade and GAP or DEFERRED closure (73.9728ms)
+✔ old PASS evidence declaration is rejected without a raw receipt (2.4961ms)
+✔ PASS evidence requires baseline, literal command, raw exit, counts and assertion mapping (16.271ms)
+✔ declared five fields cannot turn a source file into a raw execution log (3.6547ms)
+✔ final closure checks the real HEAD before CI or Provider evidence (83.7887ms)
+✔ permanent scope still rejects removed, recycled, and additional requirement IDs (51.7313ms)
+✔ specification, deferral, and permanent scope-lock drift remain rejected (9.5531ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 306.5589

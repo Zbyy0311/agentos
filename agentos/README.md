@@ -14,6 +14,10 @@ Agent 配置中的 `provider` 表示用户配置身份，CLI 命令通过 Adapte
 
 计划 D 的隔离发布验收记录见 [docs/acceptance/agentos-collaboration-workbench-final.md](docs/acceptance/agentos-collaboration-workbench-final.md)。Worktree/recovery/storage 核心测试、三 Provider 真实生命周期和双 Agent 隔离 Worktree gate 均已通过。
 
+## 当前平台支持
+
+当前正式支持平台：Windows。Linux/macOS/POSIX 运行路径不属于当前生产支持范围；仓库中的相关实现与单元测试用于未来兼容性保留，不构成当前平台支持承诺。
+
 ## 系统要求
 
 - Node.js >= 22.5
@@ -32,9 +36,24 @@ pnpm install
 ### 2. 启动（Mock 模式，不需要安装任何 Agent CLI）
 
 ```powershell
-# Windows PowerShell — 自动释放 3000/3001 端口后启动
+# Windows PowerShell — 3000/3001 被占用时会报告冲突，不会终止已有进程
 ./start-dev.ps1 -Mock
 ```
+
+### 托管本地实例（Windows）
+
+需要以生产模式启动已构建的 Server 和 Web 时，可使用托管生命周期命令：
+
+```powershell
+pnpm --filter agentos local:start
+pnpm --filter agentos local:status
+pnpm --filter agentos local:status:json
+pnpm --filter agentos local:stop
+```
+
+先运行 pnpm --filter agentos build 生成生产文件。默认地址为 Server http://127.0.0.1:3000、Web http://127.0.0.1:3001；端口冲突会说明占用者并退出，不会按端口结束进程。托管启动记录 instance ID、PID、进程创建时间、可执行文件和实际监听端口 owner；停止前会重新核验进程身份。Readiness 优先检查 `/api/health/ready`，再检查 `/api/maintenance/readiness` 和 `/api/readiness`；只有这些路径都返回 404 时才兼容旧版 `/api/health`，ready 的 503 不会降级为 liveness。状态清单和有大小轮转、凭据过滤的 stdout/stderr 日志保存在项目根目录 .agentos/local-runtime/，可用 -DataPath 将运行数据放到其他目录。
+
+start-dev.ps1 继续用于开发模式，也接入同一套状态和停止命令：运行 ./start-dev.ps1 -Mock 或 ./start-dev.ps1 -Stable 后，使用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action status 查看，或把 status 改成 stop 停止。
 
 或手动启动：
 

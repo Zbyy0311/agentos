@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: P2 Migration Registry contains exactly the registered migrations in contract order
+ok 1 - P2 Migration Registry contains exactly the registered migrations in contract order
+  ---
+  duration_ms: 0.9639
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 155.7578

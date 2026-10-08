@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+  "provider": "kimi",
+  "model": "opencodex/gpt-5.6-luna",
+  "command": {
+    "executable": "C:\\nvm4w\\nodejs\\node.exe",
+    "args": [
+      "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs",
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "LITE-04-101: current-machine Kimi gate",
+      "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "environment": {
+    "AGENTOS_KIMICODE_CLI": "C:\\Users\\Administrator\\.kimi-code\\bin\\kimi.exe",
+    "AGENTOS_KIMI_MODEL": "opencodex/gpt-5.6-luna",
+    "M4_P4_REAL_KIMI_ROUTED_GATE": "1"
+  },
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/kimi/stdout.txt",
+      "sha256": "d4ec0248e931f5e8d0619342c713efae03e95f966473fa97cf5d2a0948c29ba0"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/kimi/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-KIMI-A1",
+      "requirementId": "LITE-04-101",
+      "provider": "kimi",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)",
+      "line": 1094,
+      "expression": "assert.equal(result.outcome, 'claimed-and-progressed');",
+      "clause": "the canonical dispatcher claims and progresses the real Kimi-routed Run",
+      "whyDirect": "The named real kimi gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-KIMI-A2",
+      "requirementId": "LITE-04-101",
+      "provider": "kimi",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)",
+      "line": 1100,
+      "expression": "assert.equal(run.status, 'completed');",
+      "clause": "the real Kimi-routed Run reaches the completed terminal state",
+      "whyDirect": "The named real kimi gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-KIMI-A3",
+      "requirementId": "LITE-04-101",
+      "provider": "kimi",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)",
+      "line": 1103,
+      "expression": "assert.equal(outboxCount, eventCount);",
+      "clause": "durable Outbox count equals the Runtime Event count",
+      "whyDirect": "The named real kimi gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-KIMI-A4",
+      "requirementId": "LITE-04-101",
+      "provider": "kimi",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)",
+      "line": 1104,
+      "expression": "assert.ok(eventCount > 0);",
+      "clause": "the completed real Run produced canonical Runtime Events",
+      "whyDirect": "The named real kimi gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    }
+  ],
+  "limitation": "Local real-kimi completion at final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da using explicit model opencodex/gpt-5.6-luna; supplemental only, does not prove hosted-CI reproducibility, and does not change the separately authorized LITE-04-101 DEFERRED state."
+}

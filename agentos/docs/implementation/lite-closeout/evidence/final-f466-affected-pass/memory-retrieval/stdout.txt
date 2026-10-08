@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: MF3-01 reach resolution is owner-bounded
+ok 1 - MF3-01 reach resolution is owner-bounded
+  ---
+  duration_ms: 1.5443
+  type: 'test'
+  ...
+# Subtest: MF3-02 retrieval is scope-bounded
+ok 2 - MF3-02 retrieval is scope-bounded
+  ---
+  duration_ms: 150.9191
+  type: 'test'
+  ...
+# Subtest: MF3-03 non-retrievable statuses excluded
+ok 3 - MF3-03 non-retrievable statuses excluded
+  ---
+  duration_ms: 139.0158
+  type: 'test'
+  ...
+# Subtest: MF3-04 ranking is deterministic and order-independent
+ok 4 - MF3-04 ranking is deterministic and order-independent
+  ---
+  duration_ms: 0.2192
+  type: 'test'
+  ...
+# Subtest: MF3-05 pin dominates and is explained
+ok 5 - MF3-05 pin dominates and is explained
+  ---
+  duration_ms: 0.1444
+  type: 'test'
+  ...
+# Subtest: MF3-06 conflict penalty and FTS reason
+ok 6 - MF3-06 conflict penalty and FTS reason
+  ---
+  duration_ms: 0.1307
+  type: 'test'
+  ...
+# Subtest: MF3-07 equal scores break by id ascending
+ok 7 - MF3-07 equal scores break by id ascending
+  ---
+  duration_ms: 0.1029
+  type: 'test'
+  ...
+# Subtest: MF3-08 recency is driven by the supplied clock
+ok 8 - MF3-08 recency is driven by the supplied clock
+  ---
+  duration_ms: 0.0834
+  type: 'test'
+  ...
+# Subtest: MF3-09 category and tag filters
+ok 9 - MF3-09 category and tag filters
+  ---
+  duration_ms: 134.0176
+  type: 'test'
+  ...
+# Subtest: MF3-10 FTS relevance affects ranking, structured filters remain authoritative
+ok 10 - MF3-10 FTS relevance affects ranking, structured filters remain authoritative
+  ---
+  duration_ms: 137.1726
+  type: 'test'
+  ...
+# Subtest: LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row
+ok 11 - LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row
+  ---
+  duration_ms: 135.3811
+  type: 'test'
+  ...
+# Subtest: MF3-11 hostile FTS query is neutralized
+ok 12 - MF3-11 hostile FTS query is neutralized
+  ---
+  duration_ms: 128.1515
+  type: 'test'
+  ...
+# Subtest: MF3-12 limit caps results
+ok 13 - MF3-12 limit caps results
+  ---
+  duration_ms: 141.3075
+  type: 'test'
+  ...
+# Subtest: MF3-13 invalid input fails closed
+ok 14 - MF3-13 invalid input fails closed
+  ---
+  duration_ms: 124.0776
+  type: 'test'
+  ...
+# Subtest: MF3-14 ranking weights are frozen
+ok 15 - MF3-14 ranking weights are frozen
+  ---
+  duration_ms: 0.1296
+  type: 'test'
+  ...
+# Subtest: MF3-15 no cross-workspace leakage
+ok 16 - MF3-15 no cross-workspace leakage
+  ---
+  duration_ms: 131.2988
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: validity is inclusive at start and exclusive at end or expiry
+ok 17 - LITE-07-109: validity is inclusive at start and exclusive at end or expiry
+  ---
+  duration_ms: 154.8923
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: malformed persisted dates fail closed and the clock is captured once
+ok 18 - LITE-07-109: malformed persisted dates fail closed and the clock is captured once
+  ---
+  duration_ms: 141.8955
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval
+ok 19 - LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval
+  ---
+  duration_ms: 148.4486
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1871.2241

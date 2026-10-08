@@ -1,0 +1,13 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/agent-core
+
+ ✓ src/providers/capabilityDeclaration.test.ts > LITE-04-007 capability declarations match tested behavior > declares every canonical capability as an explicit boolean 2ms
+ ✓ src/providers/capabilityDeclaration.test.ts > LITE-04-007 capability declarations match tested behavior > observes every capability declared true in the adapter real output 2ms
+ ✓ src/providers/capabilityDeclaration.test.ts > LITE-04-007 capability declarations match tested behavior > observes no capability declared false in the adapter real output 1ms
+ ✓ src/providers/capabilityDeclaration.test.ts > LITE-04-007 capability declarations match tested behavior > keeps the frozen declaration stable across constructions 0ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  07:58:46
+   Duration  312ms (transform 133ms, setup 0ms, import 169ms, tests 6ms, environment 0ms)
+

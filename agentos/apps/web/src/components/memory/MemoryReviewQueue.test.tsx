@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+import { artifactContentUrl, buildReviewBody } from './MemoryReviewQueue.js';
+import type { ForwardMemoryCandidateDto } from './MemoryReviewQueue.js';
+
+const CANDIDATE: ForwardMemoryCandidateDto = {
+  id: 'mc_1',
+  scope: 'workspace',
+  category: 'preference',
+  authority: 'agent-derived',
+  confidence: 0.6,
+  importance: 0.5,
+  title: 'Inferred preference',
+  summary: 's',
+  content: 'c',
+  tags: [],
+  outcome: 'review-required',
+  decision: 'review-required',
+  version: 3,
+  createdAt: '2026-09-11T00:00:00.000Z',
+  sources: [{ kind: 'run', id: 'run_1' }],
+};
+
+test('MRQ-01 review body is version-guarded and outcome-explicit', () => {
+  assert.deepEqual(buildReviewBody(CANDIDATE, 'accept'), { expectedVersion: 3, outcome: 'accept' });
+  assert.deepEqual(buildReviewBody(CANDIDATE, 'reject'), { expectedVersion: 3, outcome: 'reject' });
+});
+
+test('MRQ-02 merge carries a trimmed target and rejects are target-free', () => {
+  assert.deepEqual(
+    buildReviewBody(CANDIDATE, 'merge-with-existing', '  mem_target  '),
+    { expectedVersion: 3, outcome: 'merge-with-existing', mergedIntoEntryId: 'mem_target' },
+  );
+  // a blank target never reaches the wire (the server would 400 it)
+  assert.deepEqual(buildReviewBody(CANDIDATE, 'merge-with-existing', '   '), { expectedVersion: 3, outcome: 'merge-with-existing' });
+  assert.deepEqual(buildReviewBody(CANDIDATE, 'accept', 'mem_target'), { expectedVersion: 3, outcome: 'accept' });
+});
+
+test('MRQ-03 artifact source URL encodes the workspace and artifact IDs', () => {
+  assert.equal(
+    artifactContentUrl('https://api.example.test', 'workspace/a space', 'artifact/1?part=2'),
+    'https://api.example.test/api/workspaces/workspace%2Fa%20space/artifacts/artifact%2F1%3Fpart%3D2/content',
+  );
+});
+
+test('MRQ-04 initial render is a guarded loading state, not an error', async () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const { MemoryReviewQueue } = await import('./MemoryReviewQueue.js');
+  const markup = renderToStaticMarkup(<MemoryReviewQueue workspaceId="workspace-a" onClose={() => {}} />);
+  assert.ok(markup.includes('data-agentos="memory-review-queue"'));
+  assert.ok(markup.includes('正在加载待审查候选'));
+  // edit-and-accept is deliberately absent: the contract records outcomes
+  // without applying edits
+  assert.ok(!markup.includes('编辑后接受'));
+});
+
+test('MRQ-05 embedded queue can live inside the workspace memory tabs', async () => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  const { MemoryReviewQueue } = await import('./MemoryReviewQueue.js');
+  const markup = renderToStaticMarkup(<MemoryReviewQueue workspaceId="workspace-a" embedded />);
+  assert.ok(markup.includes('data-agentos="memory-review-queue"'));
+  assert.ok(!markup.includes('fixed inset-0'));
+  assert.ok(markup.includes('正在加载待审查候选'));
+});

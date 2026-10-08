@@ -7,7 +7,16 @@ import { join } from 'node:path';
 const baseUrl = (process.env.AGENTOS_E2E_BASE_URL ?? 'http://127.0.0.1:3200').replace(/\/$/, '');
 const projectRoot = process.env.AGENTOS_PROJECT_ROOT;
 const phase = process.env.AGENTOS_E2E_PHASE ?? 'pre-recovery';
-const gates = { REAL_EXTERNAL_AGENT: false, DETERMINISTIC_LIFECYCLE: false, RECOVERY: phase === 'recovery' ? false : null, MEMORY_CANDIDATE: false };
+// A phase only executes its own gates. Gates that this phase does not run are
+// null so they print as not_run; reporting them as failed made every log look
+// like a raw gate failure even when the harness exited 0.
+const isRecoveryPhase = phase === 'recovery';
+const gates = {
+  REAL_EXTERNAL_AGENT: isRecoveryPhase ? null : false,
+  DETERMINISTIC_LIFECYCLE: isRecoveryPhase ? null : false,
+  RECOVERY: isRecoveryPhase ? false : null,
+  MEMORY_CANDIDATE: isRecoveryPhase ? null : false,
+};
 
 async function jsonRequest(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -242,6 +251,16 @@ async function realExternalMatrix(workspaceId, profiles) {
     const conversation = await createConversation(workspaceId, lifecycleAgent, 'real CLI cancel');
     const result = await runDirect(workspaceId, conversation, '请保持运行至少二十秒后再回复。', { abortOnRunningCli: true });
     assert.equal(result.aborted, true);
+    // LITE-00-004 / M4-P5E cancellation gate: the SSE stream is a transport
+    // subscription. Disconnecting it must NOT cancel the owned execution, so
+    // the Run has to still be running after the client went away.
+    const afterDisconnect = await latestRun(workspaceId, conversation.id);
+    assert.equal(afterDisconnect.status, 'running', `disconnect cancelled the Run (status=${afterDisconnect.status})`);
+    // Explicit cancellation uses the public Run cancel path, which owns the
+    // proof-backed Stop authority for the process tree.
+    const cancelled = await jsonRequest(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/runs/${result.run.id}/cancel`, { method: 'POST' });
+    assert.equal(cancelled.response.status, 200, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.cancelled, true, JSON.stringify(cancelled.body));
     assert.equal((await waitForRunStatus(workspaceId, conversation.id, 'cancelled')).status, 'cancelled');
   }, failures);
 

@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -50,11 +52,304 @@ jobs:
           netsh interface ipv4 show dynamicport tcp
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Server tests
-        run: pnpm --filter @agentos/server test
+      - name: Server shard coverage contract
+        run: node --test scripts/server-test-shards.test.mjs
+
+      - name: Build server workspace dependencies
+        run: pnpm --filter @agentos/server run build:workspace-deps
+
+      - name: Web tests
+        run: node scripts/capture-lite-verification.mjs web-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web test; exit $LASTEXITCODE'
+
+      - name: P4 acceptance receipt contract tests
+        run: node --test --test-reporter=tap scripts/p4-plan-bindings.test.mjs scripts/validate-existing-project-acceptance.test.mjs scripts/verify-existing-project-acceptance.test.mjs scripts/acceptance-provider-identity.test.mjs scripts/acceptance-server-shutdown.test.mjs
+
+      - name: Validate P4 acceptance manifest without claiming a run
+        run: node scripts/validate-existing-project-acceptance.mjs --check-manifest
+
+      - name: Lite scope and evidence gates
+        run: |
+          node scripts/capture-lite-verification.mjs lite-regressions -- node --test --test-reporter=tap scripts/verify-lite-scope.test.mjs scripts/verify-lite-acceptance.test.mjs scripts/run-lite-verification-batches.test.mjs scripts/capture-lite-verification.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/capture-lite-verification.mjs lite-scope -- node scripts/verify-lite-scope.mjs
 
       - name: Shared M3 contract harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-m3 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/m3-runtime.test.ts
+
+      - name: Shared P6-L1C-M1 contract harness
+        run: node scripts/capture-lite-verification.mjs shared-p6 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
+
+      - name: Shared MF-0 memory contract harness
+        run: node scripts/capture-lite-verification.mjs shared-mf0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf0-memory-contracts.test.ts
+
+      - name: Shared MF-5 memory event harness
+        run: node scripts/capture-lite-verification.mjs shared-mf5-memory apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-memory-events.test.ts
+
+      - name: Shared MF-5 Workspace event harness
+        run: node scripts/capture-lite-verification.mjs shared-mf5-workspace apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-workspace-events.test.ts
+
+      - name: Shared CR-0 conversation contract harness
+        run: node scripts/capture-lite-verification.mjs shared-cr0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/cr0-conversation-contracts.test.ts
+
+      - name: Shared workflow template harness
+        run: node scripts/capture-lite-verification.mjs shared-wf-templates apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-templates.test.ts
+
+      - name: Shared workflow template instantiation harness
+        run: node scripts/capture-lite-verification.mjs shared-wf-instantiation apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-template-instantiation.test.ts
+
+      - name: Shared complete contract harness
+        run: node scripts/capture-lite-verification.mjs shared-complete apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/*test.ts
 
       - name: Workspace build
-        run: pnpm build
+        run: node scripts/capture-lite-verification.mjs workspace-build -- pwsh -NoProfile -Command 'pnpm build; exit $LASTEXITCODE'
+
+      - name: Preserve raw verification receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-verification-${{ github.sha }}
+          path: agentos/logs/pass-audit/
+          if-no-files-found: error
+
+  server-shard:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build server workspace dependencies
+        run: pnpm --filter @agentos/server run build:workspace-deps
+      - name: Complete serialized server shard
+        run: node scripts/server-test-shards.mjs run 12 ${{ matrix.shard }}
+      - name: Preserve server shard inventory and raw output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-shard-${{ matrix.shard }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/shard-${{ matrix.shard }}/
+          if-no-files-found: error
+
+  server-tests:
+    runs-on: windows-latest
+    needs: server-shard
+    if: always()
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require every server shard to succeed
+        if: needs.server-shard.result != 'success'
+        run: throw 'One or more complete server shards failed or did not run'
+      - name: Collect all shard receipts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: server-shard-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/server-shard-download/
+      - name: Verify complete test inventory and exact commit
+        run: node scripts/server-test-shards.mjs verify 12 logs/server-shard-download
+      - name: Preserve aggregate coverage receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-server-shards/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/coverage.json
+          if-no-files-found: error
+
+  p3-local-operations:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Diagnostic redaction contract
+        run: node --test scripts/agentos-diagnostic-redaction.test.mjs
+      - name: Windows instance ownership and safe lifecycle
+        run: node scripts/run-p4-ci-gate.mjs windows-local-launcher --mode real-windows-process -- pwsh -NoProfile -File scripts/agentos-local.test.ps1 -TimeoutSeconds 60
+      - name: Preserve local lifecycle receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-local-operations-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/windows-local-launcher/
+          if-no-files-found: error
+
+  p4-core:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Core workspace dependencies
+        shell: pwsh
+        run: |
+          pnpm --filter @agentos/shared build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --filter @agentos/process-runtime build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Core tests (simulated provider)
+        run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core exec vitest run --maxWorkers=1; exit $LASTEXITCODE'
+
+      - name: Preserve P4 Core receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-core-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/agent-core/
+          if-no-files-found: error
+
+  p4-process-runtime:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Process Runtime tests (real Windows process)
+        run: node scripts/run-p4-ci-gate.mjs process-runtime --mode real-windows-process -- pwsh -NoProfile -Command 'pnpm --filter @agentos/process-runtime exec vitest run --reporter=verbose; exit $LASTEXITCODE'
+
+      - name: Verify Windows native process test inventory
+        run: node scripts/verify-p4-windows-native-inventory.mjs --receipt "logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/receipt.json" --expected-sha "${{ github.sha }}"
+
+      - name: Preserve P4 Process Runtime receipt and inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-process-runtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/process-runtime/
+          if-no-files-found: error
+
+  p4-browser:
+    runs-on: windows-latest
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chrome
+        run: pnpm --filter @agentos/web exec playwright install chrome
+
+      - name: Deterministic P4 browser regression
+        run: node scripts/run-p4-ci-gate.mjs browser-stable-keys --mode no-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web exec playwright test --config=playwright.config.ts --project=desktop-1280 e2e/p4-release-gates.spec.ts e2e/workspace-identity.spec.ts --grep "P4 stable-key|P4 collaboration recovery|frozen candidate preview" --output=../../logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/browser-stable-keys/playwright-results; exit $LASTEXITCODE'
+
+      - name: Preserve P4 browser receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-browser-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+
+  p2-group-recovery-browser:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      P4_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chrome
+        run: pnpm --filter @agentos/web exec playwright install chrome
+      - name: Default workspace group recovery
+        run: node scripts/run-p4-ci-gate.mjs group-recovery-browser --mode no-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/web exec playwright test --config=playwright.p2-recovery.config.ts --project=p2-recovery-desktop --output=../../logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/group-recovery-browser/playwright-results; exit $LASTEXITCODE'
+      - name: Preserve group recovery browser receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-group-recovery-browser-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agentos/logs/p4-ci-gates/${{ github.sha }}/${{ github.run_id }}-${{ github.run_attempt }}/group-recovery-browser/
+          if-no-files-found: error

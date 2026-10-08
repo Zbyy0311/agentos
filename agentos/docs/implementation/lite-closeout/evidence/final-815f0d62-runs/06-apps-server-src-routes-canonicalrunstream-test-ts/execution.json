@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C afterSequence-only cursor replays strictly greater durable sequences|P5C live durable commits after subscribe are delivered exactly once with the persisted id|LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues|P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once)",
+      "src/routes/canonicalRunStream.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

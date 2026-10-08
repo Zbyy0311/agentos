@@ -1,0 +1,10 @@
+LITE-07-104 kept root: C:\Users\ADMINI~1\AppData\Local\Temp\agentos-live-artifact-Cm2eip
+✔ LITE-07-104 a real Provider drives the canonical chain from review work to an accepted Memory Entry (49739.2752ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51042.9767

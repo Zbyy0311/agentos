@@ -1,0 +1,7 @@
+[
+  "apps/web/src/lib/directConversation.test.ts",
+  "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+  "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+  "apps/web/src/lib/uiFoundation.test.ts"
+]
+

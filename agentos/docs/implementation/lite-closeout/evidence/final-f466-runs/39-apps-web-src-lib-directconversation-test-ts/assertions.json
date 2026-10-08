@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-296",
+    "requirementId": "LITE-12-005",
+    "file": "apps/web/src/lib/directConversation.test.ts",
+    "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+    "line": 44,
+    "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+    "clause": "batched streaming and stable scroll;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-297",
+    "requirementId": "LITE-12-006",
+    "file": "apps/web/src/lib/directConversation.test.ts",
+    "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+    "line": 44,
+    "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+    "clause": "cursor reconnect without gaps/duplicates;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-298",
+    "requirementId": "LITE-12-008",
+    "file": "apps/web/src/lib/directConversation.test.ts",
+    "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+    "line": 143,
+    "expression": "if (task.valid) assert.equal(task.action.kind, 'create-task');",
+    "clause": "explicit Chat/Task/Run actions;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

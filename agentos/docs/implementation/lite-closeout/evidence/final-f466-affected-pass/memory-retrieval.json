@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/MemoryRetrievalService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/assertions.json",
+      "sha256": "de9db7fdf5780953959c557f1cdc4309c1109b8be06a753b2e6e3ce6f2b5fb75"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/execution.json",
+      "sha256": "000861244310497efd76d7f74842d09cecb5ce4041d1aa13063071385e0f7c65"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/stdout.txt",
+      "sha256": "95c8f3693b62f32e19c397c9eca6c748fb981ac64463c9a1ff269755d2acc426"
+    }
+  ],
+  "counts": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "total": 19
+  },
+  "assertionCoverage": [
+    {
+      "id": "MEM-SCOPE-01",
+      "requirementId": "LITE-07-001",
+      "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+      "name": "MF3-01 reach resolution is owner-bounded",
+      "line": 94,
+      "expression": "assert.deepEqual(reach, [{ scope: 'global', ownerId: null }, { scope: 'workspace', ownerId: null }]);",
+      "clause": "Valid reachability uses the permitted Scope/owner pairs.",
+      "whyDirect": "The production reach resolver is called with a Workspace-only context and its exact valid global/workspace pairs are asserted.",
+      "outcome": "passed"
+    }
+  ]
+}

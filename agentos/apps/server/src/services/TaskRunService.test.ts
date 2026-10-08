@@ -16,6 +16,7 @@ import { createEntityId } from '../store/Identity.js';
 import { hashIdempotencyRequest } from '../idempotency/fingerprint.js';
 import type { Run, Task, Workspace } from '@agentos/shared';
 import { RunSnapshotFailedError } from './SnapshotService.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 
 interface Fixture {
   root: string;
@@ -92,6 +93,36 @@ test('TaskRunService captures unbound Snapshots for all six v2 reasons without s
       parentRunId = run.id;
       fx.service.cancelQueuedRun(fx.workspace.id, run.id);
     }
+  } finally {
+    close(fx);
+  }
+});
+
+test('LITE-01-004 a Task supports zero Runs and then multiple independent Runs', () => {
+  const fx = fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'zero-or-many runs', createdBy: 'test' });
+    assert.deepEqual(fx.store.runRepository().listByTask(fx.workspace.id, task.id), []);
+
+    const first = fx.service.createRun(fx.workspace.id, {
+      taskId: task.id,
+      reason: 'manual',
+      createdBy: 'test',
+    });
+    fx.service.cancelQueuedRun(fx.workspace.id, first.id);
+    const second = fx.service.createRun(fx.workspace.id, {
+      taskId: task.id,
+      reason: 'manual',
+      createdBy: 'test',
+    });
+
+    assert.deepEqual(
+      fx.store.runRepository().listByTask(fx.workspace.id, task.id).map(run => run.id),
+      [first.id, second.id],
+    );
+    assert.notEqual(first.id, second.id);
+    assert.equal(first.taskId, task.id);
+    assert.equal(second.taskId, task.id);
   } finally {
     close(fx);
   }
@@ -1893,9 +1924,9 @@ test('P3C1-S19 production SqliteStore enables foreign keys and busy_timeout 5000
     assert.equal((db.prepare('PRAGMA busy_timeout').get() as { timeout: number }).timeout, 5000);
     assert.equal((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys, 1);
     const applied = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(applied.map(row => row.migration_id), [
-      '001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013',
-    ]);
+    const appliedMigrationIds = applied.map(row => row.migration_id);
+    assert.equal(appliedMigrationIds.length, DEFAULT_REGISTRY_MIGRATIONS.length);
+    assert.deepEqual(appliedMigrationIds, DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id));
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true });
@@ -2350,7 +2381,7 @@ test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and
   }
 });
 
-test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only creation Events', () => {
+test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability', () => {
   const fx = fixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
@@ -2378,6 +2409,11 @@ test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only cr
     assert.equal(childSnapshot.payload.run.reason, child.reason);
     assert.equal(childSnapshot.payload.run.parentRunId, parent.id);
     assert.equal(childSnapshot.payload.run.rootRunId, parent.rootRunId);
+    assert.deepEqual(
+      fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id),
+      parentSnapshot,
+      'retry must not rewrite the parent Snapshot',
+    );
     assert.equal(childStages.length, parentStages.length);
     assert.deepEqual(childStages.map(stage => [stage.workflowStageKey, stage.sequence]), parentStages.map(stage => [stage.workflowStageKey, stage.sequence]));
     for (const stage of childStages) {
@@ -2389,6 +2425,11 @@ test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only cr
       assert.equal(stage.createdAt, stage.updatedAt);
       assert.equal(parentStages.some(parentStage => parentStage.id === stage.id), false);
     }
+    assert.deepEqual(
+      fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id),
+      parentStages,
+      'retry must not rewrite the parent Stage rows',
+    );
     const events = fx.store.getDatabase().prepare(
       'SELECT id, type, correlation_id, causation_id, parent_event_id FROM runtime_events WHERE run_id = ? ORDER BY sequence',
     ).all(child.id) as Array<Record<string, unknown>>;

@@ -1,0 +1,23 @@
+TAP version 13
+# Subtest: GitObservationCollector controlled seams around real command results
+    # Subtest: preserves distinct first/final HEAD SHAs across a real commit boundary
+    ok 1 - preserves distinct first/final HEAD SHAs across a real commit boundary
+      ---
+      duration_ms: 3231.9656
+      type: 'test'
+      ...
+    1..1
+ok 1 - GitObservationCollector controlled seams around real command results
+  ---
+  duration_ms: 3232.6642
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4406.9339

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "baseline": "a2c80b9aed94aa8fb6db4628e8865e99848ea74f",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:01:36.199Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 1,
+    "passed": 1,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3203,
+      "sourceSha256": "ee208491289914ef46f6557b2ec06b84a81129580db7d1132259f0e375d99b95",
+      "rawLogSha256": "c53e115fdc51d6d354a5402b03db56610508b657000e6db50d055fbe547227b8",
+      "rawOutput": "✔ CR4B-01 create-task creates exactly one Task and binds it to the Message (194.2397ms)\n✔ CR4B-02 create-task is idempotent across retries and starts nothing (166.3182ms)\n✔ CR4B-03 create-task fails closed for unknown ids and invalid input (156.5471ms)\n✔ CR4B-04 derived titles are deterministic and bounded (400.3592ms)\n✔ CR4B-05 start-run resolves the Task, creates one queued canonical Run, and binds both references (190.3082ms)\n✔ CR4B-06 start-run converges on the same Run for a retried call (217.4341ms)\n✔ CR4B-07 start-run reuses a Task created by create-task (274.0006ms)\n✔ CR4B-08 start-run reports the observed admission state, never a granted one (188.8154ms)\n✔ CR4B-09 a durable GRANTED admission is reported as effective class and evidence (177.05ms)\n✔ CR4B-10 one active Run per Task is enforced by durable state (167.0643ms)\n✔ CR4B-11 an archived Conversation still accepts explicit Task and Run actions (175.7916ms)\n✔ CR4B-12 within-transaction variants compose and roll back atomically (168.6361ms)\n✔ CR4B-13 reason values that need a parent run are rejected as caller errors (177.7563ms)\n✔ CR4B-14 a second start-run for the same Task reports a durable conflict (178.0689ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3127.1065\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ CR4B-11 an archived Conversation still accepts explicit Task and Run actions (175.7916ms)\n✔ CR4B-12 within-transaction variants compose and roll back atomically (168.6361ms)\n✔ CR4B-13 reason values that need a parent run are rejected as caller errors (177.7563ms)\n✔ CR4B-14 a second start-run for the same Task reports a durable conflict (178.0689ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3127.1065",
+      "baseline": "a2c80b9aed94aa8fb6db4628e8865e99848ea74f",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/ConversationBridgeService.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ CR4B-01 create-task creates exactly one Task and binds it to the Message (194.2397ms)\n✔ CR4B-02 create-task is idempotent across retries and starts nothing (166.3182ms)\n✔ CR4B-03 create-task fails closed for unknown ids and invalid input (156.5471ms)\n✔ CR4B-04 derived titles are deterministic and bounded (400.3592ms)\n✔ CR4B-05 start-run resolves the Task, creates one queued canonical Run, and binds both references (190.3082ms)\n✔ CR4B-06 start-run converges on the same Run for a retried call (217.4341ms)\n✔ CR4B-07 start-run reuses a Task created by create-task (274.0006ms)\n✔ CR4B-08 start-run reports the observed admission state, never a granted one (188.8154ms)\n✔ CR4B-09 a durable GRANTED admission is reported as effective class and evidence (177.05ms)\n✔ CR4B-10 one active Run per Task is enforced by durable state (167.0643ms)\n✔ CR4B-11 an archived Conversation still accepts explicit Task and Run actions (175.7916ms)\n✔ CR4B-12 within-transaction variants compose and roll back atomically (168.6361ms)\n✔ CR4B-13 reason values that need a parent run are rejected as caller errors (177.7563ms)\n✔ CR4B-14 a second start-run for the same Task reports a durable conflict (178.0689ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3127.1065\n",
+      "stderr": ""
+    }
+  ]
+}

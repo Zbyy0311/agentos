@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-12-016-lite-12-016-no-web-module-implements-a-deferred-product-surface-307",
+    "requirementId": "LITE-12-016",
+    "file": "apps/web/src/liteScopeBoundary.test.ts",
+    "name": "LITE-12-016 no web module implements a deferred product surface",
+    "line": 61,
+    "expression": "assert.deepEqual(offenders, []);",
+    "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-016-lite-12-016-the-workspace-shells-expose-no-deferred-product-entry-point-308",
+    "requirementId": "LITE-12-016",
+    "file": "apps/web/src/liteScopeBoundary.test.ts",
+    "name": "LITE-12-016 the workspace shells expose no deferred product entry point",
+    "line": 73,
+    "expression": "assert.equal(surface.pattern.test(source), false, `${surface.label} must not appear in ${relative(webSrc, file)}`);",
+    "clause": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

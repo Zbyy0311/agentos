@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:13:08.407Z",
+  "selectionStrategy": "chat-memory.v1",
+  "phases": {
+    "direct": {
+      "turnId": "turn_aaaaaaaaaaaaaaaaaaaa",
+      "snapshotId": "snapshot_01M2G0SK07049XN28B3Q1JF21X",
+      "selectedIds": [
+        "mem_s5_02",
+        "mem_s5_01"
+      ],
+      "totalTokens": 23
+    },
+    "isolation": {
+      "turnId": "turn_bbbbbbbbbbbbbbbbbbbb",
+      "snapshotId": "snapshot_01M2G0SK0M32GQNQN2HK4RT9XV",
+      "selectedIds": [
+        "mem_s5_03",
+        "mem_s5_01"
+      ]
+    },
+    "authority": {
+      "refusedTurn": "turn_cccccccccccccccccccc",
+      "admittedTurnStatus": "final"
+    }
+  },
+  "counts": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S5E-DIRECT-01",
+      "requirementId": "LITE-09-101",
+      "phase": "direct",
+      "step": "the frozen selection is persisted before the Provider call and names the real Memory entries",
+      "actual": {
+        "runnerSawSnapshot": true,
+        "selectedIds": [
+          "mem_s5_02",
+          "mem_s5_01"
+        ],
+        "totalTokens": 23,
+        "strategyVersion": "chat-memory.v1",
+        "turnStatus": "final",
+        "messageStatus": "final",
+        "turnReferencesThatSnapshot": true,
+        "expectsWorkspaceEntry": true,
+        "expectsAgentEntry": true
+      },
+      "expected": {
+        "runnerSawSnapshot": true,
+        "selectedIds": [
+          "mem_s5_02",
+          "mem_s5_01"
+        ],
+        "totalTokens": 23,
+        "strategyVersion": "chat-memory.v1",
+        "turnStatus": "final",
+        "messageStatus": "final",
+        "turnReferencesThatSnapshot": true,
+        "expectsWorkspaceEntry": true,
+        "expectsAgentEntry": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-DIRECT-02",
+      "requirementId": "LITE-09-101",
+      "phase": "direct",
+      "step": "the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it",
+      "actual": {
+        "memoryContextMatchesSnapshotEntries": true,
+        "injectedEntryCount": 2,
+        "contextMentionsWorkspaceEntry": true,
+        "contextMentionsAgentEntry": true,
+        "taskScopedEntrySelected": false,
+        "contextMentionsTaskEntry": false,
+        "otherAgentEntrySelected": false
+      },
+      "expected": {
+        "memoryContextMatchesSnapshotEntries": true,
+        "injectedEntryCount": 2,
+        "contextMentionsWorkspaceEntry": true,
+        "contextMentionsAgentEntry": true,
+        "taskScopedEntrySelected": false,
+        "contextMentionsTaskEntry": false,
+        "otherAgentEntrySelected": false
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-ISOLATION-01",
+      "requirementId": "LITE-09-013",
+      "phase": "isolation",
+      "step": "each Agent receives only its own reachable Memory and its own frozen snapshot",
+      "actual": {
+        "turnsObserved": 1,
+        "selectedIds": [
+          "mem_s5_03",
+          "mem_s5_01"
+        ],
+        "seesOwnAgentEntry": true,
+        "seesOtherAgentEntry": false,
+        "seesWorkspaceEntry": true,
+        "contextMentionsOwnEntry": true,
+        "contextMentionsOtherAgentEntry": false,
+        "distinctSnapshots": true,
+        "turnStatus": "final"
+      },
+      "expected": {
+        "turnsObserved": 1,
+        "selectedIds": [
+          "mem_s5_03",
+          "mem_s5_01"
+        ],
+        "seesOwnAgentEntry": true,
+        "seesOtherAgentEntry": false,
+        "seesWorkspaceEntry": true,
+        "contextMentionsOwnEntry": true,
+        "contextMentionsOtherAgentEntry": false,
+        "distinctSnapshots": true,
+        "turnStatus": "final"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-ISOLATION-02",
+      "requirementId": "LITE-09-013",
+      "phase": "isolation",
+      "step": "the earlier Agent keeps its own snapshot and history unchanged",
+      "actual": {
+        "turnAPointsAtItsOwnSnapshot": true,
+        "snapshotsForTheConversation": 2,
+        "snapshotAgents": [
+          {
+            "agentId": "agent_a",
+            "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "agentId": "agent_b",
+            "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "expected": {
+        "turnAPointsAtItsOwnSnapshot": true,
+        "snapshotsForTheConversation": 2,
+        "snapshotAgents": [
+          {
+            "agentId": "agent_a",
+            "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "agentId": "agent_b",
+            "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-AUTHORITY-01",
+      "requirementId": "LITE-09-102",
+      "phase": "authority",
+      "step": "a chat Turn refuses instead of running beside another modifying holder, before any Provider call",
+      "actual": {
+        "providerCalls": 0,
+        "turnStatus": "failed",
+        "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+        "messageStatus": "failed",
+        "snapshotCreatedForThatTurn": 0,
+        "refusalNamesTheHolder": true,
+        "runtimeEvents": 0
+      },
+      "expected": {
+        "providerCalls": 0,
+        "turnStatus": "failed",
+        "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+        "messageStatus": "failed",
+        "snapshotCreatedForThatTurn": 0,
+        "refusalNamesTheHolder": true,
+        "runtimeEvents": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-AUTHORITY-02",
+      "requirementId": "LITE-09-102",
+      "phase": "authority",
+      "step": "the same Turn runs once the modifying holder is released, so the refusal is about authority only",
+      "actual": {
+        "providerCalls": 1,
+        "status": "final"
+      },
+      "expected": {
+        "providerCalls": 1,
+        "status": "final"
+      },
+      "outcome": "passed"
+    }
+  ]
+}

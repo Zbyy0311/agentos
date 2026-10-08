@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A1",
+    "requirementId": "LITE-05-011",
+    "file": "apps/server/src/taskRecovery.test.ts",
+    "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+    "line": 745,
+    "expression": "assert.ok(callsAfterPreflight > 0, 'preflight must have invoked the verifier');",
+    "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A2",
+    "requirementId": "LITE-05-011",
+    "file": "apps/server/src/taskRecovery.test.ts",
+    "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+    "line": 748,
+    "expression": "assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');",
+    "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-05-011-lite-05-011-p6m2b-composition-e-no-os-probe-occurs-inside-the-recovery-transacti-328-A3",
+    "requirementId": "LITE-05-011",
+    "file": "apps/server/src/taskRecovery.test.ts",
+    "name": "LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction",
+    "line": 749,
+    "expression": "assert.equal(insideTransactionCalls, 0, 'OS probing must stay outside the SQLite write transaction');",
+    "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

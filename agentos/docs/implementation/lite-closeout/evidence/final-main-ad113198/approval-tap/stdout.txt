@@ -1,0 +1,101 @@
+TAP version 13
+# Subtest: LITE-08-005/006: lists a request, reads it by id, and isolates it across workspaces
+ok 1 - LITE-08-005/006: lists a request, reads it by id, and isolates it across workspaces
+  ---
+  duration_ms: 261.9493
+  type: 'test'
+  ...
+# Subtest: LITE-08-006: missing expectedVersion or decision returns 400 without resolving the request
+ok 2 - LITE-08-006: missing expectedVersion or decision returns 400 without resolving the request
+  ---
+  duration_ms: 205.8316
+  type: 'test'
+  ...
+# Subtest: LITE-08-006: approve succeeds and the same request/version retries as replayed without new decision or Candidate
+ok 3 - LITE-08-006: approve succeeds and the same request/version retries as replayed without new decision or Candidate
+  ---
+  duration_ms: 202.4332
+  type: 'test'
+  ...
+# Subtest: LITE-08-006: concurrent approve/reject has one CAS winner and one conflict
+ok 4 - LITE-08-006: concurrent approve/reject has one CAS winner and one conflict
+  ---
+  duration_ms: 221.83
+  type: 'test'
+  ...
+# Subtest: LITE-08-006: reject succeeds and does not create an accepted-decision Candidate
+ok 5 - LITE-08-006: reject succeeds and does not create an accepted-decision Candidate
+  ---
+  duration_ms: 193.9084
+  type: 'test'
+  ...
+# Subtest: LITE-08-006: a stale request version returns 409 and leaves the request pending
+ok 6 - LITE-08-006: a stale request version returns 409 and leaves the request pending
+  ---
+  duration_ms: 186.6655
+  type: 'test'
+  ...
+# Subtest: LITE-08-007: an expired pending request returns 410 without writing a decision
+ok 7 - LITE-08-007: an expired pending request returns 410 without writing a decision
+  ---
+  duration_ms: 179.614
+  type: 'test'
+  ...
+# Subtest: RunEngineProviderDispatcher E2E
+    # Subtest: LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once
+    ok 1 - LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once
+      ---
+      duration_ms: 142.5478
+      type: 'test'
+      ...
+    # Subtest: LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute
+    ok 2 - LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute
+      ---
+      duration_ms: 72.6139
+      type: 'test'
+      ...
+    # Subtest: LITE-08-006: an approved request rejects a contradictory replay without changing the result
+    ok 3 - LITE-08-006: an approved request rejects a contradictory replay without changing the result
+      ---
+      duration_ms: 101.2675
+      type: 'test'
+      ...
+    # Subtest: LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect
+    ok 4 - LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect
+      ---
+      duration_ms: 81.2245
+      type: 'test'
+      ...
+    # Subtest: LITE-08-005: startup resume never bypasses a Run already marked recovery-required
+    ok 5 - LITE-08-005: startup resume never bypasses a Run already marked recovery-required
+      ---
+      duration_ms: 67.2703
+      type: 'test'
+      ...
+    # Subtest: LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation
+    ok 6 - LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation
+      ---
+      duration_ms: 100.2399
+      type: 'test'
+      ...
+    # Subtest: LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence
+    ok 7 - LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence
+      ---
+      duration_ms: 73.3362
+      type: 'test'
+      ...
+    1..7
+ok 8 - RunEngineProviderDispatcher E2E
+  ---
+  duration_ms: 639.8599
+  type: 'suite'
+  ...
+1..8
+# tests 14
+# suites 1
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2819.4899

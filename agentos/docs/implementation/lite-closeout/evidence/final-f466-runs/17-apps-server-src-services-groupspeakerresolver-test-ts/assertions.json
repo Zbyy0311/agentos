@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-00-013-cg-s1-cg-s9-parallel-read-only-declares-intent-but-never-claims-an-unproven-read-110",
+    "requirementId": "LITE-00-013",
+    "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+    "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+    "line": 201,
+    "expression": "assert.equal(plan.speakers.length, 2);",
+    "clause": "Group Conversation and workflow templates remain bounded.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-015-cg-s1-cg-s9-parallel-read-only-declares-intent-but-never-claims-an-unproven-read-111",
+    "requirementId": "LITE-09-015",
+    "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+    "name": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+    "line": 201,
+    "expression": "assert.equal(plan.speakers.length, 2);",
+    "clause": "@all never launches parallel modification;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

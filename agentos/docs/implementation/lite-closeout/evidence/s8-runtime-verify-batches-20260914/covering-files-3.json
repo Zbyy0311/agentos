@@ -1,0 +1,5 @@
+[
+  "packages/shared/p6-l1c-git-observation-contract.test.ts",
+  "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts"
+]
+

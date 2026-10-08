@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: S6/029: policy rows are immutable and versioned
+ok 1 - S6/029: policy rows are immutable and versioned
+  ---
+  duration_ms: 147.6053
+  type: 'test'
+  ...
+# Subtest: S6/029: a reclaimed lease cannot publish from the old holder or version
+ok 2 - S6/029: a reclaimed lease cannot publish from the old holder or version
+  ---
+  duration_ms: 142.1087
+  type: 'test'
+  ...
+# Subtest: S6/029: one compaction task moves pending -> running -> published under version CAS
+ok 3 - S6/029: one compaction task moves pending -> running -> published under version CAS
+  ---
+  duration_ms: 141.8295
+  type: 'test'
+  ...
+# Subtest: S6/029: one running compaction per Conversation and bounded retry/failure branches
+ok 4 - S6/029: one running compaction per Conversation and bounded retry/failure branches
+  ---
+  duration_ms: 147.8774
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 862.1722

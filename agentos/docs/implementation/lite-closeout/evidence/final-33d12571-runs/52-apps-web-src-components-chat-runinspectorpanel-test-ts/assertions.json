@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-13-005-lite-13-005-inspector-refresh-replaces-the-bounded-projection-instead-of-appendi-336-A1",
+    "requirementId": "LITE-13-005",
+    "file": "apps/web/src/components/chat/RunInspectorPanel.test.ts",
+    "name": "LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state",
+    "line": 24,
+    "expression": "assert.strictEqual(refreshed, next);",
+    "clause": "bounded output without unbounded client state;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-005-lite-13-005-inspector-refresh-replaces-the-bounded-projection-instead-of-appendi-336-A2",
+    "requirementId": "LITE-13-005",
+    "file": "apps/web/src/components/chat/RunInspectorPanel.test.ts",
+    "name": "LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state",
+    "line": 25,
+    "expression": "assert.deepEqual(refreshed.events, next.events);",
+    "clause": "bounded output without unbounded client state;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-005-lite-13-005-inspector-refresh-replaces-the-bounded-projection-instead-of-appendi-336-A3",
+    "requirementId": "LITE-13-005",
+    "file": "apps/web/src/components/chat/RunInspectorPanel.test.ts",
+    "name": "LITE-13-005 Inspector refresh replaces the bounded projection instead of appending client state",
+    "line": 26,
+    "expression": "assert.equal(refreshed.events.some(event => event.eventId === 'old-0'), false);",
+    "clause": "bounded output without unbounded client state;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

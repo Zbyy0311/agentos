@@ -1,0 +1,35 @@
+[
+  {
+    "id": "LITE-05-008-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-167",
+    "requirementId": "LITE-05-008",
+    "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+    "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+    "line": 702,
+    "expression": "assert.equal(run.status, 'completed');",
+    "clause": "browser disconnect leaves the Process running;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-007-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-168",
+    "requirementId": "LITE-09-007",
+    "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+    "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+    "line": 702,
+    "expression": "assert.equal(run.status, 'completed');",
+    "clause": "browser disconnect leaves Run and Process active;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-014-p6d-a5-browser-disconnect-is-transport-only-execution-events-outbox-and-terminal-169",
+    "requirementId": "LITE-13-014",
+    "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+    "name": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+    "line": 702,
+    "expression": "assert.equal(run.status, 'completed');",
+    "clause": "browser disconnect leaves execution active;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

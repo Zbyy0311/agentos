@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:12:07.752Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 6,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次或 covering-batches*.json）。",
+    "复合条款缺任一分项的具名断言即记驳回。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-09-002",
+      "clause": "Task creation and Run creation are distinct and idempotent;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "coveringAssertion": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "rationale": "与 LITE-02-002 同一断言体：三次 create-task 收敛到同一 Task（幂等），且库中 runs 行数为 0（建 Task 不建 Run，即「distinct」）。",
+      "limits": "同一断言同时覆盖 09-002 与 02-002 两句；若要求 09 文档语境的独立复现，需要补一条在该语境下的断言。",
+      "line": 111,
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（Turn 流式/取消/快照，不覆盖本条）",
+      "receipt": "covering-batches-2.json（14 passed / exit 0）"
+    },
+    {
+      "id": "LITE-09-018",
+      "clause": "search excludes secrets.",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/AgentHistoryService.test.ts",
+      "coveringAssertion": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "rationale": "断言体：种入含 `sk-secret-99` 的消息后 `history({ q: 'sk-secret-99' })` 命中数必须为 0（消息体永不被搜索），而非秘密的标签（task/release、memory/'chose v2'）仍可命中。直接覆盖「搜索排除秘密」。",
+      "line": 116,
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖）",
+      "receipt": "covering-batches-6.json（7 passed / exit 0）"
+    },
+    {
+      "id": "LITE-10-002",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+      "coveringAssertion": "T14 PRAGMA integrity_check returns ok after 005/006",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+          "name": "T15 PRAGMA foreign_key_check reports no violations after 005/006"
+        },
+        {
+          "file": "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts",
+          "name": "REG-05 migration checksum mismatch still fails closed"
+        }
+      ],
+      "rationale": "四项各有具名断言：integrity —— T14 断言 `PRAGMA integrity_check` 返回 'ok'；foreign-key —— T15 断言 `PRAGMA foreign_key_check` 无违规；checksum —— REG-05 断言迁移校验和不匹配时**失败关闭**（另有 M2MigrationRegistryAcceptance 断言每个 checksum 形如 16 位十六进制且与默认注册表逐项相等）；backup —— 迁移测试统一注入 `createFileBackupProvider` 并在运行器路径上要求它（备份提供者缺失即失败）。",
+      "limits": "「backup」一项由运行器必须注入 backupProvider 这一结构性约束体现（各迁移测试均如此构造），未见专门断言「备份内容可读回并校验哈希」的用例；若要求更强的备份完整性证据，需要补一条。",
+      "currentPointer": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts（仅 2 条断言，只覆盖注册顺序）",
+      "receipt": "covering-batches-6.json（16 + 62 passed / exit 0）"
+    },
+    {
+      "id": "LITE-09-007",
+      "clause": "browser disconnect leaves Run and Process active;",
+      "verdict": "accepted",
+      "coveringFile": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json",
+      "coveringAssertion": "LITE-02-009-A2 runtime-inspector-process-active-after-disconnect",
+      "rationale": "与 LITE-05-008 同一证据：真实 HTTP 断言级收据证明 abort 订阅后同一 Process id 的 Runtime Inspector 投影仍为 active（同一 Run 关联）。",
+      "limits": "证据是真实 HTTP 断言收据（非单元测试）；单元层未见等价断言。",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）",
+      "receipt": "S8-four-row-candidate-evidence.json（#165 已合并）"
+    },
+    {
+      "id": "LITE-09-008",
+      "clause": "Event projection never duplicates cards;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "candidateAssertion": "no duplicate sequence delivery",
+      "rationale": "候选断言覆盖的是「SSE 重放不重复投递同一 sequence」（传输层去重），而条款要求的是**投影层不产生重复卡片**（同一 canonical 事实在 UI 投影中只出现一次）。两者不是同一层。全仓检索未见「投影/卡片去重」的具名断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-09-012",
+      "clause": "budgets, stop, and loop guard terminate every group interaction;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "coveringAssertion": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-05 a per-Agent budget breach ends the interaction"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-06 a distinct-Agent budget breach ends the interaction"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-07 Stop blocks new replies and never cancels a Run"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-09 repeated content terminates the interaction with loop-guard"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-10 hops beyond the configured limit terminate the interaction"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-11 a repeated mention with no new information terminates the interaction"
+        }
+      ],
+      "rationale": "三个并列项各有具名断言：budgets —— 总帽（CR5S-03/04）、单 Agent 帽（CR5S-05）、独立 Agent 帽（CR5S-06）、跳数帽（CR5S-10）；stop —— CR5S-07（停止阻断新回复且不取消 Run）；loop guard —— CR5S-08（同 Agent 环）、CR5S-09（重复内容）、CR5S-11（重复提及无新信息）。每项都以**稳定原因**终止。",
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）"
+    },
+    {
+      "id": "LITE-09-015",
+      "clause": "@all never launches parallel modification;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "coveringAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/GroupSpeakerResolver.ts（生产代码）",
+          "name": "resolveGroupSpeakers 把每个 speaker 的 effectiveMutationClass 恒置为 'modifying'"
+        },
+        {
+          "file": "apps/server/src/services/GroupTurnDriver.ts（生产代码）",
+          "name": "D3 关闭：驱动按 plan.speakers 顺序逐个 await（无并行分支）"
+        }
+      ],
+      "rationale": "断言体证明：即使 replyMode 声明 parallel-read-only，每个 speaker 的 effectiveMutationClass 仍为 'modifying'；结合驱动层的实现（串行 await 循环，无并行分支），@all 触发的多 speaker 走查必然是串行修改而非并行。",
+      "limits": "「不并行」由「class 恒为 modifying」+ 驱动串行实现推出，而非一条直接断言「并发度 ≤ 1」的用例；本轮 S5 群聊候选证据包（#168 已合并）在真实驱动上观测到 maxConcurrent===1，可作为更强的补充证据。",
+      "line": 199,
+      "currentPointer": "apps/server/src/services/ConversationTurnDriver.test.ts（不覆盖本条）"
+    }
+  ],
+  "summary": {
+    "judged": 7,
+    "accepted": 6,
+    "rejected": 1,
+    "cumulativeJudged": 47,
+    "cumulativeAccepted": 33,
+    "cumulativeRejected": 14,
+    "remaining": 60
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+

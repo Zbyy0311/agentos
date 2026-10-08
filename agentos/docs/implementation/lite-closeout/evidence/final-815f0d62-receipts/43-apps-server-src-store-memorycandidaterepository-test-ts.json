@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row)",
+      "src/store/MemoryCandidateRepository.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/assertions.json",
+      "sha256": "2dfe1d0b46e8d92de8da5b99ea3efbafe7565141710812dbbd384fb36cc5de05"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/execution.json",
+      "sha256": "a73928835e26a95f0989055cee934fddb8e13796dbcaa2799282b5556a9928a1"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/stdout.txt",
+      "sha256": "e60269233b7b1833889656fc1553ed553f027cec66bf3b02f6518ad2331c958f"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-07-012-lite-07-012-lite-10-016-secret-like-candidate-leaves-no-candidate-entry-or-fts-r-317",
+      "requirementId": "LITE-07-012",
+      "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "name": "LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row",
+      "line": 202,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_candidate_entries WHERE id = ?').get(CAND) as { c: number }).c, 0);",
+      "clause": "secret absence from Entries, FTS, Snapshots, Events, export, and search;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-016-lite-07-012-lite-10-016-secret-like-candidate-leaves-no-candidate-entry-or-fts-r-318",
+      "requirementId": "LITE-10-016",
+      "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "name": "LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row",
+      "line": 202,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_candidate_entries WHERE id = ?').get(CAND) as { c: number }).c, 0);",
+      "clause": "no secret persistence;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

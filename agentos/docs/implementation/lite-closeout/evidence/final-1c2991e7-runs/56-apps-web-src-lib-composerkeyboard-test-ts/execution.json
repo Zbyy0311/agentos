@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-12-014 Enter submits while Shift\\+Enter and IME composition stay local|LITE-12-014 keyboard submit prevents the browser newline and restores composer focus|LITE-12-014 disabled submit does not invoke the send callback)",
+      "src/lib/composerKeyboard.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

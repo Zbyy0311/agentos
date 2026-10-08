@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-03-016 Memory selection Events expose bounded explanation fields)",
+      "../../packages/shared/mf5-memory-events.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/assertions.json",
+      "sha256": "67b7c0cd42b7f8f5abdf0aa12839bada8768884a5f99d31cf32b2f4b0b2d4f7d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/execution.json",
+      "sha256": "77bdc1cbf0898bb46025096f583fdd1ca3e8ecf2d9cf9a04448696be63cc50e8"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/73-packages-shared-mf5-memory-events-test-ts/stdout.txt",
+      "sha256": "59d61551a7c725d725e2659fa0b036bc0c77da5ba5f33567bebf068178f8e6bf"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-03-016-lite-03-016-memory-selection-events-expose-bounded-explanation-fields-464",
+      "requirementId": "LITE-03-016",
+      "file": "packages/shared/mf5-memory-events.test.ts",
+      "name": "LITE-03-016 Memory selection Events expose bounded explanation fields",
+      "line": 158,
+      "expression": "assert.ok(retrieval);",
+      "clause": "Memory selection explanation Events;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

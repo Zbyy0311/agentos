@@ -1,0 +1,4 @@
+{"type":"assistant","role":"assistant","content":"Hello from KimiCode"}
+{"type":"assistant","role":"assistant","tool_calls":[{"id":"tool-1","function":{"name":"Glob","arguments":"{\"pattern\":\"**/*.ts\"}"}}]}
+{"type":"tool.result","tool_call_id":"tool-1","content":"3 files"}
+{"type":"usage","usage":{"input_tokens":13,"cached_input_tokens":3,"output_tokens":6}}

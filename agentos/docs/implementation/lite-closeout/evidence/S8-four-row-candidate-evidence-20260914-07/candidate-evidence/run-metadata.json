@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-07\"",
+  "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+  "preRawExitCode": 1,
+  "recoveryRawExitCode": 0,
+  "prepareRawExitCode": 0,
+  "routeModels": {
+    "codex": "deepseek/deepseek-flash",
+    "kimi": "opencodex/deepseek/deepseek-flash",
+    "opencode": "deepseek/deepseek-v4-flash"
+  },
+  "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。",
+  "serverLifecycle": [
+    "pre server started",
+    "pre candidate phase completed",
+    "pre server stopped",
+    "recovery server started",
+    "recovery phase completed",
+    "recovery server stopped"
+  ]
+}

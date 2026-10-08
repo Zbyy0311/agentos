@@ -1,0 +1,6 @@
+passed      apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts  rows=0  56 pass / 0 fail / 0 skip  exit=0  7637ms
+passed      apps/server/src/services/GroupSpeakerResolver.test.ts  rows=0  7 pass / 0 fail / 0 skip  exit=0  324ms
+passed      apps/server/src/services/TaskRunRecoveryService.test.ts  rows=0  67 pass / 0 fail / 0 skip  exit=0  5141ms
+passed      apps/server/src/services/TaskRunService.test.ts  rows=0  92 pass / 0 fail / 0 skip  exit=0  19894ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches.json
+batches=4 passed=4 failed=0 provableRequirements=0/0

@@ -1,0 +1,222 @@
+[
+  {
+    "id": "LITE-00-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-12-A1",
+    "requirementId": "LITE-00-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-00-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-12-A2",
+    "requirementId": "LITE-00-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-13-A1",
+    "requirementId": "LITE-01-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "one Workspace cannot admit two modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-13-A2",
+    "requirementId": "LITE-01-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "one Workspace cannot admit two modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-003-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-14-A1",
+    "requirementId": "LITE-02-003",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "modifying admission never permits two active modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-003-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-14-A2",
+    "requirementId": "LITE-02-003",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "modifying admission never permits two active modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-001-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-15-A1",
+    "requirementId": "LITE-06-001",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "one Workspace never admits two AgentOS modifying Runs concurrently;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-001-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-15-A2",
+    "requirementId": "LITE-06-001",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "one Workspace never admits two AgentOS modifying Runs concurrently;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-013-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-16-A1",
+    "requirementId": "LITE-08-013",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "no policy path bypasses single-writer admission;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-08-013-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-16-A2",
+    "requirementId": "LITE-08-013",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "no policy path bypasses single-writer admission;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-003-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-17-A1",
+    "requirementId": "LITE-09-003",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "Run start passes Workspace admission;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-003-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-17-A2",
+    "requirementId": "LITE-09-003",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "Run start passes Workspace admission;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-014-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-18-A1",
+    "requirementId": "LITE-09-014",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "no Workspace has two AgentOS modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-014-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-18-A2",
+    "requirementId": "LITE-09-014",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "no Workspace has two AgentOS modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-009-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-19-A1",
+    "requirementId": "LITE-10-009",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "optimistic race winner;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-009-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-19-A2",
+    "requirementId": "LITE-10-009",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "optimistic race winner;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-20-A1",
+    "requirementId": "LITE-11-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "one Workspace never admits two modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-11-008-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-20-A2",
+    "requirementId": "LITE-11-008",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "one Workspace never admits two modifying Runs;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-21-A1",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 391,
+    "expression": "assert.throws(",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-13-011-l1b-13-two-modifying-granted-rows-in-one-workspace-rejected-by-db-fence-21-A2",
+    "requirementId": "LITE-13-011",
+    "file": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+    "name": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+    "line": 395,
+    "expression": "assert.equal(count(db, \"SELECT COUNT(*) AS c FROM workspace_admissions WHERE state = 'GRANTED'\"), 1);",
+    "clause": "no two modifying Runs in one Workspace;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

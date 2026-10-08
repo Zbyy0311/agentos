@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives)",
+      "src/services/WorkflowTemplateService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/assertions.json",
+      "sha256": "59a4c84982f2860f143262ef68ad764b8cfa934e1bc515d70285f77697810652"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/execution.json",
+      "sha256": "1543eaa894efdf590e6a27e676f9dadb807c3c79969d457d13d213863b18f13c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/stdout.txt",
+      "sha256": "52dac0875b178cc71cb11605d398df59802fb6eabce4709563c27c1cf3546e21"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A1",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 68,
+      "expression": "assert.ok(persisted !== undefined);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A2",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 69,
+      "expression": "assert.equal(persisted!.definitionKey, 'plan-implement-review');",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A3",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 70,
+      "expression": "assert.equal(persisted!.payload.schemaVersion, 2);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A4",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 73,
+      "expression": "assert.equal(result.run.taskId, result.task.id);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A5",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 74,
+      "expression": "assert.equal(result.run.status, 'queued');",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A6",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 75,
+      "expression": "assert.equal(result.run.origin, 'v2_api');",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A7",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 76,
+      "expression": "assert.equal(result.run.objective, 'ship it');",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A8",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 77,
+      "expression": "assert.equal(fx.store.taskRepository().findById(fx.workspace.id, result.task.id)?.id, result.task.id);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A9",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 78,
+      "expression": "assert.equal(fx.store.runRepository().findById(fx.workspace.id, result.run.id)?.id, result.run.id);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A10",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 81,
+      "expression": "assert.deepEqual(result.stages.map(s => s.workflowStageKey), ['plan', 'implement', 'review']);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A11",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 82,
+      "expression": "assert.deepEqual(fx.store.runStageRepository().listByRun(fx.workspace.id, result.run.id).map(stage => stage.workflowStageKey), [",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A12",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 85,
+      "expression": "assert.equal(result.snapshot.payload.schemaVersion, 2);",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-017-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-288-A13",
+      "requirementId": "LITE-09-017",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 86,
+      "expression": "assert.equal(result.snapshot.payload.workflow.definitionKey, 'plan-implement-review');",
+      "clause": "templates use durable Task, Run, and Stage primitives;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A1",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 68,
+      "expression": "assert.ok(persisted !== undefined);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A2",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 69,
+      "expression": "assert.equal(persisted!.definitionKey, 'plan-implement-review');",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A3",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 70,
+      "expression": "assert.equal(persisted!.payload.schemaVersion, 2);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A4",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 73,
+      "expression": "assert.equal(result.run.taskId, result.task.id);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A5",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 74,
+      "expression": "assert.equal(result.run.status, 'queued');",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A6",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 75,
+      "expression": "assert.equal(result.run.origin, 'v2_api');",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A7",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 76,
+      "expression": "assert.equal(result.run.objective, 'ship it');",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A8",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 77,
+      "expression": "assert.equal(fx.store.taskRepository().findById(fx.workspace.id, result.task.id)?.id, result.task.id);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A9",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 78,
+      "expression": "assert.equal(fx.store.runRepository().findById(fx.workspace.id, result.run.id)?.id, result.run.id);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A10",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 81,
+      "expression": "assert.deepEqual(result.stages.map(s => s.workflowStageKey), ['plan', 'implement', 'review']);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A11",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 82,
+      "expression": "assert.deepEqual(fx.store.runStageRepository().listByRun(fx.workspace.id, result.run.id).map(stage => stage.workflowStageKey), [",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A12",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 85,
+      "expression": "assert.equal(result.snapshot.payload.schemaVersion, 2);",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-101-lite-09-017-lite-01-101-a-template-instantiates-durable-task-run-stage-primitive-289-A13",
+      "requirementId": "LITE-01-101",
+      "file": "apps/server/src/services/WorkflowTemplateService.test.ts",
+      "name": "LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives",
+      "line": 86,
+      "expression": "assert.equal(result.snapshot.payload.workflow.definitionKey, 'plan-implement-review');",
+      "clause": "有界Workflow templates及真实实例化",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

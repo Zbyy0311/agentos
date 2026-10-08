@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T18:59:37.110Z",
+  "phases": {
+    "driveB": {
+      "driven": {
+        "outcome": "claimed-and-progressed"
+      },
+      "status": "failed",
+      "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+      "eventTypes": [
+        "run.dequeued",
+        "stage.ready",
+        "stage.starting",
+        "stage.started",
+        "run.started",
+        "memory.context_created",
+        "stage.failed",
+        "stage.skipped",
+        "stage.skipped",
+        "stage.skipped",
+        "run.failed",
+        "memory.candidate_created"
+      ],
+      "admissions": [
+        {
+          "id": "adm_a",
+          "state": "RELEASED",
+          "requestOrder": 1
+        },
+        {
+          "id": "adm_b",
+          "state": "GRANTED",
+          "requestOrder": 2
+        }
+      ]
+    },
+    "restart": {
+      "sweep": {
+        "workspaces": 1,
+        "terminalRuns": 3,
+        "generated": 1,
+        "existing": 1,
+        "missingAuthority": 1,
+        "unresolved": 0
+      },
+      "secondSweep": {
+        "workspaces": 1,
+        "terminalRuns": 3,
+        "generated": 0,
+        "existing": 2,
+        "missingAuthority": 1,
+        "unresolved": 0
+      },
+      "lostCandidate": "mcand_terminal_run_lite102_b"
+    },
+    "summary": {
+      "candidates": [
+        {
+          "id": "mcand_terminal_run_lite102_a",
+          "category": "failure",
+          "decision": "review-required"
+        },
+        {
+          "id": "mcand_terminal_run_lite102_b",
+          "category": "failure",
+          "decision": "review-required"
+        }
+      ]
+    }
+  },
+  "counts": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S102-TRIGGER-01",
+      "requirementId": "LITE-07-102",
+      "phase": "trigger",
+      "step": "a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger",
+      "actual": {
+        "runStatus": "failed",
+        "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "terminalEvents": [
+          "run.dequeued",
+          "run.started",
+          "run.failed"
+        ],
+        "stageOutcomes": [
+          "failed",
+          "skipped",
+          "skipped",
+          "skipped"
+        ],
+        "candidateCount": 1,
+        "candidate": [
+          {
+            "id": "mcand_terminal_run_lite102_a",
+            "scope": "task",
+            "category": "failure",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "outcome": "review-required"
+          }
+        ],
+        "candidateEvents": 1,
+        "providerProcesses": 0,
+        "providerSessions": 0,
+        "outputReferences": 0
+      },
+      "expected": {
+        "runStatus": "failed",
+        "failureCode": "PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "terminalEvents": [
+          "run.dequeued",
+          "run.started",
+          "run.failed"
+        ],
+        "stageOutcomes": [
+          "failed",
+          "skipped",
+          "skipped",
+          "skipped"
+        ],
+        "candidateCount": 1,
+        "candidate": [
+          {
+            "id": "mcand_terminal_run_lite102_a",
+            "scope": "task",
+            "category": "failure",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "outcome": "review-required"
+          }
+        ],
+        "candidateEvents": 1,
+        "providerProcesses": 0,
+        "providerSessions": 0,
+        "outputReferences": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-BOUNDED-01",
+      "requirementId": "LITE-07-102",
+      "phase": "bounded",
+      "step": "the fact is bounded record-only evidence: allowlisted lines, truncated fields, no raw output",
+      "actual": {
+        "contentBytes": 404,
+        "withinBound": true,
+        "everyLineAllowlisted": true,
+        "prefixesSeen": [
+          "任务：",
+          "结果：",
+          "失败代码：",
+          "失败说明：",
+          "Stage 结果："
+        ],
+        "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "failureMessageTruncated": true,
+        "stageSummary": true,
+        "storedMessageIsTheRunsOwnBoundedMessage": true,
+        "providerOutputRowsForThisWorkspace": 0,
+        "sourceKinds": [
+          "run"
+        ]
+      },
+      "expected": {
+        "contentBytes": 404,
+        "withinBound": true,
+        "everyLineAllowlisted": true,
+        "prefixesSeen": [
+          "任务：",
+          "结果：",
+          "失败代码：",
+          "失败说明：",
+          "Stage 结果："
+        ],
+        "failureCodeLine": "失败代码：PROVIDER_EXECUTABLE_NOT_ACCESSIBLE",
+        "failureMessageTruncated": true,
+        "stageSummary": true,
+        "storedMessageIsTheRunsOwnBoundedMessage": true,
+        "providerOutputRowsForThisWorkspace": 0,
+        "sourceKinds": [
+          "run"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-IDEMPOTENT-01",
+      "requirementId": "LITE-07-102",
+      "phase": "idempotent",
+      "step": "a replay neither modifies the terminal Run nor creates a second fact or Event",
+      "actual": {
+        "replayOutcome": "existing",
+        "replayCandidateMatches": true,
+        "runRowsUnchanged": true,
+        "candidatesAdded": 0,
+        "eventsAdded": 0
+      },
+      "expected": {
+        "replayOutcome": "existing",
+        "replayCandidateMatches": true,
+        "runRowsUnchanged": true,
+        "candidatesAdded": 0,
+        "eventsAdded": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-01",
+      "requirementId": "LITE-07-102",
+      "phase": "restart",
+      "step": "the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from",
+      "actual": {
+        "terminalRunRows": 3,
+        "generated": 1,
+        "existing": 1,
+        "missingAuthority": 1,
+        "unresolved": 0,
+        "repairedCandidate": {
+          "id": "mcand_terminal_run_lite102_b",
+          "scope": "task",
+          "category": "failure",
+          "decision": "review-required",
+          "citesRun": true
+        },
+        "candidateEventsBefore": 1,
+        "terminalEventBefore": 1,
+        "candidatesAfterSweep": 2
+      },
+      "expected": {
+        "terminalRunRows": 3,
+        "generated": 1,
+        "existing": 1,
+        "missingAuthority": 1,
+        "unresolved": 0,
+        "repairedCandidate": {
+          "id": "mcand_terminal_run_lite102_b",
+          "scope": "task",
+          "category": "failure",
+          "decision": "review-required",
+          "citesRun": true
+        },
+        "candidateEventsBefore": 1,
+        "terminalEventBefore": 1,
+        "candidatesAfterSweep": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-02",
+      "requirementId": "LITE-07-102",
+      "phase": "restart",
+      "step": "the sweep never mutates a Run row, terminal or not",
+      "actual": {
+        "runRowsUnchanged": true,
+        "runs": [
+          {
+            "id": "run_lite102_a",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_b",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_c",
+            "status": "cancelled"
+          }
+        ]
+      },
+      "expected": {
+        "runRowsUnchanged": true,
+        "runs": [
+          {
+            "id": "run_lite102_a",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_b",
+            "status": "failed"
+          },
+          {
+            "id": "run_lite102_c",
+            "status": "cancelled"
+          }
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-RESTART-03",
+      "requirementId": "LITE-07-102",
+      "phase": "restart",
+      "step": "a second sweep converges with no new facts, so a restart loop cannot duplicate work",
+      "actual": {
+        "generated": 0,
+        "existing": 2,
+        "missingAuthority": 1,
+        "candidates": 2
+      },
+      "expected": {
+        "generated": 0,
+        "existing": 2,
+        "missingAuthority": 1,
+        "candidates": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S102-REFUSE-01",
+      "requirementId": "LITE-07-102",
+      "phase": "refuse",
+      "step": "a non-terminal Run is refused without being touched and without any execution starting",
+      "actual": {
+        "outcome": "not-terminal",
+        "runRowsUnchanged": true,
+        "runStatus": "queued",
+        "candidateCreated": false,
+        "providerProcesses": 0,
+        "runtimeEvents": 0
+      },
+      "expected": {
+        "outcome": "not-terminal",
+        "runRowsUnchanged": true,
+        "runStatus": "queued",
+        "candidateCreated": false,
+        "providerProcesses": 0,
+        "runtimeEvents": 0
+      },
+      "outcome": "passed"
+    }
+  ]
+}

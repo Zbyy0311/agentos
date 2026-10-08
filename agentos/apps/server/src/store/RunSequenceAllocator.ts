@@ -18,6 +18,14 @@ interface SequenceRow {
 export class RunSequenceAllocator {
   constructor(private readonly db: TransactionDatabase) {}
 
+  /**
+   * Exposes the bound transaction DB so a composing writer can prove the
+   * allocator writes through ONE SQLite connection.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
+
   allocateWithinTransaction(workspaceId: string, runId: string): number {
     if (!workspaceId.trim() || !runId.trim()) {
       throw new RunSequenceAllocatorError(

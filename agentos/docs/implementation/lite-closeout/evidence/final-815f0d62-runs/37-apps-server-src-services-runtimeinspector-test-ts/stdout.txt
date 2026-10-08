@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: INSP-12 Run, Stage, Provider, Process and duration stay distinct
+ok 1 - INSP-12 Run, Stage, Provider, Process and duration stay distinct
+  ---
+  duration_ms: 165.5707
+  type: 'test'
+  ...
+# Subtest: INSP-01 overview projects canonical run state
+ok 2 - INSP-01 overview projects canonical run state
+  ---
+  duration_ms: 139.347
+  type: 'test'
+  ...
+# Subtest: INSP-04 process PID is evidence-only
+ok 3 - INSP-04 process PID is evidence-only
+  ---
+  duration_ms: 140.596
+  type: 'test'
+  ...
+# Subtest: LITE-01-006 Run and Process records remain independently queryable
+ok 4 - LITE-01-006 Run and Process records remain independently queryable
+  ---
+  duration_ms: 141.072
+  type: 'test'
+  ...
+# Subtest: INSP-05 events are ordered and bounded
+ok 5 - INSP-05 events are ordered and bounded
+  ---
+  duration_ms: 147.507
+  type: 'test'
+  ...
+# Subtest: INSP-08 memory context projection
+ok 6 - INSP-08 memory context projection
+  ---
+  duration_ms: 145.0168
+  type: 'test'
+  ...
+# Subtest: LITE-12-010 unknown or unavailable admission is projected as modifying
+ok 7 - LITE-12-010 unknown or unavailable admission is projected as modifying
+  ---
+  duration_ms: 135.6294
+  type: 'test'
+  ...
+# Subtest: LITE-12-010 only complete verified enforcement is presented as read-only
+ok 8 - LITE-12-010 only complete verified enforcement is presented as read-only
+  ---
+  duration_ms: 137.5133
+  type: 'test'
+  ...
+# Subtest: LITE-13-102 Inspector projects canonical operation identity and version for actions
+ok 9 - LITE-13-102 Inspector projects canonical operation identity and version for actions
+  ---
+  duration_ms: 134.5245
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1517.9246

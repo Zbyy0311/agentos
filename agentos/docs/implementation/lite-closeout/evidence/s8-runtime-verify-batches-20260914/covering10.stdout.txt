@@ -1,0 +1,6 @@
+passed      apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts  rows=0  2 pass / 0 fail / 0 skip  exit=0  903ms
+passed      apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts  rows=0  14 pass / 0 fail / 0 skip  exit=0  2207ms
+passed      apps/server/src/store/MemoryEntryRepository.test.ts  rows=0  16 pass / 0 fail / 0 skip  exit=0  3081ms
+passed      packages/shared/mf0-memory-contracts.test.ts  rows=0  20 pass / 0 fail / 0 skip  exit=0  344ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-10.json
+batches=4 passed=4 failed=0 provableRequirements=0/0

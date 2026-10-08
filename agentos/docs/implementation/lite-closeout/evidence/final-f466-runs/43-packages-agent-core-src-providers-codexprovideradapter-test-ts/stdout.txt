@@ -1,0 +1,14 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-next-main-promotions/agentos/agentos/packages/agent-core
+
+ ✓ src/providers/codexProviderAdapter.test.ts > CodexProviderAdapter > exposes the fixed canonical manifest and validates through the Process probe port 2ms
+ ✓ src/providers/codexProviderAdapter.test.ts > CodexProviderAdapter > discovers configuration, environment override, and PATH candidates without fallback from an inaccessible preferred binary 4ms
+ ✓ src/providers/codexProviderAdapter.test.ts > CodexProviderAdapter > builds the legacy exec --json launch shape with separated prompt and secret-free environment 1ms
+ ✓ src/providers/codexProviderAdapter.test.ts > CodexProviderAdapter > reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures 2ms
+ ✓ src/providers/codexProviderAdapter.test.ts > CodexProviderAdapter > cancels only after an accepted stop ticket and normalizes cancellation errors 0ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  06:46:53
+   Duration  293ms (transform 114ms, setup 0ms, import 146ms, tests 10ms, environment 0ms)
+

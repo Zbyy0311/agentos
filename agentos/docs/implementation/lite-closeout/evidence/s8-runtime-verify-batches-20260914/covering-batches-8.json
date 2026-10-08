@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "baseline": "e1878e910312ecea9a76b2c58ac452b305252049",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:15:30.667Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 4,
+    "passed": 4,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 462,
+      "sourceSha256": "68c21cc512a5c69928f3d3a69c959b8b30d93a27e83eb1e24a045d1e87967482",
+      "rawLogSha256": "db99db3b9e14860262e6840587fb9c26264eaed90a64e87689be304977c5b7a2",
+      "rawOutput": "✔ GRP-canvas: the group canvas mounts with a composer and the budget controls (43.2083ms)\n✔ GRP-canvas: the send control stays disabled while the composer is empty (3.9461ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 388.3624\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ GRP-canvas: the group canvas mounts with a composer and the budget controls (43.2083ms)\n✔ GRP-canvas: the send control stays disabled while the composer is empty (3.9461ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 388.3624",
+      "baseline": "e1878e910312ecea9a76b2c58ac452b305252049",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/components/chat/GroupConversationCanvas.test.tsx"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ GRP-canvas: the group canvas mounts with a composer and the budget controls (43.2083ms)\n✔ GRP-canvas: the send control stays disabled while the composer is empty (3.9461ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 388.3624\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 482,
+      "sourceSha256": "f245d685b3e28bf162dca277621714b068fda17fa4dc7273a312ce6773c59652",
+      "rawLogSha256": "f0b48a649de3933f8e69c1655d180984e87f3623c64115e165dab6eab635515f",
+      "rawOutput": "✔ INS-01 the Run overview is distinct from Task/Process and shows duration (22.1174ms)\n✔ INS-02 Stages list each Stage with its own status, never collapsed into Run state (5.5139ms)\n✔ INS-03 the Process view labels the native PID as evidence-only, never as identity (5.8269ms)\n✔ INS-04 Events render in strict sequence with their own ids (4.0354ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (6.1588ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (5.7304ms)\n✔ INS-06 a section error is an alert, never a page failure (5.4469ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 404.4743\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ INS-04 Events render in strict sequence with their own ids (4.0354ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (6.1588ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (5.7304ms)\n✔ INS-06 a section error is an alert, never a page failure (5.4469ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 404.4743",
+      "baseline": "e1878e910312ecea9a76b2c58ac452b305252049",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/components/chat/RuntimeInspectorView.test.tsx"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ INS-01 the Run overview is distinct from Task/Process and shows duration (22.1174ms)\n✔ INS-02 Stages list each Stage with its own status, never collapsed into Run state (5.5139ms)\n✔ INS-03 the Process view labels the native PID as evidence-only, never as identity (5.8269ms)\n✔ INS-04 Events render in strict sequence with their own ids (4.0354ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (6.1588ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (5.7304ms)\n✔ INS-06 a section error is an alert, never a page failure (5.4469ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 404.4743\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 456,
+      "sourceSha256": "457238f7d17e430e5ca5849ba698c1f49aee936673a8c77b25ad05c4fc903b84",
+      "rawLogSha256": "9953747d09d8638b37c0f7c22eade6c17ea3a8cc731b1dd6ef4be499fa769c54",
+      "rawOutput": "✔ DCUX-S01 a stream connects, assembles one block, and finalizes (0.8859ms)\n✔ DCUX-S02 a checkpoint out of order fails as a gap (0.2741ms)\n✔ DCUX-S03 reconnect resumes from the durable cursor and resyncs (0.1189ms)\n✔ DCUX-S04 a terminal stream accepts nothing further (0.0775ms)\n✔ DCUX-S05 checkpoints for another message are ignored (0.0814ms)\n✔ DCUX-C01 the client targets the forward runtime surface with correct paths (0.4536ms)\n✔ DCUX-C02 a non-OK response throws with the status (0.2093ms)\n✔ DCUX-P01 chat send produces no Task and no Run (0.1058ms)\n✔ DCUX-P02 task and run modes map to distinct explicit actions (0.117ms)\n✔ DCUX-P03 empty content and unknown modes fail closed (0.8409ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 378.6722\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ DCUX-C02 a non-OK response throws with the status (0.2093ms)\n✔ DCUX-P01 chat send produces no Task and no Run (0.1058ms)\n✔ DCUX-P02 task and run modes map to distinct explicit actions (0.117ms)\n✔ DCUX-P03 empty content and unknown modes fail closed (0.8409ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 378.6722",
+      "baseline": "e1878e910312ecea9a76b2c58ac452b305252049",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/lib/directConversation.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ DCUX-S01 a stream connects, assembles one block, and finalizes (0.8859ms)\n✔ DCUX-S02 a checkpoint out of order fails as a gap (0.2741ms)\n✔ DCUX-S03 reconnect resumes from the durable cursor and resyncs (0.1189ms)\n✔ DCUX-S04 a terminal stream accepts nothing further (0.0775ms)\n✔ DCUX-S05 checkpoints for another message are ignored (0.0814ms)\n✔ DCUX-C01 the client targets the forward runtime surface with correct paths (0.4536ms)\n✔ DCUX-C02 a non-OK response throws with the status (0.2093ms)\n✔ DCUX-P01 chat send produces no Task and no Run (0.1058ms)\n✔ DCUX-P02 task and run modes map to distinct explicit actions (0.117ms)\n✔ DCUX-P03 empty content and unknown modes fail closed (0.8409ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 378.6722\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/web/src/lib/uiFoundation.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 543,
+      "sourceSha256": "676c97c21fe995df88032e1b230113677de065166b93870a04a88bc67906ec46",
+      "rawLogSha256": "5c1d895836cacb8107ecbe5a6677c2163f3224ad0dba8510871e842f63828449",
+      "rawOutput": "✔ UIF-01 both themes share semantic token names (1.3638ms)\n✔ UIF-02 color tokens are valid hex (0.3554ms)\n✔ UIF-03 body contrast meets 4.5:1 in both themes (0.3902ms)\n✔ UIF-04 contrast math (0.4128ms)\n✔ UIF-05 typography scale and stacks (0.1787ms)\n✔ UIF-06 spacing scale (0.185ms)\n✔ UIF-07 radius tokens (0.1519ms)\n✔ UIF-08 four-column width guidance (0.1841ms)\n✔ UIF-09 adaptive layout modes (0.205ms)\n✔ UIF-10 visible columns include canvas (0.215ms)\n✔ UIF-11 canvas keeps its minimum width (0.2149ms)\n✔ UIF-12 reduced motion (0.143ms)\n✔ UIF-13 accessibility rules (0.1269ms)\n✔ UIF-14 uiCssVariables flattens all semantic tokens (0.7985ms)\n✔ UIF-15 columnWidthPx follows guidance and visibility (0.1829ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 449.2487\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ UIF-12 reduced motion (0.143ms)\n✔ UIF-13 accessibility rules (0.1269ms)\n✔ UIF-14 uiCssVariables flattens all semantic tokens (0.7985ms)\n✔ UIF-15 columnWidthPx follows guidance and visibility (0.1829ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 449.2487",
+      "baseline": "e1878e910312ecea9a76b2c58ac452b305252049",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/lib/uiFoundation.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ UIF-01 both themes share semantic token names (1.3638ms)\n✔ UIF-02 color tokens are valid hex (0.3554ms)\n✔ UIF-03 body contrast meets 4.5:1 in both themes (0.3902ms)\n✔ UIF-04 contrast math (0.4128ms)\n✔ UIF-05 typography scale and stacks (0.1787ms)\n✔ UIF-06 spacing scale (0.185ms)\n✔ UIF-07 radius tokens (0.1519ms)\n✔ UIF-08 four-column width guidance (0.1841ms)\n✔ UIF-09 adaptive layout modes (0.205ms)\n✔ UIF-10 visible columns include canvas (0.215ms)\n✔ UIF-11 canvas keeps its minimum width (0.2149ms)\n✔ UIF-12 reduced motion (0.143ms)\n✔ UIF-13 accessibility rules (0.1269ms)\n✔ UIF-14 uiCssVariables flattens all semantic tokens (0.7985ms)\n✔ UIF-15 columnWidthPx follows guidance and visibility (0.1829ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 449.2487\n",
+      "stderr": ""
+    }
+  ]
+}

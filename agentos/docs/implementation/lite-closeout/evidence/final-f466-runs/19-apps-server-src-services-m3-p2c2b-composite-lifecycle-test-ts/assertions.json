@@ -1,0 +1,90 @@
+[
+  {
+    "id": "LITE-00-005-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-128",
+    "requirementId": "LITE-00-005",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "Runtime Events remain ordered, durable, replayable, and redacted;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-007-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-129",
+    "requirementId": "LITE-02-007",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "every durable Event has the required independent Outbox row;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-011-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-130",
+    "requirementId": "LITE-02-011",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "Cancel terminates the owned Windows process tree and orders terminal Events;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-02-017-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-131",
+    "requirementId": "LITE-02-017",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "failures preserve evidence and release authority only through committed transitions.",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-004-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-132",
+    "requirementId": "LITE-03-004",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "atomic current state, Event, version, and Outbox writes;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-005-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-133",
+    "requirementId": "LITE-03-005",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "exact multi-Event lifecycle ordering;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-006-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-134",
+    "requirementId": "LITE-03-006",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "one Outbox row per durable Event;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-10-007-p2c-2b-every-event-and-outbox-position-rolls-back-the-composite-transaction-135",
+    "requirementId": "LITE-10-007",
+    "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+    "name": "P2C-2B every Event and Outbox position rolls back the composite transaction",
+    "line": 1552,
+    "expression": "assert.throws(() => failureCase.invoke(fixture), new RegExp(`EVENT_FAILURE_${failurePosition}`));",
+    "clause": "Event/Outbox atomicity and replay;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

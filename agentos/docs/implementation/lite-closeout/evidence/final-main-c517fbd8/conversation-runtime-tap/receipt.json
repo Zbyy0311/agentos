@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "label": "s9-c517-conversation-runtime",
+  "startedAt": "2026-09-15T04:03:45.532Z",
+  "finishedAt": "2026-09-15T04:03:49.196Z",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/routes/conversationRuntime.test.ts"
+    ]
+  },
+  "cwd": "apps\\server",
+  "environment": {},
+  "nodeVersion": "v24.18.0",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true,
+  "counts": {
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "tests": 11
+  },
+  "assertionCoverage": [
+    {
+      "id": "CONV-RESTART-01",
+      "requirementId": "LITE-00-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+      "line": 287,
+      "expression": "assert.equal(after.messages.length, 3, 'every Message survives a restart');",
+      "clause": "Conversation and Message records survive reconnect and restart.",
+      "whyDirect": "The route test creates records through HTTP, closes the first server and store, opens the same on-disk database in a new store, and asserts the restored Message count.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-RESTART-02",
+      "requirementId": "LITE-00-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+      "line": 288,
+      "expression": "assert.deepEqual(after.messages.map(message => message.id), before.messages.map(message => message.id),",
+      "clause": "Message identity and order remain stable across a real restart.",
+      "whyDirect": "The assertion compares the records read through the restarted HTTP server with the records read before shutdown.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-RESTART-03",
+      "requirementId": "LITE-00-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+      "line": 292,
+      "expression": "assert.equal(message.content, before.messages[index]!.content, 'the Message content is intact');",
+      "clause": "Persisted Message content is unchanged after restart.",
+      "whyDirect": "The restarted route response is compared to the pre-restart content for every restored Message.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-RESTART-04",
+      "requirementId": "LITE-00-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-00-002 Conversation and Message records survive a restart and a reconnect",
+      "line": 298,
+      "expression": "assert.ok(listed.conversations.some(conversation => conversation.id === conversationId),",
+      "clause": "The restarted store lists the original Conversation.",
+      "whyDirect": "The assertion reads the Conversation collection from the restarted store through HTTP and matches the original persisted identity.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-ONLY-01",
+      "requirementId": "LITE-09-001",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+      "line": 334,
+      "expression": "assert.equal(countRows('tasks'), 0, 'LITE-09-001: a Message-only Turn creates no Task');",
+      "clause": "A Message-only Turn creates no Task.",
+      "whyDirect": "The production conversation route streams a Message-only Turn and then reads the durable tasks table, which remains empty.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-ONLY-02",
+      "requirementId": "LITE-09-001",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+      "line": 335,
+      "expression": "assert.equal(countRows('runs'), 0, 'LITE-09-001: a Message-only Turn creates no Run');",
+      "clause": "A Message-only Turn creates no Run.",
+      "whyDirect": "The same real HTTP Turn is followed by a direct durable runs-table count, proving no Run was created by the message-only path.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-TASK-RUN-01",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "create-task and start-run bridge a Message into durable work",
+      "line": 133,
+      "expression": "assert.equal(taskResult.task.sourceMessageId, message.id);",
+      "clause": "The Task is a distinct durable object linked to the source Message.",
+      "whyDirect": "The production create-task endpoint returns a persisted Task whose source identity is checked against the created Message.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-TASK-RUN-02",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "create-task and start-run bridge a Message into durable work",
+      "line": 140,
+      "expression": "assert.equal(startResult.run.taskId, taskResult.task.id);",
+      "clause": "Run creation is distinct and linked to the existing Task.",
+      "whyDirect": "The production start-run endpoint returns a Run whose taskId is compared with the previously persisted Task id.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-TASK-RUN-03",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "create-task and start-run bridge a Message into durable work",
+      "line": 146,
+      "expression": "assert.equal((retry.json as { runCreated: boolean }).runCreated, false);",
+      "clause": "A retried start-run request does not create another Run.",
+      "whyDirect": "The production bridge is invoked a second time and its response explicitly reports that no new Run was created.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-RETRY-01",
+      "requirementId": "LITE-09-005",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "direct Conversation lifecycle: create, send, list, archive, restore",
+      "line": 76,
+      "expression": "assert.equal(listed.messages.length, 1);",
+      "clause": "Retrying a client send with the same clientMessageId leaves exactly one Message.",
+      "whyDirect": "The production Message route is called twice with the same client id and the subsequent list reads exactly one durable Message.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-RETRY-02",
+      "requirementId": "LITE-09-005",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "direct Conversation lifecycle: create, send, list, archive, restore",
+      "line": 74,
+      "expression": "assert.equal(again.status, 201);",
+      "clause": "The idempotent retry remains a successful accepted Message request.",
+      "whyDirect": "The second production HTTP request is observed as the same successful API operation before the exact-one list assertion.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-ONLY-03",
+      "requirementId": "LITE-02-001",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+      "line": 341,
+      "expression": "assert.equal(Number(admissions.n), 0, 'LITE-02-001: no modifying Run authority is taken by a Message-only Turn');",
+      "clause": "A Message-only Turn takes no modifying Run authority.",
+      "whyDirect": "The production route is followed by a direct admission-ledger query that asserts no canonical Run authority was acquired.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-ONLY-04",
+      "requirementId": "LITE-11-001",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+      "line": 323,
+      "expression": "assert.equal(countRows('tasks'), 0, 'LITE-11-001: posting a Message creates no Task');",
+      "clause": "Posting a Message creates no Task.",
+      "whyDirect": "The production Message POST is followed immediately by a durable tasks-table count before any explicit bridge action.",
+      "outcome": "passed"
+    },
+    {
+      "id": "CONV-MESSAGE-ONLY-05",
+      "requirementId": "LITE-11-001",
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+      "line": 324,
+      "expression": "assert.equal(countRows('runs'), 0, 'LITE-11-001: posting a Message creates no Run');",
+      "clause": "Posting a Message creates no Run.",
+      "whyDirect": "The production Message POST is followed immediately by a durable runs-table count before any explicit bridge action.",
+      "outcome": "passed"
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-runtime-tap/stdout.txt",
+      "sha256": "3d92f57648d421ccd01a7e3559aa809dd9559107e571c8894caa512dc51eb48d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-runtime-tap/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "limitation": "Counts are parsed only from a unique TAP summary; null means unparsed, never zero. Named test results remain in raw output. No acceptance promotion."
+}

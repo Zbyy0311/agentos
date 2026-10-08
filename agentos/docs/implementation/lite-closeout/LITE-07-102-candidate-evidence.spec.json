@@ -1,0 +1,45 @@
+{
+  "packageName": "LITE-07-102-candidate-evidence",
+  "title": "S1 终态触发与重启收敛候选证据包（LITE-07-102）",
+  "modelScopeStatement": "本包不调用任何 Provider 模型：Run 在启动阶段因 Provider 可执行文件不可用而失败，证据绑定的是 AgentOS 自身的终态触发、有界事实与重启清扫契约。",
+  "routeModels": {
+    "terminalTrigger": "生产 RunEngineProviderDispatcher 的派发时触发（无模型调用）",
+    "restartSweep": "生产 TerminalMemoryCandidateReconciler"
+  },
+  "testNote": "受影响测试（3 个文件：MemoryCandidateGenerationService / TerminalMemoryCandidateReconciler / RunEngineProviderDispatcher，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `52 pass / 0 fail / 4 skipped`（4 个 skip 是环境门控的真实 Provider 用例，本机无对应 CLI）；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{\"matrixVersion\":15,\"status\":\"frozen\",\"PASS\":0,\"GAP\":26,\"RUNTIME-VERIFY\":205,\"DEFERRED\":164}`。",
+  "knownLimitations": [
+    "崩溃窗口的复现方式是「保留终态 Run 与其 canonical 终态事件、只移除该 Run 的 Candidate 行」——这正是崩溃会留下的状态（终态已提交、候选未生成），修复由生产清扫器执行；本包不声称重放过崩溃本身。",
+    "`run_c` 用于验证「无权威则不发明」：它直接以终态入库但**没有**终态 Runtime Event，清扫器如实报告 missingAuthority 且不生成候选。该行是夹具（模拟终态事件未写入），不是生产驱动的结果。",
+    "本包覆盖 failed 与 cancelled 两种非成功终态中的 failed（由真实派发链产生）；cancelled 只以夹具行出现，用于 missingAuthority 分支，未走生产取消链。",
+    "独立 Stage 的终态是以该 Run 事实内的 `Stage 结果：` 行体现的（stage 状态、attempt、duration），不存在 per-Stage 的候选生成器；这是当前实现的边界，本包按此记录。",
+    "「失败不得启动执行」在本包以 provider 进程数 0、provider 会话数 0、进程输出引用 0 三条持久事实取证（该失败发生在启动阶段）。"
+  ],
+  "requirements": {
+    "LITE-07-102": {
+      "text": "Task/Run/Stage terminal outcome 触发及故障后收敛",
+      "section": "§7; §14",
+      "sourceFile": "apps/server/src/services/MemoryCandidateGenerationService.ts",
+      "sourceLine": 130,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+          "sourceLine": 571,
+          "note": "派发时触发：非成功终态 Run 也要生成事实"
+        },
+        {
+          "sourceFile": "apps/server/src/services/TerminalMemoryCandidateReconciler.ts",
+          "sourceLine": 108,
+          "note": "重启清扫：只修缺失的候选，不猜执行结果"
+        },
+        {
+          "sourceFile": "apps/server/src/index.ts",
+          "sourceLine": 222,
+          "note": "生产组合根在启动时执行清扫并记录结果"
+        }
+      ],
+      "why": "**非成功终态触发**：一条真实 canonical Run 在生产派发链上于启动阶段失败（PROVIDER_EXECUTABLE_NOT_ACCESSIBLE），Run 状态 failed、Stage 为 failed+3×skipped、终态事件 run.failed 已写；派发时触发恰好产生一个 Candidate（`mcand_terminal_<runId>`，task scope / failure 类 / agent-derived / review-required），并有一条 canonical memory.candidate_created 事件；同时 provider 进程 0、provider 会话 0、进程输出引用 0——失败没有启动执行、也没有留下原始输出。**有界事实**：候选内容 404 字节，每一行都属于冻结字段前缀（任务/结果/失败代码/失败说明/Stage 结果），失败说明行等于该 Run 自身失败信息截断到 400 字符，Stage 结果行含 `codex_manager: failed`。**按来源幂等**：再次派发 + 用同一持久事件的上下文再次调用生成器 → outcome `existing`，Run 行（含 version/updated_at）逐字节不变，候选与事件数均不增。**重启不遗漏**：移除 run_b 的候选行（崩溃留下的状态）后，生产清扫器在 3 条终态 Run 上报告 generated=1（修复 run_b）、existing=1（run_a）、missingAuthority=1（run_c 无终态事件），且所有 Run 行逐字节不变；第二次清扫 generated=0、existing=2，收敛。**不修改终态 Run / 不启动执行**：非终态 Run 调用生成器返回 not-terminal，Run 行不变、无候选、无进程、无事件。",
+      "limits": "覆盖 failed 终态的真实派发触发、幂等重放、崩溃窗口重启修复、无权威不发明、以及非终态拒绝与零执行；cancelled 终态只以夹具行出现在 missingAuthority 分支（未走生产取消链），per-Stage 候选生成器在当前实现中不存在（Stage 终态以该 Run 事实内的 Stage 结果行体现）。"
+    }
+  }
+}
+

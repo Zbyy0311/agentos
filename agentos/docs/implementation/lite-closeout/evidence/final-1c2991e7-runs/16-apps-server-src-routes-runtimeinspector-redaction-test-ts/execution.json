@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-13-007 the Inspector describes Git work as observation and offers no Git mutation|LITE-13-009 the Inspector is read-only and carries no process control field|LITE-13-013 the Inspector projection exposes no secret material and a frozen key set)",
+      "src/routes/runtimeInspector.redaction.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

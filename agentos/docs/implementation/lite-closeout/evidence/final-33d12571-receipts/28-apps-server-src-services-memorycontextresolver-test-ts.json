@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:MF4I-01 resolve persists a snapshot and returns bounded context|MF4I-02 resolve is idempotent per run scope|MF4I-07 later entry edits do not rewrite the snapshot)",
+      "src/services/MemoryContextResolver.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/assertions.json",
+      "sha256": "9a40e9394d5f4f14acc46f89ffb9c76a115f4fa4f9da3552d4eb21264a0db449"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/execution.json",
+      "sha256": "d2f7118c3433bbe3c09be86f55b2b5b15a8257ca839f275f511f90d4f13a9dc6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/stdout.txt",
+      "sha256": "fae4650aefc3b589cb17d7a882826fefc2737af70514dfbab05336369989c57d"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-170-A1",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 105,
+      "expression": "assert.equal(resolved.reused, false);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-170-A2",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 106,
+      "expression": "assert.ok(resolved.contextText.includes('body alpha'));",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-170-A3",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 107,
+      "expression": "assert.ok(fx.snapshots.findById(WS, resolved.snapshot.id) !== undefined);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-170-A4",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 108,
+      "expression": "assert.equal(resolved.snapshot.runId, RUN);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-170-A5",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 109,
+      "expression": "assert.deepEqual(resolved.snapshot.budget, BUDGET);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-02-resolve-is-idempotent-per-run-scope-171-A1",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 120,
+      "expression": "assert.equal(second.reused, true);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-02-resolve-is-idempotent-per-run-scope-171-A2",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 121,
+      "expression": "assert.equal(second.snapshot.id, first.snapshot.id);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-02-resolve-is-idempotent-per-run-scope-171-A3",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 122,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 1);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-172-A1",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 204,
+      "expression": "assert.equal(reloaded?.selected.length, resolved.snapshot.selected.length);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-010-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-172-A2",
+      "requirementId": "LITE-00-010",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 205,
+      "expression": "assert.equal(reloaded?.selected[0].memoryId, id);",
+      "clause": "Memory selection is reproducible and explainable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-173-A1",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 105,
+      "expression": "assert.equal(resolved.reused, false);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-173-A2",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 106,
+      "expression": "assert.ok(resolved.contextText.includes('body alpha'));",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-173-A3",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 107,
+      "expression": "assert.ok(fx.snapshots.findById(WS, resolved.snapshot.id) !== undefined);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-173-A4",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 108,
+      "expression": "assert.equal(resolved.snapshot.runId, RUN);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-173-A5",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 109,
+      "expression": "assert.deepEqual(resolved.snapshot.budget, BUDGET);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-02-resolve-is-idempotent-per-run-scope-174-A1",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 120,
+      "expression": "assert.equal(second.reused, true);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-02-resolve-is-idempotent-per-run-scope-174-A2",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 121,
+      "expression": "assert.equal(second.snapshot.id, first.snapshot.id);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-02-resolve-is-idempotent-per-run-scope-174-A3",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 122,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 1);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-175-A1",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 204,
+      "expression": "assert.equal(reloaded?.selected.length, resolved.snapshot.selected.length);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-012-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-175-A2",
+      "requirementId": "LITE-01-012",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 205,
+      "expression": "assert.equal(reloaded?.selected[0].memoryId, id);",
+      "clause": "Memory Context Snapshot records why entries were selected;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-176-A1",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 105,
+      "expression": "assert.equal(resolved.reused, false);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-176-A2",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 106,
+      "expression": "assert.ok(resolved.contextText.includes('body alpha'));",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-176-A3",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 107,
+      "expression": "assert.ok(fx.snapshots.findById(WS, resolved.snapshot.id) !== undefined);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-176-A4",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 108,
+      "expression": "assert.equal(resolved.snapshot.runId, RUN);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-176-A5",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 109,
+      "expression": "assert.deepEqual(resolved.snapshot.budget, BUDGET);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-02-resolve-is-idempotent-per-run-scope-177-A1",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 120,
+      "expression": "assert.equal(second.reused, true);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-02-resolve-is-idempotent-per-run-scope-177-A2",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 121,
+      "expression": "assert.equal(second.snapshot.id, first.snapshot.id);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-02-resolve-is-idempotent-per-run-scope-177-A3",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 122,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 1);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-178-A1",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 204,
+      "expression": "assert.equal(reloaded?.selected.length, resolved.snapshot.selected.length);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-005-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-178-A2",
+      "requirementId": "LITE-07-005",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 205,
+      "expression": "assert.equal(reloaded?.selected[0].memoryId, id);",
+      "clause": "FTS5 retrieval only inside allowed Scope;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-179-A1",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 105,
+      "expression": "assert.equal(resolved.reused, false);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-179-A2",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 106,
+      "expression": "assert.ok(resolved.contextText.includes('body alpha'));",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-179-A3",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 107,
+      "expression": "assert.ok(fx.snapshots.findById(WS, resolved.snapshot.id) !== undefined);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-179-A4",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 108,
+      "expression": "assert.equal(resolved.snapshot.runId, RUN);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-01-resolve-persists-a-snapshot-and-returns-bounded-context-179-A5",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+      "line": 109,
+      "expression": "assert.deepEqual(resolved.snapshot.budget, BUDGET);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-02-resolve-is-idempotent-per-run-scope-180-A1",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 120,
+      "expression": "assert.equal(second.reused, true);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-02-resolve-is-idempotent-per-run-scope-180-A2",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 121,
+      "expression": "assert.equal(second.snapshot.id, first.snapshot.id);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-02-resolve-is-idempotent-per-run-scope-180-A3",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-02 resolve is idempotent per run scope",
+      "line": 122,
+      "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 1);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-181-A1",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 204,
+      "expression": "assert.equal(reloaded?.selected.length, resolved.snapshot.selected.length);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-07-014-mf4i-07-later-entry-edits-do-not-rewrite-the-snapshot-181-A2",
+      "requirementId": "LITE-07-014",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+      "line": 205,
+      "expression": "assert.equal(reloaded?.selected[0].memoryId, id);",
+      "clause": "Provider receives only the selected Context.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

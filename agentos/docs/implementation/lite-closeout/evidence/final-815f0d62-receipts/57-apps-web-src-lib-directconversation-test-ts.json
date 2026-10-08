@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:DCUX-S03 reconnect resumes from the durable cursor and resyncs|DCUX-P02 task and run modes map to distinct explicit actions|DCUX-C01 the client targets the forward runtime surface with correct paths)",
+      "src/lib/directConversation.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/assertions.json",
+      "sha256": "4fc01419dc9e226067de6af1d332d42dfad6ac2f786841d9a474313100046830"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/execution.json",
+      "sha256": "13f9b0893cc771baa4440659906b033d6ccf24d8bb5e996466e17dc8baa7f889"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/57-apps-web-src-lib-directconversation-test-ts/stdout.txt",
+      "sha256": "da575355fa72a81ba97b14401ebdb468b779daa1e75d54bba74cb212e897c46f"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-005-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-370",
+      "requirementId": "LITE-12-005",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 44,
+      "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+      "clause": "batched streaming and stable scroll;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-006-dcux-s03-reconnect-resumes-from-the-durable-cursor-and-resyncs-371",
+      "requirementId": "LITE-12-006",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "line": 44,
+      "expression": "assert.equal(m.snapshot.phase, 'disconnected');",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-008-dcux-p02-task-and-run-modes-map-to-distinct-explicit-actions-372",
+      "requirementId": "LITE-12-008",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-P02 task and run modes map to distinct explicit actions",
+      "line": 143,
+      "expression": "if (task.valid) assert.equal(task.action.kind, 'create-task');",
+      "clause": "explicit Chat/Task/Run actions;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-015-dcux-c01-the-client-targets-the-forward-runtime-surface-with-correct-paths-373",
+      "requirementId": "LITE-12-015",
+      "file": "apps/web/src/lib/directConversation.test.ts",
+      "name": "DCUX-C01 the client targets the forward runtime surface with correct paths",
+      "line": 106,
+      "expression": "assert.ok(urls.some(u => u.includes('/api/workspaces/workspace-a/runtime')));",
+      "clause": "API-client-only access;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

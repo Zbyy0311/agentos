@@ -1,0 +1,24 @@
+[
+  {
+    "id": "LITE-09-008-lite-09-008-cr4p-02-a-retried-event-projection-converges-on-one-existing-convers-125",
+    "requirementId": "LITE-09-008",
+    "file": "apps/server/src/services/ConversationProjectionService.test.ts",
+    "name": "LITE-09-008 / CR4P-02 a retried Event projection converges on one existing Conversation card",
+    "line": 117,
+    "expression": "assert.equal(retry.created, false);",
+    "clause": "Event projection never duplicates cards;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-008-lite-09-008-cr4p-08-a-duplicate-projection-key-is-detected-and-then-converges-126",
+    "requirementId": "LITE-09-008",
+    "file": "apps/server/src/services/ConversationProjectionService.test.ts",
+    "name": "LITE-09-008 / CR4P-08 a duplicate projection key is detected and then converges",
+    "line": 216,
+    "expression": "assert.equal(converged.created, false);",
+    "clause": "Event projection never duplicates cards;",
+    "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

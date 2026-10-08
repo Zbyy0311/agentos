@@ -1,0 +1,553 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { SqliteStore } from '../store/SqliteStore.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
+import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { createConversationRuntimeRoutes } from './conversationRuntime.js';
+
+function createProjectRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-cr-runtime-'));
+  mkdirSync(join(root, 'workspace'), { recursive: true });
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({
+    workspaces: [{
+      id: 'workspace-a', name: 'Workspace A', rootPath: root, gitEnabled: true, memoryEnabled: true,
+      agents: [
+        { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: [] },
+        { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'kimi', cliArgs: ['-p'] },
+      ],
+      lastOpenedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    }],
+  }), 'utf-8');
+  return root;
+}
+
+async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<void>): Promise<void> {
+  const root = createProjectRoot();
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  try {
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address() as AddressInfo;
+    await run(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime`, store);
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close?.();
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+async function postJson(url: string, body: unknown): Promise<{ status: number; json: unknown }> {
+  const response = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  return { status: response.status, json: await response.json() };
+}
+
+test('direct Conversation lifecycle: create, send, list, archive, restore', async () => {
+  await withServer(async (baseUrl) => {
+    const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    assert.equal(created.status, 201);
+    const conversation = (created.json as { conversation: { id: string; kind: string } }).conversation;
+    assert.equal(conversation.kind, 'direct');
+
+    const members = await fetch(`${baseUrl}/conversations/${conversation.id}/members`).then(r => r.json()) as { members: unknown[] };
+    assert.equal(members.members.length, 2); // user + agent
+
+    const sent = await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'hello', clientMessageId: 'cm-1' });
+    assert.equal(sent.status, 201);
+    const message = (sent.json as { message: { sequence: number; senderType: string } }).message;
+    assert.equal(message.senderType, 'user');
+    assert.equal(message.sequence, 1);
+
+    // retried send converges on one Message
+    const again = await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'hello', clientMessageId: 'cm-1' });
+    assert.equal(again.status, 201);
+    const listed = await fetch(`${baseUrl}/conversations/${conversation.id}/messages`).then(r => r.json()) as { messages: unknown[] };
+    assert.equal(listed.messages.length, 1);
+
+    const beforeArchive = await fetch(`${baseUrl}/conversations/${conversation.id}`).then(r => r.json()) as { conversation: { version: number } };
+    const archived = await postJson(`${baseUrl}/conversations/${conversation.id}/archive`, { expectedVersion: beforeArchive.conversation.version });
+    assert.equal(archived.status, 200);
+    const restored = await postJson(`${baseUrl}/conversations/${conversation.id}/restore`, {
+      expectedVersion: (archived.json as { conversation: { version: number } }).conversation.version,
+    });
+    assert.equal(restored.status, 200);
+
+    const list = await fetch(`${baseUrl}/conversations`).then(r => r.json()) as { conversations: unknown[] };
+    assert.equal(list.conversations.length, 1);
+  });
+});
+
+test('production direct streaming captures two consecutive task Turns with only their exact Message sources', async () => {
+  const previousMock = process.env.AGENTOS_FORCE_MOCK;
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(baseUrl + '/conversations', { kind: 'direct', agentId: 'codex' });
+      assert.equal(created.status, 201);
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+      const objectives = [
+        '决定第一任务采用 alpha-key 认证轮换方案。',
+        '决定第二任务采用 beta-signature 发布规范。',
+      ];
+
+      for (const content of objectives) {
+        const response = await fetch(baseUrl + '/conversations/' + conversationId + '/messages/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        assert.equal(response.status, 200);
+        const events = await response.text();
+        assert.ok(events.includes('event: turn.final'), events);
+      }
+
+      const persisted = await fetch(baseUrl + '/conversations/' + conversationId + '/messages')
+        .then(response => response.json()) as {
+          messages: Array<{
+            id: string;
+            senderType: string;
+            status: string;
+            replyToMessageId: string | null;
+          }>;
+        };
+      const userMessages = persisted.messages.filter(message => message.senderType === 'user');
+      assert.equal(userMessages.length, 2);
+      const replies = userMessages.map(source => {
+        const reply = persisted.messages.find(message => message.replyToMessageId === source.id);
+        assert.ok(reply, 'a persisted reply must point to source ' + source.id);
+        assert.equal(reply.status, 'final');
+        return { source, reply };
+      });
+      const candidates = new MemoryCandidateRepository(store.getDatabase()).listCandidates('workspace-a');
+
+      for (const { source, reply } of replies) {
+        const captured = candidates.filter(candidate => candidate.sources.some(
+          reference => reference.kind === 'message' && reference.id === reply.id,
+        ));
+        assert.ok(captured.length > 0, 'the terminal Turn reply ' + reply.id + ' must enter the review queue');
+        assert.ok(captured.length <= 3, 'one Turn creates no more than three candidates');
+        for (const candidate of captured) {
+          assert.deepEqual(
+            candidate.sources.filter(reference => reference.kind === 'message').map(reference => reference.id),
+            [source.id, reply.id],
+            'a candidate may only bind its exact user Message and terminal reply',
+          );
+        }
+      }
+    });
+  } finally {
+    if (previousMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = previousMock;
+  }
+});
+test('group Conversation defaults to sequential discussion and requires two Agents', async () => {
+  await withServer(async (baseUrl) => {
+    const defaultDiscussion = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex', 'kimi'] });
+    assert.equal(defaultDiscussion.status, 201);
+    assert.equal((defaultDiscussion.json as { conversation: { replyMode: string } }).conversation.replyMode, 'sequential');
+    const oneAgent = await postJson(`${baseUrl}/conversations`, { kind: 'group', memberAgentIds: ['codex'] });
+    assert.equal(oneAgent.status, 400);
+    const created = await postJson(`${baseUrl}/conversations`, { kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex', 'kimi'] });
+    assert.equal(created.status, 201);
+    const members = (created.json as { members: unknown[] }).members;
+    assert.equal(members.length, 3); // user + two agents
+  });
+});
+
+test('checkpoints replay and unknown ids fail closed', async () => {
+  await withServer(async (baseUrl) => {
+    const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    const conversation = (created.json as { conversation: { id: string } }).conversation;
+    const sent = await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'hi' });
+    const message = (sent.json as { message: { id: string } }).message;
+    const replay = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/${message.id}/checkpoints?afterCursor=0`);
+    assert.equal(replay.status, 200);
+    const replayJson = await replay.json() as { checkpoints: unknown[]; nextCursor: number };
+    assert.equal(replayJson.checkpoints.length, 0);
+    assert.equal(replayJson.nextCursor, 0);
+    const missing = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/msg_missing/checkpoints`);
+    assert.equal(missing.status, 404);
+    const badCursor = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/${message.id}/checkpoints?afterCursor=-1`);
+    assert.equal(badCursor.status, 400);
+  });
+});
+
+test('create-task and start-run bridge a Message into durable work', async () => {
+  await withServer(async (baseUrl) => {
+    const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    const conversation = (created.json as { conversation: { id: string } }).conversation;
+    const sent = await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'plan the release' });
+    const message = (sent.json as { message: { id: string } }).message;
+
+    const task = await postJson(`${baseUrl}/messages/${message.id}/create-task`, {});
+    assert.equal(task.status, 201);
+    const taskResult = task.json as { created: boolean; task: { id: string; sourceMessageId: string } };
+    assert.equal(taskResult.created, true);
+    assert.equal(taskResult.task.sourceMessageId, message.id);
+
+    const start = await postJson(`${baseUrl}/messages/${message.id}/start-run`, { objective: 'ship it' });
+    assert.equal(start.status, 201);
+    const startResult = start.json as { runCreated: boolean; run: { status: string; taskId: string }; admission: { admissionState: unknown } };
+    assert.equal(startResult.runCreated, true);
+    assert.equal(startResult.run.status, 'queued');
+    assert.equal(startResult.run.taskId, taskResult.task.id);
+    // admission is reported, never fabricated
+    assert.equal(startResult.admission.admissionState, null);
+
+    // a retry converges on the same Run
+    const retry = await postJson(`${baseUrl}/messages/${message.id}/start-run`, { objective: 'ship it' });
+    assert.equal((retry.json as { runCreated: boolean }).runCreated, false);
+  });
+});
+
+test('history endpoint returns the agent unified references', async () => {
+  await withServer(async (baseUrl) => {
+    const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    const conversation = (created.json as { conversation: { id: string } }).conversation;
+    await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'hi' });
+    const sent2 = await postJson(`${baseUrl}/conversations/${conversation.id}/messages`, { content: 'do work' });
+    const message2 = (sent2.json as { message: { id: string } }).message;
+    await postJson(`${baseUrl}/messages/${message2.id}/create-task`, {});
+    const history = await fetch(`${baseUrl}/agents/codex/history`).then(r => r.json()) as { history: unknown[] };
+    assert.ok(Array.isArray(history.history));
+    // conversation membership is linked
+    assert.ok((history.history as Array<{ kind: string }>).some(e => e.kind === 'conversation'));
+  });
+});
+
+test('unknown workspace and conversation fail closed with 404', async () => {
+  await withServer(async (baseUrl) => {
+    const noWs = await fetch('http://127.0.0.1:1/api/workspaces/nope/runtime/conversations').catch(() => null);
+    assert.equal(noWs, null);
+    const noConv = await fetch(`${baseUrl}/conversations/conv_missing`);
+    assert.equal(noConv.status, 404);
+  });
+});
+
+test('messages/stream sends, streams durable checkpoints, finalizes a reply, and freezes its context snapshot', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'plan the release' }),
+      });
+      assert.equal(response.status, 200);
+      assert.ok((response.headers.get('content-type') ?? '').includes('text/event-stream'));
+      const text = await response.text();
+      assert.ok(text.includes('event: turn.start'));
+      assert.ok(text.includes('event: checkpoint'));
+      assert.ok(text.includes('event: turn.final'));
+      const messages = await fetch(`${baseUrl}/conversations/${conversation.id}/messages`).then(r => r.json()) as { messages: Array<{ senderType: string; status: string }> };
+      const reply = messages.messages.find(m => m.senderType === 'agent');
+      assert.ok(reply !== undefined);
+      assert.equal(reply!.status, 'final');
+      const turns = await fetch(`${baseUrl}/conversations/${conversation.id}/turns`).then(r => r.json()) as { turns: Array<{ status: string }> };
+      assert.ok(turns.turns.some(t => t.status === 'final'));
+      // LITE-09-101 production wiring: the reply Turn must reference a durable
+      // pre-invocation context snapshot recorded for this conversation/agent.
+      const snapshots = store.getDatabase()
+        .prepare('SELECT turn_id AS turnId, agent_id AS agentId, total_tokens AS totalTokens FROM cr_turn_context_snapshots WHERE conversation_id = ?')
+        .all(conversation.id) as Array<{ turnId: string | null; agentId: string; totalTokens: number }>;
+      assert.equal(snapshots.length, 1);
+      assert.equal(snapshots[0]!.agentId, 'codex');
+      const turnRows = store.getDatabase()
+        .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE conversation_id = ?')
+        .all(conversation.id) as Array<{ snapshotId: string | null }>;
+      assert.ok(turnRows.some(row => row.snapshotId !== null));
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+/**
+ * LITE-11-001 / LITE-09-001 / LITE-02-001: posting a Message starts a
+ * conversation Turn and nothing else. A Message-only Turn must create no Task
+ * and no Run, and therefore no modifying Run either - durable work only begins
+ * through the explicit create-task / start-run bridge, which the next test in
+ * this file exercises. Without this assertion the "no Task and no Run" half of
+ * those rows was only implied by the bridge test's happy path.
+ */
+/**
+ * LITE-00-002: Conversation and Message records survive reconnect and restart.
+ *
+ * The recorded gap was that no assertion covered survival across a real restart -
+ * the previous candidate only checked foreign keys and cascade deletes. This creates
+ * a Conversation and Messages, closes the store, reopens the SAME on-disk database in
+ * a NEW store instance (a genuine restart of process state, not a re-read of a live
+ * connection), and then asserts every record is still there with its content, order
+ * and status intact. Reading them back over HTTP is the reconnect half of the clause.
+ */
+test('LITE-00-002 Conversation and Message records survive a restart and a reconnect', async () => {
+  const root = createProjectRoot();
+  const databasePath = join(root, '.agentos', 'agentos.sqlite');
+  let firstStore: SqliteStore | undefined;
+  let secondStore: SqliteStore | undefined;
+  let firstServer: Server | undefined;
+  let secondServer: Server | undefined;
+  const listen = async (store: SqliteStore): Promise<{ server: Server; baseUrl: string }> => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+    const server = app.listen(0);
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address() as AddressInfo;
+    return { server, baseUrl: `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime` };
+  };
+  const closeServer = async (server: Server | undefined): Promise<void> => {
+    if (server === undefined) return;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  };
+
+  try {
+    // First lifetime: create the Conversation and its Messages through the real API.
+    firstStore = new SqliteStore(root);
+    const first = await listen(firstStore);
+    firstServer = first.server;
+    const created = await postJson(`${first.baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    assert.equal(created.status, 201);
+    const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+    const postedIds: string[] = [];
+    for (const content of ['first durable message', 'second durable message', 'third durable message']) {
+      const posted = await postJson(`${first.baseUrl}/conversations/${conversationId}/messages`, { content });
+      assert.equal(posted.status, 201);
+      postedIds.push((posted.json as { message: { id: string } }).message.id);
+    }
+    const before = await fetch(`${first.baseUrl}/conversations/${conversationId}/messages`)
+      .then(r => r.json()) as { messages: Array<{ id: string; content: string; status: string }> };
+    assert.equal(before.messages.length, 3);
+
+    // Restart: close the server AND the store, then open the same on-disk database in
+    // a brand new store instance. Nothing is carried over in memory.
+    await closeServer(firstServer);
+    firstServer = undefined;
+    firstStore.close();
+    firstStore = undefined;
+    assert.ok(existsSync(databasePath), 'the restart reopens a real on-disk database');
+
+    secondStore = new SqliteStore(root);
+    const second = await listen(secondStore);
+    secondServer = second.server;
+
+    // Reconnect: a client that reconnects reads the same records back.
+    assert.equal((await fetch(`${second.baseUrl}/conversations/${conversationId}`)).status, 200,
+      'the Conversation survives a restart');
+    const after = await fetch(`${second.baseUrl}/conversations/${conversationId}/messages`)
+      .then(r => r.json()) as { messages: Array<{ id: string; content: string; status: string }> };
+    assert.equal(after.messages.length, 3, 'every Message survives a restart');
+    assert.deepEqual(after.messages.map(message => message.id), before.messages.map(message => message.id),
+      'the Message order is stable across a restart');
+    for (const [index, message] of after.messages.entries()) {
+      assert.equal(message.id, postedIds[index], 'the restored Message is the record that was created');
+      assert.equal(message.content, before.messages[index]!.content, 'the Message content is intact');
+      assert.equal(message.status, before.messages[index]!.status, 'the Message status is intact');
+    }
+    const listed = await fetch(`${second.baseUrl}/conversations`).then(r => r.json()) as {
+      conversations: Array<{ id: string }>;
+    };
+    assert.ok(listed.conversations.some(conversation => conversation.id === conversationId),
+      'the restarted store still lists the Conversation');
+  } finally {
+    await closeServer(firstServer);
+    await closeServer(secondServer);
+    firstStore?.close();
+    secondStore?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      assert.equal(created.status, 201);
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+      const db = store.getDatabase();
+      const countRows = (table: string): number =>
+        Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
+
+      // 1. Posting the Message itself is not durable work.
+      const posted = await postJson(`${baseUrl}/conversations/${conversationId}/messages`, { content: '只回答一句话。' });
+      assert.equal(posted.status, 201);
+      assert.equal(countRows('tasks'), 0, 'LITE-11-001: posting a Message creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-11-001: posting a Message creates no Run');
+
+      // 2. The reply Turn runs and still creates neither, while the reply does land.
+      const stream = await fetch(`${baseUrl}/conversations/${conversationId}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '再回答一句话。' }),
+      });
+      assert.equal(stream.status, 200);
+      const events = await stream.text();
+      assert.ok(events.includes('event: turn.final') || events.includes('event: turn.failed'));
+      assert.equal(countRows('tasks'), 0, 'LITE-09-001: a Message-only Turn creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-09-001: a Message-only Turn creates no Run');
+      // LITE-02-001: "no Run" is what makes "no MODIFYING Run" true; the admission
+      // ledger must therefore hold no canonical-Run admission for this conversation's work.
+      const admissions = db
+        .prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE subject_kind = 'CANONICAL_RUN'")
+        .get() as { n: number | bigint };
+      assert.equal(Number(admissions.n), 0, 'LITE-02-001: no modifying Run authority is taken by a Message-only Turn');
+
+      // The conversation really did progress: the reply exists as final.
+      const messages = await fetch(`${baseUrl}/conversations/${conversationId}/messages`).then(r => r.json()) as {
+        messages: Array<{ senderType: string; status: string }>;
+      };
+      assert.ok(messages.messages.some(message => message.senderType === 'agent' && message.status === 'final'));
+
+      // 3. Durable work starts only when explicitly requested through the bridge.
+      const postedMessageId = (posted.json as { message: { id: string } }).message.id;
+      const bridged = await postJson(`${baseUrl}/messages/${postedMessageId}/start-run`, {});
+      assert.equal(bridged.status, 201);
+      assert.equal(countRows('tasks'), 1, 'the explicit start-run entry is what creates the Task');
+      assert.equal(countRows('runs'), 1, 'the explicit start-run entry is what creates the Run');
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+// LITE-09-101: the production wiring must actually SELECT Memory, not just freeze an
+// empty selection. The route now supplies the real chat selector, so a Workspace Entry
+// has to appear in the frozen snapshot with its token cost.
+test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const entries = new MemoryEntryRepository(store.getDatabase() as never);
+      const entryId = 'mem_' + 'd'.repeat(26);
+      entries.createEntry({
+        id: entryId, workspaceId: 'workspace-a', scope: 'workspace', category: 'constraint',
+        authority: 'system-verified', confidence: 0.9, importance: 0.8,
+        title: '发布约束', summary: '端口必须显式校验', content: '端口必须显式校验，否则拒绝发布。',
+        tags: [], status: 'active', sources: [{ kind: 'task', id: 'task_origin' }],
+        createdAt: '2026-07-12T00:00:00.000Z',
+      } as never);
+
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '发布前如何校验端口？' }),
+      });
+      assert.equal(response.status, 200);
+      await response.text();
+
+      const snapshots = store.getDatabase()
+        .prepare('SELECT selected_entry_ids_json AS ids, total_tokens AS tokens, truncated, retrieval_strategy_version AS version, turn_id AS turnId FROM cr_turn_context_snapshots WHERE conversation_id = ?')
+        .all(conversation.id) as Array<{ ids: string; tokens: number; truncated: number; version: string; turnId: string | null }>;
+      assert.equal(snapshots.length, 1);
+      const frozen = snapshots[0]!;
+      assert.deepEqual(JSON.parse(frozen.ids), [entryId], 'the reachable Entry must be selected');
+      assert.ok(frozen.tokens > 0, 'the frozen selection carries its real token cost');
+      assert.equal(frozen.version, 'chat-memory.v1+memory-relevance.v2');
+      assert.ok(frozen.turnId !== null, 'the snapshot belongs to the reply Turn');
+      const turn = store.getDatabase()
+        .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE id = ?')
+        .get(frozen.turnId) as { snapshotId: string | null } | undefined;
+      assert.ok(turn?.snapshotId !== null && turn?.snapshotId !== undefined,
+        'the reply Turn references the snapshot it received');
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+test('disabled workspace memory freezes empty selections on direct and new group streams', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      new MemoryEntryRepository(store.getDatabase() as never).createEntry({
+        id: 'mem_disabled_stream', workspaceId: 'workspace-a', scope: 'workspace', category: 'knowledge',
+        authority: 'user-explicit', status: 'active', confidence: 1, importance: 1,
+        title: 'Never inject while disabled', content: 'DISABLED_MEMORY_BODY',
+        sources: [{ kind: 'user', id: 'default' }], createdAt: new Date().toISOString(),
+      });
+      store.getDatabase().prepare('UPDATE workspaces SET memory_enabled=0 WHERE id=?').run('workspace-a');
+      for (const body of [{ kind: 'direct', agentId: 'codex' },
+        { kind: 'group', replyMode: 'sequential', memberAgentIds: ['codex', 'kimi'] }]) {
+        const created = await postJson(`${baseUrl}/conversations`, body);
+        assert.equal(created.status, 201);
+        const id = (created.json as { conversation: { id: string } }).conversation.id;
+        let streamUrl = `${baseUrl}/conversations/${id}/messages/stream`;
+        let streamBody: unknown = { content: 'answer briefly' };
+        if (body.kind === 'group') {
+          const sent = await postJson(`${baseUrl}/conversations/${id}/discussions`, {
+            content: 'answer briefly',
+            budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 1, maxTotalReplies: 2, maxAgentHops: 2 },
+          });
+          assert.equal(sent.status, 201);
+          const discussion = sent.json as { message: { id: string }; interaction: { id: string } };
+          streamUrl = `${baseUrl}/conversations/${id}/interactions/${discussion.interaction.id}/respond`;
+          streamBody = { sourceMessageId: discussion.message.id };
+        }
+        const stream = await fetch(streamUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(streamBody),
+        });
+        assert.equal(stream.status, 200);
+        const streamText = await stream.text();
+        const rows = store.getDatabase().prepare(`SELECT id, selected_entry_ids_json AS ids,
+          total_tokens AS tokens,retrieval_strategy_version AS strategy FROM cr_turn_context_snapshots WHERE conversation_id=?`)
+          .all(id) as { id: string; ids: string; tokens: number; strategy: string }[];
+        assert.equal(rows.length, body.kind === 'group' ? 2 : 1, `expected frozen snapshots: ${streamText.slice(-3000)}`);
+        for (const row of rows) {
+          assert.deepEqual(JSON.parse(row.ids), []);
+          assert.equal(row.tokens, 0);
+          assert.match(row.strategy, /memory-disabled$/);
+          const payload = store.getDatabase().prepare('SELECT context_text FROM cr_turn_memory_payloads WHERE snapshot_id=?')
+            .get(row.id) as { context_text: string };
+          assert.equal(payload.context_text, '');
+        }
+      }
+    });
+  } finally { delete process.env.AGENTOS_FORCE_MOCK; }
+});
+
+test('LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const db = store.getDatabase();
+      const now = new Date().toISOString();
+      const runId = 'run_' + 'd'.repeat(26);
+      db.prepare('INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run('task_' + 'e'.repeat(24), 'workspace-a', 'holder', 'open', 'normal', 'test', now, now);
+      db.prepare('INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(runId, 'workspace-a', 'task_' + 'e'.repeat(24), runId, 'running', 'initial', 'v2_api', 'test', now, now);
+      db.prepare('INSERT INTO workspace_admissions (id, workspace_id, subject_kind, canonical_run_id, legacy_run_id, requested_mutation_class, effective_mutation_class, enforcement_evidence_json, request_order, state, queue_reason, release_reason, requested_at, granted_at, released_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, 1, ?, NULL, NULL, ?, ?, NULL, ?, ?, 1)')
+        .run('adm_' + 'f'.repeat(26), 'workspace-a', 'CANONICAL_RUN', runId, 'MODIFYING', 'MODIFYING', 'GRANTED', now, now, now, now);
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'do the work' }),
+      });
+      assert.equal(response.status, 200);
+      const text = await response.text();
+      assert.ok(text.includes('event: turn.failed'));
+      assert.ok(text.includes('CONVERSATION_WORKSPACE_MODIFYING_BUSY'));
+      const snapshots = db.prepare('SELECT COUNT(*) AS n FROM cr_turn_context_snapshots WHERE conversation_id = ?')
+        .get(conversation.id) as { n: number };
+      assert.equal(snapshots.n, 0);
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});

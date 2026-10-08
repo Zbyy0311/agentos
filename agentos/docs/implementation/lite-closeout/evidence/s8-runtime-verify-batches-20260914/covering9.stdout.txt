@@ -1,0 +1,3 @@
+passed      apps/server/src/services/m3-p6-integrated-verification.test.ts  rows=0  23 pass / 0 fail / 0 skip  exit=0  6899ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-9.json
+batches=1 passed=1 failed=0 provableRequirements=0/0

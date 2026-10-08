@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "baseline": "815f0d622ba724e15894e601cc5442c4d1b4fddf",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:Workspace\\.agents projected fields match Provider Configuration after update|LITE-04-004 switching a Provider preserves the Agent identity and durable History)",
+      "src/store/SqliteStore.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/assertions.json",
+      "sha256": "4a6c5f1fdda5e6eb018de9a69486bc454e32cf4531967c1ec5296d5f12852d9b"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/execution.json",
+      "sha256": "a112eb3dea5e7086856ffffbac1f169d09efc23364a5ce73cd0f9dcafe716595"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-815f0d62-runs/46-apps-server-src-store-sqlitestore-test-ts/stdout.txt",
+      "sha256": "4b6d95fd992042b559b54f67e435f2b12b9254b02673ce4d0b00aa0a33b3afe4"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-001-workspace-agents-projected-fields-match-provider-configuration-after-update-323",
+      "requirementId": "LITE-00-001",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "a persistent Agent can change Provider without losing canonical identity or history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-002-workspace-agents-projected-fields-match-provider-configuration-after-update-324",
+      "requirementId": "LITE-01-002",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "Agent identity remains stable across Provider changes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-009-workspace-agents-projected-fields-match-provider-configuration-after-update-325",
+      "requirementId": "LITE-09-009",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "Agent identity survives Provider changes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-04-004-lite-04-004-switching-a-provider-preserves-the-agent-identity-and-durable-histor-326",
+      "requirementId": "LITE-04-004",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "LITE-04-004 switching a Provider preserves the Agent identity and durable History",
+      "line": 134,
+      "expression": "assert.ok(current);",
+      "clause": "Provider switching preserves Agent identity and history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-004-lite-04-004-switching-a-provider-preserves-the-agent-identity-and-durable-histor-327",
+      "requirementId": "LITE-09-004",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "LITE-04-004 switching a Provider preserves the Agent identity and durable History",
+      "line": 134,
+      "expression": "assert.ok(current);",
+      "clause": "Messages survive reconnect and Provider switch;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

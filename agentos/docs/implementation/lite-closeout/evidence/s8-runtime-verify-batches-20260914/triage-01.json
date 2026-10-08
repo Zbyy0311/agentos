@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:57:00.873Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 1,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体或完整断言清单，判断其实际断言的行为是否覆盖条款语义。",
+    "接受（accepted）要求：断言体直接断言条款所述行为，且在基线收据中 passed、所在文件 raw exit 0。",
+    "驳回（rejected）要求：写明该断言实际断言的内容与条款的差异。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-07-101",
+      "clause": "显式用户保存触发",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/memoryRuntime.test.ts",
+      "coveringAssertion": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+      "rationale": "断言体：POST /memory/entries → 201、authority=user-explicit、scope=workspace、converged=false；随后读库断言恰好 1 条 memory.entry_created 事件，correlation_id='memory-entry:<id>:v1'、causation_id=Entry id。完整覆盖「显式用户保存触发 Entry 与唯一规范事件」。",
+      "currentPointer": "同一文件（指针正确，只是断言名不含条款词元）"
+    },
+    {
+      "id": "LITE-01-101",
+      "clause": "有界Workflow templates及真实实例化",
+      "verdict": "accepted",
+      "coveringFile": "packages/shared/wf-template-instantiation.test.ts",
+      "coveringAssertion": "WFI-10 every template compiles",
+      "supportiveAssertions": [
+        "WFI-05 unbound role fails closed",
+        "WFI-06 invalid role fails closed",
+        "WFI-09 deterministic and non-mutating"
+      ],
+      "rationale": "断言体：对 WORKFLOW_TEMPLATES_V1 每个模板调用 instantiateWorkflowTemplate（真实实例化调用）并断言 stage 数与角色绑定完整；配合 WFI-05/06 的 fail-closed 与 WFI-09 的确定性/非变异，覆盖「有界模板 + 真实实例化」。",
+      "limits": "覆盖的是模板→payload 的实例化契约，不创建 canonical Run（Run 创建由 02/11 的行覆盖）。"
+    },
+    {
+      "id": "LITE-04-006",
+      "clause": "errors normalize to stable codes with retryability;",
+      "verdict": "rejected",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "keeps precise auth-required, auth-expired, and generic session classifications",
+      "rationale": "断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。"
+    },
+    {
+      "id": "LITE-04-007",
+      "clause": "capability declarations match tested behavior;",
+      "verdict": "rejected",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "freezes an absent persisted Kimi version to the manifest compatibility version",
+      "rationale": "该文件的断言集中在版本冻结、启动计划、环境语义与鉴权分类；没有任何断言把「能力声明」与「被测试行为」对齐（例如声明 sessionResume 就必须有对应行为断言）。需另找或按缺口记录。"
+    },
+    {
+      "id": "LITE-04-008",
+      "clause": "concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;",
+      "verdict": "rejected",
+      "candidateFile": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "candidateAssertion": "（关键词巧合）",
+      "rationale": "条款属于准入/只读资格（admission）子系统，而该文件是 Provider 适配器测试。真正的候选在 WorkspaceAdmissionAuthority.test.ts（L1D-I17/I18 关于 GRANTED READ_ONLY 与零副作用）或 p6-l1b-migration-016.test.ts。"
+    },
+    {
+      "id": "LITE-13-102",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "INSP-01..INSP-12（overview/events/stages/processes/memory sections）",
+      "rationale": "断言体覆盖各 section 的投影字段与顺序（含 INSP-12 身份区分），但**没有任何断言覆盖条款后半句 Cancel/Retry 源链**（即 Inspector 是否暴露取消/重试的来源链）。条款两部分，缺一不可。"
+    },
+    {
+      "id": "LITE-04-101",
+      "clause": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "candidateAssertion": "drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage",
+      "rationale": "该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。"
+    }
+  ],
+  "summary": {
+    "judged": 7,
+    "accepted": 2,
+    "rejected": 5,
+    "cumulativeJudged": 17,
+    "cumulativeAccepted": 8,
+    "cumulativeRejected": 9,
+    "remaining": 89
+  },
+  "systemicFinding": {
+    "pointerLoad": "99 条条款位于「承担条款数 > 已执行断言数」的 7 个指针上（见 pointer-load.json），其中 57 条仍未取证；另有 6 条无任何可运行测试文件。",
+    "consequence": "这些行的 tests 指针不可能逐条举证，需要按 S0 规则改指（改指提案见 repoint-proposals.json），属于矩阵编辑工作。"
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+

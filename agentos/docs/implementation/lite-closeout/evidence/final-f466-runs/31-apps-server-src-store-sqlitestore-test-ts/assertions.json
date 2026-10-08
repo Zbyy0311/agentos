@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LITE-00-001-workspace-agents-projected-fields-match-provider-configuration-after-update-257",
+    "requirementId": "LITE-00-001",
+    "name": "Workspace.agents projected fields match Provider Configuration after update",
+    "line": 89,
+    "expression": "assert.equal(",
+    "clause": "a persistent Agent can change Provider without losing canonical identity or history;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-01-002-workspace-agents-projected-fields-match-provider-configuration-after-update-258",
+    "requirementId": "LITE-01-002",
+    "name": "Workspace.agents projected fields match Provider Configuration after update",
+    "line": 89,
+    "expression": "assert.equal(",
+    "clause": "Agent identity remains stable across Provider changes;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-09-009-workspace-agents-projected-fields-match-provider-configuration-after-update-259",
+    "requirementId": "LITE-09-009",
+    "name": "Workspace.agents projected fields match Provider Configuration after update",
+    "line": 89,
+    "expression": "assert.equal(",
+    "clause": "Agent identity survives Provider changes;",
+    "whyDirect": "该映射指向命名测试中的具体 assert/expect 行，并由同一份原始 TAP 收据证明该测试实际执行通过；不是整文件或关键词命中。",
+    "outcome": "passed"
+  }
+]

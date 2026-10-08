@@ -13,14 +13,14 @@ export interface ToolHistoryItem {
 
 export interface ExecutionInspectorSummary {
   currentAction: {
-    state: 'working' | 'completed' | 'failed' | 'waiting';
-    label: 'Working' | 'Completed' | 'Failed' | 'Waiting';
+    state: 'working' | 'completed' | 'failed' | 'cancelled' | 'waiting';
+    label: '执行中' | '已完成' | '失败' | '已取消' | '等待补充';
     detail: string;
     target?: string;
   };
   tools: ToolHistoryItem[];
   usage?: { source?: 'structured' | 'database_delta' | 'unavailable'; provider?: string; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number };
-  files: { added: number; removed: number; changed: number };
+  files: { added: number; removed: number; changed: number; observed: boolean };
   durationMs?: number;
 }
 
@@ -41,6 +41,7 @@ export function summarizeExecutionInspector(input: {
   const changedPaths = new Set<string>();
   let added = 0;
   let removed = 0;
+  let filesObserved = false;
 
   for (const event of input.runtimeEvents) {
     const payload = asRecord(event.payload);
@@ -81,6 +82,7 @@ export function summarizeExecutionInspector(input: {
           : {}),
       };
     } else if (event.type === 'execution.files.changed') {
+      filesObserved = true;
       const changes = Array.isArray(payload.changes) ? payload.changes : [];
       for (const change of changes) {
         const record = asRecord(change);
@@ -106,26 +108,26 @@ export function summarizeExecutionInspector(input: {
     currentAction,
     tools: tools.map(({ startedAt: _startedAt, ...tool }) => tool),
     ...(usage ? { usage } : {}),
-    files: { added, removed, changed: Math.max(0, changedPaths.size - added - removed) },
+    files: { added, removed, changed: Math.max(0, changedPaths.size - added - removed), observed: filesObserved },
     ...(durationMs !== undefined && Number.isFinite(durationMs) ? { durationMs } : {}),
   };
 }
 
 function currentActionFor(status: ExecutionStatus | undefined, latestTool: ToolDraft | undefined): ExecutionInspectorSummary['currentAction'] {
-  if (status === 'completed') return { state: 'completed', label: 'Completed', detail: '执行完成' };
-  if (status === 'failed') return { state: 'failed', label: 'Failed', detail: '执行失败' };
-  if (status === 'cancelled') return { state: 'failed', label: 'Failed', detail: '执行已取消' };
-  if (status === 'waiting_user') return { state: 'waiting', label: 'Waiting', detail: '等待你的补充信息' };
+  if (status === 'completed') return { state: 'completed', label: '已完成', detail: '执行完成' };
+  if (status === 'failed') return { state: 'failed', label: '失败', detail: '执行失败' };
+  if (status === 'cancelled') return { state: 'cancelled', label: '已取消', detail: '执行已取消' };
+  if (status === 'waiting_user') return { state: 'waiting', label: '等待补充', detail: '等待你的补充信息' };
   if (latestTool?.status === 'running') {
     return {
       state: 'working',
-      label: 'Working',
+      label: '执行中',
       detail: toolActionLabel(latestTool.toolName),
       ...(latestTool.target ? { target: latestTool.target } : {}),
     };
   }
   const detail = status === 'preparing_context' ? '准备上下文' : status === 'running_cli' ? '调用 CLI' : status === 'streaming_response' ? '生成回复' : '准备执行';
-  return { state: 'working', label: 'Working', detail };
+  return { state: 'working', label: '执行中', detail };
 }
 
 function toolActionLabel(toolName: string): string {

@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "baseline": "1c2991e7abd5c03ca9e0af28ddbb7982c70a8a3e",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:Workspace\\.agents projected fields match Provider Configuration after update)",
+      "src/store/SqliteStore.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/32-apps-server-src-store-sqlitestore-test-ts/assertions.json",
+      "sha256": "c5f0efee4d4e627f9ae7358dcf4c4fb6c057985daf99a2c8bb68aef6a9a771c3"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/32-apps-server-src-store-sqlitestore-test-ts/execution.json",
+      "sha256": "ffcb809bdaff6baa396e4ee3aa00bbe18eaa27a5d8756c9a44444657be4bd0c6"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/32-apps-server-src-store-sqlitestore-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/32-apps-server-src-store-sqlitestore-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-runs/32-apps-server-src-store-sqlitestore-test-ts/stdout.txt",
+      "sha256": "5eb5322410b09dfb4c538dba08bc035ffa3bb84446cc2640a4ed643655dececc"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-001-workspace-agents-projected-fields-match-provider-configuration-after-update-262",
+      "requirementId": "LITE-00-001",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "a persistent Agent can change Provider without losing canonical identity or history;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-002-workspace-agents-projected-fields-match-provider-configuration-after-update-263",
+      "requirementId": "LITE-01-002",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "Agent identity remains stable across Provider changes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-009-workspace-agents-projected-fields-match-provider-configuration-after-update-264",
+      "requirementId": "LITE-09-009",
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "name": "Workspace.agents projected fields match Provider Configuration after update",
+      "line": 89,
+      "expression": "assert.equal(codexAgent.providerConfigId, config.id);",
+      "clause": "Agent identity survives Provider changes;",
+      "whyDirect": "该映射指向命名测试中实际执行的完整单行断言，并由同一份原始收据证明该命名测试通过；表达式读取具体结果，不是文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

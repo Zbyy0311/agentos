@@ -1,0 +1,107 @@
+✔ bounded group interaction: create, reply, budget status, stop (295.1424ms)
+✔ budget exhaustion and loop guard return the stable reason via HTTP (207.5734ms)
+✔ create interaction fails closed for an invalid budget or missing conversation (186.5634ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: kimi
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at async <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:22)
+✔ bounded group respond: the runtime selects speakers, streams the walk, and records replies (242.4581ms)
+✔ bounded group respond: validation and lifecycle failures fail closed (306.9424ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: kimi
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at async <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:22)
+✔ LITE-09-013 each group speaker freezes only its own Agent-scoped Memory (243.0613ms)
+✔ direct Conversation lifecycle: create, send, list, archive, restore (300.351ms)
+✔ group Conversation requires two Agents and a reply mode (171.4157ms)
+✔ checkpoints replay and unknown ids fail closed (222.1113ms)
+✔ create-task and start-run bridge a Message into durable work (203.7814ms)
+✔ history endpoint returns the agent unified references (216.8696ms)
+✔ unknown workspace and conversation fail closed with 404 (147.0731ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:718:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:376:14)
+✔ messages/stream sends, streams durable checkpoints, finalizes a reply, and freezes its context snapshot (194.3059ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:718:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:376:14)
+✔ LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply (204.3396ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:718:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:376:14)
+✔ LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority (196.6629ms)
+✔ LITE-09-101 CM-01 selects reachable entries and assembles the injected text (160.2705ms)
+✔ LITE-09-101 CM-02 another Workspace, another Agent and a Task-scoped entry stay out of reach (155.6828ms)
+✔ LITE-09-101 CM-03 with one Scope in play the entry cap holds and diversity is applied (159.74ms)
+✔ LITE-09-101 CM-04 the default per-Scope caps bound each Scope share (156.1519ms)
+✔ LITE-09-101 CM-05 the Turn budget lowers the ceiling and an empty result injects nothing (292.8423ms)
+✔ TD-01 a completed reply streams every delta as a durable checkpoint and finalizes (168.3272ms)
+✔ TD-02 a provider failure finalizes failed and preserves the checkpoints (155.5422ms)
+✔ TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed (143.0826ms)
+✔ TD-04 an unknown Agent fails closed without reserving a stream (143.9683ms)
+✔ TD-05 waiting_user finalizes the Turn final with the question as content (142.7835ms)
+✔ TD-06 a runner crash finalizes failed instead of leaving an open stream (142.7081ms)
+✔ LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider (189.7961ms)
+✔ LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider (160.8246ms)
+✔ LITE-09-102 chat refuses while another subject holds the Workspace modifying authority (178.9163ms)
+✔ LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable (175.6012ms)
+✔ LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded (180.57ms)
+✔ LITE-09-109 TD-12 an unchanged source still adopts the summary and records it (179.1837ms)
+✔ LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call (164.9793ms)
+✔ LITE-09-101 TD-10 an empty selection injects no context block (169.25ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8170.1711
