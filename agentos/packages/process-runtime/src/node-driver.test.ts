@@ -336,7 +336,7 @@ describe('NodeProcessDriver', () => {
     expect(findTrackedSurvivors([record], excludeSnapshotObserver([survivor], survivor.parentPid))).toEqual([record]);
   });
 
-  it.skipIf(process.platform !== 'win32')('W12 real snapshot excludes the CIM query observing its parent', () => {
+  it.skipIf(process.platform !== 'win32')('W12 real snapshot excludes the CIM query observing its parent', { timeout: REAL_SPAWN_TIMEOUT_MS }, () => {
     const observed = describeWindowsProcesses([process.pid]);
     if (typeof observed === 'string') throw new Error(observed);
     expect(observed.some(item => item.pid === process.pid)).toBe(true);
