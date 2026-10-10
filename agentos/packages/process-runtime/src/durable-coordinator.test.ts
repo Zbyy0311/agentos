@@ -1545,6 +1545,62 @@ describe('DurableProcessCoordinator', () => {
     });
   });
 
+  it('reclaims the causal and stopping cursors once the Process terminalizes', async () => {
+    const { processRepository, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const process = established.process;
+    // The reservation leaves one causal cursor; a live Process retains it.
+    expect(coordinator.retainedCursorCount).toBe(1);
+    expect(coordinator.retainedStoppingCursorCount).toBe(0);
+
+    let cursorsAtStop = -1;
+    let stoppingCursorsAtStop = -1;
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => {
+        const current = await processRepository.getProcess(process.workspaceId, process.processId);
+        const cancelled = await coordinator.transitionProcess({
+          workspaceId: process.workspaceId,
+          processId: process.processId,
+          expectedVersion: current!.version,
+          expectedClaimEpoch: current!.claimEpoch,
+          expectedClaimOwner: current!.claimOwnerId,
+          expectedFrom: 'starting',
+          to: 'stopping',
+          timestamp: NOW,
+          terminationReason: 'user-cancelled',
+          gracefulRequested: true,
+          graceDeadline: '2026-08-13T00:00:05.000Z',
+          forceDeadline: '2026-08-13T00:00:10.000Z',
+          idempotencyKeyHash: 'e'.repeat(64),
+          eventContext: EVENT_CONTEXT,
+        });
+        expect(cancelled.kind).toBe('applied');
+        cursorsAtStop = coordinator.retainedCursorCount;
+        stoppingCursorsAtStop = coordinator.retainedStoppingCursorCount;
+        throw new Error('native spawn failed after accepted cancel');
+      },
+    });
+    // While stopping, both cursors are still retained: the stopping Event id
+    // chains the spawn-failure-after-cancel compensation.
+    expect(cursorsAtStop).toBe(1);
+    expect(stoppingCursorsAtStop).toBe(1);
+    const failed = applied(result.outcome);
+    expect(failed.status).toBe('failed');
+    // The terminal conclusion reclaims every per-Process cursor.
+    expect(coordinator.retainedCursorCount).toBe(0);
+    expect(coordinator.retainedStoppingCursorCount).toBe(0);
+  });
+
   it('output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes', async () => {
     const { outputRepository, sink, coordinator, ledger } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({

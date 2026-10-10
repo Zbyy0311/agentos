@@ -318,12 +318,22 @@ export class BoundedProcessStream {
       offset += segment.length;
     }
     const text = new TextDecoder('utf-8', { fatal: false }).decode(all);
-    let out = filterControls(text);
-    const encoder = new TextEncoder();
-    while (out.length > 0 && encoder.encode(out).length > cap) {
-      out = out.slice(1);
+    const out = filterControls(text);
+    // Single-encode byte accounting, then drop whole UTF-8 characters from
+    // the front until the remaining suffix fits the cap (one pass, no
+    // re-encode per character).
+    const encoded = new TextEncoder().encode(out);
+    if (encoded.length <= cap) return out;
+    let prefixBytes = 0;
+    let start = 0;
+    while (start < out.length && encoded.length - prefixBytes > cap) {
+      const code = out.charCodeAt(start);
+      const width = code >= 0xd800 && code <= 0xdbff ? 2 : 1;
+      const size = code < 0x80 ? 1 : (code >= 0xd800 && code <= 0xdbff ? 4 : (code < 0x800 ? 2 : 3));
+      prefixBytes += size;
+      start += width;
     }
-    return out;
+    return out.slice(start);
   }
 
   #decode(redacted: Uint8Array, sourceBytes: number, flushDecoder = false): StreamChunk {

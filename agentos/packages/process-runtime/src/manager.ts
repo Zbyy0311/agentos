@@ -1,5 +1,5 @@
 import { SystemClock } from './clock.js';
-import type { Clock } from './clock.js';
+import type { Clock, ClockTimerHandle } from './clock.js';
 import { ProcessError } from './errors.js';
 import type { P1ProcessErrorCode } from './errors.js';
 import type {
@@ -24,6 +24,7 @@ import { ProcessTimers } from './timeouts.js';
 import type { ProcessTimerKind } from './timeouts.js';
 import {
   DEFAULT_TIMEOUT_POLICY,
+  isTerminalState,
 } from './types.js';
 import type {
   ClaimIdentity,
@@ -60,7 +61,25 @@ export interface ProcessManagerOptions {
   readonly clock?: Clock;
   readonly streamLimits?: Partial<StreamLimits>;
   readonly outputBudgetBytes?: number;
+  /** Terminal-observation reclaim tuning (defaults below). */
+  readonly reclaim?: TerminalReclaimOptions;
 }
+
+/** Reclaim policy for terminal Processes: bounded observation, then release. */
+export interface TerminalReclaimOptions {
+  /**
+   * How long a terminal Process's bounded streams and record stay observable
+   * before the shared sweep reclaims them. Default 5 minutes.
+   */
+  readonly ttlMs?: number;
+  /** Cadence of the single shared reclaim sweep interval. Default 60s. */
+  readonly sweepIntervalMs?: number;
+}
+
+/** Default observation window for terminal Process output and records. */
+export const TERMINAL_OBSERVATION_TTL_MS = 5 * 60 * 1000;
+/** Default cadence of the single shared terminal reclaim sweep. */
+export const TERMINAL_RECLAIM_SWEEP_INTERVAL_MS = 60 * 1000;
 
 export interface ReserveRequest {
   readonly claim: ClaimIdentity;
@@ -76,6 +95,14 @@ export const PROCESS_OUTPUT_READ_MAX_BYTES = 1024 * 1024;
 export interface ProcessOutputReadOptions {
   readonly offsetBytes?: number;
   readonly maxBytes?: number;
+}
+
+/** Optional bound for state waits: deadline via the injected clock, or abort. */
+export interface WaitForStateOptions {
+  /** Reject with an explicit message once the deadline elapses. */
+  readonly timeoutMs?: number;
+  /** Reject with an explicit message when the signal aborts. */
+  readonly signal?: AbortSignal;
 }
 
 /** One bounded page of retained, already-redacted process output. */
@@ -178,6 +205,9 @@ export class ProcessManager {
   >();
   readonly #timers = new Map<ProcessId, ProcessTimers>();
   readonly #stops = new Map<ProcessId, InternalStop>();
+  readonly #reclaimTtlMs: number;
+  readonly #reclaimSweepIntervalMs: number;
+  #reclaimSweepTimer: ReturnType<typeof setInterval> | null = null;
   #shutdown = false;
 
   constructor(options: ProcessManagerOptions) {
@@ -187,6 +217,11 @@ export class ProcessManager {
     this.#clock = options.clock ?? new SystemClock();
     this.#streamLimits = options.streamLimits;
     this.#outputBudgetBytes = options.outputBudgetBytes ?? PROCESS_OUTPUT_BUDGET_BYTES;
+    this.#reclaimTtlMs = Math.max(0, options.reclaim?.ttlMs ?? TERMINAL_OBSERVATION_TTL_MS);
+    this.#reclaimSweepIntervalMs = Math.max(
+      1,
+      options.reclaim?.sweepIntervalMs ?? TERMINAL_RECLAIM_SWEEP_INTERVAL_MS,
+    );
   }
 
   /** Create the `created` reservation; duplicate claims join it. */
@@ -392,28 +427,89 @@ export class ProcessManager {
     });
   }
 
-  /** Deterministic wait for tests and coordinators; no sleeps involved. */
-  waitForState(id: ProcessId, states: readonly ProcessState[]): Promise<ProcessSnapshot> {
+  /**
+   * Deterministic wait for tests and coordinators; no sleeps involved.
+   * Optional timeout/abort bound the wait: on expiry, abort or an
+   * unrecoverable terminal conclusion the wait rejects with an explicit
+   * message instead of hanging forever, and the subscription is released.
+   */
+  waitForState(
+    id: ProcessId,
+    states: readonly ProcessState[],
+    options: WaitForStateOptions = {},
+  ): Promise<ProcessSnapshot> {
+    if (
+      options.timeoutMs !== undefined &&
+      (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0)
+    ) {
+      return Promise.reject(
+        new ProcessError('PROCESS_REQUEST_INVALID', 'timeoutMs must be a non-negative finite number'),
+      );
+    }
     if (this.#store.getRecord(id) === undefined) {
       return Promise.reject(new ProcessError('PROCESS_REQUEST_INVALID', 'process not found'));
     }
-    return new Promise<ProcessSnapshot>((resolve) => {
+    return new Promise<ProcessSnapshot>((resolve, reject) => {
+      let settled = false;
+      let timer: ClockTimerHandle | null = null;
+      const fail = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const succeed = (snapshot: ProcessSnapshot): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(snapshot);
+      };
+      const onAbort = (): void => {
+        fail(new Error(
+          `waitForState aborted: process ${id} did not reach [${states.join(', ')}]`,
+        ));
+      };
+      const cleanup = (): void => {
+        unsubscribe();
+        if (timer !== null) this.#clock.clearTimeout(timer);
+        options.signal?.removeEventListener('abort', onAbort);
+      };
+      const describe = (): string =>
+        `process ${id} while waiting for [${states.join(', ')}]`;
       const unsubscribe = this.#store.subscribe(id, (snapshot) => {
         if (states.includes(snapshot.state)) {
-          unsubscribe();
-          resolve(snapshot);
+          succeed(snapshot);
+        } else if (isTerminalState(snapshot.state)) {
+          // A terminal conclusion can never satisfy a pending non-terminal
+          // wait: reject it instead of leaving the waiter subscribed forever.
+          fail(new Error(`waitForState rejected: reached terminal state "${snapshot.state}" for ${describe()}`));
         }
       });
+      if (options.signal !== undefined) {
+        if (options.signal.aborted) {
+          onAbort();
+          return;
+        }
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
+      if (options.timeoutMs !== undefined) {
+        timer = this.#clock.setTimeout(() => {
+          fail(new Error(`waitForState timed out after ${options.timeoutMs}ms for ${describe()}`));
+        }, options.timeoutMs);
+      }
       const current = this.getSnapshot(id);
-      if (current !== undefined && states.includes(current.state)) {
-        unsubscribe();
-        resolve(current);
+      if (current !== undefined) {
+        if (states.includes(current.state)) {
+          succeed(current);
+        } else if (isTerminalState(current.state)) {
+          fail(new Error(`waitForState rejected: reached terminal state "${current.state}" for ${describe()}`));
+        }
       }
     });
   }
 
-  waitForTerminal(id: ProcessId): Promise<ProcessSnapshot> {
-    return this.waitForState(id, ['exited', 'failed']);
+  waitForTerminal(id: ProcessId, options: WaitForStateOptions = {}): Promise<ProcessSnapshot> {
+    return this.waitForState(id, ['exited', 'failed'], options);
   }
 
   /** Readiness mark from the integration seam; satisfies the startup deadline. */
@@ -472,9 +568,53 @@ export class ProcessManager {
     });
   }
 
+  /**
+   * Explicit lifecycle reclamation for a concluded (terminal) Process: drops
+   * the retained bounded streams, any settled stop ticket and the store
+   * record (claim index included). The terminal observation window ends
+   * immediately; afterwards the identity is unknown to the Manager and the
+   * claim key may be reserved again. Live or uncertain Processes are never
+   * reclaimable.
+   */
+  dispose(id: ProcessId): Promise<boolean> {
+    return this.#store.withLock(() => {
+      const record = this.#store.getRecord(id);
+      if (record === undefined) return false;
+      if (record.terminal === null) {
+        throw new ProcessError(
+          'PROCESS_REQUEST_INVALID',
+          'process is not terminal; refusing to reclaim a live or uncertain Process',
+        );
+      }
+      this.#reclaimTerminalLocked(record);
+      return true;
+    });
+  }
+
+  /**
+   * Deterministic terminal-observation reclaim sweep: every terminal Process
+   * whose observation window has aged out is reclaimed exactly as `dispose`
+   * would. The single shared interval drives this same path on a cadence.
+   * Returns the number of reclaimed Processes.
+   */
+  runReclaimSweep(): Promise<number> {
+    return this.#store.withLock(() => {
+      const cutoff = this.#clock.now() - this.#reclaimTtlMs;
+      const due = this.#store.terminalRecordsOlderThan(cutoff);
+      for (const record of due) {
+        this.#reclaimTerminalLocked(record);
+      }
+      return due.length;
+    });
+  }
+
   /** Shutdown gate: new operations fail closed with the stable code. */
   shutdown(): Promise<void> {
     this.#shutdown = true;
+    if (this.#reclaimSweepTimer !== null) {
+      clearInterval(this.#reclaimSweepTimer);
+      this.#reclaimSweepTimer = null;
+    }
     return Promise.resolve();
   }
 
@@ -579,12 +719,51 @@ export class ProcessManager {
     }
     // Streams are deliberately NOT finalized or dropped here: native exit
     // precedes stream completion, and trailing bytes must stay accepted and
-    // observable. Each pump finalizes its own stream when the native source
-    // ends; retained bounded pages stay readable via readProcessOutput after
-    // any terminal or uncertainty conclusion.
+    // observable for the terminal observation window. Each pump finalizes
+    // its own stream when the native source ends; retained bounded pages
+    // stay readable via readProcessOutput until `dispose` or the shared
+    // reclaim sweep reclaims the terminal Process.
     this.#registry.remove(record.id);
     record.hasHandle = false;
     this.#settleStopIfConcludedLocked(record);
+    this.#armReclaimSweep();
+  }
+
+  /**
+   * Reclaim everything retained for a terminal Process: bounded streams, the
+   * (already settled) stop ticket, timers and the store record. Idempotent;
+   * call only under the store lock with the record still present.
+   */
+  #reclaimTerminalLocked(record: ProcessRecord): void {
+    this.#streams.delete(record.id);
+    const internal = this.#stops.get(record.id);
+    if (internal !== undefined) {
+      // Already resolved at conclusion; resolving again is a no-op and keeps
+      // a racing dispose honest before the ticket entry is dropped.
+      internal.resolve(this.#store.snapshotOf(record));
+      this.#stops.delete(record.id);
+    }
+    const timers = this.#timers.get(record.id);
+    if (timers !== undefined) {
+      timers.disarmAll();
+      this.#timers.delete(record.id);
+    }
+    this.#registry.remove(record.id);
+    this.#store.dispose(record.id);
+  }
+
+  /**
+   * One unref'd shared interval drives the terminal reclaim sweep for all
+   * Processes; the janitor never extends process lifetime and never arms per
+   * Process. Armed lazily on the first concluded Process.
+   */
+  #armReclaimSweep(): void {
+    if (this.#reclaimSweepTimer !== null || this.#shutdown) return;
+    const handle = setInterval(() => {
+      void this.runReclaimSweep().catch(() => undefined);
+    }, this.#reclaimSweepIntervalMs);
+    (handle as unknown as { unref?: () => void }).unref?.();
+    this.#reclaimSweepTimer = handle;
   }
 
   async #runSpawnContinuation(record: ProcessRecord): Promise<ProcessSnapshot> {
@@ -740,8 +919,8 @@ export class ProcessManager {
     this.#streams.set(id, { stdout, stderr });
     void this.#drain(stdout);
     void this.#drain(stderr);
-    void this.#pump(handle.streams.stdout, stdout);
-    void this.#pump(handle.streams.stderr, stderr);
+    void this.#pump(id, handle.streams.stdout, stdout);
+    void this.#pump(id, handle.streams.stderr, stderr);
     void handle.waitExit().then(
       (evidence) => { void this.#onNativeExit(id, evidence); },
       () => { void this.#onNativeExit(id, null); },
@@ -762,6 +941,7 @@ export class ProcessManager {
   }
 
   async #pump(
+    id: ProcessId,
     source: AsyncIterable<Uint8Array>,
     stream: BoundedProcessStream,
   ): Promise<void> {
@@ -774,6 +954,12 @@ export class ProcessManager {
       }
     } catch {
       // A native read failure finalizes output evidence; exit owns lifecycle.
+      // The swallowed read error is recorded as a fact so the failure stays
+      // observable evidence instead of vanishing silently.
+      const record = this.#store.getRecord(id);
+      if (record !== undefined) {
+        this.#store.appendFact(record, 'process.output_read_failed', this.#clock.now());
+      }
     } finally {
       stream.finalize();
     }

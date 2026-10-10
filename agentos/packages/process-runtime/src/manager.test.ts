@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { SystemClock } from './clock.js';
 import { MockNativeProcessHandle } from './testing/mock-driver.js';
 import {
   completeStopPipeline,
@@ -519,6 +520,161 @@ describe('ProcessManager output and shutdown gates', () => {
     await expect(
       fx.manager.stop(id, { reason: 'cancel', idempotencyKey: 'x' }),
     ).rejects.toMatchObject({ code: 'PROCESS_MANAGER_SHUTTING_DOWN' });
+  });
+});
+
+describe('ProcessManager lifecycle reclaim', () => {
+  it('dispose reclaims a terminal process: record, streams and claim index', async () => {
+    const fx = createManagerFixture();
+    const { id, handle, claim } = await startRunning(fx);
+    handle.pushStdout('evidence');
+    await drainTurns();
+    handle.emitExit({ exitCode: 0 });
+    const terminal = await fx.manager.waitForTerminal(id);
+    expect(terminal.state).toBe('exited');
+    // The observation window still holds right after the conclusion.
+    expect(fx.manager.readProcessOutput(id, 'stdout')?.text).toBe('evidence');
+
+    expect(await fx.manager.dispose(id)).toBe(true);
+    expect(fx.manager.getSnapshot(id)).toBeUndefined();
+    expect(fx.manager.getSnapshotByClaim(terminal.claimKey)).toBeUndefined();
+    expect(fx.manager.readProcessOutput(id, 'stdout')).toBeUndefined();
+    expect(await fx.manager.dispose(id)).toBe(false);
+
+    // Reclamation releases the claim key for a fresh reservation.
+    const reused = await fx.manager.reserve({ claim, launch: fx.launch });
+    expect(reused.joinedExisting).toBe(false);
+    expect(reused.snapshot.id).not.toBe(id);
+  });
+
+  it('refuses to dispose a live process', async () => {
+    const fx = createManagerFixture();
+    const { id } = await startRunning(fx);
+    await expect(fx.manager.dispose(id)).rejects.toMatchObject({
+      code: 'PROCESS_REQUEST_INVALID',
+    });
+    expect(fx.manager.getSnapshot(id)?.state).toBe('running');
+  });
+
+  it('the reclaim sweep only reclaims terminal processes past the observation TTL', async () => {
+    const fx = createManagerFixture({ reclaim: { ttlMs: 1000 } });
+    const live = await startRunning(fx);
+    const done = await startRunning(fx);
+    done.handle.pushStdout('done-output');
+    await drainTurns();
+    done.handle.emitExit({ exitCode: 0 });
+    await fx.manager.waitForTerminal(done.id);
+
+    // Inside the observation window nothing is reclaimed; the terminal
+    // output stays readable.
+    expect(await fx.manager.runReclaimSweep()).toBe(0);
+    expect(fx.manager.getSnapshot(done.id)?.state).toBe('exited');
+    expect(fx.manager.readProcessOutput(done.id, 'stdout')?.text).toBe('done-output');
+    expect(fx.manager.getSnapshot(live.id)?.state).toBe('running');
+
+    // Age the terminal record past the TTL: the sweep reclaims it and never
+    // touches the live one.
+    fx.clock.advance(1001);
+    expect(await fx.manager.runReclaimSweep()).toBe(1);
+    expect(fx.manager.getSnapshot(done.id)).toBeUndefined();
+    expect(fx.manager.readProcessOutput(done.id, 'stdout')).toBeUndefined();
+    expect(fx.manager.getSnapshot(live.id)?.state).toBe('running');
+    expect(await fx.manager.runReclaimSweep()).toBe(0);
+  });
+
+  it('the single shared unref\'d sweep interval reclaims aged terminals by itself', async () => {
+    vi.useFakeTimers();
+    try {
+      const fx = createManagerFixture({
+        clock: new SystemClock(),
+        reclaim: { ttlMs: 200, sweepIntervalMs: 50 },
+      });
+      const { id, handle } = await startRunning(fx);
+      handle.emitExit({ exitCode: 0 });
+      const terminal = await fx.manager.waitForTerminal(id);
+      expect(terminal.state).toBe('exited');
+      expect(fx.manager.getSnapshot(id)).toBeDefined();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fx.manager.getSnapshot(id)).toBeUndefined();
+      expect(fx.manager.readProcessOutput(id, 'stdout')).toBeUndefined();
+      await fx.manager.shutdown();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('ProcessManager state waits', () => {
+  it('resolves immediately when the wanted state is current', async () => {
+    const fx = createManagerFixture();
+    const { id } = await startRunning(fx);
+    const snapshot = await fx.manager.waitForState(id, ['running']);
+    expect(snapshot.state).toBe('running');
+  });
+
+  it('rejects with an explicit message when the deadline elapses', async () => {
+    const fx = createManagerFixture();
+    const { id } = await startRunning(fx);
+    const waiting = fx.manager.waitForState(id, ['waiting'], { timeoutMs: 100 });
+    fx.clock.advance(100);
+    await expect(waiting).rejects.toThrow(/timed out after 100ms/);
+    // The waiter released its subscription: the state can still be observed
+    // by a fresh wait afterwards.
+    await fx.manager.enterWaiting(id, 'approval');
+    await expect(fx.manager.waitForState(id, ['waiting'])).resolves.toMatchObject({
+      state: 'waiting',
+    });
+  });
+
+  it('rejects on abort, including a pre-aborted signal', async () => {
+    const fx = createManagerFixture();
+    const { id } = await startRunning(fx);
+    const controller = new AbortController();
+    const waiting = fx.manager.waitForState(id, ['waiting'], { signal: controller.signal });
+    controller.abort();
+    await expect(waiting).rejects.toThrow(/aborted/);
+    await expect(
+      fx.manager.waitForState(id, ['waiting'], { signal: AbortSignal.abort() }),
+    ).rejects.toThrow(/aborted/);
+  });
+
+  it('rejects outstanding non-terminal waits once the process terminalizes', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    const waiting = fx.manager.waitForState(id, ['waiting']);
+    handle.emitExit({ exitCode: 0 });
+    await expect(waiting).rejects.toThrow(/terminal state "exited"/);
+    // A state that can never be reached on an already-terminal process is
+    // rejected immediately instead of hanging forever.
+    await expect(fx.manager.waitForState(id, ['running'])).rejects.toThrow(/terminal state/);
+  });
+
+  it('rejects invalid timeout options with the stable request code', async () => {
+    const fx = createManagerFixture();
+    const { id } = await startRunning(fx);
+    await expect(
+      fx.manager.waitForState(id, ['waiting'], { timeoutMs: -1 }),
+    ).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+    await expect(
+      fx.manager.waitForState(id, ['waiting'], { timeoutMs: Number.NaN }),
+    ).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+  });
+});
+
+describe('ProcessManager output read failures', () => {
+  it('records a fact when a native stream read fails instead of swallowing it', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    handle.pushStdout('partial-output');
+    await drainTurns();
+    handle.stdout.fail(new Error('native stdout read exploded'));
+    await drainTurns();
+    handle.emitExit({ exitCode: 0 }, { endStreams: false });
+    const final = await fx.manager.waitForTerminal(id);
+    expect(final.state).toBe('exited');
+    const types = final.facts.map((f) => f.type);
+    expect(types).toContain('process.output_read_failed');
+    expect(types[types.length - 1]).toBe('process.exited');
   });
 });
 
