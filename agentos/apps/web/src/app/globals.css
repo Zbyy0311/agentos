@@ -1448,12 +1448,16 @@ body.resizing-panels .inspector-sidebar {
 }
 
 /* Theme switching: colors are CSS variables, so smoothing the toggle means
-   transitioning them everywhere for a brief window. */
-html.theme-animating,
-html.theme-animating *,
-html.theme-animating *::before,
-html.theme-animating *::after {
-  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease !important;
+   transitioning them everywhere for a brief window. Scoped to no-preference:
+   the higher-specificity !important here would otherwise beat the global
+   reduced-motion fallback below. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-animating,
+  html.theme-animating *,
+  html.theme-animating *::before,
+  html.theme-animating *::after {
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
