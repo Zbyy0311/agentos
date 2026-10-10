@@ -12,5 +12,10 @@
     "resolveJsonModule": true,
     "declaration": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/process-runtime" },
+    { "path": "../../packages/agent-core" }
+  ]
 }
