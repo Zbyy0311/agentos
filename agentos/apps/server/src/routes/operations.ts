@@ -1,5 +1,6 @@
 import { json, Router, type NextFunction, type Request, type Response } from 'express';
 import { isClientBodyParseError, sendProblem } from '../problemDetails.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import {
   OperationIntegrityError,
   OperationCancellationEvidenceError,
@@ -233,7 +234,7 @@ export function createOperationRoutes(store: OperationRouteStore, options: Opera
     cancelBodyParser,
     cancelBodyParserErrorHandler,
     validateCancelRequest,
-    cancelOperation,
+    asyncHandler(cancelOperation),
   );
   router.get('/operations/:operationId/events', resolveOperationWorkspace, rejectQuery, getOperationEvents);
   router.get('/operations/:operationId', resolveOperationWorkspace, rejectQuery, getOperation);

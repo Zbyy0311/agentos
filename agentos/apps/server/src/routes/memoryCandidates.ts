@@ -5,6 +5,7 @@ import { MemoryCandidateService } from '../services/MemoryCandidateService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { MemorySourceAccumulationService, MemorySourceAccumulationError } from '../services/MemorySourceAccumulationService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager: WorkspaceManager, eventBus?: EventBus): Router {
   const router = Router({ mergeParams: true });
@@ -22,7 +23,7 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
     }
   });
 
-  router.post('/runs/:runId/memory-candidates/generate', async (req: Request, res: Response) => {
+  router.post('/runs/:runId/memory-candidates/generate', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -38,7 +39,7 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
         : message.includes('must be completed') || message === 'Workspace memory is disabled' ? 409 : 400;
       res.status(status).json({ error: message });
     }
-  });
+  }));
 
   // P1 source-ownership path for old agent_runs. The existing generate route
   // remains available to compatibility clients; the workspace UI uses this
@@ -66,7 +67,7 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
     }
   });
 
-  router.post('/memory-candidates/:candidateId/accept', async (req: Request, res: Response) => {
+  router.post('/memory-candidates/:candidateId/accept', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -81,7 +82,7 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
       const status = message === 'Memory candidate not found' ? 404 : message.includes('already been reviewed') ? 409 : 400;
       res.status(status).json({ error: message });
     }
-  });
+  }));
 
   router.post('/memory-candidates/:candidateId/reject', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
