@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
@@ -156,7 +157,7 @@ export function createProviderConfigRoutes(
     }
   });
 
-  router.post('/provider-configs/:providerConfigId/validate', async (req: Request, res: Response) => {
+  router.post('/provider-configs/:providerConfigId/validate', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
@@ -184,7 +185,7 @@ export function createProviderConfigRoutes(
       console.error('[provider-configs] validate provider configuration failed');
       return res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
-  });
+  }));
 
   router.post('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);

@@ -15,6 +15,7 @@ import type { PreferenceLearningService } from '../services/ConversationService.
 import { RunDecisionService } from '../services/RunDecisionService.js';
 import type { WorktreeManager } from '../services/WorktreeManager.js';
 import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
@@ -45,7 +46,7 @@ export function createConversationRoutes(
     });
   });
 
-  router.get('/agents', async (req: Request, res: Response) => {
+  router.get('/agents', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -54,9 +55,9 @@ export function createConversationRoutes(
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
-  });
+  }));
 
-  router.patch('/agents/:agentId', async (req: Request, res: Response) => {
+  router.patch('/agents/:agentId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const current = store.listAgentProfiles(workspace.id).find(agent => agent.id === req.params.agentId);
@@ -101,9 +102,9 @@ export function createConversationRoutes(
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
-  });
+  }));
 
-  router.post('/agents/:agentId/models/refresh', async (req: Request, res: Response) => {
+  router.post('/agents/:agentId/models/refresh', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const current = store.listAgentProfiles(workspace.id).find(agent => agent.id === req.params.agentId);
@@ -113,7 +114,7 @@ export function createConversationRoutes(
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
-  });
+  }));
 
   router.get('/conversations', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -124,7 +125,7 @@ export function createConversationRoutes(
     res.json({ conversations });
   });
 
-  router.post('/conversations', async (req: Request, res: Response) => {
+  router.post('/conversations', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const { agentId, title, type, memberAgentIds, leaderAgentId: rawLeaderAgentId, members: rawMembers, dispatchMode: rawDispatchMode } = req.body as {
@@ -202,9 +203,9 @@ export function createConversationRoutes(
     };
     store.createConversation(conversation);
     res.status(201).json({ conversation });
-  });
+  }));
 
-  router.patch('/conversations/:conversationId/settings', async (req: Request, res: Response) => {
+  router.patch('/conversations/:conversationId/settings', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
@@ -240,7 +241,7 @@ export function createConversationRoutes(
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
-  });
+  }));
 
   router.get('/conversations/:conversationId/members', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -277,7 +278,7 @@ export function createConversationRoutes(
     }
   });
 
-  router.patch('/conversations/:conversationId', async (req: Request, res: Response) => {
+  router.patch('/conversations/:conversationId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const body = req.body as Record<string, unknown>;
@@ -321,9 +322,9 @@ export function createConversationRoutes(
       const message = error instanceof Error ? error.message : String(error);
       res.status(message.includes('settings version conflict') ? 409 : 400).json({ error: message });
     }
-  });
+  }));
 
-  router.delete('/conversations/:conversationId', async (req: Request, res: Response) => {
+  router.delete('/conversations/:conversationId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -337,7 +338,7 @@ export function createConversationRoutes(
       const status = message === 'Conversation not found' || message === 'Conversation not found in workspace' ? 404 : 400;
       res.status(status).json({ error: message });
     }
-  });
+  }));
 
   router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -368,7 +369,7 @@ export function createConversationRoutes(
     }
   });
 
-  router.post('/conversations/:conversationId/messages/stream', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/messages/stream', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const body = req.body as Record<string, unknown>;
@@ -486,7 +487,7 @@ export function createConversationRoutes(
       stopHeartbeat();
       res.end();
     }
-  });
+  }));
 
   router.get('/conversations/:conversationId/runs/:runId/stream', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -532,7 +533,7 @@ export function createConversationRoutes(
     res.json({ runId: run.id, cancelled: true });
   });
 
-  router.post('/conversations/:conversationId/runs/:runId/resume/stream', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/runs/:runId/resume/stream', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
@@ -586,7 +587,7 @@ export function createConversationRoutes(
       stopHeartbeat();
       res.end();
     }
-  });
+  }));
 
   return router;
 }

@@ -519,7 +519,7 @@ test('validates P6B recovery payloads, legal modes, strict fields, and stageId r
     ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'],
   );
   for (const event of [...recoveryEvents, ...fixtures.validRunRecoveredEvents]) {
-    assert.doesNotThrow(() => registry.publish(event));
+    assert.doesNotThrow(() => registry.publish<RunRecoveryAttemptedPayload | RunRecoveredPayload | RunRecoveryFailedPayload>(event));
     assert.equal(event.stageId, undefined);
   }
   assert.equal(fixtures.validRunRecoveryAttemptedEvent.severity, 'info');
@@ -534,7 +534,7 @@ test('validates P6B recovery payloads, legal modes, strict fields, and stageId r
 
   for (const event of recoveryEvents) {
     assert.throws(
-      () => registry.publish({ ...event, stageId: 'stage_fixture_01' }),
+      () => registry.publish<RunRecoveryAttemptedPayload | RunRecoveredPayload | RunRecoveryFailedPayload>({ ...event, stageId: 'stage_fixture_01' }),
       (error: unknown) => error instanceof RuntimeEventRegistryError
         && error.code === 'UNEXPECTED_STAGE_ID',
       `${event.type} must forbid stageId`,

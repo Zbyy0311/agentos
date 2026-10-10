@@ -9,6 +9,7 @@ import type { MaintenanceService } from '../services/MaintenanceService.js';
 import { MaintenanceServiceError } from '../services/MaintenanceService.js';
 import type { WorkspaceGitRootRegistry } from '../services/WorkspaceGitRootRegistry.js';
 import { WorkspaceGitRootError } from '../services/WorkspaceGitRootRegistry.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const MAINTENANCE_CONTROL_PATHS = new Set([
   '/api/maintenance/backup',
@@ -25,16 +26,16 @@ export function createMaintenanceRoutes(input: {
 }): Router {
   const router = Router();
 
-  router.get('/readiness', async (_req: Request, res: Response) => {
+  router.get('/readiness', asyncHandler(async (_req: Request, res: Response) => {
     try {
       const report = await input.diagnostics.readiness();
       return res.status(report.ok ? 200 : 503).json(report);
     } catch {
       return res.status(503).json({ ok: false, code: 'READINESS_CHECK_FAILED' });
     }
-  });
+  }));
 
-  router.post('/backup', async (req: Request, res: Response) => {
+  router.post('/backup', asyncHandler(async (req: Request, res: Response) => {
     try {
       const result = await input.coordinator.run('backup', ({ signal }) => input.service.createBackup({ signal }));
       return res.status(201).json({
@@ -49,17 +50,17 @@ export function createMaintenanceRoutes(input: {
     } catch (error) {
       return respondMaintenanceError(req, res, error);
     }
-  });
+  }));
 
-  router.get('/cleanup/preview', async (_req: Request, res: Response) => {
+  router.get('/cleanup/preview', asyncHandler(async (_req: Request, res: Response) => {
     try {
       return res.json(await input.service.previewCleanup(input.instanceId));
     } catch {
       return res.status(500).json({ error: 'Cleanup preview failed', code: 'CLEANUP_PREVIEW_FAILED' });
     }
-  });
+  }));
 
-  router.post('/cleanup/apply', async (req: Request, res: Response) => {
+  router.post('/cleanup/apply', asyncHandler(async (req: Request, res: Response) => {
     try {
       const result = await input.coordinator.run('cleanup', ({ signal }) =>
         input.service.applyCleanup(req.body, input.instanceId, signal));
@@ -67,48 +68,48 @@ export function createMaintenanceRoutes(input: {
     } catch (error) {
       return respondMaintenanceError(req, res, error);
     }
-  });
+  }));
 
-  router.get('/storage', async (_req: Request, res: Response) => {
+  router.get('/storage', asyncHandler(async (_req: Request, res: Response) => {
     try {
       return res.json(await input.service.inspectStorage());
     } catch {
       return res.status(500).json({ error: 'Storage diagnostics failed', code: 'STORAGE_DIAGNOSTICS_FAILED' });
     }
-  });
+  }));
 
-  router.get('/workspaces/:workspaceId/git-root', async (req: Request, res: Response) => {
+  router.get('/workspaces/:workspaceId/git-root', asyncHandler(async (req: Request, res: Response) => {
     if (!input.workspaceGitRoots) return res.status(503).json({ code: 'WORKSPACE_GIT_RECONNECT_UNAVAILABLE' });
     try { return res.json(await input.workspaceGitRoots.status(req.params.workspaceId)); }
     catch (error) { return respondMaintenanceError(req, res, error); }
-  });
+  }));
 
-  router.post('/workspaces/:workspaceId/git-root/check', async (req: Request, res: Response) => {
+  router.post('/workspaces/:workspaceId/git-root/check', asyncHandler(async (req: Request, res: Response) => {
     if (!input.workspaceGitRoots) return res.status(503).json({ code: 'WORKSPACE_GIT_RECONNECT_UNAVAILABLE' });
     if (typeof req.body?.rootPath !== 'string' || !req.body.rootPath.trim()) {
       return res.status(400).json({ code: 'WORKSPACE_GIT_ROOT_REQUIRED' });
     }
     try { return res.json(await input.workspaceGitRoots.check(req.params.workspaceId, req.body.rootPath.trim())); }
     catch (error) { return respondMaintenanceError(req, res, error); }
-  });
+  }));
 
-  router.post('/workspaces/:workspaceId/git-root/reconnect', async (req: Request, res: Response) => {
+  router.post('/workspaces/:workspaceId/git-root/reconnect', asyncHandler(async (req: Request, res: Response) => {
     if (!input.workspaceGitRoots) return res.status(503).json({ code: 'WORKSPACE_GIT_RECONNECT_UNAVAILABLE' });
     if (typeof req.body?.rootPath !== 'string' || !req.body.rootPath.trim()) {
       return res.status(400).json({ code: 'WORKSPACE_GIT_ROOT_REQUIRED' });
     }
     try { return res.json(await input.workspaceGitRoots.reconnect(req.params.workspaceId, req.body.rootPath.trim())); }
     catch (error) { return respondMaintenanceError(req, res, error); }
-  });
+  }));
 
-  router.post('/recover-expired', async (req: Request, res: Response) => {
+  router.post('/recover-expired', asyncHandler(async (req: Request, res: Response) => {
     try {
       const released = await input.coordinator.releaseExpiredLease();
       return res.json({ ok: true, released, maintenance: input.coordinator.status });
     } catch (error) {
       return respondMaintenanceError(req, res, error);
     }
-  });
+  }));
 
   return router;
 }

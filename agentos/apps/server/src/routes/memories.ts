@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import type { MemoryStatus, MemoryType } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryService } from '../services/MemoryService.js';
@@ -18,16 +19,16 @@ export function createMemoryRoutes(store: SqliteStore, workspaceManager: Workspa
     } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); }
   });
 
-  router.post('/memories', async (req: Request, res: Response) => {
+  router.post('/memories', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
       const memory = await service.create({ ...(req.body as Record<string, unknown>), workspaceId: workspace.id, workspaceRoot: workspace.rootPath, memoryEnabled: workspace.memoryEnabled } as never);
       res.status(201).json({ memory, content: memory.content });
     } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); }
-  });
+  }));
 
-  router.get('/memories/:memoryId', async (req: Request, res: Response) => {
+  router.get('/memories/:memoryId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -35,9 +36,9 @@ export function createMemoryRoutes(store: SqliteStore, workspaceManager: Workspa
       if (!memory) return res.status(404).json({ error: 'Memory not found' });
       res.json({ memory, content: memory.content });
     } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : String(error) }); }
-  });
+  }));
 
-  router.patch('/memories/:memoryId', async (req: Request, res: Response) => {
+  router.patch('/memories/:memoryId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
@@ -47,7 +48,7 @@ export function createMemoryRoutes(store: SqliteStore, workspaceManager: Workspa
       const message = error instanceof Error ? error.message : String(error);
       res.status(message === 'Memory not found' ? 404 : 400).json({ error: message });
     }
-  });
+  }));
 
   router.post('/memories/:memoryId/archive', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);

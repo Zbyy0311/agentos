@@ -1,4 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import { getAgentCapability, resolveCommand, FORCE_MOCK } from '@agentos/agent-core';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import type { Workspace } from '@agentos/shared';
@@ -7,7 +8,7 @@ export function createAgentRoutes(workspaceManager: WorkspaceManager): Router {
   const router = Router();
 
   // List agents for a given workspace, using its per-workspace agent config
-  router.get('/:workspaceId/status', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/:workspaceId/status', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const workspace = workspaceManager.get(req.params.workspaceId);
       if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
@@ -17,10 +18,10 @@ export function createAgentRoutes(workspaceManager: WorkspaceManager): Router {
     } catch (err) {
       next(err);
     }
-  });
+  }));
 
   // Legacy: list global agents (no workspace context)
-  router.get('/status', async (_req: Request, res: Response, next: NextFunction) => {
+  router.get('/status', asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
     try {
       // Use the first workspace's agents if any exist, else fall back to empty
       const workspaces = workspaceManager.list();
@@ -33,7 +34,7 @@ export function createAgentRoutes(workspaceManager: WorkspaceManager): Router {
     } catch (err) {
       next(err);
     }
-  });
+  }));
 
   return router;
 }

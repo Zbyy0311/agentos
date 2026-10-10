@@ -312,6 +312,14 @@ export default function WorkspacePage() {
   const visibleActiveRunId = evidenceVisible && !directRunBlocked ? activeRunId : undefined;
   const visibleActiveStatus = evidenceVisible && !directRunBlocked ? activeStatus : undefined;
 
+  const resetConversationEvidence = useCallback(() => {
+    setMessages([]); setStreamingContent(''); setConversationRuns([]); setExecutions([]);
+    setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null);
+    setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setGroupInteraction(null); setGroupBudget(null); setGroupSpeakingAgentId(undefined); setGroupExecutionOwner(null);
+    setGroupDiscussionError(''); setAttachmentError(''); setValidationError(''); setError(''); setConnectionNotice(''); setRunDetails(null);
+  }, []);
+
   useEffect(() => {
     // Withdraw the previous owner's evidence before its replacement request
     // resolves. The render-time identity/generation gate covers this effect gap.
@@ -320,19 +328,14 @@ export default function WorkspacePage() {
     typewriterOwnerRef.current = null;
     setConversationEvidenceIdentityKey(activeDraftIdentityKey);
     setConversationEvidenceGeneration(activeScopeGenerationRef.current.generation);
-    setMessages([]); setStreamingContent(''); setConversationRuns([]); setExecutions([]);
-    setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null);
-    setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
-    setGroupInteraction(null); setGroupBudget(null); setGroupSpeakingAgentId(undefined);
-    setGroupExecutionOwner(null);
-    setGroupDiscussionError(''); setAttachmentError(''); setValidationError(''); setError(''); setConnectionNotice(''); setRunDetails(null);
+    resetConversationEvidence();
     for (const [key, operation] of activeSendRef.current) {
       if (key !== activeDraftIdentityKey) operation.observerController?.abort();
     }
     for (const [key, controller] of groupRecoveryObserverRef.current) {
       if (key !== activeDraftIdentityKey) { controller.abort(); groupRecoveryObserverRef.current.delete(key); }
     }
-  }, [activeDraftIdentityKey]);
+  }, [activeDraftIdentityKey, resetConversationEvidence]);
   useEffect(() => {
     const handleRunIntent = (event: Event) => {
       const value = (event as CustomEvent<RunIntent>).detail;
@@ -1109,10 +1112,10 @@ export default function WorkspacePage() {
       setSelectedDirectConversationId(conversation.id);
       setSelectedGroupId(null);
       router.replace(`/workspace/${encodeURIComponent(workspaceId)}?conversationSource=workspace&conversationId=${encodeURIComponent(conversation.id)}&view=chat`);
-      setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+      resetConversationEvidence();
     }
     return conversation;
-  }, [activeDraftIdentityKey, composerModel, composerThinkingEffort, draftIdentity, draftState.migrateTo, persistConversationSettings, request, router, selectedAgent, workspaceId]);
+  }, [activeDraftIdentityKey, composerModel, composerThinkingEffort, draftIdentity, draftState.migrateTo, persistConversationSettings, request, resetConversationEvidence, router, selectedAgent, workspaceId]);
 
   const openContextMenu = useCallback((conversationId: string, event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1666,12 +1669,11 @@ export default function WorkspacePage() {
       setGroups(current => [conversation, ...current.filter(item => item.id !== conversation.id)]);
       setSelectedGroupId(conversation.id); setSelectedAgentId(null); setWorkspaceView('chat'); setExecutionRunHint(undefined);
       setSelectedDirectConversationId(null);
-      setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
-      setGroupInteraction(null); setGroupBudget(null); setGroupDiscussionError('');
+      resetConversationEvidence(); setCreatingGroup(false);
       if (workspaceId) router.replace(`/workspace/${encodeURIComponent(workspaceId)}?conversationSource=runtime&conversationId=${encodeURIComponent(conversation.id)}&view=chat`);
     } catch (groupError) { notifyError(groupError, '创建群聊失败'); }
     finally { setSavingGroup(false); }
-  }, [notifyError, router, runtimeClient, workspaceId]);
+  }, [notifyError, resetConversationEvidence, router, runtimeClient, workspaceId]);
 
   const saveConversationTitle = useCallback(async (title: string) => {
     if (!workspaceId || !renamingConversation) return;
@@ -1743,15 +1745,15 @@ export default function WorkspacePage() {
       const nextId = conversation.type === 'group' ? getNextConversationId(groups, conversation.id) : getNextConversationId(conversations, conversation.id);
       if (conversation.type === 'group') {
         setGroups(current => current.filter(group => group.id !== conversation.id));
-        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); resetConversationEvidence(); }
       } else {
         setConversations(current => current.filter(item => item.id !== conversation.id));
-        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); resetConversationEvidence(); }
       }
       setContextMenu(null); setDeletingConversation(null); pushToast('success', '会话已删除');
     } catch (deleteError) { notifyError(deleteError, '删除会话失败'); }
     finally { setDeletingConversationId(null); }
-  }, [conversations, groups, notifyError, pushToast, request, runtimeClient, selectedDirectConversationId, selectedGroupId, workspaceId]);
+  }, [conversations, groups, notifyError, pushToast, request, resetConversationEvidence, runtimeClient, selectedDirectConversationId, selectedGroupId, workspaceId]);
 
   const selectGroup = useCallback((groupId: string, syncUrl = true) => {
     const group = groups.find(item => item.id === groupId);
@@ -1762,14 +1764,14 @@ export default function WorkspacePage() {
       return;
     }
     conversationLoadGenerationRef.current += 1;
-    setSelectedGroupId(groupId); setSelectedDirectConversationId(null); setSelectedAgentId(null); setWorkspaceView('chat'); setExecutionRunHint(undefined); setMessages([]); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setGroupInteraction(null); setGroupExecutionOwner(null); setGroupBudget(null); setGroupDiscussionError('');
+    setSelectedGroupId(groupId); setSelectedDirectConversationId(null); setSelectedAgentId(null); setWorkspaceView('chat'); setExecutionRunHint(undefined); resetConversationEvidence();
     setOverlayPanel(null);
     if (syncUrl && workspaceId) {
       const query = new URLSearchParams({ conversationId: groupId, view: 'chat' });
       query.set('conversationSource', 'runtime');
       router.push(`/workspace/${encodeURIComponent(workspaceId)}?${query.toString()}`);
     }
-  }, [groups, router, selectedGroupId, workspaceId]);
+  }, [groups, resetConversationEvidence, router, selectedGroupId, workspaceId]);
 
   useEffect(() => {
     if (!workspaceId || returnConversationSource !== 'runtime' || !returnConversationId || groups.length === 0) return;
@@ -1792,12 +1794,11 @@ export default function WorkspacePage() {
     conversationLoadGenerationRef.current += 1;
     setSelectedGroupId(null);
     setSelectedDirectConversationId(conversationId);
-    setMessages([]); setStreamingContent(''); setConversationRuns([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveRuntimeResult(null);
-    setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    resetConversationEvidence();
     setWorkspaceView('chat');
     setExecutionRunHint(undefined);
     if (workspaceId) router.push(`/workspace/${encodeURIComponent(workspaceId)}?conversationSource=workspace&conversationId=${encodeURIComponent(conversationId)}&view=chat`);
-  }, [router, workspaceId]);
+  }, [resetConversationEvidence, router, workspaceId]);
 
   const closeOverlayPanel = useCallback(() => {
     const panel = overlayPanel;

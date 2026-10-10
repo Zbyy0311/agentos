@@ -677,6 +677,7 @@ process.on('exit', (code) => {
 
 process.on('uncaughtException', (err) => {
   diagLog(`UNCAUGHT_EXCEPTION pid=${process.pid} instanceId=${serverInstanceId} error=${err.message} stack=${err.stack?.split('\n').slice(0, 6).join('|')}`);
+  requestRuntimeShutdown(1);
 });
 
 process.on('unhandledRejection', (reason) => {

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -33,7 +34,7 @@ export function createGitRoutes(
     return executeGit(root, args);
   }
 
-  router.get('/diff', async (req: Request, res: Response) => {
+  router.get('/diff', asyncHandler(async (req: Request, res: Response) => {
     try {
       const diff = await runGit(req.params.workspaceId, ['diff']);
       res.json({ diff: diff || '(no changes)' });
@@ -41,9 +42,9 @@ export function createGitRoutes(
       const message = err instanceof Error ? err.message : String(err);
       res.json({ diff: `(git diff failed: ${message})` });
     }
-  });
+  }));
 
-  router.get('/status', async (req: Request, res: Response) => {
+  router.get('/status', asyncHandler(async (req: Request, res: Response) => {
     try {
       const status = await runGit(req.params.workspaceId, ['status', '--short']);
       res.json({ status: status || '(clean)' });
@@ -51,9 +52,9 @@ export function createGitRoutes(
       const message = err instanceof Error ? err.message : String(err);
       res.json({ status: `(git status failed: ${message})` });
     }
-  });
+  }));
 
-  router.get('/log', async (req: Request, res: Response) => {
+  router.get('/log', asyncHandler(async (req: Request, res: Response) => {
     try {
       const log = await runGit(req.params.workspaceId, ['log', '--oneline', '-20']);
       res.json({ log });
@@ -61,7 +62,7 @@ export function createGitRoutes(
       const message = err instanceof Error ? err.message : String(err);
       res.json({ log: `(git log failed: ${message})` });
     }
-  });
+  }));
 
   return router;
 }

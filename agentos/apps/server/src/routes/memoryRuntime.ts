@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 import {
   MEMORY_CANDIDATE_OUTCOMES,
@@ -319,7 +320,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
 
   // Preparation only sees server-selected, eligible Entries. Caller-authored
   // text and foreign owners cannot warm a workspace's derived vector cache.
-  router.post('/memory/retrieve/prepare', async (req: Request, res: Response) => {
+  router.post('/memory/retrieve/prepare', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
@@ -352,7 +353,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         semantic: result.semantic ?? { degraded: false, reason: 'SEMANTIC_DISABLED', prepared: false, preparedEntryCount: 0 },
         eligibleCount: result.results.length });
     } catch (error) { fail(res, error); }
-  });
+  }));
 
   router.post('/memory/retrieve', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);

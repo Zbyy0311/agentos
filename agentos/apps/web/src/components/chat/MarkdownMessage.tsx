@@ -3,9 +3,25 @@
 import type { ComponentPropsWithoutRef } from 'react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light';
+import prismStyle from 'react-syntax-highlighter/dist/esm/styles/prism/prism';
+import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
+import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
+import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
+import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
+import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
+import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
 import remarkGfm from 'remark-gfm';
 import { DiffBlock } from './DiffBlock';
+
+SyntaxHighlighter.registerLanguage('typescript', typescript);
+SyntaxHighlighter.registerLanguage('tsx', tsx);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('python', python);
+SyntaxHighlighter.registerLanguage('sql', sql);
+SyntaxHighlighter.registerLanguage('yaml', yaml);
 
 interface MarkdownMessageProps {
   content: string;
@@ -54,7 +70,7 @@ function CodeBlockSurface({ language, value }: { language?: string; value: strin
       <span>{language ?? 'code'}</span>
       <button type="button" aria-pressed={wrapped} aria-label={wrapped ? '关闭代码换行' : '开启代码换行'} onClick={() => setWrapped(current => !current)} className="ui-button-ghost rounded px-1.5 py-0.5">{wrapped ? '滚动' : '换行'}</button>
     </div>
-    <SyntaxHighlighter language={language} PreTag="div" wrapLongLines={wrapped} customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', minWidth: 0, overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
+    <SyntaxHighlighter style={prismStyle} language={language} PreTag="div" wrapLongLines={wrapped} customStyle={{ margin: 0, borderRadius: 0, padding: '0.75rem', fontSize: '0.78rem', lineHeight: 1.55, background: 'var(--app-bg)', maxWidth: '100%', minWidth: 0, overflowX: wrapped ? 'hidden' : 'auto', whiteSpace: wrapped ? 'pre-wrap' : 'pre', overflowWrap: wrapped ? 'anywhere' : 'normal', wordBreak: wrapped ? 'break-word' : 'normal' }}>{value}</SyntaxHighlighter>
   </div>;
 }
 

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
+import { asyncHandler } from '../utils/asyncHandler.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import { RuntimeStorageService } from '../services/RuntimeStorageService.js';
@@ -26,13 +27,13 @@ export function createStorageRoutes(
   const previews = new Map<string, Preview>();
   const serviceFor = (id: string) => new RuntimeStorageService(`${projectRoot}/.agentos/artifacts/${id}`, DEFAULT_RUNTIME_STORAGE_POLICY);
 
-  router.get('/storage', async (req: Request, res: Response) => {
+  router.get('/storage', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     return res.json(await serviceFor(workspace.id).usage());
-  });
+  }));
 
-  router.post('/retention/preview', async (req: Request, res: Response) => {
+  router.post('/retention/preview', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const selection = parseSelection(req.body?.selection);
@@ -56,9 +57,9 @@ export function createStorageRoutes(
       bytes,
       automaticRunDeletion: false,
     });
-  });
+  }));
 
-  router.post('/retention/apply', async (req: Request, res: Response) => {
+  router.post('/retention/apply', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const token = req.body?.token;
@@ -76,7 +77,7 @@ export function createStorageRoutes(
     }
     const result = await artifactService.deleteRuns(workspace.id, selection);
     return res.json({ workspaceId: workspace.id, selection, deletedRuns: selection.length, ...result, dryRun: false });
-  });
+  }));
 
   return router;
 }

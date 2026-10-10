@@ -40,6 +40,7 @@ import {
 } from '@agentos/shared';
 import type { ConversationStatus } from '@agentos/shared';
 import { createProductionRecoveredProcessVerifier, isValidNativeBirthIdentity } from '@agentos/process-runtime';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 /**
  * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
@@ -259,7 +260,7 @@ export function createConversationRuntimeRoutes(
 
   // ---- Conversations ------------------------------------------------------
 
-  router.post('/conversations', async (req: Request, res: Response) => {
+  router.post('/conversations', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const body = req.body as Record<string, unknown>;
@@ -361,7 +362,7 @@ export function createConversationRuntimeRoutes(
     } catch (error) {
       fail(res, error);
     }
-  });
+  }));
 
   router.get('/conversations', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
@@ -431,7 +432,7 @@ export function createConversationRuntimeRoutes(
    * optimistic and transactional, so the next interaction sees either the old
    * set or the new set, never a partially edited group.
    */
-  router.patch('/conversations/:conversationId/members', async (req: Request, res: Response) => {
+  router.patch('/conversations/:conversationId/members', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
@@ -502,7 +503,7 @@ export function createConversationRuntimeRoutes(
     } catch (error) {
       fail(res, error);
     }
-  });
+  }));
 
   router.get('/conversations/:conversationId/turns', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
@@ -533,7 +534,7 @@ export function createConversationRuntimeRoutes(
    * Turn path runs, so it can never invent a different outcome, and it reports
    * the durable task state instead of a bare success.
    */
-  router.post('/conversations/:conversationId/compactions/retry', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/compactions/retry', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
@@ -568,7 +569,7 @@ export function createConversationRuntimeRoutes(
     } catch (error) {
       fail(res, error);
     }
-  });
+  }));
 
 
   router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
@@ -617,7 +618,7 @@ export function createConversationRuntimeRoutes(
    * durable command. A client message key converges on the same pair after a
    * retry, so the UI never starts a second discussion for one click.
    */
-  router.post('/conversations/:conversationId/discussions', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/discussions', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
@@ -688,7 +689,7 @@ export function createConversationRuntimeRoutes(
       }
       fail(res, error);
     }
-  });
+  }));
 
   // Durable streaming reconnect (CR-3): replay checkpoints after the client cursor.
   router.get('/conversations/:conversationId/messages/:messageId/checkpoints', (req: Request, res: Response) => {
@@ -810,7 +811,7 @@ export function createConversationRuntimeRoutes(
     });
   });
 
-  router.post('/interactions/:interactionId/recover', async (req: Request, res: Response) => {
+  router.post('/interactions/:interactionId/recover', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     if (!hasP2GroupRecoverySchema(store)) { res.status(409).json({ error: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
@@ -934,7 +935,7 @@ export function createConversationRuntimeRoutes(
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
       res.status(result.replayed ? 200 : 201).json(result);
     } catch (error) { fail(res, error); }
-  });
+  }));
 
   /** Read-only, cursor-based observation. Closing this response detaches only the observer. */
   router.get('/conversations/:conversationId/interactions/:interactionId/events', (req: Request, res: Response) => {
@@ -1042,7 +1043,7 @@ export function createConversationRuntimeRoutes(
    * `group.turn.start` / `checkpoint` / `group.turn.final|failed` chain per
    * speaker, and one `group.done`.
    */
-  router.post('/conversations/:conversationId/interactions/:interactionId/respond', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/interactions/:interactionId/respond', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
@@ -1205,7 +1206,7 @@ export function createConversationRuntimeRoutes(
       stopHeartbeat?.();
       res.end();
     }
-  });
+  }));
 
   /**
    * Send a user Message and stream the primary Agent member's reply as durable
@@ -1213,7 +1214,7 @@ export function createConversationRuntimeRoutes(
    * durable cursor; a reconnect replays from the checkpoints endpoint. A chat reply
    * creates no Task or Run; browser disconnect closes only the subscription.
    */
-  router.post('/conversations/:conversationId/messages/stream', async (req: Request, res: Response) => {
+  router.post('/conversations/:conversationId/messages/stream', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
@@ -1318,7 +1319,7 @@ export function createConversationRuntimeRoutes(
       stopHeartbeat();
       res.end();
     }
-  });
+  }));
 
 
   router.get('/agents/:agentId/history', (req: Request, res: Response) => {
