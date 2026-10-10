@@ -49,7 +49,7 @@ export function PreferencePanel({ workspaceId, onClose, onOpenRun }: PreferenceP
     finally { setBusyId(''); }
   };
 
-  return <div className={`fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`}>
+  return <div className={`ui-surface-enter fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`}>
     <div className="mx-auto flex h-full max-w-5xl flex-col">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>

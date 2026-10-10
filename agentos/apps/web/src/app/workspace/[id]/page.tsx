@@ -1006,7 +1006,7 @@ export default function WorkspacePage() {
   const renderMainContent = () => activeWorkspaceView === 'execution' ? renderLegacyExecutionPanel() : renderLegacyChatPanel();
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
-  if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
+  if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted"><span className="flex items-center gap-3"><span aria-hidden="true" className="ui-loading-spinner" />正在加载工作区…</span></div>;
 
   return <div ref={layoutRef} data-signal-workspace data-workspace-layout data-visible-conversation-identity={activeDraftIdentityKey ?? ''} className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
     {renderAgentPanel(effectiveLayout.workspaceMode === 'compact', effectiveLayout.workspaceMode === 'compact' ? WORKSPACE_LAYOUT_WIDTHS.compactRail : layoutPreferences.workspaceWidth)}

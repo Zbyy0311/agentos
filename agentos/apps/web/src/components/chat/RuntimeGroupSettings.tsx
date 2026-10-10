@@ -72,7 +72,7 @@ export function RuntimeGroupSettings(props: RuntimeGroupSettingsProps) {
   };
 
   return (
-    <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
+    <div className={`ui-overlay-enter fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
       <form
         role="dialog"
         aria-modal="true"

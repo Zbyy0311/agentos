@@ -688,7 +688,6 @@ input:focus-visible {
 .ui-confirm-dialog {
   position: relative;
   border-color: color-mix(in srgb, var(--app-danger) 26%, var(--app-border));
-  animation: ui-confirm-dialog-enter 160ms ease-out;
 }
 
 .ui-confirm-dialog-accent {
@@ -717,11 +716,6 @@ input:focus-visible {
 
 .ui-confirm-dialog-spinner {
   animation: ui-confirm-dialog-spin 700ms linear infinite;
-}
-
-@keyframes ui-confirm-dialog-enter {
-  from { opacity: 0; transform: translateY(0.45rem) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes ui-confirm-dialog-spin {
@@ -1303,6 +1297,166 @@ body.resizing-panels {
 
   .signal-composer .run-mode-trigger {
     min-width: 0;
+  }
+}
+
+/* ---- Motion layer -------------------------------------------------------
+   One shared, subtle entrance vocabulary for overlays, dialogs, drawers,
+   messages and loading placeholders. Everything here is transform/opacity
+   only, so entrances never affect layout or scroll restoration, and the
+   global prefers-reduced-motion rule at the end collapses it all. */
+
+@keyframes ui-overlay-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-dialog-enter {
+  from { opacity: 0; transform: translateY(0.5rem) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-surface-enter {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-rise {
+  from { opacity: 0; transform: translateY(0.6rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-message-enter {
+  from { opacity: 0; transform: translateY(0.4rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-panel-slide-left {
+  from { opacity: 0; transform: translateX(-1.25rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-panel-slide-right {
+  from { opacity: 0; transform: translateX(1.25rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Modal overlay: the dimmed/blurred container fades in, its direct child
+   (the dialog panel) pops. Applied to every fixed full-screen modal layer. */
+.ui-overlay-enter {
+  animation: ui-overlay-fade 160ms ease-out both;
+}
+
+.ui-overlay-enter > * {
+  animation: ui-dialog-enter 180ms ease-out both;
+}
+
+/* Full-screen surfaces (memory / preference panels) rise gently as a whole. */
+.ui-surface-enter {
+  animation: ui-surface-enter 220ms ease-out both;
+}
+
+/* Slide-over drawer on narrow layouts: backdrop fades, the panel slides in
+   from the side it is docked to. */
+.workspace-panel-overlay-backdrop {
+  animation: ui-overlay-fade 160ms ease-out both;
+}
+
+.workspace-panel-overlay-panel {
+  animation: ui-panel-slide-left 200ms ease-out both;
+}
+
+.workspace-panel-overlay-inspector .workspace-panel-overlay-panel {
+  animation-name: ui-panel-slide-right;
+}
+
+/* Message rows fade up on mount. Scoped to direct children of the message
+   column so virtualized history (>100 messages, nested inside its own
+   wrapper) stays perfectly still while scrolling. */
+.message-content-column > .signal-message-row {
+  animation: ui-message-enter 200ms ease-out both;
+}
+
+/* Sidebar width changes (collapse toggles, focus mode, keyboard resize)
+   glide; an active pointer drag pins widths to the cursor instead. */
+.workspace-sidebar,
+.history-sidebar,
+.inspector-sidebar {
+  transition: width 220ms ease;
+}
+
+body.resizing-panels .workspace-sidebar,
+body.resizing-panels .history-sidebar,
+body.resizing-panels .inspector-sidebar {
+  transition: none;
+}
+
+/* Home entrance: hero first, then the panel, then rows with a short stagger. */
+.signal-hero-copy {
+  animation: ui-rise 260ms ease-out both;
+}
+
+.signal-hero-rail {
+  animation: ui-rise 260ms ease-out 60ms both;
+}
+
+.signal-panel {
+  animation: ui-rise 300ms ease-out 110ms both;
+}
+
+.signal-workspace-row {
+  animation: ui-rise 240ms ease-out both;
+}
+
+.signal-workspace-row:nth-child(2) { animation-delay: 45ms; }
+.signal-workspace-row:nth-child(3) { animation-delay: 90ms; }
+.signal-workspace-row:nth-child(4) { animation-delay: 135ms; }
+.signal-workspace-row:nth-child(n+5) { animation-delay: 180ms; }
+
+/* Loading placeholders. */
+.ui-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--app-surface-soft) 70%, transparent);
+}
+
+.ui-skeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--app-text) 6%, transparent), transparent);
+  content: '';
+  transform: translateX(-100%);
+  animation: ui-shimmer 1.4s ease-in-out infinite;
+}
+
+.ui-loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid color-mix(in srgb, var(--app-accent) 30%, transparent);
+  border-top-color: var(--app-accent);
+  border-radius: 999px;
+  animation: ui-spin 700ms linear infinite;
+}
+
+/* Theme switching: colors are CSS variables, so smoothing the toggle means
+   transitioning them everywhere for a brief window. Scoped to no-preference:
+   the higher-specificity !important here would otherwise beat the global
+   reduced-motion fallback below. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-animating,
+  html.theme-animating *,
+  html.theme-animating *::before,
+  html.theme-animating *::after {
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease !important;
   }
 }
 
