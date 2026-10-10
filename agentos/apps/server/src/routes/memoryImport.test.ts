@@ -85,7 +85,7 @@ test('S7 route: oversize and malformed input fail with stable status codes', asy
   await withServer(async base => {
     const oversize = await post(`${base}/memory/import/preview`, { fileName: 'big.md', content: 'a'.repeat(1024 * 1024 + 1) });
     assert.equal(oversize.status, 413);
-    assert.equal(((await oversize.json()) as { error: string }).error, 'IMPORT_TOO_LARGE');
+    assert.equal(((await oversize.json()) as { code: string }).code, 'IMPORT_TOO_LARGE');
     const malformed = await post(`${base}/memory/import/preview`, { fileName: 'x.md' });
     assert.equal(malformed.status, 400);
     const missingWorkspace = await fetch(`http://127.0.0.1:1/api/workspaces/nope/memory/imports`).catch(() => undefined);

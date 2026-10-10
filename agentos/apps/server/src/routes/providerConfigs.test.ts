@@ -161,9 +161,9 @@ test('provider POST validates enums, duplicate names, and forbidden secret field
     for (const field of ['apiKey', 'password', 'token', 'secretValue', 'credentialValue']) {
       const response = await post(baseA, { name: `Secret ${field}`, [field]: 'should-be-rejected' });
       assert.equal(response.status, 400, `expected 400 for secret field ${field}`);
-      const parsed = await response.json() as { code?: string; error?: string };
+      const parsed = await response.json() as { code?: string; detail?: string };
       assert.equal(parsed.code, 'SECRET_VALUE_NOT_ALLOWED');
-      assert.equal(parsed.error, 'Raw secret values are not accepted; use secretProfileId');
+      assert.equal(parsed.detail, 'Raw secret values are not accepted; use secretProfileId');
       assertSanitizedErrorBody(parsed, `POST secret field ${field}`);
     }
 
@@ -239,9 +239,9 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
     // 7. Forbidden secret value field -> 400 SECRET_VALUE_NOT_ALLOWED
     const secretResponse = await put(baseA, first.id, { credentialValue: 'nope', expectedVersion: afterSelfRename.version });
     assert.equal(secretResponse.status, 400);
-    const secretBody = await secretResponse.json() as { code?: string; error?: string };
+    const secretBody = await secretResponse.json() as { code?: string; detail?: string };
     assert.equal(secretBody.code, 'SECRET_VALUE_NOT_ALLOWED');
-    assert.equal(secretBody.error, 'Raw secret values are not accepted; use secretProfileId');
+    assert.equal(secretBody.detail, 'Raw secret values are not accepted; use secretProfileId');
     assertSanitizedErrorBody(secretBody, 'PUT secret field');
 
     // 8. expectedVersion semantics preserved: missing -> 400, stale -> 409

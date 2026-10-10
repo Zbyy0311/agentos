@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getAgentCapability, resolveCommand, FORCE_MOCK } from '@agentos/agent-core';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import type { Workspace } from '@agentos/shared';
 
 export function createAgentRoutes(workspaceManager: WorkspaceManager): Router {
@@ -11,7 +12,10 @@ export function createAgentRoutes(workspaceManager: WorkspaceManager): Router {
   router.get('/:workspaceId/status', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const workspace = workspaceManager.get(req.params.workspaceId);
-      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+      if (!workspace) {
+        sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+        return;
+      }
 
       const agents = await buildAgentList(workspace);
       res.json({ agents, workspaceId: workspace.id });

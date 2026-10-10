@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
 export function createArtifactRoutes(
@@ -12,16 +13,24 @@ export function createArtifactRoutes(
 
   router.get('/artifacts/:artifactId/content', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     let record;
     try {
       record = artifactService.getContentRecord(workspace.id, req.params.artifactId);
     } catch {
-      return res.status(403).json({ error: 'Artifact content path is invalid' });
+      sendProblem(req, res, { status: 403, code: 'ARTIFACT_CONTENT_PATH_INVALID', detail: 'Artifact content path is invalid' });
+      return;
     }
-    if (!record) return res.status(404).json({ error: 'Artifact not found' });
+    if (!record) {
+      sendProblem(req, res, { status: 404, code: 'ARTIFACT_NOT_FOUND', detail: 'Artifact not found' });
+      return;
+    }
     if (!record.record.artifact.contentAvailable || !record.path) {
-      return res.status(409).json({ error: 'Artifact content is metadata-only' });
+      sendProblem(req, res, { status: 409, code: 'ARTIFACT_CONTENT_METADATA_ONLY', detail: 'Artifact content is metadata-only' });
+      return;
     }
     const artifact = record.record.artifact;
     const inline = artifact.type === 'image' || artifact.type === 'diff' || artifact.type === 'report' || artifact.type === 'log'
@@ -32,7 +41,9 @@ export function createArtifactRoutes(
     res.setHeader('Content-Type', safeMimeType(artifact.mimeType ?? undefined, artifact.type));
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeFilename(artifact.title)}"`);
     return res.sendFile(record.path, error => {
-      if (error && !res.headersSent) res.status(404).json({ error: 'Artifact content not found' });
+      if (error && !res.headersSent) {
+        sendProblem(req, res, { status: 404, code: 'ARTIFACT_CONTENT_NOT_FOUND', detail: 'Artifact content not found' });
+      }
     });
   });
 

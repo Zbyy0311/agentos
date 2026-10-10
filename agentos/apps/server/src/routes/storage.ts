@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import { RuntimeStorageService } from '../services/RuntimeStorageService.js';
 import { DEFAULT_RUNTIME_STORAGE_POLICY } from '../services/RuntimeEventBuffer.js';
@@ -29,18 +30,28 @@ export function createStorageRoutes(
 
   router.get('/storage', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     return res.json(await serviceFor(workspace.id).usage());
   }));
 
   router.post('/retention/preview', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const selection = parseSelection(req.body?.selection);
-    if (!selection) return res.status(400).json({ error: 'selection must be an array of run ids' });
+    if (!selection) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'selection must be an array of run ids' });
+      return;
+    }
     const selectedRuns = store ? selection.map(runId => store.getRun(workspace.id, runId)) : [];
     if (store && selectedRuns.some(run => !run || !TERMINAL_RUN_STATUSES.has(run.status))) {
-      return res.status(409).json({ error: 'only terminal runs in this workspace can be retained' });
+      sendProblem(req, res, { status: 409, code: 'RETENTION_RUNS_NOT_TERMINAL', detail: 'only terminal runs in this workspace can be retained' });
+      return;
     }
     const bytes = store
       ? selectedRuns.reduce((sum, run) => sum + (run ? store.listRuntimeArtifacts(workspace.id, run.id).reduce((total, artifact) => total + artifact.sizeBytes, 0) : 0), 0)
@@ -61,15 +72,20 @@ export function createStorageRoutes(
 
   router.post('/retention/apply', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const token = req.body?.token;
     const preview = typeof token === 'string' ? previews.get(token) : undefined;
     if (!preview || preview.workspaceId !== workspace.id || preview.expiresAt < Date.now()) {
-      return res.status(409).json({ error: 'valid retention preview token is required' });
+      sendProblem(req, res, { status: 409, code: 'RETENTION_PREVIEW_TOKEN_INVALID', detail: 'valid retention preview token is required' });
+      return;
     }
     const selection = parseSelection(req.body?.selection);
     if (!selection || hashSelection(selection) !== preview.selectionHash) {
-      return res.status(409).json({ error: 'retention selection does not match preview' });
+      sendProblem(req, res, { status: 409, code: 'RETENTION_SELECTION_MISMATCH', detail: 'retention selection does not match preview' });
+      return;
     }
     previews.delete(token);
     if (!store || !artifactService) {

@@ -15,6 +15,7 @@ import type { PreferenceLearningService } from '../services/ConversationService.
 import { RunDecisionService } from '../services/RunDecisionService.js';
 import type { WorktreeManager } from '../services/WorktreeManager.js';
 import { parseGroupMemberSettings, validateRuntimeOverrides, withAgentCapability } from '../services/AgentCapabilityService.js';
+import { sendProblem } from '../problemDetails.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 export function createConversationRoutes(
@@ -48,20 +49,30 @@ export function createConversationRoutes(
 
   router.get('/agents', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     try {
       const agents = await Promise.all(store.listAgentProfiles(workspace.id).map(agent => withAgentCapability(agent, modelDiscovery)));
       res.json({ agents, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      console.error('[conversations] list agents failed', error);
+      sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
     }
   }));
 
   router.patch('/agents/:agentId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const current = store.listAgentProfiles(workspace.id).find(agent => agent.id === req.params.agentId);
-    if (!current) return res.status(404).json({ error: 'Agent not found' });
+    if (!current) {
+      sendProblem(req, res, { status: 404, code: 'AGENT_NOT_FOUND', detail: 'Agent not found' });
+      return;
+    }
     const body = req.body as Record<string, unknown>;
     const permissions = Array.isArray(body.permissions) && body.permissions.every(value => value === 'read' || value === 'write' || value === 'review')
       ? body.permissions as Array<'read' | 'write' | 'review'>
@@ -70,14 +81,14 @@ export function createConversationRoutes(
       ? current.thinkingEffort ?? 'auto'
       : body.thinkingEffort;
     if (!isThinkingEffort(thinkingEffort)) {
-      return res.status(400).json({ error: 'thinkingEffort must be auto, low, medium, high, or max' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'thinkingEffort must be auto, low, medium, high, or max' }); return;
     }
     const nextModel = typeof body.model === 'string' ? body.model.trim() || undefined : current.model;
     const provider = body.provider === undefined
       ? current.provider
       : isAgentProvider(body.provider) ? body.provider : undefined;
     if (body.provider !== undefined && !provider) {
-      return res.status(400).json({ error: 'provider must be codex, kimi, opencode, mimo, or custom' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'provider must be codex, kimi, opencode, mimo, or custom' }); return;
     }
     try {
       // Validate the selected model against the same live capability metadata
@@ -100,25 +111,35 @@ export function createConversationRoutes(
       });
       res.json({ agent: await withAgentCapability(agent, modelDiscovery) });
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
 
   router.post('/agents/:agentId/models/refresh', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const current = store.listAgentProfiles(workspace.id).find(agent => agent.id === req.params.agentId);
-    if (!current) return res.status(404).json({ error: 'Agent not found' });
+    if (!current) {
+      sendProblem(req, res, { status: 404, code: 'AGENT_NOT_FOUND', detail: 'Agent not found' });
+      return;
+    }
     try {
       res.json({ agent: await withAgentCapability(current, modelDiscovery, true) });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      console.error('[conversations] refresh agent models failed', error);
+      sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
     }
   }));
 
   router.get('/conversations', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const agentId = typeof req.query.agentId === 'string' ? req.query.agentId : undefined;
     const conversations = store.listConversations(workspace.id)
       .filter(conversation => !agentId || conversation.agentId === agentId);
@@ -127,7 +148,10 @@ export function createConversationRoutes(
 
   router.post('/conversations', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const { agentId, title, type, memberAgentIds, leaderAgentId: rawLeaderAgentId, members: rawMembers, dispatchMode: rawDispatchMode } = req.body as {
       agentId?: unknown; title?: unknown; type?: unknown; memberAgentIds?: unknown; leaderAgentId?: unknown;
       members?: unknown; dispatchMode?: unknown;
@@ -135,24 +159,30 @@ export function createConversationRoutes(
     if (type === 'group') {
       const explicitMembers = parseGroupMembers(rawMembers);
       if (rawMembers !== undefined && explicitMembers === undefined) {
-        return res.status(400).json({ error: 'members must contain at least two valid group members' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'members must contain at least two valid group members' }); return;
       }
       const legacyIds = Array.isArray(memberAgentIds) && memberAgentIds.every(id => typeof id === 'string') ? memberAgentIds as string[] : undefined;
       const ids = explicitMembers?.map(member => member.agentId) ?? legacyIds;
       const leader = explicitMembers?.find(member => member.roleKind === 'leader')?.agentId
         ?? (typeof rawLeaderAgentId === 'string' ? rawLeaderAgentId : undefined);
       if (!ids || ids.length < 2 || !leader) {
-        return res.status(400).json({ error: 'Group requires at least two members and exactly one leader' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Group requires at least two members and exactly one leader' }); return;
       }
       const uniqueIds = [...new Set(ids)];
       if (uniqueIds.length !== ids.length || !uniqueIds.includes(leader)) {
-        return res.status(400).json({ error: 'Group members must be unique and include the leader' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Group members must be unique and include the leader' }); return;
       }
       const dispatchMode = rawDispatchMode === undefined ? (explicitMembers ? 'leader_route' : 'full_pipeline') : parseDispatchMode(rawDispatchMode);
-      if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+      if (!dispatchMode) {
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+        return;
+      }
       const leaderAgentId = leader;
       const profiles = new Map(store.listAgentProfiles(workspace.id).filter(profile => profile.enabled).map(profile => [profile.id, profile]));
-      if (uniqueIds.some(id => !profiles.has(id))) return res.status(400).json({ error: 'Group member is unavailable' });
+      if (uniqueIds.some(id => !profiles.has(id))) {
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Group member is unavailable' });
+        return;
+      }
       const now = new Date().toISOString();
       const conversation: Conversation = {
         id: randomUUID(), workspaceId: workspace.id, type: 'group',
@@ -182,14 +212,20 @@ export function createConversationRoutes(
         await validateGroupMemberRuntimeSettings(profiles, configuredMembers, modelDiscovery);
         store.createGroupConversation(conversation, configuredMembers);
       } catch (error) {
-        return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) }); return;
       }
       return res.status(201).json({ conversation, members: store.listConversationMembers(workspace.id, conversation.id) });
     }
-    if (!agentId || typeof agentId !== 'string') return res.status(400).json({ error: 'agentId is required' });
+    if (!agentId || typeof agentId !== 'string') {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'agentId is required' });
+      return;
+    }
 
     const agent = store.listAgentProfiles(workspace.id).find(profile => profile.id === agentId && profile.enabled);
-    if (!agent) return res.status(400).json({ error: 'Agent is unavailable' });
+    if (!agent) {
+      sendProblem(req, res, { status: 400, code: 'AGENT_UNAVAILABLE', detail: 'Agent is unavailable' });
+      return;
+    }
 
     const now = new Date().toISOString();
     const conversation: Conversation = {
@@ -207,14 +243,23 @@ export function createConversationRoutes(
 
   router.patch('/conversations/:conversationId/settings', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
     if (conversation.type !== 'direct' || !conversation.agentId) {
-      return res.status(400).json({ error: 'Only direct conversations support model settings' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Only direct conversations support model settings' }); return;
     }
     const agent = store.listAgentProfiles(workspace.id).find(profile => profile.id === conversation.agentId && profile.enabled);
-    if (!agent) return res.status(400).json({ error: 'Conversation agent is unavailable' });
+    if (!agent) {
+      sendProblem(req, res, { status: 400, code: 'AGENT_UNAVAILABLE', detail: 'Conversation agent is unavailable' });
+      return;
+    }
     try {
       const body = req.body as Record<string, unknown>;
       const model = body.model === undefined
@@ -239,60 +284,99 @@ export function createConversationRoutes(
       });
       res.json({ conversation: updated });
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
 
   router.get('/conversations/:conversationId/members', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-    if (conversation.type !== 'group') return res.status(400).json({ error: 'Only group conversations have members' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
+    if (conversation.type !== 'group') {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Only group conversations have members' });
+      return;
+    }
     res.json({ conversation, members: store.listConversationMembers(workspace.id, conversation.id) });
   });
 
   router.get('/conversations/:conversationId/runs/:runId/decision', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run || run.conversationId !== req.params.conversationId) return res.status(404).json({ error: 'Run not found' });
+    if (!run || run.conversationId !== req.params.conversationId) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
     res.json({ decision: runDecisionService.get(workspace.id, run.id) ?? null });
   });
 
   router.post('/conversations/:conversationId/runs/:runId/decisions/:decisionId/resolve', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run || run.conversationId !== req.params.conversationId) return res.status(404).json({ error: 'Run not found' });
+    if (!run || run.conversationId !== req.params.conversationId) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
     const decision = (req.body as { decision?: unknown }).decision;
-    if (decision !== 'keep_and_continue' && decision !== 'retry_current' && decision !== 'abort') return res.status(400).json({ error: 'decision is invalid' });
+    if (decision !== 'keep_and_continue' && decision !== 'retry_current' && decision !== 'abort') {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'decision is invalid' });
+      return;
+    }
     try {
       const resolved = runDecisionService.resolve(workspace.id, req.params.decisionId, decision as PartialWriteDecision);
-      if (resolved.runId !== run.id) return res.status(404).json({ error: 'Decision not found for run' });
+      if (resolved.runId !== run.id) {
+        sendProblem(req, res, { status: 404, code: 'DECISION_NOT_FOUND', detail: 'Decision not found for run' });
+        return;
+      }
       if (decision === 'abort') store.updateRun(workspace.id, run.id, { status: 'cancelled', completedAt: new Date().toISOString(), failureReason: 'User aborted after partial write failure' });
       else if (run.status === 'waiting_user') store.updateRun(workspace.id, run.id, { status: 'running', waitingQuestion: undefined, waitingExecutionId: undefined, waitingAgentId: undefined, completedAt: undefined });
       res.json({ decision: resolved, run: store.getRun(workspace.id, run.id) });
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   });
 
   router.patch('/conversations/:conversationId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const body = req.body as Record<string, unknown>;
     try {
       const current = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-      if (!current) return res.status(404).json({ error: 'Conversation not found' });
+      if (!current) {
+        sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+        return;
+      }
       let conversation = current;
       if (body.title !== undefined) {
-        if (typeof body.title !== 'string') return res.status(400).json({ error: 'title must be a string' });
+        if (typeof body.title !== 'string') {
+          sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'title must be a string' });
+          return;
+        }
         conversation = store.updateConversationTitle(workspace.id, req.params.conversationId, body.title);
       }
       if (current.type === 'group' && (body.members !== undefined || body.dispatchMode !== undefined)) {
         const parsedMembers = parseGroupMembers(body.members);
-        if (!parsedMembers) return res.status(400).json({ error: 'members must define at least two explicit roles' });
+        if (!parsedMembers) {
+          sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'members must define at least two explicit roles' });
+          return;
+        }
         const now = new Date().toISOString();
         const members: ConversationMember[] = parsedMembers.map((member, index) => ({
           conversationId: current.id,
@@ -307,11 +391,14 @@ export function createConversationRoutes(
           ...(member.additionalInstructions === undefined ? {} : { additionalInstructions: member.additionalInstructions }),
         }));
         const dispatchMode = body.dispatchMode === undefined ? (current.dispatchMode ?? 'leader_route') : parseDispatchMode(body.dispatchMode);
-        if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+        if (!dispatchMode) {
+          sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+          return;
+        }
         await validateGroupMemberRuntimeSettings(new Map(store.listAgentProfiles(workspace.id).filter(profile => profile.enabled).map(profile => [profile.id, profile])), members, modelDiscovery);
         const expectedSettingsVersion = body.expectedSettingsVersion === undefined ? undefined : body.expectedSettingsVersion;
         if (expectedSettingsVersion !== undefined && (typeof expectedSettingsVersion !== 'number' || !Number.isSafeInteger(expectedSettingsVersion))) {
-          return res.status(400).json({ error: 'expectedSettingsVersion must be an integer' });
+          sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedSettingsVersion must be an integer' }); return;
         }
         const updated = store.updateGroupConversation(workspace.id, current.id, { members, dispatchMode, expectedSettingsVersion });
         conversation = updated.conversation;
@@ -320,13 +407,17 @@ export function createConversationRoutes(
       res.json({ conversation });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      res.status(message.includes('settings version conflict') ? 409 : 400).json({ error: message });
+      const conflict = message.includes('settings version conflict');
+      sendProblem(req, res, { status: conflict ? 409 : 400, code: conflict ? 'SETTINGS_VERSION_CONFLICT' : 'VALIDATION_FAILED', detail: message });
     }
   }));
 
   router.delete('/conversations/:conversationId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     try {
       const attachments = store.listConversationAttachments(workspace.id, req.params.conversationId);
       await artifactService?.cleanupConversation(workspace.id, req.params.conversationId);
@@ -335,21 +426,27 @@ export function createConversationRoutes(
       res.json({ conversationId: req.params.conversationId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const status = message === 'Conversation not found' || message === 'Conversation not found in workspace' ? 404 : 400;
-      res.status(status).json({ error: message });
+      const missing = message === 'Conversation not found' || message === 'Conversation not found in workspace';
+      sendProblem(req, res, { status: missing ? 404 : 400, code: missing ? 'CONVERSATION_NOT_FOUND' : 'CONVERSATION_DELETE_FAILED', detail: message });
     }
   }));
 
   router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const limit = parseLimit(req.query.limit);
     res.json({ messages: store.listMessages(workspace.id, req.params.conversationId, limit) });
   });
 
   router.get('/conversations/:conversationId/executions', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const executions = store.listExecutions(workspace.id, req.params.conversationId)
       .map(execution => ({ ...execution, events: store.listExecutionEvents(workspace.id, execution.id) }));
     res.json({ executions });
@@ -357,59 +454,86 @@ export function createConversationRoutes(
 
   router.get('/attachments/:attachmentId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const attachment = store.getAttachment(workspace.id, req.params.attachmentId);
-    if (!attachment) return res.status(404).json({ error: 'Attachment not found' });
+    if (!attachment) {
+      sendProblem(req, res, { status: 404, code: 'ATTACHMENT_NOT_FOUND', detail: 'Attachment not found' });
+      return;
+    }
     try {
       res.sendFile(getAttachmentAbsolutePath(workspace.rootPath, attachment.relativePath), { headers: { 'Cache-Control': 'private, max-age=3600' } }, error => {
-        if (error && !res.headersSent) res.status(404).json({ error: 'Attachment file not found' });
+        if (error && !res.headersSent) sendProblem(req, res, { status: 404, code: 'ATTACHMENT_FILE_NOT_FOUND', detail: 'Attachment file not found' });
       });
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   });
 
   router.post('/conversations/:conversationId/messages/stream', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const body = req.body as Record<string, unknown>;
     const content = typeof body.content === 'string' ? body.content : '';
     const intent = parseRunIntent(body.intent);
-    if (!intent) return res.status(400).json({ error: 'intent must be ask, execute, or review' });
+    if (!intent) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'intent must be ask, execute, or review' });
+      return;
+    }
     const mentionedAgentIds = parseMentionedAgentIds(body.mentionedAgentIds);
-    if (!mentionedAgentIds) return res.status(400).json({ error: 'mentionedAgentIds must be an array of agent ids' });
+    if (!mentionedAgentIds) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'mentionedAgentIds must be an array of agent ids' });
+      return;
+    }
     let attachments: ConversationAttachmentInput[];
     try {
       attachments = parseConversationAttachmentInputs(body.attachments);
       validateConversationAttachmentInputs(attachments);
     } catch (error) {
-      return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) }); return;
     }
-    if (!content.trim() && attachments.length === 0) return res.status(400).json({ error: 'content or image attachment is required' });
+    if (!content.trim() && attachments.length === 0) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content or image attachment is required' });
+      return;
+    }
 
     const conversation = store.listConversations(workspace.id)
       .find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-    if (conversation.type === 'direct' && !conversation.agentId) return res.status(404).json({ error: 'Direct conversation not found' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
+    if (conversation.type === 'direct' && !conversation.agentId) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Direct conversation not found' });
+      return;
+    }
     if (conversation.type === 'group') {
-      return res.status(409).json({ error: 'GROUP_DISCUSSION_REQUIRED' });
+      sendProblem(req, res, { status: 409, code: 'GROUP_DISCUSSION_REQUIRED', detail: 'GROUP_DISCUSSION_REQUIRED' }); return;
     }
 
     let runtimeOverrides: Pick<AgentProfile, 'model' | 'thinkingEffort'> | undefined;
     if (conversation.type === 'direct') {
       try {
         const agent = store.listAgentProfiles(workspace.id).find(item => item.id === conversation.agentId && item.enabled);
-        if (!agent) return res.status(400).json({ error: 'Agent is unavailable' });
+        if (!agent) {
+          sendProblem(req, res, { status: 400, code: 'AGENT_UNAVAILABLE', detail: 'Agent is unavailable' });
+          return;
+        }
         const capableAgent = await withAgentCapability(agent, modelDiscovery);
         try {
           if (intent !== 'execute') assertRuntimePolicySupported(resolveRuntimePolicy(intent, capableAgent), process.env.AGENTOS_FORCE_MOCK === 'true');
         } catch (error) {
-          return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+          sendProblem(req, res, { status: 409, code: 'RUNTIME_POLICY_UNSUPPORTED', detail: error instanceof Error ? error.message : String(error) }); return;
         }
         runtimeOverrides = parseRuntimeOverrides(req.body as Record<string, unknown>);
         validateRuntimeOverrides(capableAgent, runtimeOverrides);
       } catch (error) {
-        return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) }); return;
       }
     }
     res.writeHead(200, {
@@ -491,12 +615,24 @@ export function createConversationRoutes(
 
   router.get('/conversations/:conversationId/runs/:runId/stream', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
-    if (!runStreams.has(run.id)) return res.status(503).json({ error: 'Run stream is no longer available' });
+    if (!run || run.conversationId !== conversation.id) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
+    if (!runStreams.has(run.id)) {
+      sendProblem(req, res, { status: 503, code: 'RUN_STREAM_UNAVAILABLE', detail: 'Run stream is no longer available' });
+      return;
+    }
 
     const cursor = parseStreamCursor(req.query.cursor);
     res.writeHead(200, {
@@ -524,25 +660,52 @@ export function createConversationRoutes(
 
   router.post('/conversations/:conversationId/runs/:runId/cancel', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
-    if (!runStreams.cancel(run.id)) return res.status(409).json({ error: 'Run is no longer active' });
+    if (!run || run.conversationId !== conversation.id) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
+    if (!runStreams.cancel(run.id)) {
+      sendProblem(req, res, { status: 409, code: 'RUN_NOT_ACTIVE', detail: 'Run is no longer active' });
+      return;
+    }
     res.json({ runId: run.id, cancelled: true });
   });
 
   router.post('/conversations/:conversationId/runs/:runId/resume/stream', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
     const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
-    if (!content) return res.status(400).json({ error: '补充信息不能为空' });
+    if (!content) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: '补充信息不能为空' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
-    if (run.status !== 'waiting_user') return res.status(409).json({ error: 'Run is not waiting for user input' });
+    if (!run || run.conversationId !== conversation.id) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
+    if (run.status !== 'waiting_user') {
+      sendProblem(req, res, { status: 409, code: 'RUN_NOT_WAITING', detail: 'Run is not waiting for user input' });
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',

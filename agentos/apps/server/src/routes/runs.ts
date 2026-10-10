@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { AgentRunDetails, RuntimeArtifact } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
 export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
@@ -8,19 +9,34 @@ export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceM
 
   router.get('/runs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const conversationId = typeof req.query.conversationId === 'string' ? req.query.conversationId : '';
-    if (!conversationId) return res.status(400).json({ error: 'conversationId is required' });
+    if (!conversationId) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'conversationId is required' });
+      return;
+    }
     res.json({ runs: store.listRuns(workspace.id, conversationId, parseRunLimit(req.query.limit)) });
   });
 
   router.get('/runs/:runId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     const run = store.getRun(workspace.id, req.params.runId);
-    if (!run) return res.status(404).json({ error: 'Run not found' });
+    if (!run) {
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
+      return;
+    }
     const sourceMessage = store.getMessage(workspace.id, run.sourceMessageId);
-    if (!sourceMessage) return res.status(404).json({ error: 'Run source message not found' });
+    if (!sourceMessage) {
+      sendProblem(req, res, { status: 404, code: 'RUN_SOURCE_MESSAGE_NOT_FOUND', detail: 'Run source message not found' });
+      return;
+    }
     const details: AgentRunDetails = {
       run,
       sourceMessage,

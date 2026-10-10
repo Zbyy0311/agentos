@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { RuntimeApprovalGate, RuntimeApprovalGateError, type RuntimeApprovalDecision } from '../services/RuntimeApprovalGate.js';
 import { RuntimeApprovalRepositoryError } from '../store/RuntimeApprovalRepository.js';
 
@@ -13,7 +14,7 @@ export function createRuntimeApprovalRoutes(
   const router = Router({ mergeParams: true });
   router.use((req: Request, res: Response, next) => {
     if (!workspaceManager.get(req.params.workspaceId)) {
-      res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'WORKSPACE_NOT_FOUND' });
       return;
     }
     next();
@@ -26,7 +27,7 @@ export function createRuntimeApprovalRoutes(
   router.get('/runtime-approvals/:requestId', (req: Request, res: Response) => {
     const request = gate.list(req.params.workspaceId).find(item => item.id === req.params.requestId);
     if (!request) {
-      res.status(404).json({ error: 'RUNTIME_APPROVAL_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'RUNTIME_APPROVAL_NOT_FOUND', detail: 'RUNTIME_APPROVAL_NOT_FOUND' });
       return;
     }
     res.json({ request });
@@ -39,7 +40,7 @@ export function createRuntimeApprovalRoutes(
     const decidedBy = body.decidedBy;
     if ((decision !== 'approve_once' && decision !== 'reject') ||
       !Number.isSafeInteger(expectedVersion) || typeof decidedBy !== 'string' || decidedBy.trim() === '') {
-      res.status(400).json({ error: 'RUNTIME_APPROVAL_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'RUNTIME_APPROVAL_INPUT_INVALID', detail: 'RUNTIME_APPROVAL_INPUT_INVALID' });
       return;
     }
     try {
@@ -60,7 +61,12 @@ export function createRuntimeApprovalRoutes(
         : error instanceof RuntimeApprovalRepositoryError
           ? error.code === 'NOT_FOUND' ? 404 : error.code === 'CONFLICT' ? 409 : 400
           : 500;
-      res.status(status).json({ error: error instanceof Error ? error.message : String(error) });
+      if (status === 500) {
+        sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
+        return;
+      }
+      const code = error instanceof Error ? error.message : String(error);
+      sendProblem(req, res, { status, code, detail: code });
     }
   });
 

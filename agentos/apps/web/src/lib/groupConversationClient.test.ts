@@ -105,7 +105,7 @@ test('interaction event versions advance monotonically and never merge a foreign
 
 test('GROUP_VERSION_CONFLICT is preserved as a stable client error code', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ error: 'version changed', code: 'GROUP_VERSION_CONFLICT' }, { status: 409 });
+  globalThis.fetch = async () => Response.json({ detail: 'version changed', code: 'GROUP_VERSION_CONFLICT' }, { status: 409 });
   try {
     await assert.rejects(
       groupConversationClient({ workspaceId: 'ws', apiBase: '' }).stopInteraction('interaction-a', 4, 'stop-4'),

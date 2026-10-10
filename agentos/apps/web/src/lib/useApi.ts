@@ -27,8 +27,10 @@ export function useApi() {
         signal: controller.signal,
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        const err = await res.json().catch(() => ({})) as { error?: string; detail?: string; title?: string; code?: string };
+        const thrown = new Error(err.detail || err.error || err.title || `HTTP ${res.status}`) as Error & { code?: string };
+        if (err.code) thrown.code = err.code;
+        throw thrown;
       }
       return res.json() as Promise<T>;
     } finally {

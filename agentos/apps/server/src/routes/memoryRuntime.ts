@@ -22,6 +22,7 @@ import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidate
 import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from '../services/MemoryContextProjection.js';
 import { MemoryLifecycleService, type MemoryLifecycleInput } from '../services/MemoryLifecycleService.js';
 import { MemoryWorkspaceKnowledgePromotionError, MemoryWorkspaceKnowledgePromotionService } from '../services/MemoryWorkspaceKnowledgePromotionService.js';
+import { sendProblem } from '../problemDetails.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -67,9 +68,14 @@ function mapError(error: unknown): ErrorMapping {
   return { status: 500, code };
 }
 
-function fail(res: Response, error: unknown): void {
+function fail(req: Request, res: Response, error: unknown): void {
   const mapped = mapError(error);
-  res.status(mapped.status).json({ error: mapped.code });
+  if (mapped.status === 500) {
+    // Internal failure details stay server-side; the client gets the frozen envelope.
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
+    return;
+  }
+  sendProblem(req, res, { status: mapped.status, code: mapped.code, detail: mapped.code });
 }
 
 function nonBlank(value: unknown): value is string {
@@ -170,7 +176,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'Workspace not found' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
       return null;
     }
     return workspace;
@@ -183,10 +189,10 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     const { kind, ownerId } = req.query;
     if ((kind !== undefined && !(MEMORY_CONTEXT_KINDS as readonly unknown[]).includes(kind))
       || (ownerId !== undefined && !nonBlank(ownerId))) {
-      res.status(400).json({ error:'MEMORY_CONTEXT_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_CONTEXT_INPUT_INVALID', detail: 'MEMORY_CONTEXT_INPUT_INVALID' }); return;
     }
     try { res.json({ contexts:listMemoryContexts(store.getDatabase(),workspace.id,kind as MemoryContextKind|undefined,ownerId as string|undefined) }); }
-    catch (error) { fail(res,error); }
+    catch (error) { fail(req, res, error); }
   });
 
   router.get('/memory/entries', (req: Request, res: Response) => {
@@ -194,7 +200,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const { status, category, query } = req.query;
     if ([status, category, query].some(value => value !== undefined && typeof value !== 'string')) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
     }
     try {
       res.json({ entries: entries.listEntries(workspace.id, {
@@ -202,7 +208,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         ...(category === undefined ? {} : { category: category as MemoryEntryRecord['category'] }),
         ...(query === undefined ? {} : { query: query as string }),
       }) });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   router.get('/memory/entries/:entryId', (req: Request, res: Response) => {
@@ -210,7 +216,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const entry = entries.findById(workspace.id, req.params.entryId)
       ?? entries.listConfirmedGlobalPreferences(workspace.id).find(item => item.id === req.params.entryId);
-    if (entry === undefined) { res.status(404).json({ error: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
+    if (entry === undefined) { sendProblem(req, res, { status: 404, code: 'MEMORY_ENTRY_NOT_FOUND', detail: 'MEMORY_ENTRY_NOT_FOUND' }); return; }
     const sourceBinding = workspacePromotion.findSourceBinding(workspace.id, entry.id);
     res.json({ entry, ...(sourceBinding === undefined ? {} : { sourceBinding }) });
   });
@@ -218,11 +224,11 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.post('/memory/entries/:entryId/promote-to-workspace-knowledge', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    if (!workspace.memoryEnabled) { sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = req.body;
     if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion')
       || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1) {
-      res.status(400).json({ error: 'MEMORY_WORKSPACE_PROMOTION_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_WORKSPACE_PROMOTION_INPUT_INVALID', detail: 'MEMORY_WORKSPACE_PROMOTION_INPUT_INVALID' }); return;
     }
     try {
       const result = workspacePromotion.promote({
@@ -238,10 +244,10 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         const status = error.code === 'ENTRY_NOT_FOUND' ? 404
           : error.code === 'VERSION_CONFLICT' || error.code === 'ENTRY_NOT_PROMOTABLE' || error.code === 'ENTRY_QUARANTINED' ? 409
             : error.code === 'INPUT_INVALID' ? 400 : error.code === 'SOURCE_INVALID' ? 422 : 500;
-        res.status(status).json({ error: error.code });
+        sendProblem(req, res, { status, code: error.code, detail: error.code });
         return;
       }
-      res.status(500).json({ error: 'MEMORY_WORKSPACE_PROMOTION_FAILED' });
+      sendProblem(req, res, { status: 500, code: 'MEMORY_WORKSPACE_PROMOTION_FAILED', detail: 'Memory workspace promotion failed' });
     }
   });
 
@@ -256,14 +262,14 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.patch('/memory/entries/:entryId', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    if (!workspace.memoryEnabled) { sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = req.body;
     const keys = ['title', 'summary', 'content', 'tags', 'category', 'confidence', 'importance', 'pinned'];
     if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion' && !keys.includes(key))
       || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1
       || !keys.some(key => Object.prototype.hasOwnProperty.call(body, key))
       || keys.some(key => Object.prototype.hasOwnProperty.call(body, key) && body[key] === null)) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
     }
     try {
       const updatedAt = new Date().toISOString();
@@ -274,17 +280,17 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         return record;
       });
       res.json({ entry });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   router.post('/memory/entries/:entryId/archive', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    if (!workspace.memoryEnabled) { sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = req.body;
     if (!isPlainRecord(body) || Object.keys(body).some(key => key !== 'expectedVersion')
       || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
     }
     try {
       const updatedAt = new Date().toISOString();
@@ -299,23 +305,23 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         return record;
       });
       res.json({ entry });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   // ---- Retrieval (read-only explanation surface) --------------------------
   router.post('/memory/entries/:entryId/lifecycle', (req:Request,res:Response)=>{
     const workspace=requireWorkspace(req,res);
     if(!workspace) return;
-    if(!workspace.memoryEnabled) {res.status(409).json({error:'WORKSPACE_MEMORY_DISABLED'});return;}
+    if(!workspace.memoryEnabled) {sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return;}
     const body=req.body;
     if(!isPlainRecord(body)||Object.keys(body).some(key=>!['expectedVersion','action','validFrom','validUntil','expiresAt'].includes(key))) {
-      res.status(400).json({error:'MEMORY_LIFECYCLE_INPUT_INVALID'});return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_LIFECYCLE_INPUT_INVALID', detail: 'MEMORY_LIFECYCLE_INPUT_INVALID' });return;
     }
     try {
       const entry=new MemoryLifecycleService(store.getDatabase()).apply({...body,workspaceId:workspace.id,entryId:req.params.entryId} as unknown as MemoryLifecycleInput,
         (record,timestamp)=>appendEditEvent(record,timestamp,body.action==='archive'?'memory.entry_archived':'memory.entry_updated'));
       res.json({entry});
-    } catch(error) {fail(res,error);}
+    } catch(error) {fail(req, res, error);}
   });
 
   // Preparation only sees server-selected, eligible Entries. Caller-authored
@@ -323,7 +329,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.post('/memory/retrieve/prepare', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    if (!workspace.memoryEnabled) { sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = req.body;
     const allowed = ['query', 'limit', 'agentId', 'conversationId', 'taskId', 'runId', 'includeGlobal'];
     if (!isPlainRecord(body) || Object.keys(body).some(key => !allowed.includes(key))
@@ -331,7 +337,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       || (body.limit !== undefined && (!Number.isSafeInteger(body.limit) || (body.limit as number) < 1 || (body.limit as number) > 100))
       || (body.includeGlobal !== undefined && typeof body.includeGlobal !== 'boolean')
       || ['agentId', 'conversationId', 'taskId', 'runId'].some(key => body[key] !== undefined && !nonBlank(body[key]))) {
-      res.status(400).json({ error: 'MEMORY_RETRIEVAL_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_RETRIEVAL_INPUT_INVALID', detail: 'MEMORY_RETRIEVAL_INPUT_INVALID' }); return;
     }
     const { agentId, conversationId, taskId, runId } = body as Record<string, string | undefined>;
     const db = store.getDatabase();
@@ -340,7 +346,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       || (conversationId !== undefined && !db.prepare('SELECT 1 FROM cr_conversations WHERE workspace_id = ? AND id = ?').get(workspace.id, conversationId))
       || (taskId !== undefined && !store.taskRepository().findById(workspace.id, taskId))
       || (runId !== undefined && (run === undefined || (taskId !== undefined && run.taskId !== taskId)))) {
-      res.status(404).json({ error: 'MEMORY_RETRIEVAL_OWNER_NOT_FOUND' }); return;
+      sendProblem(req, res, { status: 404, code: 'MEMORY_RETRIEVAL_OWNER_NOT_FOUND', detail: 'MEMORY_RETRIEVAL_OWNER_NOT_FOUND' }); return;
     }
     try {
       const result = await retrieval.retrievePrepared({
@@ -352,7 +358,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       res.json({ mode: runtime.mode, degraded: result.degraded,
         semantic: result.semantic ?? { degraded: false, reason: 'SEMANTIC_DISABLED', prepared: false, preparedEntryCount: 0 },
         eligibleCount: result.results.length });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   }));
 
   router.post('/memory/retrieve', (req: Request, res: Response) => {
@@ -360,11 +366,11 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     if (body.query !== undefined && typeof body.query !== 'string') {
-      res.status(400).json({ error: 'MEMORY_RETRIEVAL_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_RETRIEVAL_INPUT_INVALID', detail: 'MEMORY_RETRIEVAL_INPUT_INVALID' });
       return;
     }
     if (body.limit !== undefined && (!Number.isSafeInteger(body.limit) || (body.limit as number) < 1)) {
-      res.status(400).json({ error: 'MEMORY_RETRIEVAL_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_RETRIEVAL_INPUT_INVALID', detail: 'MEMORY_RETRIEVAL_INPUT_INVALID' });
       return;
     }
     const context: MemoryRetrievalContext = {
@@ -393,7 +399,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         ...(result.semantic === undefined ? {} : { semantic: result.semantic }),
       });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -404,7 +410,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const run = store.runRepository().findById(workspace.id, req.params.runId);
     if (run === undefined) {
-      res.status(404).json({ error: 'RUN_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'RUN_NOT_FOUND' });
       return;
     }
     res.json({ snapshots: snapshots.listForRun(workspace.id, req.params.runId) });
@@ -415,7 +421,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const snapshot = snapshots.findById(workspace.id, req.params.memoryContextId);
     if (snapshot === undefined) {
-      res.status(404).json({ error: 'MEMORY_CONTEXT_SNAPSHOT_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'MEMORY_CONTEXT_SNAPSHOT_NOT_FOUND', detail: 'MEMORY_CONTEXT_SNAPSHOT_NOT_FOUND' });
       return;
     }
     res.json({ snapshot });
@@ -428,12 +434,12 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.post('/memory/entries', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!workspace.memoryEnabled) { res.status(409).json({ error: 'WORKSPACE_MEMORY_DISABLED' }); return; }
+    if (!workspace.memoryEnabled) { sendProblem(req, res, { status: 409, code: 'WORKSPACE_MEMORY_DISABLED', detail: 'WORKSPACE_MEMORY_DISABLED' }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const content = typeof body.content === 'string' ? body.content : '';
     if (title.length === 0 || content.length === 0) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }
     const summary = typeof body.summary === 'string' ? body.summary : '';
@@ -441,20 +447,20 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       ? body.tags.filter((tag): tag is string => typeof tag === 'string')
       : [];
     if (!areMemoryTextFieldsSafe([title, summary, content, ...tags])) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }
     const confidence = body.confidence === undefined ? 1 : body.confidence;
     const importance = body.importance === undefined ? 0.5 : body.importance;
     if (!isUnitInterval(confidence) || !isUnitInterval(importance)) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }
     // This existing save surface has no owner-specific contract. Reject owner
     // claims rather than dropping them and saving into a broader scope.
     if (['ownerAgentId', 'ownerConversationId', 'ownerTaskId', 'ownerRunId']
       .some(key => body[key] !== undefined)) {
-      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }
     const scope = body.scope;
@@ -515,7 +521,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       });
       res.status(result.converged ? 200 : 201).json(result);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -526,11 +532,11 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const status = req.query.status ?? 'open';
     if (typeof status !== 'string' || !['open', 'resolved', 'all'].includes(status)) {
-      res.status(400).json({ error: 'MEMORY_CONFLICT_INPUT_INVALID' }); return;
+      sendProblem(req, res, { status: 400, code: 'MEMORY_CONFLICT_INPUT_INVALID', detail: 'MEMORY_CONFLICT_INPUT_INVALID' }); return;
     }
     try {
       res.json({ conflicts: candidates.listConflicts(workspace.id, status as 'open' | 'resolved' | 'all') });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   // ---- Forward Candidate queue (MF-2 tables) -------------------------------
@@ -542,7 +548,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     let outcome: MemoryCandidateOutcome | undefined;
     if (outcomeParam !== undefined) {
       if (typeof outcomeParam !== 'string' || !isOutcome(outcomeParam)) {
-        res.status(400).json({ error: 'MEMORY_CANDIDATE_INPUT_INVALID' });
+        sendProblem(req, res, { status: 400, code: 'MEMORY_CANDIDATE_INPUT_INVALID', detail: 'MEMORY_CANDIDATE_INPUT_INVALID' });
         return;
       }
       outcome = outcomeParam;
@@ -555,7 +561,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     if (!workspace) return;
     const body = parseReviewBody(req.body);
     if (body === undefined) {
-      res.status(400).json({ error: 'MEMORY_CANDIDATE_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'MEMORY_CANDIDATE_INPUT_INVALID', detail: 'MEMORY_CANDIDATE_INPUT_INVALID' });
       return;
     }
     try {
@@ -570,7 +576,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       }, { writer: store.workspaceEventWriter() });
       res.json({ candidate });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -588,7 +594,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       }, { writer: store.workspaceEventWriter() });
       res.json({ conflict });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 

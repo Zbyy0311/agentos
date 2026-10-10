@@ -40,6 +40,7 @@ import {
 } from '@agentos/shared';
 import type { ConversationStatus } from '@agentos/shared';
 import { createProductionRecoveredProcessVerifier, isValidNativeBirthIdentity } from '@agentos/process-runtime';
+import { sendProblem } from '../problemDetails.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 /**
@@ -75,9 +76,14 @@ function mapError(error: unknown): ErrorMapping {
   return { status: 500, code };
 }
 
-function fail(res: Response, error: unknown): void {
+function fail(req: Request, res: Response, error: unknown): void {
   const mapped = mapError(error);
-  res.status(mapped.status).json({ error: mapped.code });
+  if (mapped.status === 500) {
+    // Internal failure details stay server-side; the client gets the frozen envelope.
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
+    return;
+  }
+  sendProblem(req, res, { status: mapped.status, code: mapped.code, detail: mapped.code });
 }
 
 function hasP2GroupRecoverySchema(store: SqliteStore): boolean {
@@ -171,7 +177,7 @@ export function createConversationRuntimeRoutes(
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'Workspace not found' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
       return null;
     }
     return workspace;
@@ -266,7 +272,7 @@ export function createConversationRuntimeRoutes(
     const body = req.body as Record<string, unknown>;
     const kind = body.kind;
     if (kind !== 'direct' && kind !== 'group') {
-      res.status(400).json({ error: 'kind must be direct or group' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'kind must be direct or group' });
       return;
     }
     const title = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : null;
@@ -277,9 +283,9 @@ export function createConversationRuntimeRoutes(
     try {
       if (kind === 'direct') {
         const agentId = typeof body.agentId === 'string' ? body.agentId : null;
-        if (agentId === null) { res.status(400).json({ error: 'agentId is required for a direct Conversation' }); return; }
+        if (agentId === null) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'agentId is required for a direct Conversation' }); return; }
         const agent = store.listAgentProfiles(workspace.id).find(p => p.id === agentId && p.enabled);
-        if (!agent) { res.status(400).json({ error: 'Agent is unavailable' }); return; }
+        if (!agent) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Agent is unavailable' }); return; }
         const conversationInput = {
           id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'direct' as const,
           title: title ?? `与 ${agent.name} 的对话`, createdAt: now,
@@ -305,7 +311,7 @@ export function createConversationRuntimeRoutes(
       // group
       const replyMode = body.replyMode === undefined ? 'sequential' : body.replyMode;
       if (!isConversationReplyMode(replyMode)) {
-        res.status(400).json({ error: 'replyMode must be sequential, parallel-read-only, orchestrated, manual, or mention-only' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'replyMode must be sequential, parallel-read-only, orchestrated, manual, or mention-only' });
         return;
       }
       const memberAgentIds = Array.isArray(body.memberAgentIds)
@@ -315,24 +321,24 @@ export function createConversationRuntimeRoutes(
       try {
         parsedMemberSettings = parseRuntimeGroupMemberSettings(body.members);
       } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
         return;
       }
       const requestedMembers: RuntimeGroupMemberInput[] = parsedMemberSettings ?? memberAgentIds.map(agentId => ({ agentId }));
       const requestedAgentIds = requestedMembers.map(member => member.agentId);
       if (requestedAgentIds.length < 2) {
-        res.status(400).json({ error: 'a group Conversation needs at least two Agents' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'a group Conversation needs at least two Agents' });
         return;
       }
       const profiles = new Map(store.listAgentProfiles(workspace.id).filter(p => p.enabled).map(p => [p.id, p]));
       if (new Set(requestedAgentIds).size !== requestedAgentIds.length || requestedAgentIds.some(id => !profiles.has(id))) {
-        res.status(400).json({ error: 'a group member Agent is unavailable' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'a group member Agent is unavailable' });
         return;
       }
       try {
         await validateRuntimeGroupMemberSettings(profiles, requestedMembers, modelDiscovery);
       } catch (error) {
-        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
         return;
       }
       const conversationInput = {
@@ -360,7 +366,7 @@ export function createConversationRuntimeRoutes(
       });
       res.status(201).json(created);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   }));
 
@@ -369,7 +375,7 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const status = req.query.status;
     if (status !== undefined && (status !== 'active' && status !== 'archived')) {
-      res.status(400).json({ error: 'status must be active or archived' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'status must be active or archived' });
       return;
     }
     res.json({ conversations: conversations().listConversations(workspace.id, status as ConversationStatus | undefined) });
@@ -379,7 +385,7 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
     res.json({ conversation });
   });
 
@@ -387,14 +393,14 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const title = (req.body as Record<string, unknown>).title;
-    if (typeof title !== 'string' || title.trim().length === 0) { res.status(400).json({ error: 'title is required' }); return; }
+    if (typeof title !== 'string' || title.trim().length === 0) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'title is required' }); return; }
     try {
       const conversation = conversations().updateConversationTitle({
         workspaceId: workspace.id, conversationId: req.params.conversationId,
         title, updatedAt: new Date().toISOString(),
       });
       res.json({ conversation });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   router.post('/conversations/:conversationId/archive', (req: Request, res: Response) => {
@@ -408,7 +414,7 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const body = req.body as Record<string, unknown>;
     const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
-    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    if (expectedVersion === null) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedVersion is required' }); return; }
     try {
       const conversation = conversations().transitionConversation({
         workspaceId: workspace.id, conversationId: req.params.conversationId,
@@ -416,7 +422,7 @@ export function createConversationRuntimeRoutes(
       });
       res.json({ conversation });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   }
 
@@ -436,16 +442,16 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
-    if (conversation.kind !== 'group') { res.status(400).json({ error: 'Only group Conversations support member settings' }); return; }
-    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Only group Conversations support member settings' }); return; }
+    if (conversation.status !== 'active') { sendProblem(req, res, { status: 409, code: 'CONVERSATION_ARCHIVED', detail: 'Conversation is archived' }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     if (!Number.isSafeInteger(body.expectedSettingsVersion) || Number(body.expectedSettingsVersion) < 1) {
-      res.status(400).json({ error: 'expectedSettingsVersion is required' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedSettingsVersion is required' });
       return;
     }
     if (!Array.isArray(body.members)) {
-      res.status(400).json({ error: 'members must be an array' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'members must be an array' });
       return;
     }
     const existing = conversations().listMembers(workspace.id, conversation.id)
@@ -501,7 +507,7 @@ export function createConversationRuntimeRoutes(
       });
       res.json(result);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   }));
 
@@ -538,11 +544,11 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
-    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { sendProblem(req, res, { status: 409, code: 'CONVERSATION_ARCHIVED', detail: 'Conversation is archived' }); return; }
     const member = conversations().listMembers(workspace.id, conversation.id)
       .find(candidate => candidate.subjectType === 'agent' && candidate.status === 'active');
-    if (member === undefined) { res.status(400).json({ error: 'no active Agent member' }); return; }
+    if (member === undefined) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'no active Agent member' }); return; }
     try {
       const result = await compactionTrigger.ensureCompacted({
         workspaceId: workspace.id,
@@ -567,7 +573,7 @@ export function createConversationRuntimeRoutes(
         } }),
       });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   }));
 
@@ -577,7 +583,7 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const afterSequence = typeof req.query.afterSequence === 'string' ? Number(req.query.afterSequence) : 0;
     if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
-      res.status(400).json({ error: 'afterSequence must be a non-negative integer' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'afterSequence must be a non-negative integer' });
       return;
     }
     res.json({ messages: conversations().listMessages(workspace.id, req.params.conversationId, afterSequence) });
@@ -594,11 +600,11 @@ export function createConversationRuntimeRoutes(
     const body = req.body as Record<string, unknown>;
     const content = body.content;
     if (typeof content !== 'string' || content.trim().length === 0) {
-      res.status(400).json({ error: 'content is required' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content is required' });
       return;
     }
     const kind = body.kind === undefined ? 'text' : body.kind;
-    if (kind !== 'text') { res.status(400).json({ error: 'only text Messages are supported here' }); return; }
+    if (kind !== 'text') { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'only text Messages are supported here' }); return; }
     try {
       const message = conversations().appendMessage({
         id: createEntityId('message'), conversationId: req.params.conversationId, workspaceId: workspace.id,
@@ -609,7 +615,7 @@ export function createConversationRuntimeRoutes(
       });
       res.status(201).json({ message });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -622,25 +628,25 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
-    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    if (!conversation || conversation.kind !== 'group') { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Group Conversation not found' }); return; }
+    if (conversation.status !== 'active') { sendProblem(req, res, { status: 409, code: 'CONVERSATION_ARCHIVED', detail: 'Conversation is archived' }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const content = body.content;
-    if (typeof content !== 'string') { res.status(400).json({ error: 'content is required' }); return; }
+    if (typeof content !== 'string') { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content is required' }); return; }
     let attachments;
     try {
       attachments = parseConversationAttachmentInputs(body.attachments);
       validateConversationAttachmentInputs(attachments);
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
       return;
     }
     if (content.trim().length === 0 && attachments.length === 0) {
-      res.status(400).json({ error: 'content or image attachment is required' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content or image attachment is required' });
       return;
     }
     const budget = body.budget;
-    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    if (typeof budget !== 'object' || budget === null) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'budget is required' }); return; }
     const clientMessageId = typeof body.clientMessageId === 'string' && body.clientMessageId.trim().length > 0
       ? body.clientMessageId.trim() : undefined;
     let storedAttachments: StoredConversationAttachment[] = [];
@@ -687,7 +693,7 @@ export function createConversationRuntimeRoutes(
       if (storedAttachments.length > 0) {
         try { await cleanupConversationAttachments(workspace.rootPath, storedAttachments); } catch { /* preserve the original API error */ }
       }
-      fail(res, error);
+      fail(req, res, error);
     }
   }));
 
@@ -697,7 +703,7 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const afterCursor = typeof req.query.afterCursor === 'string' ? Number(req.query.afterCursor) : 0;
     if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
-      res.status(400).json({ error: 'afterCursor must be a non-negative integer' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'afterCursor must be a non-negative integer' });
       return;
     }
     try {
@@ -705,12 +711,12 @@ export function createConversationRuntimeRoutes(
         workspaceId: workspace.id, messageId: req.params.messageId, afterCursor,
       });
       if (replay.message.conversationId !== req.params.conversationId) {
-        res.status(404).json({ error: 'Message not found in this Conversation' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Message not found in this Conversation' });
         return;
       }
       res.json(replay);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -729,7 +735,7 @@ export function createConversationRuntimeRoutes(
       });
       res.status(result.created ? 201 : 200).json(result);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -748,7 +754,7 @@ export function createConversationRuntimeRoutes(
       });
       res.status(result.runCreated ? 201 : 200).json(result);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -761,29 +767,29 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const body = req.body as Record<string, unknown>;
     const budget = body.budget;
-    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    if (typeof budget !== 'object' || budget === null) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'budget is required' }); return; }
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
     if (conversation.kind !== 'group' || conversation.status !== 'active') {
-      res.status(409).json({ error: 'GROUP_CONVERSATION_NOT_ACTIVE' });
+      sendProblem(req, res, { status: 409, code: 'GROUP_CONVERSATION_NOT_ACTIVE', detail: 'GROUP_CONVERSATION_NOT_ACTIVE' });
       return;
     }
     const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
-    if (sourceMessageId.length === 0) { res.status(400).json({ error: 'sourceMessageId is required' }); return; }
+    if (sourceMessageId.length === 0) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'sourceMessageId is required' }); return; }
     try {
       const interaction = store.boundedGroupService().createInteraction({
         workspaceId: workspace.id, conversationId: req.params.conversationId,
         budget: budget as never, sourceMessageId, createdAt: new Date().toISOString(),
       });
       res.status(201).json({ interaction });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   router.get('/conversations/:conversationId/interactions', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation || conversation.kind !== 'group') { res.status(404).json({ error: 'Group Conversation not found' }); return; }
+    if (!conversation || conversation.kind !== 'group') { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Group Conversation not found' }); return; }
     res.json({ interactions: store.groupInteractionRepository().listInteractions(workspace.id, conversation.id) });
   });
 
@@ -791,7 +797,7 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
-    if (!interaction) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    if (!interaction) { sendProblem(req, res, { status: 404, code: 'INTERACTION_NOT_FOUND', detail: 'Interaction not found' }); return; }
     const recovery = hasP2GroupRecoverySchema(store)
       ? store.getDatabase().prepare(`SELECT prior_interaction_id AS priorInteractionId,
           new_interaction_id AS newInteractionId,source_message_id AS sourceMessageId,created_at AS createdAt
@@ -814,7 +820,7 @@ export function createConversationRuntimeRoutes(
   router.post('/interactions/:interactionId/recover', asyncHandler(async (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    if (!hasP2GroupRecoverySchema(store)) { res.status(409).json({ error: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
+    if (!hasP2GroupRecoverySchema(store)) { sendProblem(req, res, { status: 409, code: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE', detail: 'GROUP_RECOVERY_SCHEMA_UNAVAILABLE' }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const expectedVersion = body.expectedVersion;
     const expectedOwnerEpoch = body.expectedOwnerEpoch;
@@ -824,7 +830,7 @@ export function createConversationRuntimeRoutes(
       || !Number.isSafeInteger(expectedOwnerEpoch) || (expectedOwnerEpoch as number) < 1
       || content.length === 0 || content.length > 16_000 || !idempotencyKey
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u.test(idempotencyKey)) {
-      res.status(400).json({ error: 'GROUP_RECOVERY_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'GROUP_RECOVERY_INPUT_INVALID', detail: 'GROUP_RECOVERY_INPUT_INVALID' });
       return;
     }
     const interactionId = req.params.interactionId;
@@ -848,7 +854,7 @@ export function createConversationRuntimeRoutes(
             currentTurnId: owner.currentTurnId,
           }, store.groupInteractionRepository());
           if (!processTreeProvenGone) {
-            res.status(409).json({ error: 'GROUP_RECOVERY_PROCESS_UNPROVEN' });
+            sendProblem(req, res, { status: 409, code: 'GROUP_RECOVERY_PROCESS_UNPROVEN', detail: 'GROUP_RECOVERY_PROCESS_UNPROVEN' });
             return;
           }
         }
@@ -934,7 +940,7 @@ export function createConversationRuntimeRoutes(
       if (!result.interaction || !result.message) throw Object.assign(new Error('GROUP_RECOVERY_RESULT_MISSING'), { code: 'GROUP_RECOVERY_RESULT_MISSING' });
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
       res.status(result.replayed ? 200 : 201).json(result);
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   }));
 
   /** Read-only, cursor-based observation. Closing this response detaches only the observer. */
@@ -945,7 +951,7 @@ export function createConversationRuntimeRoutes(
     const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
     if (!conversation || conversation.kind !== 'group' || !interaction
       || interaction.conversationId !== conversation.id) {
-      res.status(404).json({ error: 'Group interaction not found' });
+      sendProblem(req, res, { status: 404, code: 'INTERACTION_NOT_FOUND', detail: 'Group interaction not found' });
       return;
     }
     const headerCursor = req.header('Last-Event-ID');
@@ -953,7 +959,7 @@ export function createConversationRuntimeRoutes(
     const rawCursor = queryCursor ?? headerCursor ?? '0';
     const afterCursor = Number(rawCursor);
     if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
-      res.status(400).json({ error: 'after must be a non-negative integer cursor' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'after must be a non-negative integer cursor' });
       return;
     }
     res.writeHead(200, {
@@ -1008,7 +1014,7 @@ export function createConversationRuntimeRoutes(
     // owner/Turn/final-Message association or atomic finalization contract.
     // Group replies must be produced through /respond, where finalization,
     // ledger, budget, and event state commit together.
-    res.status(409).json({ error: 'GROUP_REPLY_FINALIZATION_REQUIRED' });
+    sendProblem(req, res, { status: 409, code: 'GROUP_REPLY_FINALIZATION_REQUIRED', detail: 'GROUP_REPLY_FINALIZATION_REQUIRED' });
   });
 
   router.post('/interactions/:interactionId/stop', (req: Request, res: Response) => {
@@ -1016,7 +1022,7 @@ export function createConversationRuntimeRoutes(
     if (!workspace) return;
     const body = req.body as Record<string, unknown>;
     const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
-    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    if (expectedVersion === null) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedVersion is required' }); return; }
     try {
       const interaction = store.boundedGroupService().stopInteraction({
         workspaceId: workspace.id, interactionId: req.params.interactionId,
@@ -1030,7 +1036,7 @@ export function createConversationRuntimeRoutes(
           eventCursor: execution.eventCursor, terminalReason: execution.terminalReason,
         },
       });
-    } catch (error) { fail(res, error); }
+    } catch (error) { fail(req, res, error); }
   });
 
   /**
@@ -1047,22 +1053,22 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
-    if (conversation.kind !== 'group') { res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' }); return; }
-    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { sendProblem(req, res, { status: 400, code: 'GROUP_WALK_INPUT_INVALID', detail: 'GROUP_WALK_INPUT_INVALID' }); return; }
+    if (conversation.status !== 'active') { sendProblem(req, res, { status: 409, code: 'CONVERSATION_ARCHIVED', detail: 'Conversation is archived' }); return; }
     const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
-    if (!interaction || interaction.conversationId !== conversation.id) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    if (!interaction || interaction.conversationId !== conversation.id) { sendProblem(req, res, { status: 404, code: 'INTERACTION_NOT_FOUND', detail: 'Interaction not found' }); return; }
     if (interaction.status !== 'active') {
-      res.status(409).json({ error: 'GROUP_INTERACTION_TERMINATED' });
+      sendProblem(req, res, { status: 409, code: 'GROUP_INTERACTION_TERMINATED', detail: 'GROUP_INTERACTION_TERMINATED' });
       return;
     }
     if (interaction.integrityStatus !== 'valid') {
-      res.status(409).json({ error: 'GROUP_EXECUTION_INTERRUPTED', interactionId: interaction.id, reason: interaction.integrityReason });
+      sendProblem(req, res, { status: 409, code: 'GROUP_EXECUTION_INTERRUPTED', detail: interaction.integrityReason ?? 'GROUP_EXECUTION_INTERRUPTED' });
       return;
     }
     const priorOwner = store.groupInteractionRepository().findExecutionOwner(workspace.id, interaction.id);
     if (priorOwner) {
-      res.status(409).json({ error: priorOwner.status === 'interrupted' ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED', interactionId: interaction.id });
+      sendProblem(req, res, { status: 409, code: priorOwner.status === 'interrupted' ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED', detail: priorOwner.status === 'interrupted' ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED' });
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -1073,7 +1079,7 @@ export function createConversationRuntimeRoutes(
       // explicit because they require a proven read-only enforcement path.
       intent = parseConversationIntent(body.intent) ?? 'execute';
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
       return;
     }
     const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
@@ -1081,11 +1087,11 @@ export function createConversationRuntimeRoutes(
       ? undefined
       : conversations().findMessageById(workspace.id, sourceMessageId);
     if (!source || source.conversationId !== conversation.id || source.senderType !== 'user' || source.status !== 'final') {
-      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'GROUP_WALK_INPUT_INVALID', detail: 'GROUP_WALK_INPUT_INVALID' });
       return;
     }
     if (interaction.sourceMessageId !== source.id) {
-      res.status(409).json({ error: 'GROUP_SOURCE_MISMATCH' });
+      sendProblem(req, res, { status: 409, code: 'GROUP_SOURCE_MISMATCH', detail: 'GROUP_SOURCE_MISMATCH' });
       return;
     }
     const stringList = (value: unknown): string[] | undefined => {
@@ -1099,7 +1105,7 @@ export function createConversationRuntimeRoutes(
     if ((body.mentionedAgentIds !== undefined && mentionedAgentIds === undefined)
       || (body.namedAgentIds !== undefined && namedAgentIds === undefined)
       || (body.orchestratedOrder !== undefined && orchestratedOrder === undefined)) {
-      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'GROUP_WALK_INPUT_INVALID', detail: 'GROUP_WALK_INPUT_INVALID' });
       return;
     }
 
@@ -1195,8 +1201,8 @@ export function createConversationRuntimeRoutes(
     } catch (error) {
       if (!res.headersSent) {
         if (error instanceof BoundedGroupError && ['GROUP_EXECUTION_ALREADY_OWNED', 'GROUP_EXECUTION_INTERRUPTED'].includes(error.code)) {
-          res.status(409).json({ error: error.code, interactionId });
-        } else { fail(res, error); }
+          sendProblem(req, res, { status: 409, code: error.code, detail: error.code });
+        } else { fail(req, res, error); }
         return;
       }
       const code = error instanceof GroupTurnDriverError ? error.code : (error instanceof Error ? error.message : 'GROUP_WALK_FAILED');
@@ -1218,23 +1224,23 @@ export function createConversationRuntimeRoutes(
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
-    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
-    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    if (!conversation) { sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { sendProblem(req, res, { status: 409, code: 'CONVERSATION_ARCHIVED', detail: 'Conversation is archived' }); return; }
     const body = req.body as Record<string, unknown>;
     const content = typeof body.content === 'string' ? body.content.trim() : '';
-    if (content.length === 0) { res.status(400).json({ error: 'content is required' }); return; }
+    if (content.length === 0) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content is required' }); return; }
     let intent: RunIntent;
     try {
       // A bounded group is still a conversation. Keep the existing execution
       // default; ask/review are explicit and require read-only enforcement.
       intent = parseConversationIntent(body.intent) ?? 'execute';
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: error instanceof Error ? error.message : String(error) });
       return;
     }
     const agent = conversations().listMembers(workspace.id, conversation.id)
       .find(member => member.subjectType === 'agent' && member.status === 'active');
-    if (!agent) { res.status(400).json({ error: 'no active Agent member' }); return; }
+    if (!agent) { sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'no active Agent member' }); return; }
 
     // Persist the user Message before any routing or Provider call.
     let userMessage;
@@ -1244,7 +1250,7 @@ export function createConversationRuntimeRoutes(
         senderType: 'user', kind: 'text', status: 'final', content, createdAt: new Date().toISOString(),
       });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
       return;
     }
 
@@ -1341,7 +1347,7 @@ export function createConversationRuntimeRoutes(
       });
       res.json({ history: entries });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 

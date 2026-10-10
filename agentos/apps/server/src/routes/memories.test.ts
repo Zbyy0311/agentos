@@ -48,7 +48,9 @@ test('LITE-07-012/LITE-10-016 legacy Memory rejects unsafe writes and hides unsa
       body: JSON.stringify({ type: 'experience', title: 'unsafe', summary: 'unsafe summary', content: 'Authorization: Bearer legacy-secret' }),
     });
     assert.equal(rejected.status, 400);
-    assert.deepEqual(await rejected.json(), { error: 'Memory content is unsafe to persist' });
+    const problem = await rejected.json() as { code: string; detail: string };
+    assert.equal(problem.code, 'MEMORY_CREATE_FAILED');
+    assert.equal(problem.detail, 'Memory content is unsafe to persist');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memories').get() as { n: number }).n, 0);
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_fts').get() as { n: number }).n, 0);
     assert.equal(existsSync(join(root, 'agent-memory')), false, 'unsafe content must be rejected before file creation');

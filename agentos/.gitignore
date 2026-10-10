@@ -5,6 +5,7 @@ dist/
 .next-acceptance-*/
 logs/
 *.log
+*.tsbuildinfo
 .DS_Store
 *.local
 .env

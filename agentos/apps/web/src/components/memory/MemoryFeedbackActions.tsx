@@ -79,14 +79,18 @@ const RESOLUTION_LABELS: Record<MemoryFeedbackResolutionKind, string> = {
 
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  // ApiProblem responses carry a stable machine-readable `code`; legacy bodies
+  // embedded the same code string in the message. Match either shape.
+  const code = (error as { code?: unknown } | null)?.code;
+  const token = typeof code === 'string' && code.length > 0 ? code : message;
   const guidance = memoryVersionConflictGuidance(error);
-  if (message.includes('MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED')) {
+  if (token.includes('MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED')) {
     return '这条全局记忆由其他工作区拥有。请在归属工作区修正、归档或重新验证；当前工作区可以拒绝本工作区提交的报告。所有待处理错误报告解除后，该版本才能再次使用。';
   }
-  if (message.includes('MEMORY_FEEDBACK_CORRECTION_UNCHANGED')) {
+  if (token.includes('MEMORY_FEEDBACK_CORRECTION_UNCHANGED')) {
     return '修正版必须更改标题、摘要或正文后才能解决此反馈。';
   }
-  if (message.includes('MEMORY_FEEDBACK_RESOLUTION_REQUIRED')) {
+  if (token.includes('MEMORY_FEEDBACK_RESOLUTION_REQUIRED')) {
     return '此旧请求没有提交解决依据。请打开处理表单，选择修正、归档或重新验证并填写结论与证据。';
   }
   return [message, guidance].filter(Boolean).join(' ');

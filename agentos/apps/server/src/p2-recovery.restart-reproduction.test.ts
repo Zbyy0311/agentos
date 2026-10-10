@@ -610,7 +610,7 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
       participants = [...owner!.participantAgentIds];
       const rejectedReplay = await postJson(responseUrl, { sourceMessageId });
       assert.equal(rejectedReplay.status, 409);
-      assert.equal(rejectedReplay.json.error, 'GROUP_EXECUTION_INTERRUPTED');
+      assert.equal(rejectedReplay.json.code, 'GROUP_EXECUTION_INTERRUPTED');
       assert.equal(readFileSync(receipt, 'utf8').trim().split(/\r?\n/u).length, 2, 'restart and old-request replay must not spawn another CLI');
       assert.deepEqual(store.groupInteractionRepository().listReplies(interactionId).map(reply => reply.id), originalReplyIds,
         'restart reconciliation retains the prior owner replies');
@@ -624,10 +624,10 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     };
     const staleCas = await postJson(recoveryUrl, { ...recoveryBody, expectedVersion: priorVersion! + 1 }, { 'Idempotency-Key': 'p2-group-stale-version' });
     assert.equal(staleCas.status, 409);
-    assert.equal(staleCas.json.error, 'GROUP_RECOVERY_STALE');
+    assert.equal(staleCas.json.code, 'GROUP_RECOVERY_STALE');
     const staleOwner = await postJson(recoveryUrl, { ...recoveryBody, expectedOwnerEpoch: ownerEpoch! + 1 }, { 'Idempotency-Key': 'p2-group-stale-owner' });
     assert.equal(staleOwner.status, 409);
-    assert.equal(staleOwner.json.error, 'GROUP_RECOVERY_STALE');
+    assert.equal(staleOwner.json.code, 'GROUP_RECOVERY_STALE');
     const foreignScope = await postJson(`http://127.0.0.1:${port}/api/workspaces/foreign-workspace/runtime/interactions/${interactionId}/recover`, recoveryBody, { 'Idempotency-Key': 'p2-group-foreign-scope' });
     assert.equal(foreignScope.status, 404);
 
@@ -651,7 +651,7 @@ test('P2 reproduction: an active real group Provider is reaped on restart before
     assert.equal(replayedRecovery.json.interaction.id, newInteractionId);
     const changedRecovery = await postJson(recoveryUrl, { ...recoveryBody, content: 'changed body' }, { 'Idempotency-Key': 'p2-group-recovery-key' });
     assert.equal(changedRecovery.status, 409);
-    assert.equal(changedRecovery.json.error, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
+    assert.equal(changedRecovery.json.code, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
     const resumedOwner = new SqliteStore(root);
     try {
       assert.equal(resumedOwner.groupInteractionRepository().findExecutionOwner('workspace-a', interactionId)?.status, 'abandoned');

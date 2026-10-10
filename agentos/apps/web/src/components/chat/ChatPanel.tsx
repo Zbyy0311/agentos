@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { AgentEvent, AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionEvent, ExecutionStatus, ModelDiscoverySource, RunIntent, RuntimeArtifact, ThinkingEffort } from '@agentos/shared';
 import { canSendMessage, isImageClipboardItem, type ImageDraft } from '@/lib/imageAttachments';
+import type { StreamingTextStore } from '@/lib/streamingTextStore';
 import { getChatVisibleArtifacts } from '@/lib/artifacts';
 import { getChatTarget } from '@/lib/conversationSelection';
 import { getSendButtonState } from '@/lib/uiFeedback';
@@ -49,7 +50,14 @@ interface ChatPanelProps {
   draft: string;
   attachments: ImageDraft[];
   attachmentError: string;
-  streamingContent: string;
+  /**
+   * Subscription handle for the typewriter-streamed assistant text. The text
+   * lives in this store (owned by the workspace page's stream pipeline), not
+   * in page React state, so streaming ticks re-render only this panel.
+   */
+  streaming?: StreamingTextStore | null;
+  /** Evidence gate: when false the subscribed streaming text is not shown. */
+  streamingVisible?: boolean;
   activeEvents: VisibleExecutionEvent[];
   activeRuntimeEvents?: AgentEvent[];
   artifacts?: RuntimeArtifact[];
@@ -275,7 +283,18 @@ function ThinkingProcess({ events, runtimeEvents = [], sending, interrupted = fa
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onResumeQueue, onOpenRuntimeDetails, onOpenRuntime, onCreateCollaborationTask, onOpenCollaborationTask, collaborationProgressState, groupInteraction, groupExecutionOwner, groupBudget, groupSpeakingAgentName, groupDiscussionError, groupRecoveryWorkspaceId, groupRecoveryGeneration, onGroupInteractionRecovered, mentionedAgentIds = [], onMentionedAgentIdsChange, draftReady = true, draftPersistenceWarning, scrollIdentityKey, savedScrollPosition = 0, onScrollPositionChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streaming, streamingVisible = true, activeEvents, activeRuntimeEvents = [], artifacts = [], runtimeResult, apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onResumeQueue, onOpenRuntimeDetails, onOpenRuntime, onCreateCollaborationTask, onOpenCollaborationTask, collaborationProgressState, groupInteraction, groupExecutionOwner, groupBudget, groupSpeakingAgentName, groupDiscussionError, groupRecoveryWorkspaceId, groupRecoveryGeneration, onGroupInteractionRecovered, mentionedAgentIds = [], onMentionedAgentIdsChange, draftReady = true, draftPersistenceWarning, scrollIdentityKey, savedScrollPosition = 0, onScrollPositionChange, runIntent = 'execute', onRunIntentChange = value => window.dispatchEvent(new CustomEvent('agentos:run-intent', { detail: value })), layoutControls }: ChatPanelProps) {
+  // The streamed assistant text is owned by the page-level StreamingTextStore
+  // and mirrored into local state so streaming ticks re-render only ChatPanel.
+  const [streamedContent, setStreamedContent] = useState(() => streaming?.getSnapshot() ?? '');
+  useEffect(() => {
+    if (!streaming) {
+      setStreamedContent('');
+      return undefined;
+    }
+    return streaming.subscribe(setStreamedContent);
+  }, [streaming]);
+  const streamingContent = streamingVisible ? streamedContent : '';
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);

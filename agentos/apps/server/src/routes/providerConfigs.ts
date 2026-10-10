@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
@@ -34,13 +35,13 @@ const FORBIDDEN_SECRET_VALUE_FIELDS = [
   'credentialValue',
 ];
 
-function sendValidationError(res: Response, message: string): void {
-  res.status(400).json({ error: message, code: 'VALIDATION_ERROR' });
+function sendValidationError(req: Request, res: Response, message: string): void {
+  sendProblem(req, res, { status: 400, code: 'VALIDATION_ERROR', detail: message, errors: [{ code: 'VALIDATION_ERROR', message }] });
 }
 
-function sendInternalError(res: Response, logContext: string, error: unknown): void {
+function sendInternalError(req: Request, res: Response, logContext: string, error: unknown): void {
   console.error(`[provider-configs] ${logContext}`, error);
-  res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+  sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
 }
 
 function findForbiddenSecretField(body: Record<string, unknown>): string | undefined {
@@ -94,15 +95,15 @@ function publicValidationProjection(validation: ProviderValidationResult): Omit<
 }
 
 /** Returns the trimmed name, or undefined when absent. Sends a 400 when present but invalid. */
-function readValidName(body: Record<string, unknown>, res: Response, required: boolean): string | undefined {
+function readValidName(req: Request, body: Record<string, unknown>, res: Response, required: boolean): string | undefined {
   if (body.name === undefined) {
     if (required) {
-      sendValidationError(res, 'Provider name is required');
+      sendValidationError(req, res, 'Provider name is required');
     }
     return undefined;
   }
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    sendValidationError(res, 'Provider name must be a non-empty string');
+    sendValidationError(req, res, 'Provider name must be a non-empty string');
     return undefined;
   }
   return body.name.trim();
@@ -134,40 +135,40 @@ export function createProviderConfigRoutes(
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const configs = repo.findByWorkspace(workspace.id);
       res.json({ providerConfigs: configs, workspaceId: workspace.id });
     } catch (error) {
-      sendInternalError(res, 'list provider configurations failed', error);
+      sendInternalError(req, res, 'list provider configurations failed', error);
     }
   });
 
   router.get('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const config = repo.findById(req.params.providerConfigId);
       if (!config || config.workspaceId !== workspace.id) {
-        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+        sendProblem(req, res, { status: 404, code: 'PROVIDER_CONFIG_NOT_FOUND', detail: 'Provider configuration not found' }); return;
       }
       res.json({ providerConfig: config, workspaceId: workspace.id });
     } catch (error) {
-      sendInternalError(res, 'get provider configuration failed', error);
+      sendInternalError(req, res, 'get provider configuration failed', error);
     }
   });
 
   router.post('/provider-configs/:providerConfigId/validate', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const config = repo.findById(req.params.providerConfigId);
       if (!config || config.workspaceId !== workspace.id) {
-        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+        sendProblem(req, res, { status: 404, code: 'PROVIDER_CONFIG_NOT_FOUND', detail: 'Provider configuration not found' }); return;
       }
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (body.forceRefresh !== undefined && typeof body.forceRefresh !== 'boolean') {
-        return sendValidationError(res, 'forceRefresh must be a boolean');
+        return sendValidationError(req, res, 'forceRefresh must be a boolean');
       }
       const validation = await validationService.validate(config, {
         environment: process.env,
@@ -182,31 +183,30 @@ export function createProviderConfigRoutes(
     } catch {
       // Validation adapters own potentially sensitive probe details; keep them out of
       // both the response and route-level logs when an unexpected exception escapes.
-      console.error('[provider-configs] validate provider configuration failed');
-      return res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+console.error('[provider-configs] validate provider configuration failed');
+      sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
+      return;
     }
   }));
 
   router.post('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (findForbiddenSecretField(body)) {
-        return res.status(400).json({ error: 'Raw secret values are not accepted; use secretProfileId', code: 'SECRET_VALUE_NOT_ALLOWED' });
+        sendProblem(req, res, { status: 400, code: 'SECRET_VALUE_NOT_ALLOWED', detail: 'Raw secret values are not accepted; use secretProfileId' }); return;
       }
-      const name = readValidName(body, res, true);
+      const name = readValidName(req, body, res, true);
       if (name === undefined) return;
       const enumError = validateEnumFields(body);
-      if (enumError) return sendValidationError(res, enumError);
+      if (enumError) return sendValidationError(req, res, enumError);
       const structuredError = validateStructuredFields(body);
-      if (structuredError) return sendValidationError(res, structuredError);
+      if (structuredError) return sendValidationError(req, res, structuredError);
 
       if (repo.findByWorkspaceAndName(workspace.id, name)) {
-        return res.status(409).json({
-          error: 'A provider configuration with this name already exists',
-          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
-        });
+        sendProblem(req, res, { status: 409, code: 'PROVIDER_CONFIG_NAME_CONFLICT', detail: 'A provider configuration with this name already exists' });
+        return;
       }
 
       const now = new Date().toISOString();
@@ -237,45 +237,41 @@ export function createProviderConfigRoutes(
       res.status(201).json({ providerConfig: created, workspaceId: workspace.id });
     } catch (error) {
       if (isProviderNameUniqueViolation(error)) {
-        return res.status(409).json({
-          error: 'A provider configuration with this name already exists',
-          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
-        });
+        sendProblem(req, res, { status: 409, code: 'PROVIDER_CONFIG_NAME_CONFLICT', detail: 'A provider configuration with this name already exists' });
+        return;
       }
-      sendInternalError(res, 'create provider configuration failed', error);
+      sendInternalError(req, res, 'create provider configuration failed', error);
     }
   });
 
   router.put('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const existing = repo.findById(req.params.providerConfigId);
       if (!existing || existing.workspaceId !== workspace.id) {
-        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+        sendProblem(req, res, { status: 404, code: 'PROVIDER_CONFIG_NOT_FOUND', detail: 'Provider configuration not found' }); return;
       }
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (findForbiddenSecretField(body)) {
-        return res.status(400).json({ error: 'Raw secret values are not accepted; use secretProfileId', code: 'SECRET_VALUE_NOT_ALLOWED' });
+        sendProblem(req, res, { status: 400, code: 'SECRET_VALUE_NOT_ALLOWED', detail: 'Raw secret values are not accepted; use secretProfileId' }); return;
       }
       const expectedVersion = typeof body.expectedVersion === 'number' && Number.isInteger(body.expectedVersion)
         ? body.expectedVersion
         : undefined;
       if (expectedVersion === undefined) {
-        return sendValidationError(res, 'expectedVersion is required for updates');
+        return sendValidationError(req, res, 'expectedVersion is required for updates');
       }
       if (existing.version !== expectedVersion) {
-        return res.status(409).json({
-          error: `Version conflict: expected ${expectedVersion}, current ${existing.version}`,
-          code: 'VERSION_CONFLICT',
-        });
+        sendProblem(req, res, { status: 409, code: 'VERSION_CONFLICT', detail: `Version conflict: expected ${expectedVersion}, current ${existing.version}` });
+        return;
       }
-      const name = readValidName(body, res, false);
+      const name = readValidName(req, body, res, false);
       if (name === undefined && body.name !== undefined) return;
       const enumError = validateEnumFields(body);
-      if (enumError) return sendValidationError(res, enumError);
+      if (enumError) return sendValidationError(req, res, enumError);
       const structuredError = validateStructuredFields(body);
-      if (structuredError) return sendValidationError(res, structuredError);
+      if (structuredError) return sendValidationError(req, res, structuredError);
 
       if (name !== undefined) {
         const nameConflict = repo.findByWorkspaceAndName(workspace.id, name);
@@ -313,37 +309,33 @@ export function createProviderConfigRoutes(
       res.json({ providerConfig: saved, workspaceId: workspace.id });
     } catch (error) {
       if (isProviderNameUniqueViolation(error)) {
-        return res.status(409).json({
-          error: 'A provider configuration with this name already exists',
-          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
-        });
+        sendProblem(req, res, { status: 409, code: 'PROVIDER_CONFIG_NAME_CONFLICT', detail: 'A provider configuration with this name already exists' });
+        return;
       }
       if (error instanceof Error && error.message.includes('version conflict')) {
-        return res.status(409).json({ error: error.message, code: 'VERSION_CONFLICT' });
+        sendProblem(req, res, { status: 409, code: 'VERSION_CONFLICT', detail: error.message }); return;
       }
-      sendInternalError(res, 'update provider configuration failed', error);
+      sendInternalError(req, res, 'update provider configuration failed', error);
     }
   });
 
   router.delete('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    if (!workspace) { sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' }); return; }
     try {
       const existing = repo.findById(req.params.providerConfigId);
       if (!existing || existing.workspaceId !== workspace.id) {
-        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+        sendProblem(req, res, { status: 404, code: 'PROVIDER_CONFIG_NOT_FOUND', detail: 'Provider configuration not found' }); return;
       }
       const expectedVersion = typeof req.body.expectedVersion === 'number' && Number.isInteger(req.body.expectedVersion)
         ? req.body.expectedVersion
         : undefined;
       if (expectedVersion === undefined) {
-        return res.status(400).json({ error: 'expectedVersion is required for archive', code: 'VALIDATION_ERROR' });
+        sendProblem(req, res, { status: 400, code: 'VALIDATION_ERROR', detail: 'expectedVersion is required for archive' }); return;
       }
       if (existing.version !== expectedVersion) {
-        return res.status(409).json({
-          error: `Version conflict: expected ${expectedVersion}, current ${existing.version}`,
-          code: 'VERSION_CONFLICT',
-        });
+        sendProblem(req, res, { status: 409, code: 'VERSION_CONFLICT', detail: `Version conflict: expected ${expectedVersion}, current ${existing.version}` });
+        return;
       }
       // Check if any enabled agent profile references this config
       const db = store.getDatabase();
@@ -351,15 +343,13 @@ export function createProviderConfigRoutes(
         SELECT 1 FROM agent_profiles WHERE provider_config_id = ? AND enabled = 1 LIMIT 1
       `).get(existing.id) as undefined | Record<string, unknown>;
       if (activeRef) {
-        return res.status(409).json({
-          error: 'Provider configuration is referenced by an enabled agent and cannot be archived',
-          code: 'PROVIDER_CONFIG_IN_USE',
-        });
+        sendProblem(req, res, { status: 409, code: 'PROVIDER_CONFIG_IN_USE', detail: 'Provider configuration is referenced by an enabled agent and cannot be archived' });
+        return;
       }
       repo.archive(existing.id, expectedVersion);
       res.json({ ok: true });
     } catch (error) {
-      sendInternalError(res, 'archive provider configuration failed', error);
+      sendInternalError(req, res, 'archive provider configuration failed', error);
     }
   });
 

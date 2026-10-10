@@ -3,6 +3,7 @@ import test from 'node:test';
 import React, { createElement, type ComponentProps } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatPanel } from './ChatPanel';
+import { StreamingTextStore } from '../../lib/streamingTextStore';
 import type { GroupInteraction } from '../../lib/groupConversationClient';
 
 // Match the existing Node/tsx SSR fixtures (Next compiles JSX automatically).
@@ -11,7 +12,7 @@ import type { GroupInteraction } from '../../lib/groupConversationClient';
 function props(overrides: Partial<ComponentProps<typeof ChatPanel>> = {}): ComponentProps<typeof ChatPanel> {
   return {
     agentName: 'Fixture Agent', agents: [], messages: [], draft: 'memory draft', attachments: [], attachmentError: '',
-    streamingContent: '', activeEvents: [], error: '', sending: false, queuedMessageCount: 0,
+    activeEvents: [], error: '', sending: false, queuedMessageCount: 0,
     modelOptions: [], composerThinkingEffort: 'auto', composerThinkingEfforts: ['auto'],
     onDraftChange: () => undefined, onFiles: () => undefined, onRemoveAttachment: () => undefined,
     onComposerModelChange: () => undefined, onComposerThinkingEffortChange: () => undefined,
@@ -56,7 +57,7 @@ test('unusable active group displays interruption reason rather than a running s
   const groupInteraction = Object.assign(activeGroup(), { integrityStatus: 'unusable' as const, integrityReason: 'execution-owner-unknown-after-restart' });
   const markup = renderToStaticMarkup(createElement(ChatPanel, props({
     isGroup: true, groupName: 'Group A', groupInteraction, groupSpeakingAgentName: 'Old speaker', sending: true,
-    activeStatus: 'running_cli', streamingContent: 'Historical partial response', queuedMessageCount: 1,
+    activeStatus: 'running_cli', streaming: new StreamingTextStore('Historical partial response'), queuedMessageCount: 1,
     onResumeQueue: () => undefined, groupDiscussionError: 'Original response requires checking',
   })));
   assert.match(markup, /讨论已中断 · 等待处理/);

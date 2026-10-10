@@ -9,7 +9,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "declaration": true,
+    "composite": true,
     "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../process-runtime" }
+  ]
 }

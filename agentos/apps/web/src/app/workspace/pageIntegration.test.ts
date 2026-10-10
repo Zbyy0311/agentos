@@ -3,7 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const pageSource = readFileSync(fileURLToPath(new URL('./[id]/page.tsx', import.meta.url)), 'utf8');
+// The workspace page is composed from hooks; structural assertions span the
+// page and the hooks that now own the extracted state families.
+const pageSource = [
+  './[id]/page.tsx',
+  '../../lib/useConversationStream.ts',
+  '../../lib/useWorkspaceData.ts',
+  '../../components/chat/ChatPanel.tsx',
+].map(path => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')).join('\n');
 
 test('workspace page connects draft readiness, persistence warning, and identity-scoped scroll', () => {
   assert.ok(/draftReady=\{draftState\.ready\}/.test(pageSource));
@@ -46,5 +53,11 @@ test('explicit direct Run hints are classified before they reach the Run Inspect
 test('visible conversation evidence is keyed to the active verified identity', () => {
   assert.match(pageSource, /conversationEvidenceIdentityKey/);
   assert.match(pageSource, /visibleMessages/);
-  assert.match(pageSource, /visibleStreamingContent/);
+  assert.match(pageSource, /streamingVisible/);
+});
+
+test('streamed assistant text is pushed through a store subscription instead of page state', () => {
+  assert.match(pageSource, /new StreamingTextStore\(\)/);
+  assert.match(pageSource, /streaming\.subscribe\(/);
+  assert.doesNotMatch(pageSource, /setStreamingContent\(/);
 });

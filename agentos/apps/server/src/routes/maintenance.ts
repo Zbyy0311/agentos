@@ -52,11 +52,12 @@ export function createMaintenanceRoutes(input: {
     }
   }));
 
-  router.get('/cleanup/preview', asyncHandler(async (_req: Request, res: Response) => {
+  router.get('/cleanup/preview', asyncHandler(async (req: Request, res: Response) => {
     try {
       return res.json(await input.service.previewCleanup(input.instanceId));
     } catch {
-      return res.status(500).json({ error: 'Cleanup preview failed', code: 'CLEANUP_PREVIEW_FAILED' });
+      sendProblem(req, res, { status: 500, code: 'CLEANUP_PREVIEW_FAILED', detail: 'Cleanup preview failed' });
+      return;
     }
   }));
 
@@ -70,11 +71,12 @@ export function createMaintenanceRoutes(input: {
     }
   }));
 
-  router.get('/storage', asyncHandler(async (_req: Request, res: Response) => {
+  router.get('/storage', asyncHandler(async (req: Request, res: Response) => {
     try {
       return res.json(await input.service.inspectStorage());
     } catch {
-      return res.status(500).json({ error: 'Storage diagnostics failed', code: 'STORAGE_DIAGNOSTICS_FAILED' });
+      sendProblem(req, res, { status: 500, code: 'STORAGE_DIAGNOSTICS_FAILED', detail: 'Storage diagnostics failed' });
+      return;
     }
   }));
 

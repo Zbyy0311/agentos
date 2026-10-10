@@ -200,12 +200,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Core workspace dependencies
-        shell: pwsh
-        run: |
-          pnpm --filter @agentos/shared build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm --filter @agentos/process-runtime build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: pnpm --filter @agentos/agent-core run build
 
       - name: Core tests (simulated provider)
         run: node scripts/run-p4-ci-gate.mjs agent-core --mode simulated-provider -- pwsh -NoProfile -Command 'pnpm --filter @agentos/agent-core exec vitest run --maxWorkers=1; exit $LASTEXITCODE'

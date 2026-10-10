@@ -309,7 +309,7 @@ test('LITE-08-005/006: lists a request, reads it by id, and isolates it across w
 
     const crossWorkspace = await getJson(`${fixture.baseUrl(fixture.otherWorkspaceId)}/runtime-approvals/${request.id}`);
     assert.equal(crossWorkspace.status, 404);
-    assert.equal(crossWorkspace.body.error, 'RUNTIME_APPROVAL_NOT_FOUND');
+    assert.equal(crossWorkspace.body.code, 'RUNTIME_APPROVAL_NOT_FOUND');
   });
 });
 
@@ -321,13 +321,13 @@ test('LITE-08-006: missing expectedVersion or decision returns 400 without resol
       decision: 'approve_once', decidedBy: 'test-user',
     });
     assert.equal(missingVersion.status, 400);
-    assert.equal(missingVersion.body.error, 'RUNTIME_APPROVAL_INPUT_INVALID');
+    assert.equal(missingVersion.body.code, 'RUNTIME_APPROVAL_INPUT_INVALID');
 
     const missingDecision = await resolveJson(`${fixture.baseUrl()}/runtime-approvals/${request.id}/resolve`, {
       expectedVersion: request.version, decidedBy: 'test-user',
     });
     assert.equal(missingDecision.status, 400);
-    assert.equal(missingDecision.body.error, 'RUNTIME_APPROVAL_INPUT_INVALID');
+    assert.equal(missingDecision.body.code, 'RUNTIME_APPROVAL_INPUT_INVALID');
     assert.equal(rowCount(fixture, 'approval_decisions'), 0);
     assert.equal(fixture.gate.list(fixture.workspaceId)[0]?.status, 'pending');
   });
@@ -387,7 +387,7 @@ test('LITE-08-006: concurrent approve/reject has one CAS winner and one conflict
     const winner = approve.status === 201 ? approve : reject;
     const loser = approve.status === 409 ? approve : reject;
     assert.equal(winner.body.replayed, false);
-    assert.equal(loser.body.error, 'RUNTIME_APPROVAL_CONFLICT');
+    assert.equal(loser.body.code, 'RUNTIME_APPROVAL_CONFLICT');
     assert.equal(rowCount(fixture, 'approval_decisions'), 1);
     const current = fixture.gate.list(fixture.workspaceId)[0];
     assert.ok(current);
@@ -427,7 +427,7 @@ test('LITE-08-006: a stale request version returns 409 and leaves the request pe
     });
 
     assert.equal(response.status, 409);
-    assert.equal(response.body.error, 'RUNTIME_APPROVAL_CONFLICT');
+    assert.equal(response.body.code, 'RUNTIME_APPROVAL_CONFLICT');
     assert.equal(rowCount(fixture, 'approval_decisions'), 0);
     const current = fixture.gate.list(fixture.workspaceId)[0];
     assert.equal(current?.status, 'pending');
@@ -445,7 +445,7 @@ test('LITE-08-007: an expired pending request returns 410 without writing a deci
     });
 
     assert.equal(response.status, 410);
-    assert.equal(response.body.error, 'RUNTIME_APPROVAL_EXPIRED');
+    assert.equal(response.body.code, 'RUNTIME_APPROVAL_EXPIRED');
     assert.equal(rowCount(fixture, 'approval_decisions'), 0);
     const expired = fixture.gate.list(fixture.workspaceId)[0];
     assert.equal(expired?.status, 'expired');

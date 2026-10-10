@@ -155,8 +155,8 @@ export function GroupInteractionRecoveryPanel(props: {
           headers: { 'Content-Type': 'application/json', ...request.headers },
           body: JSON.stringify(request.body),
         });
-        const payload = await response.json().catch(() => ({})) as GroupInteractionRecoveryResult & { readonly error?: string };
-        if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+        const payload = await response.json().catch(() => ({})) as GroupInteractionRecoveryResult & { readonly error?: string; readonly detail?: string; readonly title?: string };
+        if (!response.ok) throw new Error(payload.detail ?? payload.error ?? payload.title ?? `HTTP ${response.status}`);
         if (!payload.interaction || !payload.message || typeof payload.replayed !== 'boolean') {
           throw new Error('恢复响应缺少新轮次或源消息；意图已保留，未启动 Provider。');
         }

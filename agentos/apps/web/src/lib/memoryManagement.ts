@@ -164,7 +164,10 @@ export function workspaceResponseIsCurrent(
 
 export function isMemoryVersionConflict(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /\b409\b|VERSION_CONFLICT|VERSION_SKEW|CANDIDATE_NOT_REVIEWABLE|CONFLICT_NOT_RESOLVABLE/i.test(message);
+  if (/\b409\b|VERSION_CONFLICT|VERSION_SKEW|CANDIDATE_NOT_REVIEWABLE|CONFLICT_NOT_RESOLVABLE/i.test(message)) return true;
+  // ApiProblem responses carry the stable code on the thrown error as `code`.
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /VERSION_CONFLICT|VERSION_SKEW|CANDIDATE_NOT_REVIEWABLE|CONFLICT_NOT_RESOLVABLE/i.test(code);
 }
 
 export function memoryVersionConflictGuidance(error: unknown): string | undefined {

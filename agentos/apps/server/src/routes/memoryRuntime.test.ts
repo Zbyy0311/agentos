@@ -532,7 +532,7 @@ test('MF-5 candidate queue: list, outcome filter, and version-guarded review', a
       expectedVersion: 2, outcome: 'reject',
     });
     assert.equal(rejected.status, 409);
-    assert.equal((rejected.json as { error: string }).error, 'CANDIDATE_NOT_REVIEWABLE');
+    assert.equal((rejected.json as { code: string }).code, 'CANDIDATE_NOT_REVIEWABLE');
   });
 });
 
@@ -905,7 +905,9 @@ test('LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Sn
       scope: 'workspace', category: 'reference',
     });
     assert.equal(rejected.status, 400);
-    assert.deepEqual(rejected.json, { error: 'MEMORY_ENTRY_INPUT_INVALID' });
+    const problem = rejected.json as { code: string; detail: string };
+    assert.equal(problem.code, 'MEMORY_ENTRY_INPUT_INVALID');
+    assert.equal(problem.detail, 'MEMORY_ENTRY_INPUT_INVALID');
 
     const db = store.getDatabase();
     for (const table of ['memory_entries', 'memory_entries_fts', 'memory_context_snapshots', 'workspace_events', 'runtime_events', 'outbox_messages']) {
