@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChildProcess, execFileSync } from 'node:child_process';
 import { rm } from 'node:fs/promises';
-import { CLIExecutor, CLIError, createCommandInvocation, DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveInactivityTimeoutMs, resolveKimiCliArgs, safeCleanup } from './executor.js';
+import { CLIExecutor, CLIError, BoundedOutputBuffer, CLI_OUTPUT_CAPTURE_LIMIT_CHARS, buildOutputTruncationMarker, createCommandInvocation, DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveInactivityTimeoutMs, resolveKimiCliArgs, safeCleanup, signalChildTree } from './executor.js';
 import type { AgentConfig } from './types.js';
 import type { RunFileChange } from '@agentos/shared';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -915,6 +915,82 @@ describe('CLIExecutor', () => {
     }
   });
 
+  it('bounds oversized CLI output while keeping the head and tail', async () => {
+    const headMark = 'HEAD_MARK_';
+    const tailMark = 'TAIL_MARK';
+    const oversized = CLI_OUTPUT_CAPTURE_LIMIT_CHARS * 2;
+    const log = await CLIExecutor.execute({
+      ...okConfig,
+      cliArgs: ['-e', `process.stdout.write(${JSON.stringify(headMark)}); process.stdout.write('x'.repeat(${oversized})); process.stdout.write(${JSON.stringify(tailMark)}); process.stderr.write('e'.repeat(${oversized}));`],
+    }, 'ignored', ctx('bounded-output'));
+
+    expect(log.exitCode).toBe(0);
+    expect(log.stdout.length).toBeLessThan(CLI_OUTPUT_CAPTURE_LIMIT_CHARS * 1.2);
+    expect(log.stdout.startsWith(headMark)).toBe(true);
+    expect(log.stdout.endsWith(tailMark)).toBe(true);
+    expect(log.stdout).toContain('output truncated');
+    expect(log.stderr.length).toBeLessThan(CLI_OUTPUT_CAPTURE_LIMIT_CHARS * 1.2);
+    expect(log.stderr.startsWith('e')).toBe(true);
+    expect(log.stderr.endsWith('e')).toBe(true);
+    expect(log.stderr).toContain('output truncated');
+  });
+
+  it('keeps small CLI output fully intact', async () => {
+    const log = await CLIExecutor.execute(okConfig, 'ignored', ctx('small-output'));
+    expect(log.exitCode).toBe(0);
+    expect(log.stdout).toBe('ok');
+    expect(log.stdout).not.toContain('output truncated');
+  });
+
+  it('signals the POSIX process group instead of only the direct child', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux' as NodeJS.Platform);
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const childKill = vi.fn();
+    try {
+      signalChildTree({ pid: 4321, kill: childKill } as unknown as ChildProcess, 'SIGTERM');
+      expect(groupKill).toHaveBeenCalledWith(-4321, 'SIGTERM');
+      expect(childKill).not.toHaveBeenCalled();
+
+      groupKill.mockClear();
+      signalChildTree({ pid: 4321, kill: childKill } as unknown as ChildProcess, 'SIGKILL');
+      expect(groupKill).toHaveBeenCalledWith(-4321, 'SIGKILL');
+      expect(childKill).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+      groupKill.mockRestore();
+    }
+  });
+
+  it('falls back to the direct child signal when the POSIX group signal fails', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux' as NodeJS.Platform);
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('no such process group'), { code: 'ESRCH' });
+    });
+    const childKill = vi.fn();
+    try {
+      signalChildTree({ pid: 4321, kill: childKill } as unknown as ChildProcess, 'SIGTERM');
+      expect(groupKill).toHaveBeenCalledWith(-4321, 'SIGTERM');
+      expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    } finally {
+      platform.mockRestore();
+      groupKill.mockRestore();
+    }
+  });
+
+  it('keeps Windows kill semantics on a single direct child', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32' as NodeJS.Platform);
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const childKill = vi.fn();
+    try {
+      signalChildTree({ pid: 4321, kill: childKill } as unknown as ChildProcess, 'SIGTERM');
+      expect(groupKill).not.toHaveBeenCalled();
+      expect(childKill).toHaveBeenCalledWith();
+    } finally {
+      platform.mockRestore();
+      groupKill.mockRestore();
+    }
+  });
+
   it('persists a Kimi startup failure as a CLIError log', async () => {
     const sourceHome = mkdtempSync(join(tmpdir(), 'agentos-kimi-source-'));
     const blockedHome = join(workspaceRoot, 'blocked-kimi-home');
@@ -942,5 +1018,39 @@ describe('CLIExecutor', () => {
     } finally {
       rmSync(sourceHome, { recursive: true, force: true });
     }
+  });
+});
+
+describe('BoundedOutputBuffer', () => {
+  it('keeps content fully intact while under the budget', () => {
+    const buffer = new BoundedOutputBuffer(100);
+    buffer.append('a'.repeat(60));
+    buffer.append('b'.repeat(40));
+    expect(buffer.isTruncated).toBe(false);
+    expect(buffer.toString()).toBe('a'.repeat(60) + 'b'.repeat(40));
+  });
+
+  it('keeps head and tail with a marker once the budget is exceeded', () => {
+    const buffer = new BoundedOutputBuffer(100);
+    buffer.append('H'.repeat(30));
+    buffer.append('M'.repeat(100));
+    buffer.append('T'.repeat(30));
+    const text = buffer.toString();
+    expect(buffer.isTruncated).toBe(true);
+    expect(buffer.receivedChars).toBe(160);
+    expect(text.startsWith('H'.repeat(30))).toBe(true);
+    expect(text).toContain(buildOutputTruncationMarker(160 - 100));
+    expect(text.endsWith('T'.repeat(30))).toBe(true);
+    // Head 60% + tail 40% exactly fill the budget; only the marker is extra.
+    expect(text.length).toBe(100 + buildOutputTruncationMarker(60).length);
+  });
+
+  it('keeps the newest content in the tail for later appends after truncation', () => {
+    const buffer = new BoundedOutputBuffer(100);
+    buffer.append('x'.repeat(200));
+    buffer.append('latest');
+    const text = buffer.toString();
+    expect(text.endsWith('latest')).toBe(true);
+    expect(buffer.receivedChars).toBe(206);
   });
 });
