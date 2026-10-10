@@ -90,14 +90,7 @@ export function createPreferenceRoutes(store: SqliteStore, workspaceManager: Wor
       if (frozenEvidence !== undefined) return res.json({ evidence: frozenEvidence });
       const projection = store.listPreferenceProjections(profile.id, workspace.id).find(item => item.id === projectionId);
       if (!projection || projection.scope !== 'workspace') return res.status(404).json({ error: 'Preference projection not found' });
-      const linked = store.getDatabase().prepare(`
-        SELECT e.id FROM preference_projection_evidence AS pe
-        INNER JOIN preference_evidence AS e ON e.id = pe.evidence_id
-        WHERE pe.projection_id = ? AND e.profile_id = ? AND e.workspace_id = ?
-        ORDER BY e.observed_at ASC, e.id ASC
-      `).all(projection.id, profile.id, workspace.id) as Array<{ id: string }>;
-      evidence = linked.map(row => store.getPreferenceEvidence(profile.id, row.id))
-        .filter((item): item is NonNullable<typeof item> => item !== undefined);
+      evidence = store.listPreferenceEvidenceForProjection(projection.id, profile.id, workspace.id);
     }
     res.json({ evidence });
   });

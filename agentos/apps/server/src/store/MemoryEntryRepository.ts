@@ -365,7 +365,7 @@ export class MemoryEntryRepository {
     }
     const rows = this.db.prepare('SELECT ' + SELECT_COLUMNS + ' FROM memory_entries WHERE '
       + conditions.join(' AND ') + ' ORDER BY updated_at DESC, id ASC').all(...params) as EntryRow[];
-    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
+    return this.toRecordsWithSources(rows.filter(isSafeEntryRow));
   }
 
   /** Preserve ownership and sources; explicit feedback corrections carry human provenance. */
@@ -575,7 +575,7 @@ export class MemoryEntryRepository {
         + ' AND status IN (' + statusClauses + ')'
         + ' ORDER BY updated_at DESC, id ASC',
     ).all(...params) as EntryRow[];
-    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
+    return this.toRecordsWithSources(rows.filter(isSafeEntryRow));
   }
 
   /** Only explicitly confirmed global preferences may cross their origin workspace. */
@@ -586,10 +586,26 @@ export class MemoryEntryRepository {
         AND status = 'active' AND id IN (SELECT entry_id FROM preference_confirmations
           WHERE status = 'confirmed' AND scope = 'global' AND profile_id = 'default')
       ORDER BY updated_at DESC, id ASC`).all(workspaceId) as EntryRow[];
-    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
+    return this.toRecordsWithSources(rows.filter(isSafeEntryRow));
   }
 
-  private readSources(entryId: string): MemoryEntrySourceInput[] {    const rows = this.db.prepare(
+  private toRecordsWithSources(rows: EntryRow[]): MemoryEntryRecord[] {
+    if (rows.length === 0) return [];
+    const sources = this.db.prepare(
+      'SELECT memory_entry_id, source_kind, source_id FROM memory_entry_sources WHERE memory_entry_id IN ('
+        + rows.map(() => '?').join(', ') + ') ORDER BY source_kind ASC, source_id ASC',
+    ).all(...rows.map(row => row.id)) as Array<{ memory_entry_id: string; source_kind: string; source_id: string }>;
+    const grouped = new Map<string, MemoryEntrySourceInput[]>();
+    for (const source of sources) {
+      const entrySources = grouped.get(source.memory_entry_id) ?? [];
+      entrySources.push({ kind: source.source_kind as MemorySourceKind, id: source.source_id });
+      grouped.set(source.memory_entry_id, entrySources);
+    }
+    return rows.map(row => toRecord(row, grouped.get(row.id) ?? []));
+  }
+
+  private readSources(entryId: string): MemoryEntrySourceInput[] {
+    const rows = this.db.prepare(
       'SELECT source_kind, source_id FROM memory_entry_sources WHERE memory_entry_id = ? ORDER BY source_kind ASC, source_id ASC',
     ).all(entryId) as Array<{ source_kind: string; source_id: string }>;
     return rows.map(row => ({ kind: row.source_kind as MemorySourceKind, id: row.source_id }));

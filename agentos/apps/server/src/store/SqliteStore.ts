@@ -889,8 +889,8 @@ export class SqliteStore implements Store {
     });
   }
 
-  listAgentProfiles(workspaceId: string): AgentProfile[] {
-    const rows = this.database.prepare(`
+  private agentProfileSelect(): string {
+    return `
       SELECT ap.workspace_id, ap.id, ap.name, ap.agent_role, ap.role_title, ap.system_prompt,
         ap.provider, ap.permissions_json, ap.enabled, ap.cli_command, ap.cli_args_json, ap.model, ap.thinking_effort,
         ap.provider_config_id, ap.created_at, ap.updated_at,
@@ -901,10 +901,21 @@ export class SqliteStore implements Store {
       FROM agent_profiles ap
       LEFT JOIN provider_configurations pc
         ON pc.id = ap.provider_config_id AND pc.workspace_id = ap.workspace_id
+    `;
+  }
+
+  listAgentProfiles(workspaceId: string): AgentProfile[] {
+    const rows = this.database.prepare(this.agentProfileSelect() + `
       WHERE ap.workspace_id = ?
       ORDER BY ap.name COLLATE NOCASE
     `).all(workspaceId) as AgentProfileRow[];
     return rows.map(row => this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)));
+  }
+
+  private findAgentProfile(workspaceId: string, agentId: string): AgentProfile | undefined {
+    const row = this.database.prepare(this.agentProfileSelect()
+      + ' WHERE ap.workspace_id = ? AND ap.id = ? LIMIT 1').get(workspaceId, agentId) as AgentProfileRow | undefined;
+    return row ? this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)) : undefined;
   }
 
   findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined {
@@ -941,7 +952,7 @@ export class SqliteStore implements Store {
     agentId: string,
     update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model' | 'thinkingEffort' | 'provider'>>,
   ): AgentProfile {
-    const current = this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId);
+    const current = this.findAgentProfile(workspaceId, agentId);
     if (!current) throw new Error('Agent not found');
     const next = {
       ...current,
@@ -1005,7 +1016,7 @@ export class SqliteStore implements Store {
       }
       return nextVersion;
     });
-    return this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId) ?? next;
+    return this.findAgentProfile(workspaceId, agentId) ?? next;
   }
 
   createConversation(conversation: Conversation): Conversation {
@@ -1032,14 +1043,13 @@ export class SqliteStore implements Store {
     return conversation;
   }
 
-  listConversations(workspaceId: string): Conversation[] {
-    const rows = this.database.prepare(`
-      SELECT id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, settings_version, created_at, updated_at
-      FROM conversations
-      WHERE workspace_id = ?
-      ORDER BY updated_at DESC, created_at DESC
-    `).all(workspaceId) as ConversationRow[];
-    return rows.map(row => ({
+  private conversationSelect(): string {
+    return `SELECT id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, settings_version, created_at, updated_at
+      FROM conversations`;
+  }
+
+  private toConversation(row: ConversationRow): Conversation {
+    return {
       id: row.id,
       workspaceId: row.workspace_id,
       type: row.conversation_type,
@@ -1051,11 +1061,25 @@ export class SqliteStore implements Store {
       settingsVersion: row.settings_version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-    }));
+    };
+  }
+
+  listConversations(workspaceId: string): Conversation[] {
+    const rows = this.database.prepare(this.conversationSelect() + `
+      WHERE workspace_id = ?
+      ORDER BY updated_at DESC, created_at DESC
+    `).all(workspaceId) as ConversationRow[];
+    return rows.map(row => this.toConversation(row));
+  }
+
+  private findConversation(workspaceId: string, conversationId: string): Conversation | undefined {
+    const row = this.database.prepare(this.conversationSelect()
+      + ' WHERE workspace_id = ? AND id = ? LIMIT 1').get(workspaceId, conversationId) as ConversationRow | undefined;
+    return row ? this.toConversation(row) : undefined;
   }
 
   updateConversationTitle(workspaceId: string, conversationId: string, title: string): Conversation {
-    const current = this.listConversations(workspaceId).find(conversation => conversation.id === conversationId);
+    const current = this.findConversation(workspaceId, conversationId);
     if (!current) throw new Error('Conversation not found');
     const nextTitle = title.trim();
     if (!nextTitle) throw new Error('Conversation title is required');
@@ -1073,7 +1097,7 @@ export class SqliteStore implements Store {
     conversationId: string,
     settings: { model?: string | null; thinkingEffort?: ThinkingEffort | null },
   ): Conversation {
-    const current = this.listConversations(workspaceId).find(conversation => conversation.id === conversationId);
+    const current = this.findConversation(workspaceId, conversationId);
     if (!current) throw new Error('Conversation not found');
     const nextModel = settings.model === undefined ? current.model : settings.model?.trim() || undefined;
     const nextThinkingEffort = settings.thinkingEffort === undefined ? current.thinkingEffort : settings.thinkingEffort ?? undefined;
@@ -2311,6 +2335,16 @@ export class SqliteStore implements Store {
         FROM preference_evidence WHERE profile_id = ?
         ORDER BY observed_at ASC, id ASC
       `).all(profileId)) as PreferenceEvidenceRow[];
+    return rows.map(row => this.toPreferenceEvidence(row));
+  }
+
+  listPreferenceEvidenceForProjection(projectionId: string, profileId: string, workspaceId: string): PreferenceEvidence[] {
+    const rows = this.database.prepare(`
+      SELECT e.* FROM preference_projection_evidence AS pe
+      INNER JOIN preference_evidence AS e ON e.id = pe.evidence_id
+      WHERE pe.projection_id = ? AND e.profile_id = ? AND e.workspace_id = ?
+      ORDER BY e.observed_at ASC, e.id ASC
+    `).all(projectionId, profileId, workspaceId) as PreferenceEvidenceRow[];
     return rows.map(row => this.toPreferenceEvidence(row));
   }
 
