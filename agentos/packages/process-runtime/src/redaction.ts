@@ -19,13 +19,10 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 function indexOfBytes(haystack: Uint8Array, needle: Uint8Array, from: number): number {
-  outer: for (let i = from; i + needle.length <= haystack.length; i++) {
-    for (let j = 0; j < needle.length; j++) {
-      if (haystack[i + j] !== needle[j]) continue outer;
-    }
-    return i;
-  }
-  return -1;
+  // Native substring search over the same bytes (zero-copy Buffer view);
+  // callers advance `from` past each hit, so no rescan of earlier data.
+  return Buffer.from(haystack.buffer, haystack.byteOffset, haystack.byteLength)
+    .indexOf(needle, from);
 }
 
 export class SecretScanner {

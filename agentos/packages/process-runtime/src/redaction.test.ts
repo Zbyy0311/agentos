@@ -93,4 +93,16 @@ describe('SecretScanner', () => {
       }
     }
   });
+
+  it('redacts many scattered hits from several patterns in one chunk', () => {
+    const scanner = new SecretScanner(['tok-1', 'tok-22', 'secret-token']);
+    const input = 'a tok-1 b tok-22 c tok-1 d secret-token e tok-22 f';
+    const out = dec(scanner.push(enc(input))) + dec(scanner.flush());
+    expect(out).toBe(
+      'a [REDACTED] b [REDACTED] c [REDACTED] d [REDACTED] e [REDACTED] f',
+    );
+    expect(out).not.toContain('tok-1');
+    expect(out).not.toContain('tok-22');
+    expect(out).not.toContain('secret-token');
+  });
 });

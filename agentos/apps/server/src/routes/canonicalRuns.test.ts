@@ -96,7 +96,7 @@ async function createFixture(): Promise<Fixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Canonical Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('Canonical Workspace', join(root, 'workspace-a'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const seeder = new TaskRunService(store);

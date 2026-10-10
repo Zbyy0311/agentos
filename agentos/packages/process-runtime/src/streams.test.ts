@@ -192,6 +192,20 @@ describe('BoundedProcessStream redaction and summaries', () => {
     expect(new TextEncoder().encode(summary).length).toBeLessThanOrEqual(2048);
     expect(summary).not.toContain('\x1b');
   });
+
+  it('fits multibyte summaries to the cap across many retained segments', () => {
+    const { stream } = makeStream({ limits: { summaryBytes: 64 } });
+    for (let i = 0; i < 10; i += 1) {
+      stream.push(enc('x'.repeat(10)));
+    }
+    stream.push(enc('尾'.repeat(30)));
+    stream.finalize();
+    const summary = stream.safeSummary();
+    const bytes = new TextEncoder().encode(summary);
+    expect(bytes.length).toBeLessThanOrEqual(64);
+    // Exact fitting suffix: 21 CJK characters at 3 bytes each = 63 bytes.
+    expect(summary).toBe('尾'.repeat(21));
+  });
 });
 
 describe('incompleteUtf8TailLength', () => {

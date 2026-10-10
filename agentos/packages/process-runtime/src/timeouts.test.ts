@@ -88,4 +88,34 @@ describe('ProcessTimers', () => {
     expect(fired).toEqual([]);
     expect(clock.pendingCount).toBe(0);
   });
+
+  it('performs zero timer operations on the activity path', () => {
+    const { clock, timers, fired } = makeTimers({ idleMs: 200 });
+    timers.armFromNativeStart();
+    expect(clock.setTimeoutCallCount).toBe(1);
+    clock.advance(50);
+    timers.notifyActivity();
+    clock.advance(80);
+    timers.notifyActivity();
+    // The activity path never clears or re-arms the idle timer.
+    expect(clock.setTimeoutCallCount).toBe(1);
+    // The deadline still follows the latest activity (50 + 80 + 199/1).
+    clock.advance(199);
+    expect(fired).toEqual([]);
+    clock.advance(1);
+    expect(fired).toEqual(['idle']);
+  });
+
+  it('the armed tick re-checks the deadline against the last activity', () => {
+    const { clock, timers, fired } = makeTimers({ idleMs: 200 });
+    timers.armFromNativeStart();
+    clock.advance(150);
+    timers.notifyActivity();
+    // Crossing the stale arm point (t=200) must not fire: the tick observes
+    // recent activity and re-arms for the remainder instead.
+    clock.advance(60);
+    expect(fired).toEqual([]);
+    clock.advance(140);
+    expect(fired).toEqual(['idle']);
+  });
 });

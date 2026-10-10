@@ -77,7 +77,7 @@ async function createFixture(): Promise<Fixture> {
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5C Stream Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5C Stream Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,
@@ -414,7 +414,7 @@ test('P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400
     assert.equal(foreignRunBody.detail, unknownBody.detail);
 
     const manager = new WorkspaceManager(fx.store);
-    const workspaceB = manager.create('P5C Stream Workspace B', join(fx.root, 'workspace-b'), {
+    const workspaceB = await manager.create('P5C Stream Workspace B', join(fx.root, 'workspace-b'), {
       git: false,
       memory: false,
       readme: false,
@@ -612,7 +612,7 @@ async function createBackpressureFixture(): Promise<Fixture> {
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5C Backpressure Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5C Backpressure Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,

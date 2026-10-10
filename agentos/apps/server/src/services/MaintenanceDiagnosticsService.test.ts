@@ -21,7 +21,7 @@ test('readiness separates database, migration, recovery, Provider state and main
   let providerAuthentication: unknown = 'unauthenticated';
   try {
     const workspaces = new WorkspaceManager(store);
-    workspaces.create('Readiness fixture', join(root, 'workspace-root'), { git: false, memory: false, docs: false, readme: false });
+    await workspaces.create('Readiness fixture', join(root, 'workspace-root'), { git: false, memory: false, docs: false, readme: false });
     const diagnostics = new MaintenanceDiagnosticsService(store, workspaces, {
       providerValidator: {
         async validate(configuration) {

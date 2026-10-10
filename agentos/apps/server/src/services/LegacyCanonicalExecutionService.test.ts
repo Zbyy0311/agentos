@@ -40,11 +40,11 @@ function taskLog(stage: AgentStage): TaskLog {
   };
 }
 
-function createFixture(taskId: string): Fixture {
+async function createFixture(taskId: string): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6c-execution-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P6C Execution', join(root, 'workspace'), {
+  const workspace = await manager.create('P6C Execution', join(root, 'workspace'), {
     git: false,
     memory: false,
     readme: false,
@@ -122,7 +122,7 @@ function projectionContext(fixture: Fixture) {
 }
 
 test('startup failure rolls back first-stage preparation and atomically fails Start plus Run', async () => {
-  const fixture = createFixture('legacy-startup-failure');
+  const fixture = await createFixture('legacy-startup-failure');
   const lifecycle = fixture.store.lifecycleTransactionService();
   const originalTransition = lifecycle.transitionStageWithinTransaction.bind(lifecycle);
   let transitionCalls = 0;
@@ -183,7 +183,7 @@ test('startup failure rolls back first-stage preparation and atomically fails St
 });
 
 test('C15-C22/T01-T06 executes exact stages, persists text first, and leaves Start completed on later failure', async () => {
-  const fixture = createFixture('legacy-service-failure');
+  const fixture = await createFixture('legacy-service-failure');
   const order: AgentStage[] = [];
   let constructions = 0;
   const projected: Array<{ event: string; text?: unknown }> = [];
@@ -281,7 +281,7 @@ test('C15-C22/T01-T06 executes exact stages, persists text first, and leaves Sta
 
 for (const failurePoint of ['event', 'outbox'] as const) {
   test(`T03/T04 ${failurePoint} failure rolls back stream persistence and emits zero thinking`, async () => {
-    const fixture = createFixture(`legacy-${failurePoint}-failure`);
+    const fixture = await createFixture(`legacy-${failurePoint}-failure`);
     const repository = fixture.store.runtimeEventRepository();
     const outbox = fixture.store.outboxRepository();
     const originalAppend = repository.appendWithinTransaction.bind(repository);
@@ -344,8 +344,8 @@ for (const failurePoint of ['event', 'outbox'] as const) {
   });
 }
 
-test('claim compensation and restart recovery fail the unique queued Start with the queued Legacy Run', () => {
-  const compensation = createFixture('legacy-compensation');
+test('claim compensation and restart recovery fail the unique queued Start with the queued Legacy Run', async () => {
+  const compensation = await createFixture('legacy-compensation');
   try {
     const original = new Error('injected JSON claim save failure');
     assert.throws(
@@ -369,7 +369,7 @@ test('claim compensation and restart recovery fail the unique queued Start with 
     closeFixture(compensation);
   }
 
-  const recovery = createFixture('legacy-restart');
+  const recovery = await createFixture('legacy-restart');
   try {
     const recovered = recovery.taskRunService.recoverInterruptedLegacyQueuedRuns(recovery.workspaceId);
     assert.deepEqual(recovered.map(item => item.runId), [recovery.bridge.run.id]);
@@ -385,7 +385,7 @@ test('claim compensation and restart recovery fail the unique queued Start with 
     closeFixture(recovery);
   }
 
-  const ambiguous = createFixture('legacy-restart-ambiguous');
+  const ambiguous = await createFixture('legacy-restart-ambiguous');
   try {
     ambiguous.store.runInTransaction(() => {
       ambiguous.store.operationService().createWithinTransaction({
@@ -412,8 +412,8 @@ test('claim compensation and restart recovery fail the unique queued Start with 
   }
 });
 
-test('claim compensation failure preserves both errors and leaves queued authority unchanged', () => {
-  const fixture = createFixture('legacy-compensation-failure');
+test('claim compensation failure preserves both errors and leaves queued authority unchanged', async () => {
+  const fixture = await createFixture('legacy-compensation-failure');
   const operations = fixture.store.operationService();
   const originalTransition = operations.transitionWithinTransaction.bind(operations);
   const originalError = new Error('injected JSON claim save failure');

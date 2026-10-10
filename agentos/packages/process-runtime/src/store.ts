@@ -17,6 +17,16 @@ import type {
   TimeoutPolicy,
 } from './types.js';
 
+/** Rolling per-Process fact retention cap; the oldest fact is dropped past it. */
+export const PROCESS_FACTS_RETAINED_MAX = 1000;
+/**
+ * Terminal summary depth: once a Process concludes, its in-memory fact list
+ * is trimmed to the most recent facts (terminal fact included). The durable
+ * event log remains the authoritative history; this bounds only the runtime
+ * mirror.
+ */
+export const PROCESS_FACTS_TERMINAL_SUMMARY_MAX = 50;
+
 /** P0 section 7 transition table, adopted exactly. */
 export const ALLOWED_TRANSITIONS: Readonly<Record<ProcessState, readonly ProcessState[]>> = {
   created: ['starting', 'failed', 'unknown'],
@@ -125,6 +135,9 @@ export class InMemoryProcessStore {
   }
 
   appendFact(record: ProcessRecord, type: ProcessFactType, at: number): ProcessFact {
+    if (record.facts.length >= PROCESS_FACTS_RETAINED_MAX) {
+      record.facts.shift();
+    }
     const fact: ProcessFact = Object.freeze({ type, at, version: record.version });
     record.facts.push(fact);
     return fact;
@@ -135,11 +148,16 @@ export class InMemoryProcessStore {
     if (record.terminal !== null) return false;
     if (!isTerminalState(record.state)) return false;
     this.appendFact(record, type, at);
+    if (record.facts.length > PROCESS_FACTS_TERMINAL_SUMMARY_MAX) {
+      record.facts.splice(0, record.facts.length - PROCESS_FACTS_TERMINAL_SUMMARY_MAX);
+    }
     return true;
   }
 
   snapshotOf(record: ProcessRecord): ProcessSnapshot {
-    const facts = Object.freeze(record.facts.map((f) => Object.freeze({ ...f })));
+    // Facts are frozen once at append time; a snapshot reuses the frozen
+    // references inside a fresh frozen array, so no per-fact copy is needed.
+    const facts = Object.freeze(record.facts.slice());
     const terminal = record.terminal === null ? null : Object.freeze({
       ...record.terminal,
       error: record.terminal.error === null ? null : Object.freeze({ ...record.terminal.error }),
@@ -195,6 +213,31 @@ export class InMemoryProcessStore {
     if (record === undefined) return;
     const snapshot = this.snapshotOf(record);
     for (const listener of [...set]) listener(snapshot);
+  }
+
+  /**
+   * Explicit reclamation of a concluded Process: the record, its claim index
+   * entry and its listeners are dropped. Callers must only dispose Processes
+   * whose evidence is no longer needed (terminal observation concluded).
+   */
+  dispose(id: ProcessId): boolean {
+    const record = this.#records.get(id);
+    if (record === undefined) return false;
+    this.#records.delete(id);
+    this.#claimIndex.delete(record.claimKey);
+    this.#listeners.delete(id);
+    return true;
+  }
+
+  /** Terminal records concluded at or before cutoffMs; used by reclaim sweeps. */
+  terminalRecordsOlderThan(cutoffMs: number): ProcessRecord[] {
+    const due: ProcessRecord[] = [];
+    for (const record of this.#records.values()) {
+      if (record.terminal !== null && record.terminal.terminalAt <= cutoffMs) {
+        due.push(record);
+      }
+    }
+    return due;
   }
 
   get size(): number {

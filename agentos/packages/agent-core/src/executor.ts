@@ -35,6 +35,85 @@ const DEFAULT_MAX_EXECUTION_MS = 30 * 60 * 1000;
  */
 export const DEFAULT_OPENCODE_INACTIVITY_TIMEOUT_MS = 120 * 1000;
 
+/**
+ * Captured CLI output is bounded so a verbose CLI cannot exhaust memory via
+ * unbounded per-chunk string concatenation.  When the budget is exceeded the
+ * head (oldest) and tail (newest) portions are kept and the omitted middle is
+ * replaced by a truncation marker.
+ */
+export const CLI_OUTPUT_CAPTURE_LIMIT_CHARS = 1024 * 1024;
+export const CLI_OUTPUT_HEAD_RATIO = 0.6;
+export const CLI_OUTPUT_TAIL_RATIO = 0.4;
+
+export function buildOutputTruncationMarker(omittedChars: number): string {
+  return `\n[AgentOS] ... output truncated: ${omittedChars} chars omitted from the middle (kept head and tail) ...\n`;
+}
+
+export class BoundedOutputBuffer {
+  private head = '';
+  private tail = '';
+  private droppedChars = 0;
+  private truncated = false;
+  private readonly headBudget: number;
+  private readonly tailBudget: number;
+
+  constructor(private readonly maxChars: number = CLI_OUTPUT_CAPTURE_LIMIT_CHARS) {
+    this.headBudget = Math.ceil(maxChars * CLI_OUTPUT_HEAD_RATIO);
+    this.tailBudget = maxChars - this.headBudget;
+  }
+
+  append(text: string): void {
+    if (text.length === 0) return;
+    if (this.truncated) {
+      this.droppedChars += Math.max(0, this.tail.length + text.length - this.tailBudget);
+      this.tail = (this.tail + text).slice(-this.tailBudget);
+      return;
+    }
+    this.head += text;
+    if (this.head.length > this.maxChars) {
+      this.truncated = true;
+      const combined = this.head;
+      this.head = combined.slice(0, this.headBudget);
+      this.tail = combined.slice(-this.tailBudget);
+      this.droppedChars = combined.length - this.head.length - this.tail.length;
+    }
+  }
+
+  get isTruncated(): boolean {
+    return this.truncated;
+  }
+
+  /** Total characters received, including the ones dropped from the middle. */
+  get receivedChars(): number {
+    return this.truncated
+      ? this.head.length + this.tail.length + this.droppedChars
+      : this.head.length;
+  }
+
+  toString(): string {
+    if (!this.truncated) return this.head;
+    return `${this.head}${buildOutputTruncationMarker(this.droppedChars)}${this.tail}`;
+  }
+}
+
+/**
+ * Non-owned POSIX children are spawned detached so the whole process tree
+ * shares the child's process group; signal the group first so grandchildren
+ * do not leak as orphans.  Windows keeps its single-process kill semantics.
+ */
+export function signalChildTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+  if (process.platform === 'win32') {
+    child.kill();
+    return;
+  }
+  try {
+    if (child.pid === undefined) throw new Error('child-pid-unavailable');
+    process.kill(-child.pid, signal);
+  } catch {
+    try { child.kill(signal); } catch { /* process already gone */ }
+  }
+}
+
 export type CliTimeoutReason = 'inactivity_timeout' | 'max_execution_time';
 
 export function getInactivityTimeoutMs(value = process.env.AGENTOS_AGENT_TIMEOUT): number | null {
@@ -457,14 +536,14 @@ export class CLIExecutor {
     const runtimeParser = adapter.createParser();
     if (adapterResolution.diagnostic) ctx.onRuntimeEvent?.(adapterResolution.diagnostic);
 
-    let stdout = '';
-    let stderr = '';
+    const stdoutBuffer = new BoundedOutputBuffer();
+    const stderrBuffer = new BoundedOutputBuffer();
 
     const emitRuntimeEvents = (events: NormalizedCliEvent[]) => {
       for (const event of events) {
         ctx.onRuntimeEvent?.(event);
         if (event.type === 'assistant.message') {
-          stdout += event.text;
+          stdoutBuffer.append(event.text);
           onChunk?.(event.text, false);
         }
       }
@@ -565,6 +644,10 @@ export class CLIExecutor {
           cwd: workspaceRoot,
           env: childEnv,
           windowsHide: true,
+          // POSIX: run the CLI in its own process group so killChild can
+          // signal the whole tree through signalChildTree.  Pipes still work
+          // with detached spawns and the child is intentionally not unref'd.
+          detached: process.platform !== 'win32',
           stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         });
         if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
@@ -590,7 +673,7 @@ export class CLIExecutor {
     });
 
     child.stderr!.on('data', (chunk: Buffer) => {
-      stderr += stderrDecoder.decode(chunk, { stream: true });
+      stderrBuffer.append(stderrDecoder.decode(chunk, { stream: true }));
       recordActivity('stderr');
     });
 
@@ -621,8 +704,8 @@ export class CLIExecutor {
         if (process.platform === 'win32') {
           child.kill();
         } else {
-          child.kill('SIGTERM');
-          setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 5000);
+          signalChildTree(child, 'SIGTERM');
+          setTimeout(() => signalChildTree(child, 'SIGKILL'), 5000);
         }
       };
 
@@ -630,7 +713,7 @@ export class CLIExecutor {
         if (abortTriggered) return;
         abortTriggered = true;
         const killReason = signal?.aborted ? 'AbortSignal triggered' : 'unknown';
-        stderr += `\n[AgentOS] Pipeline cancelled, killing process.`;
+        stderrBuffer.append(`\n[AgentOS] Pipeline cancelled, killing process.`);
         diagLog(`ABORT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=${killReason} childPid=${child.pid} parentPid=${process.pid}`);
         killChild('cancelled');
         settle(null);
@@ -651,7 +734,7 @@ export class CLIExecutor {
 
           inactivityTimedOut = true;
           timeoutReason = 'inactivity_timeout';
-          stderr += `\n[AgentOS] Agent inactive for ${inactiveForMs}ms (threshold ${inactivityTimeoutMs}ms), killing process.`;
+          stderrBuffer.append(`\n[AgentOS] Agent inactive for ${inactiveForMs}ms (threshold ${inactivityTimeoutMs}ms), killing process.`);
           diagLog(`TIMEOUT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=inactivity_timeout inactivityTimeoutMs=${inactivityTimeoutMs} inactiveForMs=${inactiveForMs} lastActivityAt=${new Date(lastActivityAt).toISOString()} childPid=${child.pid}`);
           killChild('inactivity_timeout');
           settle(null);
@@ -662,7 +745,7 @@ export class CLIExecutor {
         if (settled) return;
         maxExecutionTimedOut = true;
         timeoutReason = 'max_execution_time';
-        stderr += `\n[AgentOS] Max execution time exceeded (${maxExecutionTimeoutMs}ms).`;
+        stderrBuffer.append(`\n[AgentOS] Max execution time exceeded (${maxExecutionTimeoutMs}ms).`);
         diagLog(`TIMEOUT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=max_execution_time maxExecutionTimeoutMs=${maxExecutionTimeoutMs} childPid=${child.pid}`);
         killChild('max_execution_time');
         settle(null);
@@ -674,7 +757,7 @@ export class CLIExecutor {
       });
 
       child.on('error', (err) => {
-        stderr += `\n[AgentOS] Spawn error: ${err.message}`;
+        stderrBuffer.append(`\n[AgentOS] Spawn error: ${err.message}`);
         diagLog(`CHILD_ERROR executionId=${executionId} taskId=${taskId} childPid=${child.pid} error=${err.message}`);
         settle(null);
       });
@@ -699,7 +782,7 @@ export class CLIExecutor {
         emitRuntimeEvents([{ type: 'usage', source: 'unavailable', provider: 'opencode', estimated: false }]);
       }
     }
-    stderr += stderrDecoder.decode();
+    stderrBuffer.append(stderrDecoder.decode());
     const invocationCompletedAt = new Date().toISOString();
     ctx.onInvocationCompleted?.({
       invocationId, cliKind: runtimeCliKind, commandLabel: toCommandLabel(runtimeCliKind),
@@ -714,14 +797,16 @@ export class CLIExecutor {
     ctx.onFileChanges?.(diffWorkspaceSnapshots(workspaceBefore, workspaceAfter));
     await safeCleanup(invocation.cleanup);
 
-    const log = this.buildLog(stage, agentName, stdout, stderr, exitCode, startTime, 'real');
+    const stdoutText = stdoutBuffer.toString();
+    const stderrText = stderrBuffer.toString();
+    const log = this.buildLog(stage, agentName, stdoutText, stderrText, exitCode, startTime, 'real');
     await this.persistLog(log, workspaceRoot, taskId, ctx.persistWorkspaceLog !== false);
 
     if (onChunk) onChunk('', true);
 
     if (exitCode !== 0) {
-      const safeDetail = publicFailureDetail(stderr, stdout);
-      diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} exitCode=${exitCode} stdoutLength=${stdout.length} stderrLength=${stderr.length}`);
+      const safeDetail = publicFailureDetail(stderrText, stdoutText);
+      diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} exitCode=${exitCode} stdoutLength=${stdoutBuffer.receivedChars} stderrLength=${stderrBuffer.receivedChars}`);
       throw new CLIError(
         `${agentName} (${stage}) failed with exit code ${exitCode}${safeDetail ? `: ${safeDetail}` : ''}`,
         stage,

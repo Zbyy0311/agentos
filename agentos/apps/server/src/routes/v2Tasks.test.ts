@@ -75,8 +75,8 @@ async function createFixture(): Promise<Fixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspaceA = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
-  const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
+  const workspaceA = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+  const workspaceB = await manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
   const app = express();
   app.use(express.json());
   app.head('/__test_fetch_port_probe', (_req, res) => {
@@ -1050,7 +1050,7 @@ async function createNoCapabilityFixture(): Promise<NoCapabilityFixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspaceA = manager.create('No Capability Workspace', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+  const workspaceA = await manager.create('No Capability Workspace', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
   const deps = withoutIdempotencyCapability(store);
   const app = express();
   app.use(express.json());

@@ -40,16 +40,23 @@ export class FakeClock implements Clock {
   #now = 0;
   #nextId = 1;
   #timers: Array<{ id: number; at: number; callback: () => void }> = [];
+  #setTimeoutCalls = 0;
 
   now(): number {
     return this.#now;
   }
 
   setTimeout(callback: () => void, delayMs: number): ClockTimerHandle {
+    this.#setTimeoutCalls += 1;
     const id = this.#nextId++;
     this.#timers.push({ id, at: this.#now + delayMs, callback });
     this.#timers.sort((a, b) => a.at - b.at || a.id - b.id);
     return { id };
+  }
+
+  /** Total setTimeout calls since construction (evidence for timer-free paths). */
+  get setTimeoutCallCount(): number {
+    return this.#setTimeoutCalls;
   }
 
   clearTimeout(handle: ClockTimerHandle): void {

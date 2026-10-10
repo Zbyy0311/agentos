@@ -92,7 +92,7 @@ interface SnapshotRow {
  * The existing route-fixture shape (operations.test.ts) plus the M4-P4
  * composition root under test and a real accepted `run.start` Operation.
  */
-function createFixture(options: { readonly canonicalStages?: boolean } = {}): ChainFixture {
+async function createFixture(options: { readonly canonicalStages?: boolean } = {}): Promise<ChainFixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-provider-chain-emission-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
@@ -100,7 +100,7 @@ function createFixture(options: { readonly canonicalStages?: boolean } = {}): Ch
   const store = new SqliteStore(root);
   try {
     const manager = new WorkspaceManager(store);
-    const workspace = manager.create('Provider Chain Emission', join(root, 'workspace-a'), {
+    const workspace = await manager.create('Provider Chain Emission', join(root, 'workspace-a'), {
       git: false,
       memory: false,
       readme: false,
@@ -311,8 +311,8 @@ function assertResolverError(error: unknown, code: 'INPUT_INVALID' | 'SNAPSHOT_F
 
 // MF5W-01 — the composition root constructs, which is only possible when the
 // emitter's Outbox writer shares the store's one SQLite connection.
-test('MF5W-01 the production composition root constructs over one bound Runtime Event writer', () => {
-  const fx = createFixture();
+test('MF5W-01 the production composition root constructs over one bound Runtime Event writer', async () => {
+  const fx = await createFixture();
   try {
     const db = fx.store.getDatabase();
     // The invariant MemoryRuntimeEventEmitter enforces at construction
@@ -338,8 +338,8 @@ test('MF5W-01 the production composition root constructs over one bound Runtime 
 });
 
 // MF5W-02 — the resolver the ROOT built fails closed without a causal context.
-test('MF5W-02 the production resolver rejects a missing eventContext before any write', () => {
-  const fx = createFixture();
+test('MF5W-02 the production resolver rejects a missing eventContext before any write', async () => {
+  const fx = await createFixture();
   try {
     const db = fx.store.getDatabase();
     const baselineEvents = count(db, 'SELECT COUNT(*) AS c FROM runtime_events');
@@ -365,8 +365,8 @@ test('MF5W-02 the production resolver rejects a missing eventContext before any 
 
 // MF5W-03 — one resolve produces exactly one snapshot, one canonical Event and
 // one Outbox handoff, all bound to the persisted run.start Operation.
-test('MF5W-03 the production resolver emits one context_created event bound to the run.start Operation', () => {
-  const fx = createFixture();
+test('MF5W-03 the production resolver emits one context_created event bound to the run.start Operation', async () => {
+  const fx = await createFixture();
   try {
     const db = fx.store.getDatabase();
     const entryId = addActiveEntry(fx);
@@ -439,8 +439,8 @@ test('MF5W-03 the production resolver emits one context_created event bound to t
 
 // MF5W-04 — re-dispatch is a pure read: same input reuses the snapshot and
 // appends nothing, and a context-less replay stays refused without writing.
-test('MF5W-04 replaying the same input reuses the snapshot and appends no event', () => {
-  const fx = createFixture();
+test('MF5W-04 replaying the same input reuses the snapshot and appends no event', async () => {
+  const fx = await createFixture();
   try {
     const db = fx.store.getDatabase();
     addActiveEntry(fx);
@@ -487,8 +487,8 @@ test('MF5W-04 replaying the same input reuses the snapshot and appends no event'
 
 // MF5W-05 — the canonical persisted Workspace switch controls each NEW
 // Run/Stage scope, while frozen replay remains immutable across switch changes.
-test('MF5W-05 persisted workspace memory switch applies to new stage scopes and preserves replay', () => {
-  const fx = createFixture({ canonicalStages: true });
+test('MF5W-05 persisted workspace memory switch applies to new stage scopes and preserves replay', async () => {
+  const fx = await createFixture({ canonicalStages: true });
   try {
     const db = fx.store.getDatabase();
     const stages = fx.store.runStageRepository().listByRun(fx.workspaceId, fx.runId);
@@ -564,8 +564,8 @@ test('MF5W-05 persisted workspace memory switch applies to new stage scopes and 
 
 // MF5W-06 — a Workspace disabled before its first scope is frozen gets a
 // durable empty context and never selects the available Entry for injection.
-test('MF5W-06 a workspace disabled before its first stage scope freezes no memory', () => {
-  const fx = createFixture({ canonicalStages: true });
+test('MF5W-06 a workspace disabled before its first stage scope freezes no memory', async () => {
+  const fx = await createFixture({ canonicalStages: true });
   try {
     const db = fx.store.getDatabase();
     const stage = fx.store.runStageRepository().listByRun(fx.workspaceId, fx.runId)[0];

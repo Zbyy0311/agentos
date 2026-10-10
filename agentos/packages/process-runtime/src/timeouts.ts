@@ -26,6 +26,8 @@ export class ProcessTimers {
   #total: ClockTimerHandle | null = null;
   #idleRemainingMs: number | null = null;
   #idleArmedAt: number | null = null;
+  /** Baseline for the idle deadline: last activity (or last arm) timestamp. */
+  #lastActivityAt: number | null = null;
   #idlePaused = false;
   #fired = false;
   #disarmed = false;
@@ -73,19 +75,28 @@ export class ProcessTimers {
     }
   }
 
-  /** Activity checkpoint: the idle deadline restarts. */
+  /**
+   * Activity checkpoint: moves the idle baseline without touching the armed
+   * timer. The timer fires once per period at most; its tick re-checks the
+   * remaining budget against the last activity, so the hot path performs zero
+   * timer operations and the external deadline semantics are unchanged.
+   */
   notifyActivity(): void {
     if (this.#disarmed || this.#fired || this.#idlePaused) return;
     if (this.#policy.idleMs === undefined) return;
-    this.#clearIdle();
-    this.#armIdle(this.#policy.idleMs);
+    this.#lastActivityAt = this.#clock.now();
+    if (this.#idle === null) {
+      // Not armed yet (activity before the native-start arm): arm lazily.
+      this.#armIdle(this.#policy.idleMs);
+    }
   }
 
   /** Approved wait: the idle deadline pauses with its remaining budget kept. */
   pauseIdle(): void {
     if (this.#idlePaused || this.#disarmed || this.#fired) return;
     if (this.#idle === null) return;
-    const elapsed = this.#clock.now() - (this.#idleArmedAt ?? this.#clock.now());
+    const baseline = this.#lastActivityAt ?? this.#idleArmedAt ?? this.#clock.now();
+    const elapsed = this.#clock.now() - baseline;
     this.#idleRemainingMs = Math.max(0, (this.#policy.idleMs ?? 0) - elapsed);
     this.#clearIdle();
     this.#idlePaused = true;
@@ -94,7 +105,13 @@ export class ProcessTimers {
   resumeIdle(): void {
     if (!this.#idlePaused || this.#disarmed || this.#fired) return;
     this.#idlePaused = false;
-    this.#armIdle(this.#idleRemainingMs ?? this.#policy.idleMs ?? 0);
+    const idleMs = this.#policy.idleMs ?? 0;
+    const remaining = this.#idleRemainingMs ?? idleMs;
+    // Keep the pre-pause consumption in the baseline so the deadline stays
+    // lastActivity + idleMs across the pause boundary.
+    const elapsedBeforePause = Math.max(0, idleMs - remaining);
+    this.#lastActivityAt = this.#clock.now() - elapsedBeforePause;
+    this.#armIdle(remaining);
     this.#idleRemainingMs = null;
   }
 
@@ -111,17 +128,37 @@ export class ProcessTimers {
     }
     this.#idlePaused = false;
     this.#idleRemainingMs = null;
+    this.#lastActivityAt = null;
   }
 
   #armIdle(delayMs: number): void {
     this.#idleArmedAt = this.#clock.now();
-    this.#idle = this.#clock.setTimeout(() => this.#fire('idle'), delayMs);
+    this.#idle = this.#clock.setTimeout(() => this.#onIdleTick(), delayMs);
   }
 
   #clearIdle(): void {
     if (this.#idle !== null) {
       this.#clock.clearTimeout(this.#idle);
       this.#idle = null;
+    }
+  }
+
+  /**
+   * One idle timer fired: re-check the deadline against the last activity
+   * instead of assuming the arm is still current. Late activity shortens the
+   * wait; activity resets never happen on the hot path.
+   */
+  #onIdleTick(): void {
+    this.#idle = null;
+    if (this.#disarmed || this.#fired) return;
+    const idleMs = this.#policy.idleMs;
+    if (idleMs === undefined) return;
+    const baseline = this.#lastActivityAt ?? this.#idleArmedAt ?? this.#clock.now();
+    const remaining = baseline + idleMs - this.#clock.now();
+    if (remaining <= 0) {
+      this.#fire('idle');
+    } else {
+      this.#armIdle(remaining);
     }
   }
 

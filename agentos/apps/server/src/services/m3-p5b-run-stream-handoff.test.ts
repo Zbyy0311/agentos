@@ -15,13 +15,13 @@ interface Fixture {
   readonly runId: string;
 }
 
-function fixture(): Fixture {
+async function fixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5b-handoff-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5B Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5B Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,
@@ -61,8 +61,8 @@ function nextDraft(fx: Fixture, sequence: number): RuntimeEventDraft {
   };
 }
 
-test('P5B-G11 race A: commit after subscriber install but before HWM is delivered exactly once', () => {
-  const fx = fixture();
+test('P5B-G11 race A: commit after subscriber install but before HWM is delivered exactly once', async () => {
+  const fx = await fixture();
   try {
     const repository = fx.store.runtimeEventRepository();
     const original = repository.getRunHighWatermark.bind(repository);
@@ -89,8 +89,8 @@ test('P5B-G11 race A: commit after subscriber install but before HWM is delivere
   }
 });
 
-test('P5B-G12 race B: commit during replay buffers, drains and preserves old/new ASC exactly once', () => {
-  const fx = fixture();
+test('P5B-G12 race B: commit during replay buffers, drains and preserves old/new ASC exactly once', async () => {
+  const fx = await fixture();
   try {
     const received: number[] = [];
     let injected = false;
@@ -114,8 +114,8 @@ test('P5B-G12 race B: commit during replay buffers, drains and preserves old/new
   }
 });
 
-test('P5B rollback after Event append removes the row and produces zero hint/delivery', () => {
-  const fx = fixture();
+test('P5B rollback after Event append removes the row and produces zero hint/delivery', async () => {
+  const fx = await fixture();
   try {
     const received: number[] = [];
     fx.store.runStreamService().subscribe({
@@ -144,8 +144,8 @@ test('P5B rollback after Event append removes the row and produces zero hint/del
   }
 });
 
-test('P5B Store restart loses notifier state but durable replay restores history without Outbox mutation', () => {
-  const fx = fixture();
+test('P5B Store restart loses notifier state but durable replay restores history without Outbox mutation', async () => {
+  const fx = await fixture();
   const beforeOutbox = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages').get() as { count: number }).count;
   fx.store.close();
   const restarted = new SqliteStore(fx.root);

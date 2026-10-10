@@ -33,6 +33,7 @@ import type {
   SessionClaimTransferInput,
 } from './repository-port.js';
 import type { CleanupResult } from './types.js';
+import { isTerminalState } from './types.js';
 
 /**
  * M4-P2B durable orchestration seam (schema-light).
@@ -184,6 +185,16 @@ export class DurableProcessCoordinator {
   /** Number of native handles currently retained (evidence for tests). */
   get retainedHandleCount(): number {
     return this.#handles.size;
+  }
+
+  /** Causal cursors currently retained (evidence for reclaim tests). */
+  get retainedCursorCount(): number {
+    return this.#causalCursors.size;
+  }
+
+  /** Stopping cursors currently retained (evidence for reclaim tests). */
+  get retainedStoppingCursorCount(): number {
+    return this.#stoppingCursors.size;
   }
 
   isHandleRetained(processId: string): boolean {
@@ -606,6 +617,14 @@ export class DurableProcessCoordinator {
   ): void {
     if (outcome.kind === 'applied' && outcome.eventId !== undefined) {
       this.#setProcessCursor(processId, context.correlationId, outcome.eventId);
+    }
+    // Terminal conclusions end the causal chain: the per-Process causal and
+    // stopping cursors are reclaimed so terminal Processes release their
+    // coordination memory instead of retaining it forever.
+    if (outcome.value !== undefined && isTerminalState(outcome.value.status)) {
+      const key = this.#processKey(processId);
+      this.#causalCursors.delete(key);
+      this.#stoppingCursors.delete(key);
     }
     void workspaceId;
   }

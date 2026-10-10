@@ -53,10 +53,10 @@ async function withServer(run: (fixture: RouteFixture) => Promise<void>): Promis
   const root = mkdtempSync(join(tmpdir(), 'agentos-runtime-approval-route-'));
   const store = new SqliteStore(root);
   const workspaceManager = new WorkspaceManager(store);
-  const workspace = workspaceManager.create('Runtime Approval Workspace', join(root, 'workspace-a'), {
+  const workspace = await workspaceManager.create('Runtime Approval Workspace', join(root, 'workspace-a'), {
     git: false, memory: false, readme: false, docs: false,
   });
-  const otherWorkspace = workspaceManager.create('Other Workspace', join(root, 'workspace-b'), {
+  const otherWorkspace = await workspaceManager.create('Other Workspace', join(root, 'workspace-b'), {
     git: false, memory: false, readme: false, docs: false,
   });
   seedRun(store, workspace.id);

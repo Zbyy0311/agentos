@@ -242,7 +242,7 @@ async function createRouteFixture(mountStore?: TaskRunServiceDeps): Promise<Rout
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Start Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('Start Workspace', join(root, 'workspace-a'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const seeded = buildSeededRun(store, workspace.id);
@@ -680,7 +680,7 @@ test('P3C1-R22 a missing OperationService capability is sanitized to 500 INTERNA
   const store = new SqliteStore(root);
   try {
     const manager = new WorkspaceManager(store);
-    const workspace = manager.create('Capability Workspace', join(root, 'workspace-b'), {
+    const workspace = await manager.create('Capability Workspace', join(root, 'workspace-b'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const seeded = buildSeededRun(store, workspace.id);
@@ -769,11 +769,11 @@ interface RaceFixture {
   runId: string;
 }
 
-function createRaceFixture(): RaceFixture {
+async function createRaceFixture(): Promise<RaceFixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Race Workspace', join(root, 'workspace-race'), {
+  const workspace = await manager.create('Race Workspace', join(root, 'workspace-race'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const seeded = buildSeededRun(store, workspace.id);
@@ -799,7 +799,7 @@ async function runStartRace(
 }
 
 test('P3C1-R25 same-key race: exactly one live 202 and one replay 202 with one operation and one record', async () => {
-  const fx = createRaceFixture();
+  const fx = await createRaceFixture();
   try {
     const [a, b] = await runStartRace(fx, { key: 'p3c1-race-key-same1' }, { key: 'p3c1-race-key-same1' });
     const messages = [a, b];
@@ -822,7 +822,7 @@ test('P3C1-R25 same-key race: exactly one live 202 and one replay 202 with one o
 });
 
 test('P3C1-R26 different-key race: exactly one live 202 and one stable 409 RUN_START_ALREADY_ACTIVE', async () => {
-  const fx = createRaceFixture();
+  const fx = await createRaceFixture();
   try {
     const [a, b] = await runStartRace(fx, { key: 'p3c1-race-key-diff1' }, { key: 'p3c1-race-key-diff2' });
     const messages = [a, b];
@@ -840,7 +840,7 @@ test('P3C1-R26 different-key race: exactly one live 202 and one stable 409 RUN_S
 });
 
 test('P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record', async () => {
-  const fx = createRaceFixture();
+  const fx = await createRaceFixture();
   try {
     const [a, b] = await runStartRace(fx, {}, {});
     const messages = [a, b];
@@ -879,8 +879,8 @@ interface RetryRaceFixture extends RaceFixture {
   secondParentVersion?: number;
 }
 
-function createRetryRaceFixture(twoParents = false): RetryRaceFixture {
-  const fx = createRaceFixture();
+async function createRetryRaceFixture(twoParents = false): Promise<RetryRaceFixture> {
+  const fx = await createRaceFixture();
   const parentVersion = failRaceRun(fx, fx.runId);
   if (!twoParents) return { ...fx, parentVersion };
   const service = new TaskRunService(fx.store);
@@ -913,7 +913,7 @@ async function runRetryRace(
 }
 
 test('P3C1-RY-C01 same Parent + same key has one live 201 and one replay 201', async () => {
-  const fx = createRetryRaceFixture();
+  const fx = await createRetryRaceFixture();
   try {
     const [a, b] = await runRetryRace(
       fx,
@@ -937,7 +937,7 @@ test('P3C1-RY-C01 same Parent + same key has one live 201 and one replay 201', a
 });
 
 test('P3C1-RY-C02 same Parent + different keys has one 201 and one RUN_RETRY_ALREADY_CREATED 409', async () => {
-  const fx = createRetryRaceFixture();
+  const fx = await createRetryRaceFixture();
   try {
     const [a, b] = await runRetryRace(
       fx,
@@ -960,7 +960,7 @@ test('P3C1-RY-C02 same Parent + different keys has one 201 and one RUN_RETRY_ALR
 });
 
 test('P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_EXISTS 409', async () => {
-  const fx = createRetryRaceFixture(true);
+  const fx = await createRetryRaceFixture(true);
   try {
     assert.ok(fx.secondRunId);
     assert.ok(fx.secondParentVersion);
@@ -984,7 +984,7 @@ test('P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_
 });
 
 test('P3C1-R28 a store connection waits out a short foreign write lock instead of failing busy', async () => {
-  const fx = createRaceFixture();
+  const fx = await createRaceFixture();
   const locker = new DatabaseSync(join(fx.root, '.agentos', 'agentos.sqlite'));
   try {
     const worker = spawnStartRaceWorker({ mode: 'store-open-under-lock', root: fx.root, workspaceId: fx.workspaceId, runId: fx.runId });
@@ -1661,7 +1661,7 @@ async function createDispatchFixture(
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Dispatch Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('Dispatch Workspace', join(root, 'workspace-a'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const seeded = buildSeededRun(store, workspace.id);

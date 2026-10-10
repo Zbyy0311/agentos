@@ -83,7 +83,7 @@ async function createHttpFixture(createRunner: RunnerFactory): Promise<HttpFixtu
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6c-route-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P6C Route', join(root, 'workspace'), {
+  const workspace = await manager.create('P6C Route', join(root, 'workspace'), {
     git: false,
     memory: false,
     readme: false,

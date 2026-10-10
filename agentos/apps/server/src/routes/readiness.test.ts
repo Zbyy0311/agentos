@@ -50,7 +50,7 @@ test('HTTP readiness and sanitized export report live SQLite state and Provider 
   mkdirSync(workspaceRoot, { recursive: true });
   const store = new SqliteStore(root);
   const workspaces = new WorkspaceManager(store);
-  const workspace = workspaces.create('Readiness HTTP fixture', workspaceRoot,
+  const workspace = await workspaces.create('Readiness HTTP fixture', workspaceRoot,
     { git: false, memory: false, docs: false, readme: false });
   const now = new Date().toISOString();
   store.providerConfigurationRepository().insert({

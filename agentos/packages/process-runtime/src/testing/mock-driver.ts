@@ -51,10 +51,13 @@ class Signal {
   }
 }
 
-/** Push-driven byte stream with deterministic end semantics. */
+/** Push-driven byte stream with deterministic end and failure semantics. */
 export class MockByteStream implements AsyncIterable<Uint8Array> {
   #queue: Uint8Array[] = [];
-  #waiters: Array<(result: IteratorResult<Uint8Array>) => void> = [];
+  #waiters: Array<{
+    resolve: (result: IteratorResult<Uint8Array>) => void;
+    reject: (error: unknown) => void;
+  }> = [];
   #ended = false;
 
   get ended(): boolean {
@@ -66,7 +69,7 @@ export class MockByteStream implements AsyncIterable<Uint8Array> {
     const bytes = typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk;
     const waiter = this.#waiters.shift();
     if (waiter !== undefined) {
-      waiter({ value: bytes, done: false });
+      waiter.resolve({ value: bytes, done: false });
       return;
     }
     this.#queue.push(bytes);
@@ -76,7 +79,15 @@ export class MockByteStream implements AsyncIterable<Uint8Array> {
     if (this.#ended) return;
     this.#ended = true;
     const waiters = this.#waiters.splice(0);
-    for (const waiter of waiters) waiter({ value: undefined, done: true });
+    for (const waiter of waiters) waiter.resolve({ value: undefined, done: true });
+  }
+
+  /** Fail every pending and future read with the given native read error. */
+  fail(error: unknown): void {
+    if (this.#ended) return;
+    this.#ended = true;
+    const waiters = this.#waiters.splice(0);
+    for (const waiter of waiters) waiter.reject(error);
   }
 
   [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
@@ -85,8 +96,8 @@ export class MockByteStream implements AsyncIterable<Uint8Array> {
         const chunk = this.#queue.shift();
         if (chunk !== undefined) return Promise.resolve({ value: chunk, done: false });
         if (this.#ended) return Promise.resolve({ value: undefined, done: true });
-        return new Promise<IteratorResult<Uint8Array>>((resolve) => {
-          this.#waiters.push(resolve);
+        return new Promise<IteratorResult<Uint8Array>>((resolve, reject) => {
+          this.#waiters.push({ resolve, reject });
         });
       },
       return: async (): Promise<IteratorResult<Uint8Array>> => {

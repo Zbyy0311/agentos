@@ -23,7 +23,7 @@ async function makeFx(dispatchEnabled: boolean): Promise<Fx> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6l1a-route-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('L1A Workspace', join(root, 'workspace'), {
+  const workspace = await manager.create('L1A Workspace', join(root, 'workspace'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const service = new TaskRunService(store);

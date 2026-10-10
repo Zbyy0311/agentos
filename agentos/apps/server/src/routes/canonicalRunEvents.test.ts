@@ -60,7 +60,7 @@ async function createFixture(): Promise<Fixture> {
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5A Route Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5A Route Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,
