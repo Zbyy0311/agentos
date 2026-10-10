@@ -25,8 +25,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    document.documentElement.classList.add('theme-animating');
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    const timer = window.setTimeout(() => document.documentElement.classList.remove('theme-animating'), 260);
+    return () => {
+      window.clearTimeout(timer);
+      document.documentElement.classList.remove('theme-animating');
+    };
   }, [theme]);
 
   return <ThemeContext.Provider value={{ theme, setTheme, toggleTheme: () => setTheme(current => current === 'dark' ? 'light' : 'dark') }}>{children}</ThemeContext.Provider>;

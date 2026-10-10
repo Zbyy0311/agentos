@@ -44,7 +44,7 @@ export function GroupCreator({ agents, saving, onClose, onCreate }: GroupCreator
       dispatchMode: 'leader_route',
   });
 
-  return <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
+  return <div className={`ui-overlay-enter fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6`}>
     <form role="dialog" aria-modal="true" aria-labelledby="group-creator-title" onSubmit={event => { event.preventDefault(); if (canSubmit) submit(); }} className="ui-panel-raised max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
       <div className="ui-modal-sticky-header mb-5 flex items-start justify-between gap-4"><div><p className="text-xs font-medium tracking-[0.16em] ui-accent">GROUP SETUP</p><h2 id="group-creator-title" className="mt-2 text-lg font-semibold ui-text">创建群聊</h2><p className="mt-1 text-xs ui-muted">创建后默认按成员顺序进行一次轮流讨论。</p></div><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
       <button type="button" onClick={applyStandardTeam} disabled={enabled.filter(agent => agent.role === 'codex' || agent.role === 'kimi' || agent.role === 'opencode').length < 2} className="mb-5 w-full rounded-xl border border-[color:var(--app-accent)]/40 bg-[var(--app-accent-soft)] px-3 py-3 text-left text-sm ui-text transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"><span className="font-medium">使用标准开发团队</span><span className="mt-1 block text-xs ui-muted">快速选择当前工作区的 Codex、KimiCode、OpenCode</span></button>

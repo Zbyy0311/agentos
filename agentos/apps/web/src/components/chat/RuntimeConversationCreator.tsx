@@ -32,7 +32,7 @@ export function RuntimeConversationCreator(props: {
   };
 
   return (
-    <div className={`fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm`}>
+    <div className={`ui-overlay-enter fixed inset-0 ${uiLayerClass('editor')} grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm`}>
       <form
         role="dialog"
         aria-modal="true"

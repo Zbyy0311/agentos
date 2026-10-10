@@ -133,7 +133,7 @@ export function MemoryReviewQueue({ workspaceId, onClose, embedded = false }: Me
 
   const shellClass = embedded
     ? 'flex min-h-0 min-w-0 flex-1 flex-col'
-    : `fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`;
+    : `ui-surface-enter fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`;
 
   return (
     <div className={shellClass} data-agentos="memory-review-queue">

@@ -142,7 +142,7 @@ export function CollaborationTaskPanel({ workspaceId, groupName, agents, convers
 
   const select = (label: string, value: string, onChange: (value: string) => void) => <label className="block text-xs ui-muted">{label}<select value={value} onChange={event => onChange(event.target.value)} className="ui-input mt-1 w-full rounded-lg px-2 py-2 text-sm ui-text"><option value="">未选择</option>{enabled.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.roleTitle}</option>)}</select></label>;
 
-  return <div className="fixed inset-0 z-[105] grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="collaboration-task-title">
+  return <div className="ui-overlay-enter fixed inset-0 z-[105] grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="collaboration-task-title">
     <section className="ui-panel-raised max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5 shadow-[var(--app-shadow)]">
       <header className="ui-modal-sticky-header mb-5 flex items-start justify-between gap-4"><div><p className="text-xs tracking-[0.16em] ui-accent">COLLABORATION WORKFLOW</p><h2 id="collaboration-task-title" className="mt-2 text-lg font-semibold ui-text">协作开发任务</h2><p className="mt-1 text-xs ui-muted">创建任务后先检查计划；确认后才会创建隔离 Run 和工作树。</p></div><button type="button" className="ui-button-ghost rounded-lg px-2 py-1 text-sm" onClick={onClose}>关闭</button></header>
       {!details ? <>
