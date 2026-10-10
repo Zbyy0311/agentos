@@ -173,7 +173,11 @@ test('Legacy capture failure returns the fixed Bridge error and leaves JSON/Task
   try {
     const response = await fetch(`${base}/${workspace.id}/tasks/legacy-failure/run`, { method: 'POST' });
     assert.equal(response.status, 500);
-    assert.deepEqual(await response.json(), { error: 'Bridge persistence failed' });
+    const problem = await response.json() as { type: string; status: number; code: string; detail: string };
+    assert.equal(problem.type, 'urn:agentos:error:bridge-persistence-failed');
+    assert.equal(problem.status, 500);
+    assert.equal(problem.code, 'BRIDGE_PERSISTENCE_FAILED');
+    assert.equal(problem.detail, 'Bridge persistence failed');
     assert.deepEqual(store.loadTasks(workspace.id), [original]);
     assert.equal(store.taskRepository().findByLegacyTaskId(workspace.id, 'legacy-failure'), undefined);
     assert.equal(store.runRepository().listByWorkspace(workspace.id).length, 0);
