@@ -18,13 +18,13 @@ interface Fixture {
   runId: string;
 }
 
-function fixture(): Fixture {
+async function fixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5a-replay-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5A Replay Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5A Replay Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,
@@ -72,8 +72,8 @@ function stateCounts(fx: Fixture): Record<string, unknown> {
   };
 }
 
-test('P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings', () => {
-  const fx = fixture();
+test('P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual gap/unknown warnings', async () => {
+  const fx = await fixture();
   try {
     insertUnknownEvent(fx, 3);
     const run = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
@@ -90,8 +90,8 @@ test('P5A-R17/R19/R20 Replay returns safe snapshot, ordered Events and actual ga
   }
 });
 
-test('P5A-R18 filters do not create false gap warnings', () => {
-  const fx = fixture();
+test('P5A-R18 filters do not create false gap warnings', async () => {
+  const fx = await fixture();
   try {
     insertUnknownEvent(fx, 2);
     const run = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
@@ -103,8 +103,8 @@ test('P5A-R18 filters do not create false gap warnings', () => {
   }
 });
 
-test('P5A-R21/R23/R24 missing snapshot, Legacy history and Artifact boundaries are warnings', () => {
-  const fx = fixture();
+test('P5A-R21/R23/R24 missing snapshot, Legacy history and Artifact boundaries are warnings', async () => {
+  const fx = await fixture();
   try {
     const task = fx.service.createTask(fx.workspaceId, { title: 'Legacy empty replay', createdBy: 'test' });
     const legacy = fx.store.runRepository().insert({
@@ -128,8 +128,8 @@ test('P5A-R21/R23/R24 missing snapshot, Legacy history and Artifact boundaries a
   }
 });
 
-test('P5A-R25 Replay performs zero writes across every governed aggregate', () => {
-  const fx = fixture();
+test('P5A-R25 Replay performs zero writes across every governed aggregate', async () => {
+  const fx = await fixture();
   try {
     const before = stateCounts(fx);
     const run = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;

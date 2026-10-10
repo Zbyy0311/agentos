@@ -1,5 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
+
+const execFileAsync = promisify(execFile);
 import type { Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { createEntityId } from '../store/Identity.js';
@@ -25,7 +29,7 @@ export class WorkspaceManager {
     return this.store.loadWorkspaces().find(w => w.id === id);
   }
 
-  create(name: string, rootPath: string, options: { git?: boolean; memory?: boolean; readme?: boolean; docs?: boolean } = {}): Workspace {
+  async create(name: string, rootPath: string, options: { git?: boolean; memory?: boolean; readme?: boolean; docs?: boolean } = {}): Promise<Workspace> {
     const canonicalPath = toCanonicalRootPath(rootPath);
     const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
     if (existing) {
@@ -46,7 +50,7 @@ export class WorkspaceManager {
       updatedAt: now,
     };
 
-    this.initializeWorkspaceDirectory(workspace, options);
+    await this.initializeWorkspaceDirectory(workspace, options);
     const db = this.store.getDatabase();
     inTransaction(db, () => {
       this.store.workspaceRepo.insertWithinTransaction(workspace);
@@ -99,7 +103,7 @@ export class WorkspaceManager {
     return workspace;
   }
 
-  importExisting(rootPath: string): Workspace {
+  async importExisting(rootPath: string): Promise<Workspace> {
     const canonicalPath = toCanonicalRootPath(rootPath);
     const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
     if (existing) return this.touch(existing.id);
@@ -133,7 +137,7 @@ export class WorkspaceManager {
     return this.list().slice(0, limit);
   }
 
-  private initializeWorkspaceDirectory(workspace: Workspace, options: { readme?: boolean; docs?: boolean; memory?: boolean; git?: boolean }): void {
+  private async initializeWorkspaceDirectory(workspace: Workspace, options: { readme?: boolean; docs?: boolean; memory?: boolean; git?: boolean }): Promise<void> {
     mkdirSync(workspace.rootPath, { recursive: true });
 
     if (options.memory ?? true) {
@@ -193,8 +197,7 @@ export class WorkspaceManager {
     if (options.git ?? true) {
       if (!existsSync(join(workspace.rootPath, '.git'))) {
         try {
-          const { execSync } = require('node:child_process');
-          execSync('git init', { cwd: workspace.rootPath, stdio: 'pipe' });
+          await execFileAsync('git', ['init'], { cwd: workspace.rootPath });
         } catch {
           // git init is best-effort only
         }

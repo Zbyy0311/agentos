@@ -83,7 +83,7 @@ async function createFixture(): Promise<Fixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Contract', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+  const workspace = await manager.create('Contract', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
   const security = resolveLocalApiSecurityConfig({});
   const app = express();
   // Mirrors the index.ts order: request-id -> CORS -> local write guard ->

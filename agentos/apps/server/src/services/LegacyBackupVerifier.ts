@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync, createReadStream } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -64,6 +64,25 @@ const SAFE_NAME_PATTERN = /[^A-Za-z0-9_-]/g;
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function sha256FileHex(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest('hex');
+}
+
+async function fileBytesEqual(path: string, expected: Uint8Array): Promise<boolean> {
+  let offset = 0;
+  for await (const chunk of createReadStream(path)) {
+    const buffer = chunk as Buffer;
+    if (offset + buffer.length > expected.length) return false;
+    if (!buffer.equals(expected.subarray(offset, offset + buffer.length))) return false;
+    offset += buffer.length;
+  }
+  return offset === expected.length;
 }
 
 function fail(reason: string): never {
@@ -184,9 +203,8 @@ export class LegacyBackupVerifier {
         fail('sqlite backup unreadable');
       }
       if (sqliteSize <= 0) fail('sqlite backup empty');
-      const sqliteBackupBytes = readFileSync(sqliteBackupPath);
-      const sqliteBackupHash = sha256Hex(sqliteBackupBytes);
-      if (sha256Hex(readFileSync(sqliteBackupPath)) !== sqliteBackupHash) {
+      const sqliteBackupHash = await sha256FileHex(sqliteBackupPath);
+      if (await sha256FileHex(sqliteBackupPath) !== sqliteBackupHash) {
         fail('sqlite backup hash unstable');
       }
 
@@ -223,12 +241,10 @@ export class LegacyBackupVerifier {
 
       // --- Verification: JSON Backup exact bytes ---
       if (!existsSync(jsonBackupPath)) fail('json backup missing');
-      const jsonBackupBytes = readFileSync(jsonBackupPath);
-      if (jsonBackupBytes.length !== input.sourceBytes.length
-        || Buffer.compare(Buffer.from(jsonBackupBytes), Buffer.from(input.sourceBytes)) !== 0) {
+      if (!(await fileBytesEqual(jsonBackupPath, input.sourceBytes))) {
         fail('json backup bytes differ');
       }
-      const jsonBackupHash = sha256Hex(jsonBackupBytes);
+      const jsonBackupHash = sha256Hex(input.sourceBytes);
       if (jsonBackupHash !== input.sourceHash) {
         fail('json backup hash mismatch');
       }

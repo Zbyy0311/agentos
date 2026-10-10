@@ -58,10 +58,10 @@ interface OutboxRow {
   readonly event_id: string;
 }
 
-function fixture(): Fixture {
+async function fixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-m3-p2c2c-creation-'));
   const store = new SqliteStore(root);
-  const workspace = new WorkspaceManager(store).create(
+  const workspace = await new WorkspaceManager(store).create(
     'P2C-2C-2 Workspace',
     join(root, 'workspace'),
     { git: false, memory: false, readme: false, docs: false },
@@ -180,8 +180,8 @@ function createRunInput(taskId: string, extras: Record<string, unknown> = {}): C
   };
 }
 
-test('N=0 writes only run.created with sequence 1 and next sequence 2', () => {
-  const fx = fixture();
+test('N=0 writes only run.created with sequence 1 and next sequence 2', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx);
     const run = fx.service.createRun(fx.workspace.id, createRunInput(task.id));
@@ -214,8 +214,8 @@ test('N=0 writes only run.created with sequence 1 and next sequence 2', () => {
   }
 });
 
-test('missing lifecycle Event service fails closed before any V2 Run creation write', () => {
-  const fx = fixture();
+test('missing lifecycle Event service fails closed before any V2 Run creation write', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx, 'missing event service task');
     const service = new TaskRunService(makeDepsWithoutLifecycleService(fx.store));
@@ -229,8 +229,8 @@ test('missing lifecycle Event service fails closed before any V2 Run creation wr
   }
 });
 
-test('missing lifecycle Event service fails closed for keyed createRunForV2 without Idempotency Success', () => {
-  const fx = fixture();
+test('missing lifecycle Event service fails closed for keyed createRunForV2 without Idempotency Success', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx, 'missing keyed event service task');
     const service = new TaskRunService(makeDepsWithoutLifecycleService(fx.store), {
@@ -246,12 +246,12 @@ test('missing lifecycle Event service fails closed for keyed createRunForV2 with
   }
 });
 
-test('undefined and invalid lifecycle Event service factories fail closed', () => {
+test('undefined and invalid lifecycle Event service factories fail closed', async () => {
   for (const [label, factory] of [
     ['undefined', () => undefined as never],
     ['invalid-object', () => ({}) as never],
   ] as const) {
-    const fx = fixture();
+    const fx = await fixture();
     try {
       const task = createTask(fx, `${label} event service task`);
       const service = new TaskRunService(makeStoreDeps(fx.store, factory));
@@ -266,8 +266,8 @@ test('undefined and invalid lifecycle Event service factories fail closed', () =
   }
 });
 
-test('a successful V2 creation resolves and invokes the Event service exactly once', () => {
-  const fx = fixture();
+test('a successful V2 creation resolves and invokes the Event service exactly once', async () => {
+  const fx = await fixture();
   try {
     const productionService = fx.store.lifecycleTransactionService();
     const append = productionService.createRunGraphEventsWithinTransaction.bind(productionService);
@@ -292,8 +292,8 @@ test('a successful V2 creation resolves and invokes the Event service exactly on
   }
 });
 
-test('N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event', () => {
-  const fx = fixture();
+test('N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx, 'legacy graph task');
     const service = new TaskRunService(fx.store, {
@@ -482,8 +482,8 @@ test('equal Stage sequences are ordered by Stage id', () => {
   assert.equal(result.outboxes.length, 3);
 });
 
-test('creation payloads and envelope fields are derived from persisted state, not caller extras', () => {
-  const fx = fixture();
+test('creation payloads and envelope fields are derived from persisted state, not caller extras', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx, 'payload authority task');
     const input = {
@@ -520,8 +520,8 @@ test('creation payloads and envelope fields are derived from persisted state, no
   }
 });
 
-test('idempotency replay returns the stored result without adding Events or Outboxes', () => {
-  const fx = fixture();
+test('idempotency replay returns the stored result without adding Events or Outboxes', async () => {
+  const fx = await fixture();
   try {
     const task = createTask(fx, 'idempotent creation task');
     const service = new TaskRunService(fx.store, {
@@ -543,8 +543,8 @@ test('idempotency replay returns the stored result without adding Events or Outb
   }
 });
 
-test('failure during Event append rolls back the entire creation graph and idempotency miss', () => {
-  const fx = fixture();
+test('failure during Event append rolls back the entire creation graph and idempotency miss', async () => {
+  const fx = await fixture();
   const runtimeEvents = fx.store.runtimeEventRepository();
   const original = runtimeEvents.appendWithinTransaction;
   let calls = 0;
@@ -568,8 +568,8 @@ test('failure during Event append rolls back the entire creation graph and idemp
   }
 });
 
-test('failure during Outbox append rolls back Event, current state, Snapshot, Stage, and idempotency', () => {
-  const fx = fixture();
+test('failure during Outbox append rolls back Event, current state, Snapshot, Stage, and idempotency', async () => {
+  const fx = await fixture();
   const outbox = fx.store.outboxRepository();
   const original = outbox.insertWithinTransaction;
   outbox.insertWithinTransaction = (() => {
@@ -588,8 +588,8 @@ test('failure during Outbox append rolls back Event, current state, Snapshot, St
   }
 });
 
-test('Snapshot and Stage graph mismatch fails closed before any Event is appended', () => {
-  const fx = fixture();
+test('Snapshot and Stage graph mismatch fails closed before any Event is appended', async () => {
+  const fx = await fixture();
   const snapshotService = new SnapshotService({
     workflowDefinitionResolver: new WorkflowDefinitionResolver(fx.store.workflowDefinitionRepository()),
     runSnapshotRepository: () => fx.store.runSnapshotRepository(),
@@ -632,8 +632,8 @@ test('Snapshot and Stage graph mismatch fails closed before any Event is appende
   }
 });
 
-test('failure at Idempotency Success rolls back the already-created graph', () => {
-  const fx = fixture();
+test('failure at Idempotency Success rolls back the already-created graph', async () => {
+  const fx = await fixture();
   const idempotency = new IdempotencyService(fx.store.idempotencyRepository());
   const original = idempotency.storeSuccess;
   idempotency.storeSuccess = (() => {

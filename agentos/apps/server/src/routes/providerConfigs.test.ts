@@ -33,8 +33,8 @@ test('provider routes enforce workspace isolation, versioned updates, and versio
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const workspaceA = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
-    const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceA = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceB = await manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
     const app = express();
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager));
@@ -110,8 +110,8 @@ test('provider POST validates enums, duplicate names, and forbidden secret field
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const workspaceA = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
-    const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceA = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceB = await manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
     const app = express();
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager));
@@ -185,8 +185,8 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const workspaceA = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
-    const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceA = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    const workspaceB = await manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
     const app = express();
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager));
@@ -277,7 +277,7 @@ test('provider validation route returns stable sanitized Kimi validation evidenc
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const workspace = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    const workspace = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
     const probe: ProcessProbePort = {
       probe: async request => ({
         stdout: request.args[0] === '--version'

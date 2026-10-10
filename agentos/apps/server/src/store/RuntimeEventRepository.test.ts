@@ -11,13 +11,13 @@ import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { SqliteStore } from './SqliteStore.js';
 import { inTransaction } from './Transaction.js';
 
-function fixture(): { store: SqliteStore; root: string; workspaceId: string; taskId: string; runId: string; stageId: string } {
+async function fixture(): Promise<{ store: SqliteStore; root: string; workspaceId: string; taskId: string; runId: string; stageId: string }> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5a-runtime-events-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P5A Workspace', join(root, 'workspace-a'), {
+  const workspace = await manager.create('P5A Workspace', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,
@@ -37,13 +37,13 @@ function fixture(): { store: SqliteStore; root: string; workspaceId: string; tas
   return { store, root, workspaceId: workspace.id, taskId: task.id, runId: run.id, stageId };
 }
 
-function close(fx: ReturnType<typeof fixture>): void {
+function close(fx: Awaited<ReturnType<typeof fixture>>): void {
   fx.store.close();
   rmSync(fx.root, { recursive: true, force: true });
 }
 
-test('P5A-R03 RuntimeEventRepository exposes a workspace-scoped filtered page query', () => {
-  const fx = fixture();
+test('P5A-R03 RuntimeEventRepository exposes a workspace-scoped filtered page query', async () => {
+  const fx = await fixture();
   try {
     const repository = fx.store.runtimeEventRepository() as unknown as {
       queryByRun(input: Record<string, unknown>): { results: unknown[]; hasMore: boolean };
@@ -62,8 +62,8 @@ test('P5A-R03 RuntimeEventRepository exposes a workspace-scoped filtered page qu
   }
 });
 
-test('P5A-R04 RuntimeEventRepository exposes the durable committed high-watermark', () => {
-  const fx = fixture();
+test('P5A-R04 RuntimeEventRepository exposes the durable committed high-watermark', async () => {
+  const fx = await fixture();
   try {
     const repository = fx.store.runtimeEventRepository() as unknown as {
       getRunHighWatermark(workspaceId: string, runId: string): number;
@@ -75,7 +75,7 @@ test('P5A-R04 RuntimeEventRepository exposes the durable committed high-watermar
 });
 
 function insertUnknownEvent(
-  fx: ReturnType<typeof fixture>,
+  fx: Awaited<ReturnType<typeof fixture>>,
   input: {
     sequence: number;
     type: string;
@@ -109,8 +109,8 @@ function insertUnknownEvent(
   );
 }
 
-test('P5A-R03 queryByRun applies exclusive bounds, filters, strict ordering and limit+1', () => {
-  const fx = fixture();
+test('P5A-R03 queryByRun applies exclusive bounds, filters, strict ordering and limit+1', async () => {
+  const fx = await fixture();
   try {
     insertUnknownEvent(fx, {
       sequence: 2,
@@ -168,8 +168,8 @@ test('P5A-R03 queryByRun applies exclusive bounds, filters, strict ordering and 
   }
 });
 
-test('P5A-R03 queryByRun is workspace scoped', () => {
-  const fx = fixture();
+test('P5A-R03 queryByRun is workspace scoped', async () => {
+  const fx = await fixture();
   try {
     const page = fx.store.runtimeEventRepository().queryByRun({
       workspaceId: 'workspace_missing',
@@ -186,7 +186,7 @@ test('P5A-R03 queryByRun is workspace scoped', () => {
   }
 });
 
-function knownDraft(fx: ReturnType<typeof fixture>, sequence: number): RuntimeEventDraft {
+function knownDraft(fx: Awaited<ReturnType<typeof fixture>>, sequence: number): RuntimeEventDraft {
   const seed = fx.store.runtimeEventRepository()
     .findDurableByWorkspaceRunAndSequence(fx.workspaceId, fx.runId, 1)?.event as RuntimeEventEnvelope;
   return {
@@ -197,8 +197,8 @@ function knownDraft(fx: ReturnType<typeof fixture>, sequence: number): RuntimeEv
   };
 }
 
-test('P5B-G06/G07/G08 Runtime Event hints register after insert and publish FIFO only after commit', () => {
-  const fx = fixture();
+test('P5B-G06/G07/G08 Runtime Event hints register after insert and publish FIFO only after commit', async () => {
+  const fx = await fixture();
   try {
     const notifier = new RuntimeEventNotifier();
     const hints: Array<{ runId: string; sequence: number; eventId: string }> = [];

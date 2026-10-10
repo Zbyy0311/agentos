@@ -88,17 +88,17 @@ interface Fixture {
   readonly store: SqliteStore;
   readonly manager: WorkspaceManager;
   readonly workspaceId: string;
-  readonly workspace: ReturnType<WorkspaceManager['create']>;
+  readonly workspace: Awaited<ReturnType<WorkspaceManager['create']>>;
   readonly taskRunService: TaskRunService;
   readonly legacyTask: TaskItem;
   readonly bridge: ReturnType<TaskRunService['createLegacyRunForBridge']>;
 }
 
-function createFixture(taskId = 'legacy-integrated'): Fixture {
+async function createFixture(taskId = 'legacy-integrated'): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6d-integrated-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P6D Integrated', join(root, 'workspace'), {
+  const workspace = await manager.create('P6D Integrated', join(root, 'workspace'), {
     git: false,
     memory: false,
     readme: false,
@@ -509,7 +509,7 @@ function assertRecoveryEvents(
 }
 
 test('P6D-A1 complete Legacy canonical execution persists one Task/Run/Snapshot/Stages/Start and a strict durable Event graph', async () => {
-  const fixture = createFixture('p6d-a1');
+  const fixture = await createFixture('p6d-a1');
   const observed = { constructions: 0, order: [] as AgentStage[] };
   try {
     await execute(fixture, createService(fixture, instantRunner(observed)));
@@ -558,7 +558,7 @@ test('P6D-A1 complete Legacy canonical execution persists one Task/Run/Snapshot/
 });
 
 test('P6D-A2 every durable Runtime Event has exactly one Outbox with matching binding', async () => {
-  const fixture = createFixture('p6d-a2');
+  const fixture = await createFixture('p6d-a2');
   try {
     await execute(fixture, createService(fixture, instantRunner({ constructions: 0, order: [] })));
     const run = fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!;
@@ -588,7 +588,7 @@ test('P6D-A2 every durable Runtime Event has exactly one Outbox with matching bi
 });
 
 test('P6D-A3 OutboxPublisher delivers every Outbox to RunStream exactly once without domain mutation', async () => {
-  const fixture = createFixture('p6d-a3');
+  const fixture = await createFixture('p6d-a3');
   const received: number[] = [];
   const unsubscribe = runStreamUnsubscribe(
     fixture.store,
@@ -635,7 +635,7 @@ test('P6D-A3 OutboxPublisher delivers every Outbox to RunStream exactly once wit
 });
 
 test('P6D-A4 thinking projection is persisted-first: Event and Outbox already queryable at projection time', async () => {
-  const fixture = createFixture('p6d-a4');
+  const fixture = await createFixture('p6d-a4');
   const projected: Array<{ event: string; text?: unknown }> = [];
   const context = projectionContext(fixture);
   const unsubscribe = runStreamUnsubscribe(
@@ -665,7 +665,7 @@ test('P6D-A4 thinking projection is persisted-first: Event and Outbox already qu
 });
 
 test('P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue', async () => {
-  const fixture = createFixture('p6d-a5');
+  const fixture = await createFixture('p6d-a5');
   const managerGate = deferred();
   const observed = { constructions: 0, order: [] as AgentStage[] };
   const gates = new Map<AgentStage, Deferred>([['codex_manager', managerGate]]);
@@ -715,7 +715,7 @@ test('P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and
 });
 
 test('P6D-A6 reconnect replays exactly once after the last observed cursor and continues live', async () => {
-  const fixture = createFixture('p6d-a6');
+  const fixture = await createFixture('p6d-a6');
   const workerGate = deferred();
   const reviewerGate = deferred();
   const observed = { constructions: 0, order: [] as AgentStage[] };
@@ -798,8 +798,8 @@ test('P6D-A6 reconnect replays exactly once after the last observed cursor and c
   }
 });
 
-test('P6D-A7 Outbox crash window redelivers the same Event after lease reclaim without a second Event', () => {
-  const fixture = createFixture('p6d-a7');
+test('P6D-A7 Outbox crash window redelivers the same Event after lease reclaim without a second Event', async () => {
+  const fixture = await createFixture('p6d-a7');
   try {
     const run = fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!;
     const eventBefore = fixture.store.runtimeEventRepository().listByRunAfterSequence(run.id, 0)
@@ -850,8 +850,8 @@ test('P6D-A7 Outbox crash window redelivers the same Event after lease reclaim w
   }
 });
 
-test('P6D-A8 lease expiry preserves failure budget and attempts semantics', () => {
-  const fixture = createFixture('p6d-a8');
+test('P6D-A8 lease expiry preserves failure budget and attempts semantics', async () => {
+  const fixture = await createFixture('p6d-a8');
   try {
     const run = fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!;
     const event = fixture.store.runtimeEventRepository().listByRunAfterSequence(run.id, 0)
@@ -889,8 +889,8 @@ test('P6D-A8 lease expiry preserves failure budget and attempts semantics', () =
   }
 });
 
-test('P6D-A9 classified retryable failure consumes budget with frozen firstFailedAt and deterministic backoff', () => {
-  const fixture = createFixture('p6d-a9');
+test('P6D-A9 classified retryable failure consumes budget with frozen firstFailedAt and deterministic backoff', async () => {
+  const fixture = await createFixture('p6d-a9');
   try {
     const run = fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!;
     const event = fixture.store.runtimeEventRepository().listByRunAfterSequence(run.id, 0)
@@ -943,8 +943,8 @@ test('P6D-A9 classified retryable failure consumes budget with frozen firstFaile
   }
 });
 
-test('P6D-A10 non-retryable classified failure dead-letters exactly once with atomic Outbox mutation', () => {
-  const fixture = createFixture('p6d-a10');
+test('P6D-A10 non-retryable classified failure dead-letters exactly once with atomic Outbox mutation', async () => {
+  const fixture = await createFixture('p6d-a10');
   try {
     const run = fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!;
     const event = fixture.store.runtimeEventRepository().listByRunAfterSequence(run.id, 0)
@@ -996,7 +996,7 @@ test('P6D-A10 non-retryable classified failure dead-letters exactly once with at
 });
 
 test('P6D-A11 subscriber failure and transport close stay isolated from Outbox and Run state', async () => {
-  const fixture = createFixture('p6d-a11');
+  const fixture = await createFixture('p6d-a11');
   let subscriberThrew = false;
   const unsubscribe = runStreamUnsubscribe(
     fixture.store,
@@ -1030,8 +1030,8 @@ test('P6D-A11 subscriber failure and transport close stay isolated from Outbox a
   }
 });
 
-test('P6D-B1 v2 queued recovery restores authorization with queued Start and no execution', () => {
-  const fixture = createFixture('p6d-b1');
+test('P6D-B1 v2 queued recovery restores authorization with queued Start and no execution', async () => {
+  const fixture = await createFixture('p6d-b1');
   try {
     const { runId } = createV2Run(fixture.store, fixture.taskRunService, fixture.workspaceId);
     const start = createV2Start(fixture.store, fixture.workspaceId, runId);
@@ -1057,8 +1057,8 @@ test('P6D-B1 v2 queued recovery restores authorization with queued Start and no 
   }
 });
 
-test('P6D-B2 v2 starting recovery fails Run/Start atomically with Event and Outbox', () => {
-  const fixture = createFixture('p6d-b2');
+test('P6D-B2 v2 starting recovery fails Run/Start atomically with Event and Outbox', async () => {
+  const fixture = await createFixture('p6d-b2');
   try {
     const { runId } = createV2Run(fixture.store, fixture.taskRunService, fixture.workspaceId);
     const start = createV2Start(fixture.store, fixture.workspaceId, runId);
@@ -1076,8 +1076,8 @@ test('P6D-B2 v2 starting recovery fails Run/Start atomically with Event and Outb
   }
 });
 
-test('P6D-B3 v2 running uncertainty marks recovery_required without completion, failure or restart', () => {
-  const fixture = createFixture('p6d-b3');
+test('P6D-B3 v2 running uncertainty marks recovery_required without completion, failure or restart', async () => {
+  const fixture = await createFixture('p6d-b3');
   try {
     const { runId } = createV2Run(fixture.store, fixture.taskRunService, fixture.workspaceId);
     const start = createV2Start(fixture.store, fixture.workspaceId, runId);
@@ -1103,8 +1103,8 @@ test('P6D-B3 v2 running uncertainty marks recovery_required without completion, 
   }
 });
 
-test('P6D-C1 Legacy running recovery fails active Stage and Run while Start stays completed', () => {
-  const fixture = createFixture('p6d-c1');
+test('P6D-C1 Legacy running recovery fails active Stage and Run while Start stays completed', async () => {
+  const fixture = await createFixture('p6d-c1');
   try {
     moveLegacyToRunning(fixture);
     const start = canonicalStart(fixture);
@@ -1131,8 +1131,8 @@ test('P6D-C1 Legacy running recovery fails active Stage and Run while Start stay
   }
 });
 
-test('P6D-C2 Legacy starting recovery fails Stage/Run/Start with canonical Task reconciliation', () => {
-  const fixture = createFixture('p6d-c2');
+test('P6D-C2 Legacy starting recovery fails Stage/Run/Start with canonical Task reconciliation', async () => {
+  const fixture = await createFixture('p6d-c2');
   try {
     moveLegacyToStarting(fixture, 1);
     const start = canonicalStart(fixture);
@@ -1158,8 +1158,8 @@ test('P6D-C2 Legacy starting recovery fails Stage/Run/Start with canonical Task 
   }
 });
 
-test('P6D-C3 historical Legacy running Run with zero Start and zero Event graph is preserved', () => {
-  const fixture = createFixture('p6d-c3-bridge');
+test('P6D-C3 historical Legacy running Run with zero Start and zero Event graph is preserved', async () => {
+  const fixture = await createFixture('p6d-c3-bridge');
   try {
     const historicalTaskId = 'p6d-c3-historical';
     const historicalJson = legacyTask(fixture.workspaceId, historicalTaskId);
@@ -1203,8 +1203,8 @@ test('P6D-C3 historical Legacy running Run with zero Start and zero Event graph 
   }
 });
 
-test('P6D-C4 final-review crash window preserves review evidence and never re-executes', () => {
-  const fixture = createFixture('p6d-c4');
+test('P6D-C4 final-review crash window preserves review evidence and never re-executes', async () => {
+  const fixture = await createFixture('p6d-c4');
   try {
     moveLegacyToRunning(fixture);
     completeLegacyStageAndAdvance(fixture, 0, 'running');
@@ -1270,7 +1270,7 @@ test('P6D-C5 a later Legacy POST after recovery creates one retry Run with paren
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6d-http-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P6D HTTP', join(root, 'workspace'), {
+  const workspace = await manager.create('P6D HTTP', join(root, 'workspace'), {
     git: false,
     memory: false,
     readme: false,
@@ -1345,8 +1345,8 @@ test('P6D-C5 a later Legacy POST after recovery creates one retry Run with paren
   }
 });
 
-test('P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation', () => {
-  const fixture = createFixture('p6d-c6');
+test('P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation', async () => {
+  const fixture = await createFixture('p6d-c6');
   try {
     moveLegacyToRunning(fixture);
     const start = canonicalStart(fixture);
@@ -1381,8 +1381,8 @@ test('P6D-C6 recovery Events all carry one Outbox and deliver without domain mut
   }
 });
 
-test('P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect', () => {
-  const fixture = createFixture('p6d-c7');
+test('P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect', async () => {
+  const fixture = await createFixture('p6d-c7');
   const received: number[] = [];
   const unsubscribe = runStreamUnsubscribe(
     fixture.store,
@@ -1409,8 +1409,8 @@ test('P6D-C7 RunStream observes recovery Events in strict sequence and recovery 
   }
 });
 
-test('P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation', () => {
-  const fixture = createFixture('p6d-d1');
+test('P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation', async () => {
+  const fixture = await createFixture('p6d-d1');
   try {
     const { runId } = createV2Run(fixture.store, fixture.taskRunService, fixture.workspaceId);
     const v2Start = createV2Start(fixture.store, fixture.workspaceId, runId);
@@ -1478,8 +1478,8 @@ test('P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with 
   }
 });
 
-test('P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion', () => {
-  const fixture = createFixture('p6d-d2');
+test('P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion', async () => {
+  const fixture = await createFixture('p6d-d2');
   try {
     const { runId } = createV2Run(fixture.store, fixture.taskRunService, fixture.workspaceId);
     const v2Start = createV2Start(fixture.store, fixture.workspaceId, runId);

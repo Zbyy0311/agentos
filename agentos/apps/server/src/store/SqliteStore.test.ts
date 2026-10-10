@@ -40,13 +40,13 @@ test('tombstoned workspace rejected by assertWorkspaceExists for new Conversatio
   }
 });
 
-test('new Workspace assigns kimicode provider type to Kimi agent', () => {
+test('new Workspace assigns kimicode provider type to Kimi agent', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('KimiWS', join(root, 'kimi-ws'), {
+    const created = await manager.create('KimiWS', join(root, 'kimi-ws'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const db = store.getDatabase();
@@ -70,13 +70,13 @@ test('new Workspace assigns kimicode provider type to Kimi agent', () => {
   }
 });
 
-test('Workspace.agents projected fields match Provider Configuration after update', () => {
+test('Workspace.agents projected fields match Provider Configuration after update', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('ProjectedWS', join(root, 'projected-ws'), {
+    const created = await manager.create('ProjectedWS', join(root, 'projected-ws'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const profiles = store.listAgentProfiles(created.id);
@@ -105,13 +105,13 @@ test('Workspace.agents projected fields match Provider Configuration after updat
   }
 });
 
-test('LITE-04-004 switching a Provider preserves the Agent identity and durable History', () => {
+test('LITE-04-004 switching a Provider preserves the Agent identity and durable History', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('Provider switch history', join(root, 'provider-switch-history'), {
+    const created = await manager.create('Provider switch history', join(root, 'provider-switch-history'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const conversations = store.conversationRepository();
@@ -157,13 +157,13 @@ test('LITE-04-004 switching a Provider preserves the Agent identity and durable 
   }
 });
 
-test('Workspace.agents does not fall back to legacy model when Provider model is cleared', () => {
+test('Workspace.agents does not fall back to legacy model when Provider model is cleared', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('ClearedModelWS', join(root, 'cleared-model-ws'), {
+    const created = await manager.create('ClearedModelWS', join(root, 'cleared-model-ws'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const profile = store.listAgentProfiles(created.id).find(a => a.id === 'codex')!;
@@ -346,13 +346,13 @@ test('migrates legacy Kimi CLI configuration without rewriting JSON', () => {
   }
 });
 
-test('new SQLite-only Workspace can create a Conversation and reload default Agents', () => {
+test('new SQLite-only Workspace can create a Conversation and reload default Agents', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('SQLite Only', join(root, 'sqlite-only'), {
+    const created = await manager.create('SQLite Only', join(root, 'sqlite-only'), {
       git: false, memory: false, readme: false, docs: false,
     });
     assert.equal(store.workspaceRepo.exists(created.id), true);
@@ -371,7 +371,7 @@ test('new SQLite-only Workspace can create a Conversation and reload default Age
   }
 });
 
-test('rolls back the whole Workspace aggregate when a Provider insert fails', () => {
+test('rolls back the whole Workspace aggregate when a Provider insert fails', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
@@ -387,7 +387,7 @@ test('rolls back the whole Workspace aggregate when a Provider insert fails', ()
       BEGIN SELECT RAISE(ABORT, 'intentional provider insert failure'); END`);
 
     const manager = new WorkspaceManager(store);
-    assert.throws(() => manager.create('Broken', join(root, 'broken'), {
+    await assert.rejects(manager.create('Broken', join(root, 'broken'), {
       git: false, memory: false, readme: false, docs: false,
     }), /intentional provider insert failure/);
     assert.deepEqual({
@@ -435,13 +435,13 @@ test('rolls back one legacy Workspace aggregate when its Provider import fails',
   }
 });
 
-test('Agent compatibility fields follow its Provider Configuration', () => {
+test('Agent compatibility fields follow its Provider Configuration', async () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
     store = new SqliteStore(root);
     const manager = new WorkspaceManager(store);
-    const created = manager.create('Projected', join(root, 'projected'), {
+    const created = await manager.create('Projected', join(root, 'projected'), {
       git: false, memory: false, readme: false, docs: false,
     });
     const initial = store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')!;

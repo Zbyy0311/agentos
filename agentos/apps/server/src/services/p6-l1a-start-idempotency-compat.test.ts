@@ -44,11 +44,11 @@ interface Fixture {
   runId: string;
 }
 
-function makeFixture(): Fixture {
+async function makeFixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p6l1a-compat-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Compat Workspace', join(root, 'workspace'), {
+  const workspace = await manager.create('Compat Workspace', join(root, 'workspace'), {
     git: false,
     memory: false,
     readme: false,
@@ -84,8 +84,8 @@ function idempotencyRecordCount(store: SqliteStore): number {
 // L1A-R04 — a run.start idempotency record persisted under the historical
 // domainInput = {} contract replays through the current service when
 // requestedMutationClass is omitted, returning the exact stored V1 response.
-test('L1A-R04 historical {} record replays on omitted requestedMutationClass', () => {
-  const fx = makeFixture();
+test('L1A-R04 historical {} record replays on omitted requestedMutationClass', async () => {
+  const fx = await makeFixture();
   try {
     const accepted = fx.historical.startRunOperationForV2(fx.workspaceId, fx.runId, KEY);
     assert.equal(accepted.httpStatus, 202);
@@ -103,8 +103,8 @@ test('L1A-R04 historical {} record replays on omitted requestedMutationClass', (
 });
 
 // L1A-R05 — the same historical record replays on explicit MODIFYING.
-test('L1A-R05 historical {} record replays on explicit MODIFYING', () => {
-  const fx = makeFixture();
+test('L1A-R05 historical {} record replays on explicit MODIFYING', async () => {
+  const fx = await makeFixture();
   try {
     const accepted = fx.historical.startRunOperationForV2(fx.workspaceId, fx.runId, KEY);
     assert.equal(accepted.httpStatus, 202);
@@ -122,8 +122,8 @@ test('L1A-R05 historical {} record replays on explicit MODIFYING', () => {
 
 // L1A-R06 — a new READ_ONLY request reusing the key of a historical record
 // conflicts with IDEMPOTENCY_KEY_REUSED (READ_ONLY is a distinct identity).
-test('L1A-R06 historical record + new READ_ONLY same key -> IDEMPOTENCY_KEY_REUSED', () => {
-  const fx = makeFixture();
+test('L1A-R06 historical record + new READ_ONLY same key -> IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await makeFixture();
   try {
     const accepted = fx.historical.startRunOperationForV2(fx.workspaceId, fx.runId, KEY);
     assert.equal(accepted.httpStatus, 202);

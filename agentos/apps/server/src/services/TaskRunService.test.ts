@@ -25,11 +25,11 @@ interface Fixture {
   service: TaskRunService;
 }
 
-function fixture(): Fixture {
+async function fixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-m25-p3-service-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P3 Workspace', join(root, 'workspace'), {
+  const workspace = await manager.create('P3 Workspace', join(root, 'workspace'), {
     git: false, memory: false, readme: false, docs: false,
   });
   return { root, store, workspace, service: new TaskRunService(store) };
@@ -72,8 +72,8 @@ function seedCompatibilityRow(fx: Fixture, legacyTaskId: string): void {
   );
 }
 
-test('TaskRunService captures unbound Snapshots for all six v2 reasons without stages', () => {
-  const fx = fixture();
+test('TaskRunService captures unbound Snapshots for all six v2 reasons without stages', async () => {
+  const fx = await fixture();
   try {
     const reasons = ['initial', 'retry', 'resume-fallback', 'review-fix', 'provider-comparison', 'manual'] as const;
     const task = fx.service.createTask(fx.workspace.id, { title: 'six reasons', createdBy: 'test' });
@@ -98,8 +98,8 @@ test('TaskRunService captures unbound Snapshots for all six v2 reasons without s
   }
 });
 
-test('LITE-01-004 a Task supports zero Runs and then multiple independent Runs', () => {
-  const fx = fixture();
+test('LITE-01-004 a Task supports zero Runs and then multiple independent Runs', async () => {
+  const fx = await fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'zero-or-many runs', createdBy: 'test' });
     assert.deepEqual(fx.store.runRepository().listByTask(fx.workspace.id, task.id), []);
@@ -128,8 +128,8 @@ test('LITE-01-004 a Task supports zero Runs and then multiple independent Runs',
   }
 });
 
-test('TaskRunService captures four Legacy stages on initial and retry with latest lineage', () => {
-  const fx = fixture();
+test('TaskRunService captures four Legacy stages on initial and retry with latest lineage', async () => {
+  const fx = await fixture();
   try {
     const first = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -166,8 +166,8 @@ test('TaskRunService captures four Legacy stages on initial and retry with lates
   }
 });
 
-test('Legacy retry resolves current Agent and Provider versions while preserving the parent Snapshot', () => {
-  const fx = fixture();
+test('Legacy retry resolves current Agent and Provider versions while preserving the parent Snapshot', async () => {
+  const fx = await fixture();
   try {
     const first = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -207,8 +207,8 @@ test('Legacy retry resolves current Agent and Provider versions while preserving
   }
 });
 
-test('[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility rows and Registry evidence', () => {
-  const fx = fixture();
+test('[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility rows and Registry evidence', async () => {
+  const fx = await fixture();
   try {
     seedCompatibilityRow(fx, 'p4-legacy');
     const db = fx.store.getDatabase();
@@ -253,8 +253,8 @@ test('[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility
   }
 });
 
-test('[M27-P4-T009] P3 compatibility rows never become canonical Task or Task-domain Run records', () => {
-  const fx = fixture();
+test('[M27-P4-T009] P3 compatibility rows never become canonical Task or Task-domain Run records', async () => {
+  const fx = await fixture();
   try {
     seedCompatibilityRow(fx, 'p4-compat-only');
     const db = fx.store.getDatabase();
@@ -269,7 +269,7 @@ test('[M27-P4-T009] P3 compatibility rows never become canonical Task or Task-do
 });
 
 test('[M27-P4-T010] Malformed Legacy source remains a stable quarantine and preserves source bytes', async () => {
-  const fx = fixture();
+  const fx = await fixture();
   const workspaceId = fx.workspace.id;
   const raw = '{"tasks":[{"id":"malformed","id":"duplicate"}]}';
   const sourcePath = join(fx.root, 'workspace', workspaceId, '.agentos', 'tasks.json');
@@ -302,8 +302,8 @@ test('[M27-P4-T010] Malformed Legacy source remains a stable quarantine and pres
   }
 });
 
-test('TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails', () => {
-  const fx = fixture();
+test('TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails', async () => {
+  const fx = await fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'rollback', createdBy: 'test' });
     const failingSnapshotService = {
@@ -330,8 +330,8 @@ test('TaskRunService atomically rolls back a Run and a newly created Legacy Task
   }
 });
 
-test('TaskRunService rolls back the Run, Snapshot, and all previously inserted stages on any stage failure', () => {
-  const fx = fixture();
+test('TaskRunService rolls back the Run, Snapshot, and all previously inserted stages on any stage failure', async () => {
+  const fx = await fixture();
   const stageRepository = fx.store.runStageRepository();
   const originalInsert = stageRepository.insertInitial.bind(stageRepository);
   try {
@@ -359,8 +359,8 @@ test('TaskRunService rolls back the Run, Snapshot, and all previously inserted s
   }
 });
 
-test('M2.5 P3 RED 1-A: incomplete runtime dependencies fail closed before any persistence', () => {
-  const fx = fixture();
+test('M2.5 P3 RED 1-A: incomplete runtime dependencies fail closed before any persistence', async () => {
+  const fx = await fixture();
   try {
     assert.throws(
       () => new TaskRunService({
@@ -379,8 +379,8 @@ test('M2.5 P3 RED 1-A: incomplete runtime dependencies fail closed before any pe
   }
 });
 
-test('M2.5 P3 RED 1-B: missing Legacy workspace fails closed without Task/Run/Snapshot/Stage writes', () => {
-  const fx = fixture();
+test('M2.5 P3 RED 1-B: missing Legacy workspace fails closed without Task/Run/Snapshot/Stage writes', async () => {
+  const fx = await fixture();
   try {
     assert.throws(
       () => fx.service.createLegacyRunForBridge({
@@ -401,8 +401,8 @@ test('M2.5 P3 RED 1-B: missing Legacy workspace fails closed without Task/Run/Sn
   }
 });
 
-test('M2.5 P3 RED 1-C MANDATORY_CAPTURE_BYPASS_RED_CONFIRMED: Legacy capture result is complete', () => {
-  const fx = fixture();
+test('M2.5 P3 RED 1-C MANDATORY_CAPTURE_BYPASS_RED_CONFIRMED: Legacy capture result is complete', async () => {
+  const fx = await fixture();
   try {
     const result = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -433,14 +433,14 @@ interface V2Fixture {
   service: TaskRunService;
 }
 
-function v2Fixture(): V2Fixture {
+async function v2Fixture(): Promise<V2Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-m26-p3-service-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('M26 Workspace', join(root, 'workspace'), {
+  const workspace = await manager.create('M26 Workspace', join(root, 'workspace'), {
     git: false, memory: false, readme: false, docs: false,
   });
-  const workspaceB = manager.create('M26 Workspace B', join(root, 'workspace-b'), {
+  const workspaceB = await manager.create('M26 Workspace B', join(root, 'workspace-b'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const idempotencyService = new IdempotencyService(store.idempotencyRepository());
@@ -464,8 +464,8 @@ function expectCode(error: unknown, code: string): void {
   assert.equal((error as { code?: unknown } | null)?.code, code);
 }
 
-test('S01 createTaskForV2 without a key creates a plain task and writes no record', () => {
-  const fx = v2Fixture();
+test('S01 createTaskForV2 without a key creates a plain task and writes no record', async () => {
+  const fx = await v2Fixture();
   try {
     const result = fx.service.createTaskForV2(fx.workspace.id, { title: 's01', createdBy: 'test' });
     assert.equal(result.httpStatus, 201);
@@ -478,8 +478,8 @@ test('S01 createTaskForV2 without a key creates a plain task and writes no recor
   }
 });
 
-test('S02 same key and same request replays the same task id', () => {
-  const fx = v2Fixture();
+test('S02 same key and same request replays the same task id', async () => {
+  const fx = await v2Fixture();
   try {
     const input = { title: 's02', description: 'desc', createdBy: 'test' };
     const first = fx.service.createTaskForV2(fx.workspace.id, input, 's02-key-0001');
@@ -496,8 +496,8 @@ test('S02 same key and same request replays the same task id', () => {
   }
 });
 
-test('S03 same key with a different task payload throws IDEMPOTENCY_KEY_REUSED', () => {
-  const fx = v2Fixture();
+test('S03 same key with a different task payload throws IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await v2Fixture();
   try {
     fx.service.createTaskForV2(fx.workspace.id, { title: 's03-a', createdBy: 'test' }, 's03-key-0001');
     assert.throws(
@@ -513,8 +513,8 @@ test('S03 same key with a different task payload throws IDEMPOTENCY_KEY_REUSED',
   }
 });
 
-test('S04 the same key in different workspaces does not conflict', () => {
-  const fx = v2Fixture();
+test('S04 the same key in different workspaces does not conflict', async () => {
+  const fx = await v2Fixture();
   try {
     const first = fx.service.createTaskForV2(fx.workspace.id, { title: 's04', createdBy: 'test' }, 's04-key-0001');
     const second = fx.service.createTaskForV2(fx.workspaceB.id, { title: 's04', createdBy: 'test' }, 's04-key-0001');
@@ -527,8 +527,8 @@ test('S04 the same key in different workspaces does not conflict', () => {
   }
 });
 
-test('S05 without a key two identical createTask calls still create two tasks', () => {
-  const fx = v2Fixture();
+test('S05 without a key two identical createTask calls still create two tasks', async () => {
+  const fx = await v2Fixture();
   try {
     const first = fx.service.createTaskForV2(fx.workspace.id, { title: 's05', createdBy: 'test' });
     const second = fx.service.createTaskForV2(fx.workspace.id, { title: 's05', createdBy: 'test' });
@@ -540,8 +540,8 @@ test('S05 without a key two identical createTask calls still create two tasks', 
   }
 });
 
-test('S06 repeated same-key createTask calls create exactly one task', () => {
-  const fx = v2Fixture();
+test('S06 repeated same-key createTask calls create exactly one task', async () => {
+  const fx = await v2Fixture();
   try {
     const input = { title: 's06', createdBy: 'test' };
     const first = fx.service.createTaskForV2(fx.workspace.id, input, 's06-key-0001');
@@ -557,8 +557,8 @@ test('S06 repeated same-key createTask calls create exactly one task', () => {
   }
 });
 
-test('S07 same key and same request replays the same run id', () => {
-  const fx = v2Fixture();
+test('S07 same key and same request replays the same run id', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's07', createdBy: 'test' });
     const input = { taskId: task.id, objective: 'obj', createdBy: 'test' };
@@ -576,8 +576,8 @@ test('S07 same key and same request replays the same run id', () => {
   }
 });
 
-test('S08 createRun replay is evaluated before the RUN_ACTIVE_EXISTS guard', () => {
-  const fx = v2Fixture();
+test('S08 createRun replay is evaluated before the RUN_ACTIVE_EXISTS guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's08', createdBy: 'test' });
     const input = { taskId: task.id, createdBy: 'test' };
@@ -592,8 +592,8 @@ test('S08 createRun replay is evaluated before the RUN_ACTIVE_EXISTS guard', () 
   }
 });
 
-test('S09 same key with a different createRun payload throws IDEMPOTENCY_KEY_REUSED', () => {
-  const fx = v2Fixture();
+test('S09 same key with a different createRun payload throws IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's09', createdBy: 'test' });
     fx.service.createRunForV2(fx.workspace.id, { taskId: task.id, objective: 'a', createdBy: 'test' }, 's09-key-0001');
@@ -609,8 +609,8 @@ test('S09 same key with a different createRun payload throws IDEMPOTENCY_KEY_REU
   }
 });
 
-test('S10 a createRun domain failure writes no idempotency record', () => {
-  const fx = v2Fixture();
+test('S10 a createRun domain failure writes no idempotency record', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's10', createdBy: 'test' });
     fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -627,8 +627,8 @@ test('S10 a createRun domain failure writes no idempotency record', () => {
   }
 });
 
-test('S11 after fixing the failure the same key can be retried successfully', () => {
-  const fx = v2Fixture();
+test('S11 after fixing the failure the same key can be retried successfully', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's11', createdBy: 'test' });
     const blocking = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -646,8 +646,8 @@ test('S11 after fixing the failure the same key can be retried successfully', ()
   }
 });
 
-test('S12 run.cancel replay is evaluated before the RUN_NOT_CANCELLABLE guard', () => {
-  const fx = v2Fixture();
+test('S12 run.cancel replay is evaluated before the RUN_NOT_CANCELLABLE guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's12', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -684,8 +684,8 @@ function createEntitySuffix(): string {
   return `${Date.now()}-${entitySuffixCounter}`;
 }
 
-test('S13 task.accept replay is evaluated before the acceptance and transition guards', () => {
-  const fx = v2Fixture();
+test('S13 task.accept replay is evaluated before the acceptance and transition guards', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     const first = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, 's13-key-0001');
@@ -701,8 +701,8 @@ test('S13 task.accept replay is evaluated before the acceptance and transition g
   }
 });
 
-test('S14 task.cancel replay is evaluated before the transition guard', () => {
-  const fx = v2Fixture();
+test('S14 task.cancel replay is evaluated before the transition guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's14', createdBy: 'test' });
     const first = fx.service.cancelTaskForV2(fx.workspace.id, task.id, 's14-key-0001');
@@ -716,8 +716,8 @@ test('S14 task.cancel replay is evaluated before the transition guard', () => {
   }
 });
 
-test('S15 task.reopen replay is evaluated before the transition guard', () => {
-  const fx = v2Fixture();
+test('S15 task.reopen replay is evaluated before the transition guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's15', createdBy: 'test' });
     fx.service.cancelTask(fx.workspace.id, task.id);
@@ -733,8 +733,8 @@ test('S15 task.reopen replay is evaluated before the transition guard', () => {
   }
 });
 
-test('S16 all six operations persist the frozen operation and http status', () => {
-  const fx = v2Fixture();
+test('S16 all six operations persist the frozen operation and http status', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, 's16-accept-1');
@@ -766,8 +766,8 @@ test('S16 all six operations persist the frozen operation and http status', () =
   }
 });
 
-test('S17 none of the six operations writes a record without a key', () => {
-  const fx = v2Fixture();
+test('S17 none of the six operations writes a record without a key', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     fx.service.acceptRunForV2(fx.workspace.id, taskId, runId);
@@ -784,8 +784,8 @@ test('S17 none of the six operations writes a record without a key', () => {
   }
 });
 
-test('S18 a key without an IdempotencyService fails closed before any mutation', () => {
-  const fx = v2Fixture();
+test('S18 a key without an IdempotencyService fails closed before any mutation', async () => {
+  const fx = await v2Fixture();
   try {
     const plain = new TaskRunService(fx.store);
     assert.throws(
@@ -802,8 +802,8 @@ test('S18 a key without an IdempotencyService fails closed before any mutation',
   }
 });
 
-test('S19 an idempotency insert failure rolls back the domain mutation in the same transaction', () => {
-  const fx = v2Fixture();
+test('S19 an idempotency insert failure rolls back the domain mutation in the same transaction', async () => {
+  const fx = await v2Fixture();
   try {
     fx.store.getDatabase().exec(`
       CREATE TRIGGER test_abort_idempotency_insert
@@ -829,8 +829,8 @@ test('S19 an idempotency insert failure rolls back the domain mutation in the sa
   }
 });
 
-test('S20 a failed domain mutation leaves no idempotency record behind', () => {
-  const fx = v2Fixture();
+test('S20 a failed domain mutation leaves no idempotency record behind', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's20', createdBy: 'test' });
     assert.throws(
@@ -846,8 +846,8 @@ test('S20 a failed domain mutation leaves no idempotency record behind', () => {
   }
 });
 
-test('S21 replay bodies are deep-detached between calls', () => {
-  const fx = v2Fixture();
+test('S21 replay bodies are deep-detached between calls', async () => {
+  const fx = await v2Fixture();
   try {
     const input = { title: 's21', createdBy: 'test' };
     fx.service.createTaskForV2(fx.workspace.id, input, 's21-key-0001');
@@ -860,8 +860,8 @@ test('S21 replay bodies are deep-detached between calls', () => {
   }
 });
 
-test('S22 the six existing public methods keep their original behavior and write no records', () => {
-  const fx = v2Fixture();
+test('S22 the six existing public methods keep their original behavior and write no records', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 's22', createdBy: 'test' });
     assert.equal(task.title, 's22');
@@ -884,8 +884,8 @@ test('S22 the six existing public methods keep their original behavior and write
   }
 });
 
-test('S23 Legacy, Bridge and Recovery paths never create idempotency records', () => {
-  const fx = v2Fixture();
+test('S23 Legacy, Bridge and Recovery paths never create idempotency records', async () => {
+  const fx = await v2Fixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -909,8 +909,8 @@ test('S23 Legacy, Bridge and Recovery paths never create idempotency records', (
   }
 });
 
-test('S24 expectedVersion is always null in every fingerprint', () => {
-  const fx = v2Fixture();
+test('S24 expectedVersion is always null in every fingerprint', async () => {
+  const fx = await v2Fixture();
   try {
     const seen: Array<number | null> = [];
     const real = new IdempotencyService(fx.store.idempotencyRepository());
@@ -943,8 +943,8 @@ test('S24 expectedVersion is always null in every fingerprint', () => {
   }
 });
 
-test('S25 unrecognized input fields never enter the fingerprint', () => {
-  const fx = v2Fixture();
+test('S25 unrecognized input fields never enter the fingerprint', async () => {
+  const fx = await v2Fixture();
   try {
     const first = fx.service.createTaskForV2(
       fx.workspace.id,
@@ -978,8 +978,8 @@ test('S25 unrecognized input fields never enter the fingerprint', () => {
   }
 });
 
-test('M2.6 P3 contract: the six *ForV2 methods exist and return V2MutationExecutionResult', () => {
-  const fx = v2Fixture();
+test('M2.6 P3 contract: the six *ForV2 methods exist and return V2MutationExecutionResult', async () => {
+  const fx = await v2Fixture();
   try {
     assert.equal(typeof fx.service.createTaskForV2, 'function');
     assert.equal(typeof fx.service.createRunForV2, 'function');
@@ -999,8 +999,8 @@ test('M2.6 P3 contract: the six *ForV2 methods exist and return V2MutationExecut
 // M2.6 P4 — Optional optimistic concurrency (P401–P432 service coverage)
 // ---------------------------------------------------------------------------
 
-test('P401 run.cancel with a matching expectedVersion succeeds', () => {
-  const fx = v2Fixture();
+test('P401 run.cancel with a matching expectedVersion succeeds', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p401', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1012,8 +1012,8 @@ test('P401 run.cancel with a matching expectedVersion succeeds', () => {
   }
 });
 
-test('P402 run.cancel with a stale expectedVersion throws VERSION_CONFLICT', () => {
-  const fx = v2Fixture();
+test('P402 run.cancel with a stale expectedVersion throws VERSION_CONFLICT', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p402', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1029,8 +1029,8 @@ test('P402 run.cancel with a stale expectedVersion throws VERSION_CONFLICT', () 
   }
 });
 
-test('P403 task.accept with a matching expectedVersion succeeds', () => {
-  const fx = v2Fixture();
+test('P403 task.accept with a matching expectedVersion succeeds', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
@@ -1042,8 +1042,8 @@ test('P403 task.accept with a matching expectedVersion succeeds', () => {
   }
 });
 
-test('P404 task.accept with a stale expectedVersion throws VERSION_CONFLICT', () => {
-  const fx = v2Fixture();
+test('P404 task.accept with a stale expectedVersion throws VERSION_CONFLICT', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
@@ -1059,8 +1059,8 @@ test('P404 task.accept with a stale expectedVersion throws VERSION_CONFLICT', ()
   }
 });
 
-test('P405 task.cancel with a matching expectedVersion succeeds', () => {
-  const fx = v2Fixture();
+test('P405 task.cancel with a matching expectedVersion succeeds', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p405', createdBy: 'test' });
     const result = fx.service.cancelTaskForV2(fx.workspace.id, task.id, undefined, task.version);
@@ -1071,8 +1071,8 @@ test('P405 task.cancel with a matching expectedVersion succeeds', () => {
   }
 });
 
-test('P406 task.cancel with a stale expectedVersion throws VERSION_CONFLICT', () => {
-  const fx = v2Fixture();
+test('P406 task.cancel with a stale expectedVersion throws VERSION_CONFLICT', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p406', createdBy: 'test' });
     assert.throws(
@@ -1087,8 +1087,8 @@ test('P406 task.cancel with a stale expectedVersion throws VERSION_CONFLICT', ()
   }
 });
 
-test('P407 task.reopen with a matching expectedVersion succeeds', () => {
-  const fx = v2Fixture();
+test('P407 task.reopen with a matching expectedVersion succeeds', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p407', createdBy: 'test' });
     fx.service.cancelTask(fx.workspace.id, task.id);
@@ -1101,8 +1101,8 @@ test('P407 task.reopen with a matching expectedVersion succeeds', () => {
   }
 });
 
-test('P408 task.reopen with a stale expectedVersion throws VERSION_CONFLICT', () => {
-  const fx = v2Fixture();
+test('P408 task.reopen with a stale expectedVersion throws VERSION_CONFLICT', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p408', createdBy: 'test' });
     fx.service.cancelTask(fx.workspace.id, task.id);
@@ -1119,8 +1119,8 @@ test('P408 task.reopen with a stale expectedVersion throws VERSION_CONFLICT', ()
   }
 });
 
-test('P409 absent expectedVersion preserves all four current behaviors', () => {
-  const fx = v2Fixture();
+test('P409 absent expectedVersion preserves all four current behaviors', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     const accepted = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId);
@@ -1136,8 +1136,8 @@ test('P409 absent expectedVersion preserves all four current behaviors', () => {
   }
 });
 
-test('P410 a matching mutation increments the version exactly once', () => {
-  const fx = v2Fixture();
+test('P410 a matching mutation increments the version exactly once', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p410', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1150,8 +1150,8 @@ test('P410 a matching mutation increments the version exactly once', () => {
   }
 });
 
-test('P411 a stale conflict performs no mutation', () => {
-  const fx = v2Fixture();
+test('P411 a stale conflict performs no mutation', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p411', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1164,8 +1164,8 @@ test('P411 a stale conflict performs no mutation', () => {
   }
 });
 
-test('P412 a stale conflict writes no idempotency record', () => {
-  const fx = v2Fixture();
+test('P412 a stale conflict writes no idempotency record', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p412', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1178,8 +1178,8 @@ test('P412 a stale conflict writes no idempotency record', () => {
   }
 });
 
-test('P413 a corrected expectedVersion can retry the same key after a failed conflict', () => {
-  const fx = v2Fixture();
+test('P413 a corrected expectedVersion can retry the same key after a failed conflict', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p413', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1202,8 +1202,8 @@ test('P413 a corrected expectedVersion can retry the same key after a failed con
   }
 });
 
-test('P414 a successful keyed replay precedes the stale Run version guard', () => {
-  const fx = v2Fixture();
+test('P414 a successful keyed replay precedes the stale Run version guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p414', createdBy: 'test' });
     const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -1218,8 +1218,8 @@ test('P414 a successful keyed replay precedes the stale Run version guard', () =
   }
 });
 
-test('P415 a successful keyed replay precedes the stale Task accept guard', () => {
-  const fx = v2Fixture();
+test('P415 a successful keyed replay precedes the stale Task accept guard', async () => {
+  const fx = await v2Fixture();
   try {
     const { taskId, runId } = completedRunWindow(fx);
     const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
@@ -1232,8 +1232,8 @@ test('P415 a successful keyed replay precedes the stale Task accept guard', () =
   }
 });
 
-test('P416 a successful keyed replay precedes the stale Task cancel guard', () => {
-  const fx = v2Fixture();
+test('P416 a successful keyed replay precedes the stale Task cancel guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p416', createdBy: 'test' });
     const first = fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p416-key-01', task.version);
@@ -1245,8 +1245,8 @@ test('P416 a successful keyed replay precedes the stale Task cancel guard', () =
   }
 });
 
-test('P417 a successful keyed replay precedes the stale Task reopen guard', () => {
-  const fx = v2Fixture();
+test('P417 a successful keyed replay precedes the stale Task reopen guard', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p417', createdBy: 'test' });
     fx.service.cancelTask(fx.workspace.id, task.id);
@@ -1260,8 +1260,8 @@ test('P417 a successful keyed replay precedes the stale Task reopen guard', () =
   }
 });
 
-test('P418 the same key with a changed expectedVersion throws IDEMPOTENCY_KEY_REUSED', () => {
-  const fx = v2Fixture();
+test('P418 the same key with a changed expectedVersion throws IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p418', createdBy: 'test' });
     fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p418-key-01', task.version);
@@ -1277,8 +1277,8 @@ test('P418 the same key with a changed expectedVersion throws IDEMPOTENCY_KEY_RE
   }
 });
 
-test('P419 omitted versus integer expectedVersion under the same key throws IDEMPOTENCY_KEY_REUSED', () => {
-  const fx = v2Fixture();
+test('P419 omitted versus integer expectedVersion under the same key throws IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p419', createdBy: 'test' });
     fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p419-key-01');
@@ -1294,8 +1294,8 @@ test('P419 omitted versus integer expectedVersion under the same key throws IDEM
   }
 });
 
-test('P420 expectedVersion participates in the request fingerprint', () => {
-  const fx = v2Fixture();
+test('P420 expectedVersion participates in the request fingerprint', async () => {
+  const fx = await v2Fixture();
   try {
     const seen: Array<number | null> = [];
     const real = new IdempotencyService(fx.store.idempotencyRepository());
@@ -1318,8 +1318,8 @@ test('P420 expectedVersion participates in the request fingerprint', () => {
   }
 });
 
-test('P425 service defense rejects invalid expectedVersion before any transaction or mutation', () => {
-  const fx = v2Fixture();
+test('P425 service defense rejects invalid expectedVersion before any transaction or mutation', async () => {
+  const fx = await v2Fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'p425', createdBy: 'test' });
     for (const invalid of [0, -1, 1.5, Number.NaN, '1', null] as const) {
@@ -1340,8 +1340,8 @@ test('P425 service defense rejects invalid expectedVersion before any transactio
   }
 });
 
-test('P428/P429 task.create and run.create keep a fixed null expectedVersion fingerprint', () => {
-  const fx = v2Fixture();
+test('P428/P429 task.create and run.create keep a fixed null expectedVersion fingerprint', async () => {
+  const fx = await v2Fixture();
   try {
     const seen: Array<number | null> = [];
     const real = new IdempotencyService(fx.store.idempotencyRepository());
@@ -1364,8 +1364,8 @@ test('P428/P429 task.create and run.create keep a fixed null expectedVersion fin
   }
 });
 
-test('P430 Legacy, Bridge and Recovery paths ignore expectedVersion entirely', () => {
-  const fx = v2Fixture();
+test('P430 Legacy, Bridge and Recovery paths ignore expectedVersion entirely', async () => {
+  const fx = await v2Fixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -1384,8 +1384,8 @@ test('P430 Legacy, Bridge and Recovery paths ignore expectedVersion entirely', (
   }
 });
 
-test('P431 existing non-v2 methods retain their signatures and behavior', () => {
-  const fx = v2Fixture();
+test('P431 existing non-v2 methods retain their signatures and behavior', async () => {
+  const fx = await v2Fixture();
   try {
     assert.equal(fx.service.cancelQueuedRun.length, 2);
     assert.equal(fx.service.acceptRun.length, 3);
@@ -1404,8 +1404,8 @@ test('P431 existing non-v2 methods retain their signatures and behavior', () => 
   }
 });
 
-test('P432 cross-workspace version guards stay isolated', () => {
-  const fx = v2Fixture();
+test('P432 cross-workspace version guards stay isolated', async () => {
+  const fx = await v2Fixture();
   try {
     const taskA = fx.service.createTask(fx.workspace.id, { title: 'p432-a', createdBy: 'test' });
     const taskB = fx.service.createTask(fx.workspaceB.id, { title: 'p432-b', createdBy: 'test' });
@@ -1535,8 +1535,8 @@ function expectStartIdentity(
   assert.equal(body.operation.version, 1);
 }
 
-test('P3C1-S01 live no-key start returns 202 with the queued operation and writes no idempotency record', () => {
-  const fx = v2Fixture();
+test('P3C1-S01 live no-key start returns 202 with the queued operation and writes no idempotency record', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id);
@@ -1550,8 +1550,8 @@ test('P3C1-S01 live no-key start returns 202 with the queued operation and write
   }
 });
 
-test('P3C1-S02 live keyed start stores an HTTP 202 run.start success record', () => {
-  const fx = v2Fixture();
+test('P3C1-S02 live keyed start stores an HTTP 202 run.start success record', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
@@ -1565,8 +1565,8 @@ test('P3C1-S02 live keyed start stores an HTTP 202 run.start success record', ()
   }
 });
 
-test('P3C1-S03 replay returns the original queued snapshot after the operation advanced', () => {
-  const fx = v2Fixture();
+test('P3C1-S03 replay returns the original queued snapshot after the operation advanced', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
@@ -1589,8 +1589,8 @@ test('P3C1-S03 replay returns the original queued snapshot after the operation a
   }
 });
 
-test('P3C1-S04 same key with a different fingerprint fails with IDEMPOTENCY_KEY_REUSED and no side effects', () => {
-  const fx = v2Fixture();
+test('P3C1-S04 same key with a different fingerprint fails with IDEMPOTENCY_KEY_REUSED and no side effects', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1, 1);
@@ -1609,8 +1609,8 @@ test('P3C1-S04 same key with a different fingerprint fails with IDEMPOTENCY_KEY_
   }
 });
 
-test('P3C1-S05 expectedVersion match succeeds and mismatch raises VERSION_CONFLICT before any mutation', () => {
-  const fx = v2Fixture();
+test('P3C1-S05 expectedVersion match succeeds and mismatch raises VERSION_CONFLICT before any mutation', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     assert.throws(
@@ -1630,8 +1630,8 @@ test('P3C1-S05 expectedVersion match succeeds and mismatch raises VERSION_CONFLI
   }
 });
 
-test('P3C1-S06 non-queued run fails with INVALID_RUN_TRANSITION and creates nothing', () => {
-  const fx = v2Fixture();
+test('P3C1-S06 non-queued run fails with INVALID_RUN_TRANSITION and creates nothing', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     fx.store.runRepository().transitionStatus(fx.workspace.id, run.id, run.version, 'running');
@@ -1651,8 +1651,8 @@ test('P3C1-S06 non-queued run fails with INVALID_RUN_TRANSITION and creates noth
   }
 });
 
-test('P3C1-S07 unknown run fails with RUN_NOT_FOUND', () => {
-  const fx = v2Fixture();
+test('P3C1-S07 unknown run fails with RUN_NOT_FOUND', async () => {
+  const fx = await v2Fixture();
   try {
     assert.throws(
       () => fx.service.startRunOperationForV2(fx.workspace.id, 'run_01J00000000000000000000000'),
@@ -1666,8 +1666,8 @@ test('P3C1-S07 unknown run fails with RUN_NOT_FOUND', () => {
   }
 });
 
-test('P3C1-S08 start is allowed when all prior starts are failed terminal history', () => {
-  const fx = v2Fixture();
+test('P3C1-S08 start is allowed when all prior starts are failed terminal history', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const seeded = seedStartOperation(fx, run);
@@ -1680,8 +1680,8 @@ test('P3C1-S08 start is allowed when all prior starts are failed terminal histor
   }
 });
 
-test('P3C1-S09 start is allowed when all prior starts are cancelled terminal history', () => {
-  const fx = v2Fixture();
+test('P3C1-S09 start is allowed when all prior starts are cancelled terminal history', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const seeded = seedStartOperation(fx, run);
@@ -1694,8 +1694,8 @@ test('P3C1-S09 start is allowed when all prior starts are cancelled terminal his
   }
 });
 
-test('P3C1-S10 an existing queued start fails with RUN_START_ALREADY_ACTIVE for keyed and no-key callers', () => {
-  const fx = v2Fixture();
+test('P3C1-S10 an existing queued start fails with RUN_START_ALREADY_ACTIVE for keyed and no-key callers', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
@@ -1716,8 +1716,8 @@ test('P3C1-S10 an existing queued start fails with RUN_START_ALREADY_ACTIVE for 
   }
 });
 
-test('P3C1-S11 multiple non-terminal starts fail with RUN_START_AUTHORIZATION_AMBIGUOUS', () => {
-  const fx = v2Fixture();
+test('P3C1-S11 multiple non-terminal starts fail with RUN_START_AUTHORIZATION_AMBIGUOUS', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     seedStartOperation(fx, run);
@@ -1735,8 +1735,8 @@ test('P3C1-S11 multiple non-terminal starts fail with RUN_START_AUTHORIZATION_AM
   }
 });
 
-test('P3C1-S12 a single running start fails with RUN_START_STATE_INCONSISTENT', () => {
-  const fx = v2Fixture();
+test('P3C1-S12 a single running start fails with RUN_START_STATE_INCONSISTENT', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const seeded = seedStartOperation(fx, run);
@@ -1754,8 +1754,8 @@ test('P3C1-S12 a single running start fails with RUN_START_STATE_INCONSISTENT', 
   }
 });
 
-test('P3C1-S13 a completed start in history fails with RUN_START_STATE_INCONSISTENT', () => {
-  const fx = v2Fixture();
+test('P3C1-S13 a completed start in history fails with RUN_START_STATE_INCONSISTENT', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     const seeded = seedStartOperation(fx, run);
@@ -1774,8 +1774,8 @@ test('P3C1-S13 a completed start in history fails with RUN_START_STATE_INCONSIST
   }
 });
 
-test('P3C1-S14 a waiting_approval start fails with RUN_START_STATE_INCONSISTENT', () => {
-  const fx = v2Fixture();
+test('P3C1-S14 a waiting_approval start fails with RUN_START_STATE_INCONSISTENT', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     insertNonQueuedNonTerminalStart(fx, run, 'waiting_approval');
@@ -1792,8 +1792,8 @@ test('P3C1-S14 a waiting_approval start fails with RUN_START_STATE_INCONSISTENT'
   }
 });
 
-test('P3C1-S15 a paused start fails with RUN_START_STATE_INCONSISTENT', () => {
-  const fx = v2Fixture();
+test('P3C1-S15 a paused start fails with RUN_START_STATE_INCONSISTENT', async () => {
+  const fx = await v2Fixture();
   try {
     const { run } = createQueuedRunForStart(fx);
     insertNonQueuedNonTerminalStart(fx, run, 'paused');
@@ -1810,8 +1810,8 @@ test('P3C1-S15 a paused start fails with RUN_START_STATE_INCONSISTENT', () => {
   }
 });
 
-test('P3C1-S16 acceptance has no A1 side effects on run, task, events, outbox, or dead letters', () => {
-  const fx = v2Fixture();
+test('P3C1-S16 acceptance has no A1 side effects on run, task, events, outbox, or dead letters', async () => {
+  const fx = await v2Fixture();
   try {
     const { task, run } = createQueuedRunForStart(fx);
     // Run creation itself persists run.created Runtime Event + Outbox rows
@@ -1838,8 +1838,8 @@ test('P3C1-S16 acceptance has no A1 side effects on run, task, events, outbox, o
   }
 });
 
-test('P3C1-S17 a storeSuccess failure rolls back the entire outer transaction', () => {
-  const fx = v2Fixture();
+test('P3C1-S17 a storeSuccess failure rolls back the entire outer transaction', async () => {
+  const fx = await v2Fixture();
   try {
     const { task, run } = createQueuedRunForStart(fx);
     const eventsBefore = tableRowCount(fx, 'runtime_events');
@@ -1875,8 +1875,8 @@ test('P3C1-S17 a storeSuccess failure rolls back the entire outer transaction', 
   }
 });
 
-test('P3C1-S18 a missing OperationService capability fails closed before any mutation', () => {
-  const fx = v2Fixture();
+test('P3C1-S18 a missing OperationService capability fails closed before any mutation', async () => {
+  const fx = await v2Fixture();
   try {
     const { task, run } = createQueuedRunForStart(fx);
     const depsWithoutCapability: TaskRunServiceDeps = {
@@ -1964,8 +1964,8 @@ test('P3C1-S20 constructor failure closes the database handle and preserves the 
   }
 });
 
-test('P3C1-S21 start history matrix enforces the frozen combination precedence', () => {
-  const fx = v2Fixture();
+test('P3C1-S21 start history matrix enforces the frozen combination precedence', async () => {
+  const fx = await v2Fixture();
   try {
     const seedHistory = (
       statuses: Array<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>,
@@ -2039,8 +2039,8 @@ test('P3C1-S21 start history matrix enforces the frozen combination precedence',
   }
 });
 
-test('P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation', () => {
-  const fx = fixture();
+test('P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation', async () => {
+  const fx = await fixture();
   try {
     const task = fx.service.createTask(fx.workspace.id, { title: 'retry-parent', createdBy: 'test' });
     const created = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
@@ -2155,8 +2155,8 @@ function seedDirectRetryChild(fx: Fixture, parent: Run, objective = parent.objec
   });
 }
 
-test('P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically', () => {
-  const fx = fixture();
+test('P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically', async () => {
+  const fx = await fixture();
   try {
     const { task, parent } = seedFailedParent(fx, 'immutable retry objective');
     const parentBefore = structuredClone(fx.store.runRepository().findById(fx.workspace.id, parent.id)!);
@@ -2219,8 +2219,8 @@ test('P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, an
   }
 });
 
-test('P3C1-RY-S03 Retry replay resolves before every current domain read and is immutable', () => {
-  const fx = fixture();
+test('P3C1-RY-S03 Retry replay resolves before every current domain read and is immutable', async () => {
+  const fx = await fixture();
   try {
     const { parent } = seedFailedParent(fx);
     const service = retryService(fx);
@@ -2263,7 +2263,7 @@ test('P3C1-RY-S03 Retry replay resolves before every current domain read and is 
   }
 });
 
-test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, and terminal-only history', () => {
+test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, and terminal-only history', async () => {
   const cases: Array<{ label: string; history: Array<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>; expected: string }> = [
     { label: 'one non-terminal', history: ['queued'], expected: 'RUN_RETRY_STATE_INCONSISTENT' },
     { label: 'multiple non-terminal', history: ['queued', 'running'], expected: 'RUN_RETRY_STATE_AMBIGUOUS' },
@@ -2271,7 +2271,7 @@ test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, a
     { label: 'completed without Child', history: ['completed'], expected: 'RUN_RETRY_STATE_INCONSISTENT' },
   ];
   for (const item of cases) {
-    const fx = fixture();
+    const fx = await fixture();
     try {
       const { parent } = seedFailedParent(fx);
       for (const status of item.history) seedRetryHistory(fx, parent, status);
@@ -2284,7 +2284,7 @@ test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, a
     }
   }
 
-  const missingCompleted = fixture();
+  const missingCompleted = await fixture();
   try {
     const { parent } = seedFailedParent(missingCompleted);
     seedDirectRetryChild(missingCompleted, parent);
@@ -2296,7 +2296,7 @@ test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, a
     close(missingCompleted);
   }
 
-  const multipleChildren = fixture();
+  const multipleChildren = await fixture();
   try {
     const { parent } = seedFailedParent(multipleChildren);
     const first = seedDirectRetryChild(multipleChildren, parent);
@@ -2312,7 +2312,7 @@ test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, a
     close(multipleChildren);
   }
 
-  const terminalOnly = fixture();
+  const terminalOnly = await fixture();
   try {
     const { parent } = seedFailedParent(terminalOnly);
     seedRetryHistory(terminalOnly, parent, 'failed');
@@ -2330,8 +2330,8 @@ test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, a
   }
 });
 
-test('P3C1-RY-S05 valid duplicate wins after history checks and rejects binding corruption', () => {
-  const valid = fixture();
+test('P3C1-RY-S05 valid duplicate wins after history checks and rejects binding corruption', async () => {
+  const valid = await fixture();
   try {
     const { parent } = seedFailedParent(valid);
     const child = seedDirectRetryChild(valid, parent);
@@ -2344,7 +2344,7 @@ test('P3C1-RY-S05 valid duplicate wins after history checks and rejects binding 
     close(valid);
   }
 
-  const corrupt = fixture();
+  const corrupt = await fixture();
   try {
     const { parent } = seedFailedParent(corrupt);
     const child = seedDirectRetryChild(corrupt, parent);
@@ -2364,8 +2364,8 @@ test('P3C1-RY-S05 valid duplicate wins after history checks and rejects binding 
   }
 });
 
-test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and blocks A2', () => {
-  const fx = fixture();
+test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and blocks A2', async () => {
+  const fx = await fixture();
   try {
     const { parent, task } = seedFailedParent(fx);
     fx.store.runRepository().insert({ workspaceId: fx.workspace.id, taskId: task.id, origin: 'v2_api', createdBy: 'test' });
@@ -2381,8 +2381,8 @@ test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and
   }
 });
 
-test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability', () => {
-  const fx = fixture();
+test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability', async () => {
+  const fx = await fixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspace.id,
@@ -2449,7 +2449,7 @@ test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities
   }
 });
 
-test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation or Mutation', () => {
+test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation or Mutation', async () => {
   const cases: Array<{ label: string; make: (fx: Fixture) => TaskRunService }> = [
     {
       label: 'idempotency',
@@ -2463,7 +2463,7 @@ test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation
     },
   ];
   for (const item of cases) {
-    const fx = fixture();
+    const fx = await fixture();
     try {
       const { parent } = seedFailedParent(fx);
       const before = retryDatabaseCounts(fx);
@@ -2480,7 +2480,7 @@ test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation
     }
   }
 
-  const fx = fixture();
+  const fx = await fixture();
   try {
     const { parent } = seedFailedParent(fx);
     const deps: TaskRunServiceDeps = {
@@ -2507,13 +2507,13 @@ test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation
   }
 });
 
-test('P3C1-RY-S09 every A2 failure injection rolls back Operation, Child, Snapshot, Stage, Event, Outbox, and Idempotency', () => {
+test('P3C1-RY-S09 every A2 failure injection rolls back Operation, Child, Snapshot, Stage, Event, Outbox, and Idempotency', async () => {
   const injections = [
     'operation-insert', 'operation-running', 'child-insert', 'snapshot', 'stage',
     'event', 'outbox', 'operation-completed', 'store-success',
   ] as const;
   for (const injection of injections) {
-    const fx = fixture();
+    const fx = await fixture();
     try {
       const useLegacyGraph = injection === 'stage' || injection === 'event' || injection === 'outbox';
       let parent: Run;

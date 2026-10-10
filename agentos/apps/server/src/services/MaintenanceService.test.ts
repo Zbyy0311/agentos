@@ -43,12 +43,12 @@ interface Fixture {
   readonly dataRoot: string;
   readonly workspaceRoot: string;
   readonly store: SqliteStore;
-  readonly workspace: ReturnType<WorkspaceManager['create']>;
+  readonly workspace: Awaited<ReturnType<WorkspaceManager['create']>>;
   readonly service: MaintenanceService;
   cleanup(): void;
 }
 
-function createFixture(gitEnabled = false): Fixture {
+async function createFixture(gitEnabled = false): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-maintenance-test-'));
   const dataRoot = join(root, 'data-root');
   const workspaceRoot = join(root, 'user-workspace');
@@ -56,7 +56,7 @@ function createFixture(gitEnabled = false): Fixture {
   mkdirSync(workspaceRoot, { recursive: true });
   const store = new SqliteStore(dataRoot);
   const workspaceManager = new WorkspaceManager(store);
-  const workspace = workspaceManager.create('Backup fixture', workspaceRoot, { git: gitEnabled, memory: false, docs: false, readme: false });
+  const workspace = await workspaceManager.create('Backup fixture', workspaceRoot, { git: gitEnabled, memory: false, docs: false, readme: false });
   const service = new MaintenanceService(dataRoot, store.getDatabase() as any, [{ id: workspace.id, rootPath: workspace.rootPath }]);
   const db = store.getDatabase() as any;
   const now = new Date().toISOString();
@@ -116,7 +116,7 @@ async function cloneBackup(source: string, root: string): Promise<string> {
 
 for (const kind of ['database', 'manifest'] as const) {
   test(`backup refuses publication when the ${kind} synchronization barrier fails`, async () => {
-    const fx = createFixture();
+    const fx = await createFixture();
     const originalEvidence = readFileSync(join(fx.dataRoot, '.agentos', 'evidence', 'review_fixture.json'));
     let injected = false;
     const service = new MaintenanceService(
@@ -145,7 +145,7 @@ for (const kind of ['database', 'manifest'] as const) {
 }
 
 test('backup includes references from workspaces created after the service starts', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   // Production constructs the maintenance service once, before later API workspaces.
   const service = new MaintenanceService(fx.dataRoot, fx.store.getDatabase() as any, []);
   try {
@@ -161,7 +161,7 @@ test('backup includes references from workspaces created after the service start
 });
 
 test('backup rejects a source ancestor junction swapped after path inspection and does not publish its bytes', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const evidenceDirectory = join(fx.dataRoot, '.agentos', 'evidence');
   const heldEvidenceDirectory = join(fx.root, 'evidence-before-junction-swap');
   const outsideDirectory = join(fx.root, 'outside-evidence');
@@ -202,7 +202,7 @@ test('backup rejects a source ancestor junction swapped after path inspection an
 });
 
 test('backup streams, verifies and restores a multi-chunk referenced file', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const memoryPath = join(fx.workspaceRoot, 'agent-memory/records/knowledge/memory_fixture.md');
   const large = Buffer.alloc(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes * 5 + 37);
   for (let index = 0; index < large.length; index += 1) large[index] = (index * 31) & 0xff;
@@ -221,7 +221,7 @@ test('backup streams, verifies and restores a multi-chunk referenced file', asyn
 });
 
 test('backup rejects source mutation during chunked copy and removes partial publication', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const memoryPath = join(fx.workspaceRoot, 'agent-memory/records/knowledge/memory_fixture.md');
   const large = Buffer.alloc(MAINTENANCE_BACKUP_LIMITS.streamChunkBytes * 4 + 9, 0x41);
   writeFileSync(memoryPath, large);
@@ -244,7 +244,7 @@ test('backup rejects source mutation during chunked copy and removes partial pub
 });
 
 test('backup verification visibly rejects per-file, aggregate and file-count budgets before restore switches a target', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const cases: Array<{ readonly code: string; readonly mutate: (manifest: any) => void }> = [
@@ -279,7 +279,7 @@ test('backup verification visibly rejects per-file, aggregate and file-count bud
 });
 
 test('online backup drains writes and active executions, then restores SQLite candidates, memory, attachments and evidence', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const barrier = new MaintenanceBarrier();
   let activeExecutions = 1;
   const coordinator = new MaintenanceCoordinator(fx.dataRoot, 'test-instance', barrier, {
@@ -352,7 +352,7 @@ test('online backup drains writes and active executions, then restores SQLite ca
 });
 
 test('HTTP backup route and offline CLI restore preserve referenced files in an isolated workspace', async () => {
-  const fx = createFixture(true);
+  const fx = await createFixture(true);
   const collaboration = seedBinaryCollaborationCandidate(fx);
   const feedback = seedMemoryFeedbackProof(fx);
   // The portable restored workspace is intentionally Git-disabled until its
@@ -755,7 +755,7 @@ function seedMemoryFeedbackProof(fx: Fixture): { readonly id: string; readonly a
 }
 
 test('restore isolates interrupted collaboration apply and preserves verified recovery payload', async () => {
-  const fx = createFixture(true);
+  const fx = await createFixture(true);
   const collaboration = seedBinaryCollaborationCandidate(fx);
   const db = fx.store.getDatabase() as any;
   const controlId = 'control-restore-recovery';
@@ -849,7 +849,7 @@ test('restore isolates interrupted collaboration apply and preserves verified re
 });
 
 test('restore requires an exact SQLite-to-manifest workspace reference closure before staging', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const references = backup.manifest.files.filter(item => item.scope === 'workspace-root');
@@ -880,7 +880,7 @@ test('restore requires an exact SQLite-to-manifest workspace reference closure b
 });
 
 test('restore rejects a corrupted referenced workspace payload before creating the target', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const tampered = await cloneBackup(backup.backupDirectory, fx.root);
@@ -898,7 +898,7 @@ test('restore rejects a corrupted referenced workspace payload before creating t
 });
 
 test('restore rejects durable payload files omitted from the manifest inventory', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const tampered = await cloneBackup(backup.backupDirectory, fx.root);
@@ -916,7 +916,7 @@ test('restore rejects durable payload files omitted from the manifest inventory'
 });
 
 test('restore rejects a modified payload hash and preserves both the source and absent target', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     assert.throws(() => MaintenanceService.assertMatchingBuild({ ...backup.manifest, buildCommit: '0000000000000000000000000000000000000000' }),
@@ -935,7 +935,7 @@ test('restore rejects a modified payload hash and preserves both the source and 
 });
 
 test('restore rejects manifest path traversal before writing anywhere', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const tampered = await cloneBackup(backup.backupDirectory, fx.root);
@@ -954,7 +954,7 @@ test('restore rejects manifest path traversal before writing anywhere', async ()
 });
 
 test('restore rejects legacy workspace references without an isolated mapping', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const tampered = await cloneBackup(backup.backupDirectory, fx.root);
@@ -983,7 +983,7 @@ test('restore rejects legacy workspace references without an isolated mapping', 
 });
 
 test('restore rejects a SQLite-corrupt bundle even when its file hash is recomputed', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const backup = await fx.service.createBackup();
     const tampered = await cloneBackup(backup.backupDirectory, fx.root);
@@ -1008,7 +1008,7 @@ test('restore rejects a SQLite-corrupt bundle even when its file hash is recompu
 });
 
 test('cleanup CAS removes only listed derived cache and rotated log files while preserving runtime, task and evidence files', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const agentos = join(fx.dataRoot, '.agentos');
     const cacheFile = join(agentos, 'cache', 'derived.json');
@@ -1045,7 +1045,7 @@ test('cleanup CAS removes only listed derived cache and rotated log files while 
 });
 
 test('cleanup CAS rejects stale hashes and refuses candidate or evidence paths', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const cacheFile = join(fx.dataRoot, '.agentos', 'cache', 'changed.json');
     mkdirSync(join(cacheFile, '..'), { recursive: true });
@@ -1064,7 +1064,7 @@ test('cleanup CAS rejects stale hashes and refuses candidate or evidence paths',
 });
 
 test('cleanup CAS detects a byte-identical replacement by file identity before quarantine', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const cacheFile = join(fx.dataRoot, '.agentos', 'cache', 'replaced-before-cleanup.json');
     mkdirSync(join(cacheFile, '..'), { recursive: true });
@@ -1096,7 +1096,7 @@ test('cleanup CAS detects a byte-identical replacement by file identity before q
 });
 
 test('cleanup quarantines the reviewed file and preserves a replacement created at its original path', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const cacheFile = join(fx.dataRoot, '.agentos', 'cache', 'replace-during-cleanup.json');
     mkdirSync(join(cacheFile, '..'), { recursive: true });
@@ -1118,7 +1118,7 @@ test('cleanup quarantines the reviewed file and preserves a replacement created 
 });
 
 test('storage diagnostics summarize capacity and backups without reading secrets and omit lease temp files', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   try {
     const agentosRoot = join(fx.dataRoot, '.agentos');
     mkdirSync(agentosRoot, { recursive: true });
@@ -1141,7 +1141,7 @@ test('storage diagnostics summarize capacity and backups without reading secrets
 });
 
 test('bootstrap failure after listen fences writes and retains SQLite and ownership until disconnected maintenance drains', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const barrier = new MaintenanceBarrier();
   let enterCopy!: () => void;
   let releaseCopy!: () => void;
@@ -1231,7 +1231,7 @@ test('bootstrap failure after listen fences writes and retains SQLite and owners
 });
 
 test('shutdown defers while a provider/runtime execution remains active even after HTTP closes', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const barrier = new MaintenanceBarrier();
   let storeClosed = false;
   let ownershipReleased = false;
@@ -1292,7 +1292,7 @@ test('shutdown defers while a provider/runtime execution remains active even aft
 });
 
 test('shutdown defers closedown when runtime activity inspection is unknown', async () => {
-  const fx = createFixture();
+  const fx = await createFixture();
   const barrier = new MaintenanceBarrier();
   let storeClosed = false;
   let ownershipReleased = false;

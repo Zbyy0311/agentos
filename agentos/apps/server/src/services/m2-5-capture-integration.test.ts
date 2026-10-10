@@ -90,7 +90,7 @@ test('production v2 and Legacy routes capture before runtime and use the same re
   const root = mkdtempSync(join(tmpdir(), 'agentos-m25-p3-routes-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P3 Routes', join(root, 'workspace'), {
+  const workspace = await manager.create('P3 Routes', join(root, 'workspace'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const app = express();
@@ -148,7 +148,7 @@ test('Legacy capture failure returns the fixed Bridge error and leaves JSON/Task
   const root = mkdtempSync(join(tmpdir(), 'agentos-m25-p3-failure-'));
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('P3 Failure', join(root, 'workspace'), {
+  const workspace = await manager.create('P3 Failure', join(root, 'workspace'), {
     git: false, memory: false, readme: false, docs: false,
   });
   const original = task(workspace.id, 'legacy-failure');

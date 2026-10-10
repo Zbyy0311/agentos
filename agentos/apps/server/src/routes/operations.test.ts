@@ -66,7 +66,7 @@ async function createRouteFixture(
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('Operation Routes', join(root, 'workspace-a'), {
+  const workspace = await manager.create('Operation Routes', join(root, 'workspace-a'), {
     git: false,
     memory: false,
     readme: false,

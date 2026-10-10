@@ -86,6 +86,7 @@ export class CliModelDiscovery implements ModelDiscoveryService {
   private readonly cacheTtlMs: number;
   private readonly execFile: CliModelExec;
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly inflight = new Map<string, Promise<ModelDiscoveryResult>>();
 
   constructor(options: ModelDiscoveryOptions = {}) {
     this.env = { ...process.env, ...options.env };
@@ -97,6 +98,23 @@ export class CliModelDiscovery implements ModelDiscoveryService {
   async discover(input: ModelDiscoveryInput): Promise<ModelDiscoveryResult> {
     const cliKind = getCliCapability(input.cliCommand).cliKind;
     const key = this.cacheKey(cliKind, input.cliCommand);
+    const inflight = this.inflight.get(key);
+    if (inflight) return cloneResult(await inflight);
+
+    const promise = this.discoverUncached(key, cliKind, input);
+    this.inflight.set(key, promise);
+    try {
+      return cloneResult(await promise);
+    } finally {
+      if (this.inflight.get(key) === promise) this.inflight.delete(key);
+    }
+  }
+
+  private async discoverUncached(
+    key: string,
+    cliKind: ModelDiscoveryResult['cliKind'],
+    input: ModelDiscoveryInput,
+  ): Promise<ModelDiscoveryResult> {
     const cached = this.cache.get(key);
     const currentTime = this.now().getTime();
     if (!input.forceRefresh && cached && cached.expiresAt > currentTime) {

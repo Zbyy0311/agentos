@@ -49,7 +49,7 @@ async function memoryFixture(t: TestContext) {
   mkdirSync(dataRoot, { recursive: true });
   const store = new SqliteStore(dataRoot);
   const manager = new WorkspaceManager(store);
-  const workspace = manager.create('HTTP abort memory', workspaceRoot, { git: false, memory: true, docs: false, readme: false });
+  const workspace = await manager.create('HTTP abort memory', workspaceRoot, { git: false, memory: true, docs: false, readme: false });
   const barrier = new MaintenanceBarrier();
   const service = new MaintenanceService(dataRoot, store.getDatabase() as any, manager.list());
   const fileWritten = deferred<string>();
