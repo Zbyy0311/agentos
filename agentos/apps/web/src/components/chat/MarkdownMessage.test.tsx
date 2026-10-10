@@ -19,6 +19,17 @@ test('keeps inline code inline while rendering fenced code as a block', () => {
   assert.doesNotMatch(html, /node="\[object Object\]"/);
 });
 
+test('keeps registered language aliases highlighted and unknown languages readable', () => {
+  for (const language of ['ts', 'tsx', 'js', 'jsx', 'python', 'py', 'bash', 'json', 'sql', 'yaml', 'yml', 'css', 'html']) {
+    const html = renderToStaticMarkup(<MarkdownMessage content={`\`\`\`${language}\nconst value = 1;\n\`\`\``} />);
+    assert.match(html, new RegExp(`class="language-${language}"`));
+    assert.match(html, /const/);
+  }
+  const unknown = renderToStaticMarkup(<MarkdownMessage content={'```unknown_language\n<value>& plain text\n```'} />);
+  assert.match(unknown, /&lt;value&gt;&amp; plain text/);
+  assert.doesNotMatch(unknown, /class="token/);
+});
+
 test('blocks javascript links and external images but allows same-origin artifacts', () => {
   const html = renderToStaticMarkup(<MarkdownMessage apiBase="http://localhost:3000" content={'[bad](javascript:alert(1))\n\n![remote](https://evil.test/a.png)\n\n![artifact](http://localhost:3000/api/workspaces/w/artifacts/a/content)'} />);
   assert.doesNotMatch(html, /javascript:/i);

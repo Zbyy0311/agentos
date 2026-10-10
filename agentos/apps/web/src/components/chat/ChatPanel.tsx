@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { AgentEvent, AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionEvent, ExecutionStatus, ModelDiscoverySource, RunIntent, RuntimeArtifact, ThinkingEffort } from '@agentos/shared';
 import { canSendMessage, isImageClipboardItem, type ImageDraft } from '@/lib/imageAttachments';
 import { getChatVisibleArtifacts } from '@/lib/artifacts';
 import { getChatTarget } from '@/lib/conversationSelection';
-import { chunkResponseBlocks, getResponseLineCount, RESPONSE_CHUNK_THRESHOLD, type ResponseBlock } from '@/lib/responseRendering';
 import { getSendButtonState } from '@/lib/uiFeedback';
 import { isNearBottom } from '@/lib/chatScroll';
 import { handleComposerKeyDown } from '@/lib/composerKeyboard';
@@ -111,46 +110,6 @@ const statusLabels: Partial<Record<ExecutionStatus, string>> = {
 
 function MessageContent({ content }: { content: string }) {
   return <MarkdownMessage content={content} />;
-  /* Legacy line renderer retained below until old response snapshots are removed. */
-  const blocks: ResponseBlock[] = [];
-  let codeLines: string[] | null = null;
-
-  for (const line of content.split('\n')) {
-    if (line.trimStart().startsWith('```')) {
-      if (codeLines !== null) { blocks.push({ type: 'code', lines: codeLines! }); codeLines = null; }
-      else codeLines = [];
-      continue;
-    }
-    if (codeLines !== null) codeLines!.push(line);
-    else {
-      const last = blocks.at(-1);
-      if (last?.type === 'text') last!.lines.push(line);
-      else blocks.push({ type: 'text', lines: [line] });
-    }
-  }
-  if (codeLines !== null) blocks.push({ type: 'code', lines: codeLines! });
-  const shouldChunk = getResponseLineCount(blocks) > RESPONSE_CHUNK_THRESHOLD;
-  const responseChunks = shouldChunk ? chunkResponseBlocks(blocks) : [blocks];
-
-  return <div className="space-y-2">
-    {responseChunks.map((chunk, chunkIndex) => <div key={chunkIndex} className={shouldChunk ? 'response-render-chunk' : undefined}>
-      {chunk.map((block, blockIndex) => block.type === 'code'
-      ? <pre key={blockIndex} className="overflow-x-auto rounded-xl border ui-border bg-[var(--app-bg)] px-3 py-2 font-mono text-xs leading-5 ui-text-soft"><code>{block.lines.join('\n')}</code></pre>
-      : block.lines.map((line, lineIndex) => {
-        const key = `${blockIndex}-${lineIndex}`;
-        const displayLine = line.replace(/^-\s+(?=#{1,3}\s)/, '');
-        if (!displayLine.trim()) return <div key={key} className="h-2" />;
-        if (displayLine.startsWith('### ')) return <h4 key={key} className="pt-2 text-sm font-semibold ui-text">{displayLine.slice(4)}</h4>;
-        if (displayLine.startsWith('## ')) return <h3 key={key} className="pt-2 text-base font-semibold ui-text">{displayLine.slice(3)}</h3>;
-        if (displayLine.startsWith('# ')) return <h2 key={key} className="pt-2 text-lg font-semibold ui-text">{displayLine.slice(2)}</h2>;
-        const numbered = displayLine.match(/^(\d+)\.\s+(.*)$/);
-        if (numbered) return <p key={key} className="flex gap-2"><span className="shrink-0 ui-accent">{numbered[1]}.</span><span>{numbered[2]}</span></p>;
-        if (displayLine.startsWith('- ')) return <p key={key} className="flex gap-2"><span className="ui-accent">•</span><span>{displayLine.slice(2)}</span></p>;
-        return <p key={key}>{displayLine}</p>;
-      }),
-      )}
-    </div>)}
-  </div>;
 }
 
 function MessageAttachments({ attachments }: { attachments?: ConversationAttachment[] }) {
@@ -194,6 +153,15 @@ function MessageSurface({ content, attachments, senderName, senderRoleTitle, sen
     {streaming && <span aria-hidden="true" className="ml-1 inline-block h-4 w-1 animate-pulse bg-[var(--app-accent)] align-[-2px]" />}
   </div>;
 }
+
+const MessageRow = memo(function MessageRow({ message, senderName, senderRoleTitle }: {
+  message: ConversationMessage;
+  senderName?: string;
+  senderRoleTitle?: string;
+}) {
+  const userMessage = message.senderType === 'user';
+  return <div className={`signal-message-row flex min-w-0 gap-3 ${userMessage ? 'justify-end' : 'justify-start'}`}><MessageSurface content={message.content} attachments={message.attachments} senderName={senderName} senderRoleTitle={senderRoleTitle} senderType={message.senderType} /></div>;
+});
 
 const executionLabels: Partial<Record<ExecutionStatus, string>> = {
   queued: '已进入队列',
@@ -247,7 +215,7 @@ function RuntimeTimeline({ events }: { events: AgentEvent[] }) {
 
 function mergeToolEvents(events: AgentEvent[]): AgentEvent[] {
   const merged: AgentEvent[] = [];
-  const byCallId = new Map<string, AgentEvent>();
+  const byCallId = new Map<string, number>();
   for (const event of events) {
     if (event.type !== 'execution.tool.started' && event.type !== 'execution.tool.completed') {
       merged.push(event);
@@ -256,15 +224,12 @@ function mergeToolEvents(events: AgentEvent[]): AgentEvent[] {
     const payload = event.payload as Record<string, unknown>;
     const callId = typeof payload.callId === 'string' ? payload.callId : undefined;
     if (!callId) { merged.push(event); continue; }
-    const prior = byCallId.get(callId);
-    if (prior) {
-      const index = merged.indexOf(prior);
-      const next = { ...event, payload: { ...prior.payload, ...event.payload } };
-      if (index >= 0) merged[index] = next;
-      byCallId.set(callId, next);
+    const index = byCallId.get(callId);
+    if (index !== undefined) {
+      merged[index] = { ...event, payload: { ...merged[index].payload, ...event.payload } };
     } else {
+      byCallId.set(callId, merged.length);
       merged.push(event);
-      byCallId.set(callId, event);
     }
   }
   return merged;
@@ -515,11 +480,11 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
       pending.save(pending.position);
     }, 140);
   };
-  const renderMessage = (message: ConversationMessage) => {
-    const sender = message.senderAgentId ? agents.find(agent => agent.id === message.senderAgentId) : undefined;
-    const userMessage = message.senderType === 'user';
-    return <div key={message.id} className={`signal-message-row flex min-w-0 gap-3 ${userMessage ? 'justify-end' : 'justify-start'}`}><MessageSurface content={message.content} attachments={message.attachments} senderName={isGroup ? sender?.name : undefined} senderRoleTitle={isGroup ? sender?.roleTitle : undefined} senderType={message.senderType} /></div>;
-  };
+  const agentsById = useMemo(() => new Map(agents.map(agent => [agent.id, agent])), [agents]);
+  const renderMessage = useCallback((message: ConversationMessage) => {
+    const sender = message.senderAgentId ? agentsById.get(message.senderAgentId) : undefined;
+    return <MessageRow key={message.id} message={message} senderName={isGroup ? sender?.name : undefined} senderRoleTitle={isGroup ? sender?.roleTitle : undefined} />;
+  }, [agentsById, isGroup]);
 
   return <main data-signal-chat className="signal-chat flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
     <div className="ambient-backdrop" aria-hidden="true" />
