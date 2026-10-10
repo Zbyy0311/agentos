@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { MemoryImportError, MemoryImportService } from '../services/MemoryImportService.js';
 
 /**
@@ -20,7 +21,7 @@ export function createMemoryImportRoutes(store: SqliteStore, workspaceManager: W
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'WORKSPACE_NOT_FOUND' });
       return null;
     }
     return workspace;
@@ -32,26 +33,26 @@ export function createMemoryImportRoutes(store: SqliteStore, workspaceManager: W
     return { fileName: body.fileName, bytes: Buffer.from(body.content, 'utf8') };
   };
 
-  const fail = (res: Response, error: unknown): void => {
+  const fail = (req: Request, res: Response, error: unknown): void => {
     if (error instanceof MemoryImportError) {
       const status = error.code === 'IMPORT_TOO_LARGE' ? 413 : error.code === 'IMPORT_NOT_UTF8' ? 415 : 400;
-      res.status(status).json({ error: error.code });
+      sendProblem(req, res, { status, code: error.code, detail: error.code });
       return;
     }
-    res.status(500).json({ error: 'MEMORY_IMPORT_FAILED' });
+    sendProblem(req, res, { status: 500, code: 'MEMORY_IMPORT_FAILED', detail: 'Memory import failed' });
   };
 
   router.post('/memory/import/preview', (req: Request, res: Response) => {
     if (!requireWorkspace(req, res)) return;
     const input = readBody(req);
     if (input === undefined) {
-      res.status(400).json({ error: 'IMPORT_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'IMPORT_INPUT_INVALID', detail: 'IMPORT_INPUT_INVALID' });
       return;
     }
     try {
       res.json({ preview: service.preview(input) });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
@@ -60,14 +61,14 @@ export function createMemoryImportRoutes(store: SqliteStore, workspaceManager: W
     if (!workspace) return;
     const input = readBody(req);
     if (input === undefined) {
-      res.status(400).json({ error: 'IMPORT_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'IMPORT_INPUT_INVALID', detail: 'IMPORT_INPUT_INVALID' });
       return;
     }
     try {
       const result = service.confirm({ workspaceId: workspace.id, ...input, createdAt: new Date().toISOString() });
       res.status(result.imported.length === 0 ? 200 : 201).json(result);
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 

@@ -94,7 +94,7 @@ for (let repetition = 1; repetition <= 3; repetition += 1) {
       assert.equal(store.groupInteractionRepository().listReplies(pair.interaction.id).length, 0);
       const duplicate = await postJson(respondUrl, { sourceMessageId: pair.message.id });
       assert.equal(duplicate.status, 409);
-      assert.equal((duplicate.json as { error: string }).error, 'GROUP_INTERACTION_TERMINATED');
+      assert.equal((duplicate.json as { code: string }).code, 'GROUP_INTERACTION_TERMINATED');
       assert.equal(store.boundedGroupService().listExecutionEvents('workspace-a', conversationId, pair.interaction.id, 0).length, events.length);
     });
   });
@@ -132,7 +132,7 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
     const headers = { 'Content-Type': 'application/json', 'Idempotency-Key': 'p2-group-owner-review-01' };
     const runningRefusal = await fetch(recoverUrl, { method: 'POST', headers, body: JSON.stringify(request) });
     assert.equal(runningRefusal.status, 409);
-    assert.equal((await runningRefusal.json() as { error: string }).error, 'GROUP_RECOVERY_STALE');
+    assert.equal((await runningRefusal.json() as { code: string }).code, 'GROUP_RECOVERY_STALE');
     const stillRunning = store.groupInteractionRepository().findExecutionOwner('workspace-a', priorId)!;
     assert.equal(stillRunning.status, 'running');
     assert.equal(stillRunning.ownerId, claimed.ownerId);
@@ -154,7 +154,7 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
       sourceMessageId: messageId,
     });
     assert.equal(blockedRound.status, 409);
-    assert.equal((blockedRound.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE',
+    assert.equal((blockedRound.json as { code: string }).code, 'GROUP_DISCUSSION_ACTIVE',
       'an unusable interrupted owner still fences ordinary round creation');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
       initialCounts.interactions, 'rejected ordinary create leaves no competing interaction');
@@ -164,7 +164,7 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
       budget: { maxAgentsPerTurn: 1, maxRepliesPerAgent: 1, maxTotalReplies: 1, maxAgentHops: 1 },
     });
     assert.equal(blockedDiscussion.status, 409);
-    assert.equal((blockedDiscussion.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE');
+    assert.equal((blockedDiscussion.json as { code: string }).code, 'GROUP_DISCUSSION_ACTIVE');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_messages WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
       initialCounts.messages, 'the rejected atomic message-plus-interaction command leaves no orphan source message');
     const readyRequest = { ...request, expectedVersion: interrupted.version };
@@ -208,7 +208,7 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
       sourceMessageId: linked.message.id,
     });
     assert.equal(competingAfterRecovery.status, 409);
-    assert.equal((competingAfterRecovery.json as { error: string }).error, 'GROUP_DISCUSSION_ACTIVE',
+    assert.equal((competingAfterRecovery.json as { code: string }).code, 'GROUP_DISCUSSION_ACTIVE',
       'the new round atomically fences another create while linked historical rounds remain quarantined');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM cr_group_interactions WHERE workspace_id = ?').get('workspace-a') as { n: number }).n,
       initialCounts.interactions + 1);
@@ -223,7 +223,7 @@ test('P2 group recovery review: running Provider owner blocks recovery; interrup
     const changedBody = await fetch(recoverUrl, { method: 'POST', headers,
       body: JSON.stringify({ ...readyRequest, content: 'Different recovery intent' }) });
     assert.equal(changedBody.status, 409);
-    assert.equal((await changedBody.json() as { error: string }).error, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
+    assert.equal((await changedBody.json() as { code: string }).code, 'GROUP_RECOVERY_IDEMPOTENCY_CONFLICT');
     assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM p2_group_recovery_links').get() as { n: number }).n, 1);
   });
 });
@@ -266,9 +266,9 @@ test('P2 recovery fails closed for a legacy interrupted owner whose current Turn
         content: 'Continue only after the original Provider process is proven gone.',
       }),
     });
-    const responseBody = await response.json() as { error?: string };
+    const responseBody = await response.json() as { code?: string };
     assert.equal(response.status, 409);
-    assert.equal(responseBody.error, 'GROUP_RECOVERY_PROCESS_UNPROVEN',
+    assert.equal(responseBody.code, 'GROUP_RECOVERY_PROCESS_UNPROVEN',
       'legacy owners with an in-flight Turn but no durable native process identity stay quarantined with a reason');
     assert.equal(store.groupInteractionRepository().findExecutionOwner('workspace-a', interactionId)?.status, 'interrupted');
     assert.equal(store.groupInteractionRepository().findInteractionById('workspace-a', interactionId)?.integrityStatus, 'unusable');
@@ -302,8 +302,8 @@ for (let repetition = 1; repetition <= 3; repetition += 1) {
         });
         const text = await response.text();
         assert.equal(response.status, 409, text);
-        const refusal = JSON.parse(text) as { error: string };
-        assert.equal(refusal.error, interrupted ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED');
+        const refusal = JSON.parse(text) as { code: string };
+        assert.equal(refusal.code, interrupted ? 'GROUP_EXECUTION_INTERRUPTED' : 'GROUP_EXECUTION_ALREADY_OWNED');
         const after = store.groupInteractionRepository().findExecutionOwner('workspace-a', interaction.id);
         assert.equal(after?.ownerEpoch, before?.ownerEpoch);
         assert.equal(store.agentTurnRepository().listTurnsByConversation('workspace-a', conversationId).length, 0);
@@ -326,7 +326,7 @@ test('bounded group interaction: freeze source, reject ledger-only replies, insp
 
     const reply = await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'codex', messageId, content: 'reply one' });
     assert.equal(reply.status, 409);
-    assert.equal((reply.json as { error: string }).error, 'GROUP_REPLY_FINALIZATION_REQUIRED');
+    assert.equal((reply.json as { code: string }).code, 'GROUP_REPLY_FINALIZATION_REQUIRED');
 
     const read = await fetch(`${baseUrl}/interactions/${interaction.id}`).then(r => r.json()) as {
       budget: { repliesUsed: number; repliesRemaining: number; distinctAgents: number };
@@ -343,7 +343,7 @@ test('bounded group interaction: freeze source, reject ledger-only replies, insp
 
     const afterStop = await postJson(`${baseUrl}/interactions/${interaction.id}/replies`, { agentId: 'kimi', messageId, content: 'late' });
     assert.equal(afterStop.status, 409);
-    assert.equal((afterStop.json as { error: string }).error, 'GROUP_REPLY_FINALIZATION_REQUIRED');
+    assert.equal((afterStop.json as { code: string }).code, 'GROUP_REPLY_FINALIZATION_REQUIRED');
   });
 });
 
@@ -544,7 +544,7 @@ test('bounded group respond: validation and lifecycle failures fail closed', asy
     const differentSourceId = (differentSource.json as { message: { id: string } }).message.id;
     const sourceMismatch = await postJson(respond, { sourceMessageId: differentSourceId });
     assert.equal(sourceMismatch.status, 409);
-    assert.equal((sourceMismatch.json as { error: string }).error, 'GROUP_SOURCE_MISMATCH');
+    assert.equal((sourceMismatch.json as { code: string }).code, 'GROUP_SOURCE_MISMATCH');
     const badList = await postJson(respond, { sourceMessageId: messageId, orchestratedOrder: 'codex' });
     assert.equal(badList.status, 400);
 

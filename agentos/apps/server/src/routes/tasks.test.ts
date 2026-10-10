@@ -175,7 +175,9 @@ test('SEC-PATH-06 accepts safe logs and rejects decoded traversal without readin
       request.end();
     });
     assert.equal(traversalResponse.status, 400);
-    assert.deepEqual(JSON.parse(traversalResponse.body), { error: 'Invalid taskId' });
+    const problem = JSON.parse(traversalResponse.body) as { code: string; detail: string };
+    assert.equal(problem.code, 'VALIDATION_FAILED');
+    assert.equal(problem.detail, 'Invalid taskId');
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     rmSync(root, { recursive: true, force: true });

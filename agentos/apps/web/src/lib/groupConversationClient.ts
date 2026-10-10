@@ -129,8 +129,8 @@ export function mergeGroupInteractionVersionEvent(
 async function apiFetch<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, init);
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; code?: string; errorCode?: string };
-    const error = new Error(body.error ?? `HTTP ${response.status}`) as GroupConversationRequestError;
+    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string; code?: string; errorCode?: string };
+    const error = new Error(body.detail ?? body.error ?? body.title ?? `HTTP ${response.status}`) as GroupConversationRequestError;
     (error as { status: number }).status = response.status;
     if (body.code ?? body.errorCode) (error as { code?: string }).code = body.code ?? body.errorCode;
     throw error;
@@ -162,8 +162,8 @@ export function groupConversationClient(options: DirectConversationClientOptions
         { method: 'GET', headers: { Accept: 'text/event-stream' }, ...(signal === undefined ? {} : { signal }) },
       );
       if (!response.ok) {
-        const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; code?: string };
-        const error = new Error(body.error ?? `HTTP ${response.status}`) as GroupConversationRequestError;
+        const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string; code?: string };
+        const error = new Error(body.detail ?? body.error ?? body.title ?? `HTTP ${response.status}`) as GroupConversationRequestError;
         (error as { status: number }).status = response.status;
         if (body.code) (error as { code?: string }).code = body.code;
         throw error;
@@ -188,8 +188,8 @@ export function groupConversationClient(options: DirectConversationClientOptions
         },
       );
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };
-        const error = new Error(errorBody.error ?? `HTTP ${response.status}`) as ConversationRuntimeError;
+        const errorBody = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string };
+        const error = new Error(errorBody.detail ?? errorBody.error ?? errorBody.title ?? `HTTP ${response.status}`) as ConversationRuntimeError;
         (error as { status: number }).status = response.status;
         throw error;
       }

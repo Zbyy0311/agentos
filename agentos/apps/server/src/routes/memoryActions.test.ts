@@ -66,7 +66,7 @@ test('HTTP feedback requires evidence, commits Entry/event/action atomically, an
     const actionPath = `/feedback-actions/${action.id}/resolve`;
     const bareResolved = await post(actionPath, { expectedVersion: 1, status: 'resolved' });
     assert.equal(bareResolved.status, 409);
-    assert.equal(bareResolved.body.error, 'MEMORY_FEEDBACK_RESOLUTION_REQUIRED');
+    assert.equal(bareResolved.body.code, 'MEMORY_FEEDBACK_RESOLUTION_REQUIRED');
     const apply = {
       expectedActionVersion: 1,
       expectedEntryVersion: 1,
@@ -191,10 +191,10 @@ test('global Entry owner lists consumer reports and is the only workspace record
 
     const reporterAttempt = await post('consumer', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
     assert.equal(reporterAttempt.status, 409);
-    assert.equal(reporterAttempt.body.error, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
+    assert.equal(reporterAttempt.body.code, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
     const outsiderAttempt = await post('outsider', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
     assert.equal(outsiderAttempt.status, 409);
-    assert.equal(outsiderAttempt.body.error, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
+    assert.equal(outsiderAttempt.body.code, 'MEMORY_FEEDBACK_GLOBAL_ENTRY_OWNER_REQUIRED');
 
     const rejected = await post('owner', rejectAction.id, { expectedVersion: 1, status: 'rejected' });
     assert.equal(rejected.status, 200);

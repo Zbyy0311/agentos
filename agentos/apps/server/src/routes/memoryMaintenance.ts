@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { MemoryMaintenanceService } from '../services/MemoryMaintenanceService.js';
 
 /** Read-only, workspace-bound suggestions; lifecycle actions remain an explicit human step. */
@@ -11,7 +12,7 @@ export function createMemoryMaintenanceRoutes(store: SqliteStore, workspaces: Wo
   router.get('/memory/maintenance', (req: Request, res: Response) => {
     const workspace = workspaces.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'Workspace not found' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
       return;
     }
 
@@ -21,7 +22,7 @@ export function createMemoryMaintenanceRoutes(store: SqliteStore, workspaces: Wo
       res.json(maintenance.list(workspace.id));
     } catch {
       // Keep SQLite details and persisted memory text out of the public error.
-      res.status(500).json({ error: 'MEMORY_MAINTENANCE_FAILED' });
+      sendProblem(req, res, { status: 500, code: 'MEMORY_MAINTENANCE_FAILED', detail: 'Memory maintenance failed' });
     }
   });
 

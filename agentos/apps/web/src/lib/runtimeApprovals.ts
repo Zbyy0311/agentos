@@ -34,8 +34,8 @@ async function apiFetch<T>(baseUrl: string, path: string, init?: RequestInit): P
     ...init,
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };
-    const error = new Error(body.error ?? `HTTP ${response.status}`) as RuntimeApprovalClientError;
+    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string };
+    const error = new Error(body.detail ?? body.error ?? body.title ?? `HTTP ${response.status}`) as RuntimeApprovalClientError;
     (error as { status: number }).status = response.status;
     throw error;
   }

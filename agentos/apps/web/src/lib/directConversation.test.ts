@@ -114,7 +114,7 @@ test('DCUX-C01 the client targets the forward runtime surface with correct paths
 
 test('DCUX-C02 a non-OK response throws with the status', async () => {
   const original = globalThis.fetch;
-  globalThis.fetch = (async () => ({ ok: false, status: 409, json: async () => ({ error: 'CONVERSATION_NOT_TRANSITIONABLE' }), text: async () => '' })) as never;
+  globalThis.fetch = (async () => ({ ok: false, status: 409, json: async () => ({ code: 'CONVERSATION_NOT_TRANSITIONABLE', detail: 'CONVERSATION_NOT_TRANSITIONABLE' }), text: async () => '' })) as never;
   try {
     const client = directConversationClient({ workspaceId: 'workspace-a', apiBase: 'http://x' });
     await assert.rejects(

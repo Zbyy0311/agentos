@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import { ApprovalDecisionRepository, type ApprovalDecisionValue } from '../store/ApprovalDecisionRepository.js';
@@ -33,7 +34,7 @@ export function createApprovalDecisionRoutes(store: SqliteStore, workspaceManage
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'Workspace not found' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
       return null;
     }
     return workspace;
@@ -57,7 +58,7 @@ export function createApprovalDecisionRoutes(store: SqliteStore, workspaceManage
     const actionFingerprint = typeof body.actionFingerprint === 'string' ? body.actionFingerprint.trim() : '';
     if (!DECISIONS.has(decision) || !RISK_LEVELS.has(riskLevel)
       || agentId === '' || provider === '' || toolName === '' || actionFingerprint === '') {
-      res.status(400).json({ error: 'APPROVAL_DECISION_INPUT_INVALID' });
+      sendProblem(req, res, { status: 400, code: 'APPROVAL_DECISION_INPUT_INVALID', detail: 'APPROVAL_DECISION_INPUT_INVALID' });
       return;
     }
     const now = new Date().toISOString();
@@ -120,7 +121,11 @@ export function createApprovalDecisionRoutes(store: SqliteStore, workspaceManage
     } catch (error) {
       const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
       const status = /INPUT_INVALID/.test(code) ? 400 : /NOT_FOUND/.test(code) ? 404 : 500;
-      res.status(status).json({ error: code });
+      if (status === 500) {
+        sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
+        return;
+      }
+      sendProblem(req, res, { status, code, detail: code });
     }
   });
 

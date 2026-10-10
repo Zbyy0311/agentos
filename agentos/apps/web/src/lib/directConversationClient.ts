@@ -97,8 +97,8 @@ export interface CheckpointReplay {
 async function apiFetch<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, init);
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };
-    const error = new Error(body.error ?? `HTTP ${response.status}`) as ConversationRuntimeError;
+    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string };
+    const error = new Error(body.detail ?? body.error ?? body.title ?? `HTTP ${response.status}`) as ConversationRuntimeError;
     (error as { status: number }).status = response.status;
     throw error;
   }
@@ -159,8 +159,8 @@ export function directConversationClient(options: DirectConversationClientOption
         body: JSON.stringify({ content, ...(intent === undefined ? {} : { intent }) }),
       });
       if (!response.ok) {
-        const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };
-        const error = new Error(body.error ?? `HTTP ${response.status}`) as ConversationRuntimeError;
+        const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string; detail?: string; title?: string };
+        const error = new Error(body.detail ?? body.error ?? body.title ?? `HTTP ${response.status}`) as ConversationRuntimeError;
         (error as { status: number }).status = response.status;
         throw error;
       }

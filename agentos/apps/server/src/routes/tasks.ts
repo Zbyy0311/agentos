@@ -19,6 +19,7 @@ import {
   type LegacyPipelineRunner,
   type LegacyRunnerFactory,
 } from '../services/LegacyCanonicalExecutionService.js';
+import { sendProblem } from '../problemDetails.js';
 import type { RunStreamService } from '../services/RunStreamService.js';
 import {
   projectLegacyRuntimeEvent,
@@ -181,15 +182,24 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
 
   router.get('/', (req: Request, res: Response) => {
     const { workspaceId } = req.params as { workspaceId: string };
-    if (!workspaceManager.get(workspaceId)) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspaceManager.get(workspaceId)) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     res.json({ tasks: store.loadTasks(workspaceId) });
   });
 
   router.post('/', (req: Request, res: Response) => {
     const { workspaceId } = req.params as { workspaceId: string };
     const { title } = req.body;
-    if (!workspaceManager.get(workspaceId)) return res.status(404).json({ error: 'Workspace not found' });
-    if (!title || typeof title !== 'string') return res.status(400).json({ error: 'title is required' });
+    if (!workspaceManager.get(workspaceId)) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    if (!title || typeof title !== 'string') {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'title is required' });
+      return;
+    }
 
     const task: TaskItem = {
       id: randomUUID().slice(0, 8),
@@ -217,13 +227,20 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
   router.post('/:taskId/run', (req: Request, res: Response) => {
     const { workspaceId, taskId } = req.params as { workspaceId: string; taskId: string };
     const workspace = workspaceManager.get(workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
 
     const tasks = store.loadTasks(workspaceId);
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!task) {
+        sendProblem(req, res, { status: 404, code: 'TASK_NOT_FOUND', detail: 'Task not found' });
+        return;
+      }
     if (!taskRunService || !runStreamService || !legacyCanonicalExecutionService) {
-      return res.status(500).json({ error: 'Bridge persistence failed' });
+      sendProblem(req, res, { status: 500, code: 'BRIDGE_PERSISTENCE_FAILED', detail: 'Bridge persistence failed' });
+      return;
     }
 
     if (
@@ -239,13 +256,15 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         });
       } catch (err) {
         console.error(`[AgentOS Server] Legacy terminal reconciliation failed: ${diagnosticText(err)}`);
-        return res.status(500).json({ error: 'Bridge persistence failed' });
+        sendProblem(req, res, { status: 500, code: 'BRIDGE_PERSISTENCE_FAILED', detail: 'Bridge persistence failed' });
+      return;
       }
     }
 
     const taskBeforeClaim = structuredClone(task);
     if (!claimTaskRun(task)) {
-      return res.status(409).json({ error: 'Task is already running' });
+      sendProblem(req, res, { status: 409, code: 'RUN_ACTIVE_EXISTS', detail: 'Task is already running' });
+      return;
     }
 
     // M2.4 Bridge step 3: find-or-create v2 Task + queued Run in one SQLite transaction.
@@ -273,7 +292,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           || !bridge.startOperation
         ) {
           Object.assign(task, taskBeforeClaim);
-          return res.status(500).json({ error: 'Bridge persistence failed' });
+          sendProblem(req, res, { status: 500, code: 'BRIDGE_PERSISTENCE_FAILED', detail: 'Bridge persistence failed' });
+          return;
         }
         bridgeRunId = bridge.run.id;
         runnerWorkspace = bridge.runnerWorkspace;
@@ -282,9 +302,13 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       } catch (err) {
         Object.assign(task, taskBeforeClaim);
         const message = legacyBridgeGuardMessage(err);
-        if (message) return res.status(409).json({ error: message });
+        if (message) {
+          sendProblem(req, res, { status: 409, code: errorCode(err) ?? 'LEGACY_TASK_GUARD', detail: message });
+          return;
+        }
         console.error(`[AgentOS Server] Legacy Run capture failed: ${errorCode(err) ?? 'RUN_SNAPSHOT_FAILED'}`);
-        return res.status(500).json({ error: 'Bridge persistence failed' });
+        sendProblem(req, res, { status: 500, code: 'BRIDGE_PERSISTENCE_FAILED', detail: 'Bridge persistence failed' });
+        return;
       }
     }
     task.outputs = [];
@@ -304,7 +328,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     }
 
     if (!bridgeRunId || !runStreamService || !legacyCanonicalExecutionService) {
-      return res.status(500).json({ error: 'Bridge persistence failed' });
+      sendProblem(req, res, { status: 500, code: 'BRIDGE_PERSISTENCE_FAILED', detail: 'Bridge persistence failed' });
+      return;
     }
 
     res.writeHead(200, {
@@ -394,10 +419,16 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
   router.get('/:taskId/logs', (req: Request, res: Response) => {
     const { workspaceId, taskId } = req.params as { workspaceId: string; taskId: string };
     const workspace = workspaceManager.get(workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
 
     const logDir = resolveLegacyTaskLogDir(workspace.rootPath, taskId);
-    if (logDir === null) return res.status(400).json({ error: 'Invalid taskId' });
+    if (logDir === null) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid taskId' });
+      return;
+    }
     if (!existsSync(logDir)) return res.json({ logs: {} });
 
     const logs: Record<string, string> = {};
@@ -412,11 +443,17 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
   router.get('/:taskId/status', (req: Request, res: Response) => {
     const { workspaceId, taskId } = req.params as { workspaceId: string; taskId: string };
     const workspace = workspaceManager.get(workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
 
     const tasks = store.loadTasks(workspaceId);
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!task) {
+      sendProblem(req, res, { status: 404, code: 'TASK_NOT_FOUND', detail: 'Task not found' });
+      return;
+    }
 
     res.json({ task });
   });

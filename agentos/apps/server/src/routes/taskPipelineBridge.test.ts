@@ -411,11 +411,11 @@ test('HIGH-1 HTTP retry after canonical restart recovery creates one child Run, 
 
 test('R01-R05 canonical Task and stale active Run guards preserve Legacy JSON and create no extra Run', async t => {
   const cases = [
-    { name: 'R01 canonical done Task', state: 'done', error: 'Task is already completed' },
-    { name: 'R02 canonical cancelled Task', state: 'cancelled', error: 'Task is cancelled' },
-    { name: 'R03 canonical blocked Task', state: 'blocked', error: 'Task is blocked' },
-    { name: 'R04 archived canonical Task', state: 'archived', error: 'Task is archived' },
-    { name: 'R05 stale active queued Run', state: 'stale-active', error: 'Task is already running' },
+    { name: 'R01 canonical done Task', state: 'done', error: 'Task is already completed', code: 'TASK_DONE' },
+    { name: 'R02 canonical cancelled Task', state: 'cancelled', error: 'Task is cancelled', code: 'TASK_CANCELLED' },
+    { name: 'R03 canonical blocked Task', state: 'blocked', error: 'Task is blocked', code: 'TASK_BLOCKED' },
+    { name: 'R04 archived canonical Task', state: 'archived', error: 'Task is archived', code: 'TASK_ARCHIVED' },
+    { name: 'R05 stale active queued Run', state: 'stale-active', error: 'Task is already running', code: 'RUN_ACTIVE_EXISTS' },
   ] as const;
 
   for (const item of cases) {
@@ -468,9 +468,10 @@ test('R01-R05 canonical Task and stale active Run guards preserve Legacy JSON an
         const response = await fetch(`${fixture.base}/${task.id}/run`, { method: 'POST' });
         const body = await response.text();
         assert.equal(response.status, 409);
-        const payload = JSON.parse(body) as { error: string };
-        assert.deepEqual(payload, { error: item.error });
-        assert.doesNotMatch(payload.error, /SQLITE|constraint failed|\bSQL\b|stack/i);
+        const payload = JSON.parse(body) as { code: string; detail: string };
+        assert.equal(payload.code, item.code);
+        assert.equal(payload.detail, item.error);
+        assert.doesNotMatch(payload.detail, /SQLITE|constraint failed|\bSQL\b|stack/i);
         assert.equal(JSON.stringify(loadLegacyTask(fixture, task.id)), legacyBefore);
         assert.equal(fixture.store.runRepository().listByTask(fixture.workspaceId, canonicalTask.id).length, runCountBefore);
         assert.equal(observed.constructions, 1);
@@ -637,7 +638,9 @@ test('D01-D10 and double execution: disconnect unsubscribes transport while exec
 
     const duplicate = await fetch(`${fixture.base}/${task.id}/run`, { method: 'POST' });
     assert.equal(duplicate.status, 409);
-    assert.deepEqual(await duplicate.json(), { error: 'Task is already running' });
+    const duplicateBody = await duplicate.json() as { code: string; detail: string };
+    assert.equal(duplicateBody.code, 'RUN_ACTIVE_EXISTS');
+    assert.equal(duplicateBody.detail, 'Task is already running');
     assert.equal(observed.constructions, 1);
 
     const canonicalTask = fixture.store.taskRepository().findByLegacyTaskId(fixture.workspaceId, task.id)!;

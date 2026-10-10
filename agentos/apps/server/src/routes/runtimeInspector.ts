@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { RuntimeInspectorError } from '../services/RuntimeInspector.js';
 
 /**
@@ -17,7 +18,7 @@ export function createRuntimeInspectorRoutes(store: SqliteStore, workspaceManage
   router.get('/runs/:runId/inspector', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
-      res.status(404).json({ error: 'Workspace not found' });
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
       return;
     }
     const afterSequence = typeof req.query.afterSequence === 'string' ? Number(req.query.afterSequence) : 0;
@@ -33,10 +34,10 @@ export function createRuntimeInspectorRoutes(store: SqliteStore, workspaceManage
     } catch (error) {
       if (error instanceof RuntimeInspectorError) {
         const status = error.code === 'RUN_NOT_FOUND' ? 404 : error.code === 'INPUT_INVALID' ? 400 : 500;
-        res.status(status).json({ error: error.message });
+        sendProblem(req, res, { status, code: error.code, detail: error.message });
         return;
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
     }
   });
 

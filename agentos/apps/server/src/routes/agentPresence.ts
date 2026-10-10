@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { AgentPresenceService } from '../services/AgentPresenceService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
@@ -8,7 +9,10 @@ export function createAgentPresenceRoutes(store: SqliteStore, workspaceManager: 
   const service = new AgentPresenceService(store);
   router.get('/agents/presence', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
     return res.json({ presence: service.resolve(workspace.id) });
   });
   return router;
