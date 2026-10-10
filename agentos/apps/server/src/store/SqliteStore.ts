@@ -508,6 +508,7 @@ export class SqliteStore implements Store {
       // foreign keys and waits out lock contention instead of failing busy.
       this.database.exec('PRAGMA foreign_keys = ON');
       this.database.exec('PRAGMA busy_timeout = 5000');
+      this.database.exec('PRAGMA journal_mode = WAL');
       this.workspaceRepo = new WorkspaceRepository(this.database as any);
       this.taskRepo = new TaskRepository(this.database as any);
       this.runRepo = new RunRepository(this.database as any);
