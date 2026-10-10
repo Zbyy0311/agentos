@@ -44,10 +44,10 @@ test('L1A-02 LEGACY_AGENT_RUN subject union accepts legacy ID only', () => {
 
 // L1A-03 — illegal dual/empty subject shape is rejected at the type level.
 test('L1A-03 illegal dual/empty subject shape rejected', () => {
-  // @ts-expect-error a dual-ID shape is not a valid WorkspaceAdmissionSubject
   const dual: WorkspaceAdmissionSubject = {
     subjectKind: 'CANONICAL_RUN',
     canonicalRunId: 'a',
+    // @ts-expect-error a dual-ID shape is not a valid WorkspaceAdmissionSubject
     legacyRunId: 'b',
   };
   void dual;
@@ -64,11 +64,11 @@ test('L1A-03b granted subject union enforces exactly one subject ID', () => {
     canonicalRunId: 'run-1',
   };
   assert.equal(granted.canonicalRunId, 'run-1');
-  // @ts-expect-error legacy granted subject cannot carry canonicalRunId
   const bad: GrantedAdmissionSubject = {
     admissionId: 'adm-2',
     workspaceId: 'ws-1',
     subjectKind: 'LEGACY_AGENT_RUN',
+    // @ts-expect-error legacy granted subject cannot carry canonicalRunId
     canonicalRunId: 'run-1',
   };
   void bad;
@@ -80,10 +80,10 @@ test('L1A collaboration application admission binds only a control ID', () => {
     controlId: 'control-apply-1',
   };
   assert.equal(subject.subjectKind, 'COLLABORATION_APPLICATION');
-  // @ts-expect-error application admissions cannot masquerade as a Run
   const badApplication: WorkspaceAdmissionSubject = {
     subjectKind: 'COLLABORATION_APPLICATION',
     controlId: 'control-apply-1',
+    // @ts-expect-error application admissions cannot masquerade as a Run
     canonicalRunId: 'run-1',
   };
   void badApplication;

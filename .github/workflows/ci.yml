@@ -32,7 +32,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -73,32 +73,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/capture-lite-verification.mjs lite-scope -- node scripts/verify-lite-scope.mjs
 
-      - name: Shared M3 contract harness
-        run: node scripts/capture-lite-verification.mjs shared-m3 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/m3-runtime.test.ts
-
-      - name: Shared P6-L1C-M1 contract harness
-        run: node scripts/capture-lite-verification.mjs shared-p6 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
-
-      - name: Shared MF-0 memory contract harness
-        run: node scripts/capture-lite-verification.mjs shared-mf0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf0-memory-contracts.test.ts
-
-      - name: Shared MF-5 memory event harness
-        run: node scripts/capture-lite-verification.mjs shared-mf5-memory apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-memory-events.test.ts
-
-      - name: Shared MF-5 Workspace event harness
-        run: node scripts/capture-lite-verification.mjs shared-mf5-workspace apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-workspace-events.test.ts
-
-      - name: Shared CR-0 conversation contract harness
-        run: node scripts/capture-lite-verification.mjs shared-cr0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/cr0-conversation-contracts.test.ts
-
-      - name: Shared workflow template harness
-        run: node scripts/capture-lite-verification.mjs shared-wf-templates apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-templates.test.ts
-
-      - name: Shared workflow template instantiation harness
-        run: node scripts/capture-lite-verification.mjs shared-wf-instantiation apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-template-instantiation.test.ts
-
       - name: Shared complete contract harness
-        run: node scripts/capture-lite-verification.mjs shared-complete apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/*test.ts
+        run: node scripts/capture-lite-verification.mjs shared-complete -- pwsh -NoProfile -Command 'pnpm --filter @agentos/shared test; exit $LASTEXITCODE'
 
       - name: Workspace build
         run: node scripts/capture-lite-verification.mjs workspace-build -- pwsh -NoProfile -Command 'pnpm build; exit $LASTEXITCODE'
@@ -124,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -211,7 +187,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -255,7 +231,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -294,7 +270,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -333,7 +309,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.11.0
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

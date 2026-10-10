@@ -5,6 +5,8 @@ import {
   WORKSPACE_EVENT_STREAM_TYPES,
   createM3RuntimeEventRegistry,
   isWorkspaceEventStreamType,
+  RuntimeEventRegistryError,
+  type WorkspaceEventDraft,
 } from './src/index.ts';
 
 const TIMESTAMP = '2026-09-11T00:00:00.000Z';
@@ -39,20 +41,21 @@ const WORKSPACE_DRAFT = {
   workspaceId: 'ws_1',
   sequence: 1,
   timestamp: TIMESTAMP,
-  source: 'memory-engine',
+  source: 'memory-engine' as const,
   correlationId: 'memory-candidate:mcand_1:v2',
   causationId: 'mcand_1',
   payload: ENTRY_PAYLOAD,
 };
 
-function workspaceDraft(overrides = {}) {
+function workspaceDraft<TOverrides extends Partial<WorkspaceEventDraft> & Record<string, unknown>>(overrides: TOverrides) {
   return { ...WORKSPACE_DRAFT, ...overrides };
 }
 
-function registryError(fn) {
+function registryError(fn: () => unknown): RuntimeEventRegistryError {
   try {
     fn();
   } catch (error) {
+    assert.ok(error instanceof RuntimeEventRegistryError);
     return error;
   }
   throw new Error('expected the Registry to throw');
@@ -166,7 +169,11 @@ test('MF5W-07 the Run publish path is unchanged', () => {
   };
   assert.equal(registry.publish(runDraft).runId, 'run_1');
   // The Run path still requires its own binding and rejects the Workspace shape.
-  assert.equal(registryError(() => registry.publish({ ...runDraft, runId: undefined })).code, 'INVALID_EVENT_ENVELOPE');
+  assert.equal(registryError(() => registry.publish({
+    ...runDraft,
+    // @ts-expect-error deliberately omit the required Run binding to verify runtime rejection
+    runId: undefined,
+  })).code, 'INVALID_EVENT_ENVELOPE');
 });
 
 test('MF5W-08 published Workspace Events do not mutate the caller draft', () => {

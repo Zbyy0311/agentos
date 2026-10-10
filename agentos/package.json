@@ -2,7 +2,9 @@
   "name": "agentos",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.11.0",
   "scripts": {
+    "test": "pnpm -r --if-present run test",
     "dev": "pnpm --parallel -r run dev",
     "dev:stable": "pnpm --filter @agentos/server run dev:stable",
     "local:start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/agentos-local.ps1 -Action start",
