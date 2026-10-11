@@ -52,6 +52,7 @@ import { migration051 } from './migrations/051-memory-feedback-resolver-actor.js
 import { migration052 } from './migrations/052-memory-entry-source-bindings.js';
 import { migration053 } from './migrations/053-collaboration-candidate-content-hash.js';
 import { migration054 } from './migrations/054-p2-recovery.js';
+import { migration055 } from './migrations/055-policy-core.js';
 import type { Migration } from './types.js';
 
 /**
@@ -99,6 +100,8 @@ import type { Migration } from './types.js';
  * 038: immutable collaboration candidate/review evidence and safe stage outputs
  * 039: durable collaboration control claims and application recovery journals
  * 053: canonical frozen collaboration candidate content hash
+ * 054: P2 interrupted/failure recovery ledgers
+ * 055: Policy Runtime core (policy_profiles / policy_rules / policy_decisions)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -155,4 +158,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration052,
   migration053,
   migration054,
+  migration055,
 ];

@@ -19,6 +19,7 @@ export const ENTITY_ID_PREFIXES = {
   memoryCandidate: 'mcand',
   memoryContext: 'mctx',
   policy: 'policy',
+  policyProfile: 'pprof',
   policyRule: 'prule',
   policyDecision: 'pdec',
   approval: 'approval',
