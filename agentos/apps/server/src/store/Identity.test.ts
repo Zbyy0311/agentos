@@ -29,6 +29,7 @@ const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
   memoryCandidate: 'mcand',
   memoryContext: 'mctx',
   policy: 'policy',
+  policyProfile: 'pprof',
   policyRule: 'prule',
   policyDecision: 'pdec',
   approval: 'approval',
@@ -51,7 +52,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 31);
+    assert.equal(kinds.length, 32);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -308,7 +309,7 @@ describe('Identity — M2.6 idempotency kind', () => {
 
   it('all pre-import kinds remain unchanged', () => {
     const priorKinds = kinds.filter((kind) => kind !== 'import' && kind !== 'operation');
-    assert.equal(priorKinds.length, 29);
+    assert.equal(priorKinds.length, 30);
     assert.ok(priorKinds.includes('idempotency'));
     assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);
     const operationId = createEntityId('operation');
