@@ -13,6 +13,7 @@ import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { isTransactionActive, registerAfterCommit, type TransactionDatabase } from './Transaction.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
+import type { EventPayloadRedactor } from '../services/EventRedactionService.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import type { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import type { OutboxMessage, OutboxRepository } from './OutboxRepository.js';
@@ -518,6 +519,7 @@ export class RuntimeEventRepository {
     private readonly db: TransactionDatabase,
     private readonly registry: CentralRuntimeEventRegistry,
     private readonly notifier?: RuntimeEventNotifier,
+    private readonly redactor?: EventPayloadRedactor,
   ) {}
 
   /**
@@ -553,8 +555,22 @@ export class RuntimeEventRepository {
     let payloadJson: string;
     let metadataJson: string | null;
     try {
-      payloadJson = canonicalizeJson(event.payload);
-      metadataJson = event.metadata === undefined ? null : canonicalizeJson(event.metadata);
+      // §79 invariant 12: Secrets are redacted after Registry validation and
+      // before canonicalization, so only the persisted JSON is rewritten; the
+      // published envelope keeps its Registry-verified shape.
+      let persistedPayload: unknown = event.payload;
+      let persistedMetadata: unknown = event.metadata;
+      if (this.redactor) {
+        const payloadResult = this.redactor.redactPayload(event.workspaceId, event.payload);
+        const metadataResult = this.redactor.redactPayload(event.workspaceId, event.metadata ?? {});
+        const redactedFields = payloadResult.redactedFields + metadataResult.redactedFields;
+        persistedPayload = payloadResult.value;
+        persistedMetadata = redactedFields > 0
+          ? { ...(metadataResult.value as Record<string, unknown>), redaction: { fields: redactedFields } }
+          : event.metadata;
+      }
+      payloadJson = canonicalizeJson(persistedPayload);
+      metadataJson = persistedMetadata === undefined ? null : canonicalizeJson(persistedMetadata);
     } catch (error) {
       throw new RuntimeEventRepositoryError(
         'RUNTIME_EVENT_PERSISTENCE_FAILED',

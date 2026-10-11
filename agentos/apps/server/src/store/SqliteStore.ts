@@ -82,6 +82,7 @@ import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 import { OperationService } from '../services/OperationService.js';
 import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
+import { EventRedactionService } from '../services/EventRedactionService.js';
 import { RunStreamService } from '../services/RunStreamService.js';
 import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
 import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
@@ -478,6 +479,7 @@ export class SqliteStore implements Store {
   private readonly processOutputReferenceRepo: ProcessOutputReferenceRepository;
   private readonly runtimeEventNotifier: RuntimeEventNotifier;
   private readonly runtimeEventRepo: RuntimeEventRepository;
+  private readonly eventRedactionServiceRepo: EventRedactionService;
   private readonly runStreamServiceRepo: RunStreamService;
   private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
   private readonly outboxRepo: OutboxRepository;
@@ -519,10 +521,12 @@ export class SqliteStore implements Store {
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
       this.runtimeEventNotifier = new RuntimeEventNotifier();
+      this.eventRedactionServiceRepo = new EventRedactionService();
       this.runtimeEventRepo = new RuntimeEventRepository(
         this.database as any,
         runtimeEventRegistry,
         this.runtimeEventNotifier,
+        this.eventRedactionServiceRepo,
       );
       this.runStreamServiceRepo = new RunStreamService(this.runtimeEventRepo, this.runtimeEventNotifier);
       this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
@@ -638,6 +642,11 @@ export class SqliteStore implements Store {
 
   runtimeEventRepository(): RuntimeEventRepository {
     return this.runtimeEventRepo;
+  }
+
+  /** Workspace-scoped Runtime Event secret redactor for launch-path registration. */
+  eventRedactionService(): EventRedactionService {
+    return this.eventRedactionServiceRepo;
   }
 
   /** Existing one-connection Runtime Event + Outbox writer for bounded service composition. */

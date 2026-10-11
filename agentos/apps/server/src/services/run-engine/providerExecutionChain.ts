@@ -135,6 +135,14 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
         && stage.status === 'running'
         && options.collaborationStageHooks?.canDispatch?.(input.workspaceId, input.runId) !== false;
     },
+    onLaunchPlan: ({ workspaceId, plan }) => {
+      // Spec 03-Event-Model §57: the launch plan marks which environment keys
+      // carry secrets (redactedEnvironmentKeys); their values are registered
+      // so Event persistence redacts them before INSERT.
+      store.eventRedactionService().registerSecrets(workspaceId,
+        plan.redactedEnvironmentKeys.map(key => plan.environment[key]).filter(
+          (value): value is string => typeof value === 'string' && value.length > 0));
+    },
   });
   const engine = new RunEngine({
     runRepository: store.runRepository(),

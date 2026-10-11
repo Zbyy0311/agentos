@@ -153,6 +153,12 @@ export interface StageExecutionCoordinatorOptions {
   readonly approvalGate?: StageExecutionApprovalGate;
   /** Synchronous durable Run/Stage/control fence, re-read at native launch. */
   readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
+  /**
+   * Observes each successfully built launch plan (before the approval gate)
+   * so the composition root can register redacted secret values for the
+   * Workspace's Event persistence redaction pipeline.
+   */
+  readonly onLaunchPlan?: (input: { workspaceId: string; plan: ProviderLaunchPlan }) => void;
 }
 
 const DEFAULT_CLAIM_OWNER = 'run-engine';
@@ -233,6 +239,7 @@ export class StageExecutionCoordinator {
   private readonly stderrRetainedBytes: number;
   private readonly approvalGate: StageExecutionApprovalGate | undefined;
   private readonly canLaunch: ((input: StageLaunchIdentity) => boolean) | undefined;
+  private readonly onLaunchPlan: ((input: { workspaceId: string; plan: ProviderLaunchPlan }) => void) | undefined;
   private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
   private readonly liveAttempts = new Map<string, LiveAttemptRendezvous>();
 
@@ -251,6 +258,7 @@ export class StageExecutionCoordinator {
     this.stderrRetainedBytes = options.stderrRetainedBytes ?? MAX_STDERR_RETAINED_BYTES;
     this.approvalGate = options.approvalGate;
     this.canLaunch = options.canLaunch;
+    this.onLaunchPlan = options.onLaunchPlan;
   }
 
   async execute(input: StageExecutionInput): Promise<StageExecutionOutcome> {
@@ -285,6 +293,7 @@ export class StageExecutionCoordinator {
       return this.failedFromError(error, 'startup', input);
     }
     if (!this.launchAuthorized(input)) return this.launchFenced(input);
+    this.onLaunchPlan?.({ workspaceId: input.workspaceId, plan });
 
     let approvalRequestId: string | undefined;
     if (this.approvalGate !== undefined) {
