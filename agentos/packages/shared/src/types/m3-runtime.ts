@@ -64,6 +64,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'git',
   'artifact',
   'memory',
+  'policy',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];

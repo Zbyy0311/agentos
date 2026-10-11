@@ -7,6 +7,8 @@ import type { ProviderLaunchPlan } from '@agentos/agent-core/providers';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { RuntimeApprovalRepository, RuntimeApprovalRepositoryError, type RuntimeApprovalRequestRecord } from '../store/RuntimeApprovalRepository.js';
 import { ApprovalDecisionRepository } from '../store/ApprovalDecisionRepository.js';
+import { PolicyRepository, type PolicyDecisionValue } from '../store/PolicyRepository.js';
+import { PolicyEngine, type PolicyEvaluation, type PolicyEvaluationInput } from './policy/PolicyEngine.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
 import { DurableMemoryRuntimeEventContextAuthority } from './MemoryRuntimeEventContextAuthority.js';
@@ -41,11 +43,28 @@ interface ApprovalIdentity {
   readonly snapshotHash: string;
 }
 
+/**
+ * The launch-gate view of one PolicyEngine evaluation. `evaluation` is absent
+ * when the engine failed (fail-closed) — the gate then downgraded the outcome
+ * to require_approval and recorded `failure` instead.
+ */
+interface LaunchPolicyOutcome {
+  readonly decision: PolicyDecisionValue;
+  readonly evaluation: PolicyEvaluation | undefined;
+  readonly failure: { readonly errorCode: string } | undefined;
+}
+
+interface LaunchPolicyEngine {
+  evaluate(input: PolicyEvaluationInput): PolicyEvaluation;
+}
+
 export class RuntimeApprovalGate {
   private readonly requests: RuntimeApprovalRepository;
   private readonly decisions: ApprovalDecisionRepository;
   private readonly candidates: MemoryCandidateRepository;
   private readonly emitter: MemoryRuntimeEventEmitter;
+  private readonly policyDecisions: PolicyRepository;
+  private readonly policyEngineInstance: LaunchPolicyEngine;
 
   constructor(
     private readonly store: SqliteStore,
@@ -54,12 +73,16 @@ export class RuntimeApprovalGate {
       now?: () => string;
       ttlMs?: number;
       continueRun?: (workspaceId: string, runId: string) => Promise<void>;
+      policyEngine?: LaunchPolicyEngine;
     } = {},
   ) {
     const db = store.getDatabase();
     this.requests = new RuntimeApprovalRepository(db);
     this.decisions = new ApprovalDecisionRepository(db);
     this.candidates = new MemoryCandidateRepository(db);
+    this.policyDecisions = new PolicyRepository(db);
+    this.policyEngineInstance = options.policyEngine
+      ?? new PolicyEngine(this.policyDecisions, { now: () => this.now() });
     this.emitter = new MemoryRuntimeEventEmitter({
       store,
       factWriter: store.runtimeEventOutboxWriter(),
@@ -68,27 +91,39 @@ export class RuntimeApprovalGate {
   }
 
   beforeLaunch(input: StageExecutionInput, plan: ProviderLaunchPlan): ApprovalGateBeforeLaunchResult {
-    if (!requiresUserApproval(input.agentSnapshot)) return { kind: 'allow' };
+    const policy = this.evaluateLaunchPolicy(input);
+    if (policy.decision === 'allow') {
+      this.persistPolicyEvaluation(input, policy, undefined);
+      return { kind: 'allow' };
+    }
+    if (policy.decision === 'deny') {
+      this.persistPolicyEvaluation(input, policy, undefined);
+      return { kind: 'deny', code: 'POLICY_DENIED', message: 'Policy denied this provider launch (action: provider.launch)' };
+    }
     const identity = this.identity(input, plan);
     const existing = this.requests.findLatestBySourceKey(input.workspaceId, identity.sourceKey);
     const now = this.now();
     if (existing) {
       if (existing.status === 'approved') {
         this.assertSameAction(existing, identity, now);
+        this.persistPolicyEvaluation(input, policy, identity.actionFingerprint);
         return { kind: 'allow', requestId: existing.id };
       }
       if (existing.status === 'pending') {
         this.assertSameAction(existing, identity, now);
+        this.persistPolicyEvaluation(input, policy, identity.actionFingerprint);
         return { kind: 'wait', requestId: existing.id };
       }
       if (existing.status === 'rejected' || existing.status === 'cancelled') {
+        this.persistPolicyEvaluation(input, policy, identity.actionFingerprint);
         return { kind: 'deny', code: 'RUNTIME_APPROVAL_DENIED', message: 'The original approval decision rejected this action' };
       }
       if (existing.status === 'expired') {
+        this.persistPolicyEvaluation(input, policy, identity.actionFingerprint);
         return { kind: 'deny', code: 'RUNTIME_APPROVAL_EXPIRED', message: 'Approval expired; request a new decision' };
       }
     }
-    return this.createRequest(input, identity, now);
+    return this.createRequest(input, identity, now, policy);
   }
 
   /** Re-check immediately before consuming the one spawn right. */
@@ -173,7 +208,7 @@ export class RuntimeApprovalGate {
     return resumed;
   }
 
-  private createRequest(input: StageExecutionInput, identity: ApprovalIdentity, requestedAt: string): ApprovalGateBeforeLaunchResult {
+  private createRequest(input: StageExecutionInput, identity: ApprovalIdentity, requestedAt: string, policy: LaunchPolicyOutcome): ApprovalGateBeforeLaunchResult {
     const db = this.store.getDatabase();
     return inTransaction(db, () => {
       const run = this.store.runRepository().findById(input.workspaceId, input.runId);
@@ -199,6 +234,10 @@ export class RuntimeApprovalGate {
         expiresAt: new Date(Date.parse(requestedAt) + (this.options.ttlMs ?? DEFAULT_TTL_MS)).toISOString(),
         createdAt: requestedAt, updatedAt: requestedAt,
       });
+      // The Policy decision, its policy.evaluated fact, and the approval
+      // request commit in ONE transaction: a persisted request never exists
+      // without its policy audit row.
+      this.persistPolicyEvaluationWithinTransaction(input, policy, identity.actionFingerprint, requestedAt);
       const lifecycle = this.lifecycle().requestApprovalWithinTransaction({
         workspaceId: input.workspaceId, runId: input.runId, stageId: input.stageId,
         expectedRunVersion: run.version, expectedStageVersion: stage.version,
@@ -356,6 +395,128 @@ export class RuntimeApprovalGate {
     if (request.expiresAt <= now) throw new RuntimeApprovalGateError('EXPIRED');
   }
 
+  /**
+   * PolicyEngine evaluation for one provider.launch gate check. Engine errors
+   * never propagate: the gate fails closed to require_approval and reports the
+   * failure through policy.evaluation_failed, so a broken engine can never
+   * crash the Run or silently allow a launch.
+   */
+  private evaluateLaunchPolicy(input: StageExecutionInput): LaunchPolicyOutcome {
+    try {
+      const evaluation = this.policyEngineInstance.evaluate({
+        workspaceId: input.workspaceId,
+        action: 'provider.launch',
+        agentPermissions: [...input.agentSnapshot.permissions],
+        providerType: input.providerSnapshot.providerType,
+        runId: input.runId,
+        stageId: input.stageId,
+      });
+      // Legacy parity: the pre-policy heuristic also required approval for any
+      // permission outside the read/review/write enum (e.g. malformed legacy
+      // rows), which no positive selector rule can express. Keep that exact
+      // behaviour until such permissions are migrated.
+      if (evaluation.decision === 'allow' && legacyHeuristicRequiresApproval(input.agentSnapshot)) {
+        return { decision: 'require_approval', evaluation, failure: undefined };
+      }
+      return { decision: evaluation.decision, evaluation, failure: undefined };
+    } catch (error) {
+      return {
+        decision: 'require_approval',
+        evaluation: undefined,
+        failure: { errorCode: error instanceof Error && error.name !== '' ? error.name : 'POLICY_ENGINE_ERROR' },
+      };
+    }
+  }
+
+  /** Persist one evaluation (decision row + facts) in its own transaction. */
+  private persistPolicyEvaluation(input: StageExecutionInput, policy: LaunchPolicyOutcome, fingerprint: string | undefined): void {
+    inTransaction(this.store.getDatabase(), () => {
+      this.persistPolicyEvaluationWithinTransaction(input, policy, fingerprint, this.now());
+    });
+  }
+
+  /**
+   * Caller-transaction decision persistence: the immutable policy_decisions
+   * audit row plus the policy.evaluated fact (and policy.denied /
+   * policy.evaluation_failed companions) commit with whatever enclosing write
+   * owns this transaction.
+   */
+  private persistPolicyEvaluationWithinTransaction(
+    input: StageExecutionInput,
+    policy: LaunchPolicyOutcome,
+    fingerprint: string | undefined,
+    timestamp: string,
+  ): void {
+    const evaluation = policy.evaluation;
+    const matchedRuleIds = evaluation?.matchedRuleIds ?? [];
+    const profileId = evaluation?.profileId ?? null;
+    this.policyDecisions.insertDecision({
+      id: createEntityId('policyDecision'),
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      stageId: input.stageId,
+      action: 'provider.launch',
+      ...(fingerprint === undefined ? {} : { fingerprint }),
+      decision: policy.decision,
+      matchedRuleIds,
+      ...(profileId === null ? {} : { profileId }),
+      evaluatedAt: evaluation?.evaluatedAt ?? timestamp,
+    });
+    if (profileId !== null) {
+      const writer = this.store.runtimeEventOutboxWriter();
+      const eventContext = { correlationId: input.operationId, causationId: input.operationId };
+      writer.appendWithinTransaction({
+        type: 'policy.evaluated',
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        stageId: input.stageId,
+        timestamp,
+        source: 'policy-engine',
+        eventContext,
+        payload: {
+          action: 'provider.launch',
+          decision: policy.decision,
+          profileId,
+          matchedRuleCount: matchedRuleIds.length,
+          evaluatedAt: evaluation?.evaluatedAt ?? timestamp,
+        },
+      });
+      if (policy.decision === 'deny') {
+        writer.appendWithinTransaction({
+          type: 'policy.denied',
+          workspaceId: input.workspaceId,
+          runId: input.runId,
+          stageId: input.stageId,
+          timestamp,
+          source: 'policy-engine',
+          eventContext,
+          payload: {
+            action: 'provider.launch',
+            decision: 'deny',
+            profileId,
+            evaluatedAt: evaluation?.evaluatedAt ?? timestamp,
+          },
+        });
+      }
+    }
+    if (policy.failure !== undefined) {
+      this.store.runtimeEventOutboxWriter().appendWithinTransaction({
+        type: 'policy.evaluation_failed',
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        stageId: input.stageId,
+        timestamp,
+        source: 'policy-engine',
+        eventContext: { correlationId: input.operationId, causationId: input.operationId },
+        payload: {
+          action: 'provider.launch',
+          errorCode: policy.failure.errorCode,
+          evaluatedAt: timestamp,
+        },
+      });
+    }
+  }
+
   private lifecycle(): LifecycleTransactionService {
     return this.options.lifecycle ?? this.store.lifecycleTransactionService();
   }
@@ -365,7 +526,8 @@ export class RuntimeApprovalGate {
   }
 }
 
-function requiresUserApproval(agent: AgentSnapshotV1): boolean {
+/** Pre-policy approval heuristic, retained for legacy-permission parity. */
+function legacyHeuristicRequiresApproval(agent: AgentSnapshotV1): boolean {
   return agent.permissions.some(permission => permission === 'write')
     || !agent.permissions.every(permission => permission === 'read' || permission === 'review');
 }
