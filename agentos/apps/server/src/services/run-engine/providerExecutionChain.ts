@@ -12,6 +12,7 @@ import {
 import type { ProcessProbePort } from '@agentos/process-runtime';
 import {
   CodexProviderAdapter,
+  CustomCliAdapter,
   KimiCodeProviderAdapter,
   OpenCodeProviderAdapter,
   ProviderRegistry,
@@ -93,6 +94,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     new KimiCodeProviderAdapter({ probe }),
     new CodexProviderAdapter({ probe }),
     new OpenCodeProviderAdapter({ probe }),
+    new CustomCliAdapter({ probe }),
   ]);
   let dispatcher!: RunEngineProviderDispatcher;
   const approvalGate = new RuntimeApprovalGate(store, {

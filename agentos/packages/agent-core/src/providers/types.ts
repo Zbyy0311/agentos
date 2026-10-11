@@ -28,6 +28,9 @@ export const CODEX_DEFAULT_EXECUTABLE = 'codex' as const;
 export const OPENCODE_ADAPTER_ID = 'builtin.opencode' as const;
 export const OPENCODE_ADAPTER_VERSION = '1.0.0' as const;
 export const OPENCODE_DEFAULT_EXECUTABLE = 'opencode' as const;
+export const CUSTOM_CLI_PROVIDER_TYPE = 'custom-cli' as const;
+export const CUSTOM_CLI_ADAPTER_ID = 'builtin.custom-cli' as const;
+export const CUSTOM_CLI_ADAPTER_VERSION = '1.0.0' as const;
 
 export type ProviderType = ProviderTypeV1 | typeof LEGACY_KIMI_PROVIDER_TYPE;
 export type CanonicalProviderType = ProviderTypeV1;
@@ -49,6 +52,10 @@ export interface ProviderConfigurationInput {
   readonly runtimeMode: RuntimeMode;
   readonly executable?: string;
   readonly argsTemplate?: readonly string[];
+  /** Custom CLI only: how the prompt reaches the executable; defaults to 'argument'. */
+  readonly promptDelivery?: 'argument' | 'stdin' | 'file';
+  /** Custom CLI only: exit codes treated as success; defaults to [0]. */
+  readonly successExitCodes?: readonly number[];
   readonly model?: string;
   readonly environmentProfileId?: string;
   readonly secretProfileId?: string;
@@ -90,6 +97,9 @@ export function resolveFrozenProviderIdentity(
   }
   if (type === 'opencode' && configuration.adapterId === OPENCODE_ADAPTER_ID) {
     return { adapterId: OPENCODE_ADAPTER_ID, adapterVersion: OPENCODE_ADAPTER_VERSION };
+  }
+  if (type === CUSTOM_CLI_PROVIDER_TYPE && configuration.adapterId === CUSTOM_CLI_ADAPTER_ID) {
+    return { adapterId: CUSTOM_CLI_ADAPTER_ID, adapterVersion: CUSTOM_CLI_ADAPTER_VERSION };
   }
   return undefined;
 }
