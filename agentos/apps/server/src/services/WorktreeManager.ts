@@ -1,13 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, mkdir, realpath } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WorktreeLease, WorktreeRecoveryBundle } from '@agentos/shared';
 import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
+import type { WorktreeLeaseRecord } from '../store/WorktreeRepository.js';
+import { WorktreeRepository } from '../store/WorktreeRepository.js';
 
-type LeaseRecord = WorktreeLease & { absolutePath: string; workspaceRoot: string; recoveryBundle?: WorktreeRecoveryBundle };
+type LeaseRecord = WorktreeLeaseRecord;
 type PreflightOptions = { readonly controlledGitContent?: boolean };
 type CreateInput = { workspaceId: string; workspaceRoot: string; runId: string; executionId: string; agentId: string; expectedBaseCommit?: string } & PreflightOptions;
 
@@ -16,7 +18,42 @@ export class WorktreeError extends Error { constructor(public readonly code: str
 export class WorktreeManager {
   private readonly leases = new Map<string, LeaseRecord>();
   private readonly leaseFile: string;
-  constructor(private readonly worktreeRoot: string) { this.leaseFile=join(worktreeRoot,'leases.json'); if(existsSync(this.leaseFile)){try{for(const record of JSON.parse(readFileSync(this.leaseFile,'utf8')) as LeaseRecord[])this.leases.set(record.id,record);}catch{/* corrupted state is reconciled as empty */}} }
+  /**
+   * PR-3A: when a WorktreeRepository is supplied, lease persistence moves from
+   * the whole-JSON leases.json anti-pattern to SQLite. The in-memory Map stays
+   * as the runtime authority; every mutation is written through to the
+   * repository. Without a repository the legacy JSON behavior is preserved
+   * (embedded/test call sites that predate the store).
+   */
+  constructor(private readonly worktreeRoot: string, private readonly repository?: WorktreeRepository) {
+    this.leaseFile = join(worktreeRoot, 'leases.json');
+    if (repository) {
+      for (const record of repository.list()) this.leases.set(record.id, record);
+      this.importLegacyLeasesFile();
+    } else if (existsSync(this.leaseFile)) {
+      try { for (const record of JSON.parse(readFileSync(this.leaseFile, 'utf8')) as LeaseRecord[]) this.leases.set(record.id, record); } catch { /* corrupted state is reconciled as empty */ }
+    }
+  }
+
+  /** One-shot, idempotent leases.json import; the file is archived as .migrated. */
+  private importLegacyLeasesFile(): void {
+    if (!existsSync(this.leaseFile) || !this.repository) return;
+    try {
+      const records = JSON.parse(readFileSync(this.leaseFile, 'utf8')) as LeaseRecord[];
+      if (Array.isArray(records)) {
+        for (const record of records) {
+          if (!record || typeof record.id !== 'string' || this.leases.has(record.id)) continue;
+          this.repository.importLegacy(record);
+          this.leases.set(record.id, record);
+        }
+      }
+      const archive = `${this.leaseFile}.migrated`;
+      try {
+        if (existsSync(archive)) rmSync(archive);
+        renameSync(this.leaseFile, archive);
+      } catch { /* archive is best effort; import itself is idempotent */ }
+    } catch { /* corrupted legacy file is reconciled as empty */ }
+  }
 
   async createLease(input: CreateInput): Promise<WorktreeLease> {
     const baseCommit = await this.assertClean(input.workspaceRoot, input);
@@ -101,7 +138,13 @@ export class WorktreeManager {
     this.persist();
   }
   async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> { const record=this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required','recovery bundle confirmation is required'); if (!record.recoveryBundle) throw new WorktreeError('bundle_required','verified recovery bundle is required'); await git(record.workspaceRoot,['worktree','remove','--force',record.absolutePath]); record.status='cleaned'; record.updatedAt=new Date().toISOString(); this.persist(); return publicLease(record); }
-  private persist(): void { try { mkdirSync(this.worktreeRoot,{recursive:true}); writeFileSync(this.leaseFile,JSON.stringify([...this.leases.values()],null,2),'utf8'); } catch {/* best effort; active worktree remains recoverable from git */} }
+  private persist(): void {
+    if (this.repository) {
+      for (const record of this.leases.values()) this.repository.save(record);
+      return;
+    }
+    try { mkdirSync(this.worktreeRoot, { recursive: true }); writeFileSync(this.leaseFile, JSON.stringify([...this.leases.values()], null, 2), 'utf8'); } catch { /* best effort; active worktree remains recoverable from git */ }
+  }
   private async assertClean(root: string, options: PreflightOptions = {}): Promise<string> {
     if (!isAbsolute(root)) throw new WorktreeError('root_not_absolute', 'root_not_absolute: workspace path must be absolute');
     if (isWithin(root, this.worktreeRoot)) throw new WorktreeError('root_inside_workspace', 'root_inside_workspace: worktree root cannot be inside the workspace');

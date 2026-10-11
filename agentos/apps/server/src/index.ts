@@ -289,7 +289,7 @@ async function bootstrap(): Promise<void> {
 
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'));
+    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository());
     const workspaceManager = new WorkspaceManager(store);
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
