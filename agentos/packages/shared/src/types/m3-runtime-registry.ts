@@ -2638,6 +2638,126 @@ export const P6_L1_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Policy Runtime evaluation vocabulary (08-Policy-Runtime §91-95).
+//
+// Additive to the M3/M4 envelope: policy.evaluated records every PolicyEngine
+// evaluation at the provider.launch gate, policy.denied accompanies a deny
+// outcome, and policy.evaluation_failed records a fail-closed evaluation error.
+// All three are Stage-scoped and emitted through the existing Runtime Event +
+// Outbox seam with internal/restricted visibility so rule and profile
+// internals never leak to public consumers.
+// ---------------------------------------------------------------------------
+
+export interface PolicyEvaluatedPayload {
+  readonly action: 'provider.launch';
+  readonly decision: 'allow' | 'deny' | 'require_approval';
+  readonly profileId: string;
+  readonly matchedRuleCount: number;
+  readonly evaluatedAt: string;
+}
+
+export interface PolicyDeniedPayload {
+  readonly action: 'provider.launch';
+  readonly decision: 'deny';
+  readonly profileId: string;
+  readonly evaluatedAt: string;
+}
+
+export interface PolicyEvaluationFailedPayload {
+  readonly action: 'provider.launch';
+  readonly errorCode: string;
+  readonly evaluatedAt?: string;
+}
+
+const POLICY_DECISIONS: readonly string[] = Object.freeze(['allow', 'deny', 'require_approval']);
+
+export function isPolicyEvaluatedPayload(value: unknown): value is PolicyEvaluatedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['action', 'decision', 'profileId', 'matchedRuleCount', 'evaluatedAt'])
+    && value.action === 'provider.launch'
+    && hasValue(POLICY_DECISIONS, value.decision)
+    && isNonEmptyString(value.profileId)
+    && typeof value.matchedRuleCount === 'number'
+    && Number.isSafeInteger(value.matchedRuleCount)
+    && value.matchedRuleCount >= 0
+    && isCanonicalRuntimeTimestamp(value.evaluatedAt)
+  );
+}
+
+export function isPolicyDeniedPayload(value: unknown): value is PolicyDeniedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['action', 'decision', 'profileId', 'evaluatedAt'])
+    && value.action === 'provider.launch'
+    && value.decision === 'deny'
+    && isNonEmptyString(value.profileId)
+    && isCanonicalRuntimeTimestamp(value.evaluatedAt)
+  );
+}
+
+export function isPolicyEvaluationFailedPayload(value: unknown): value is PolicyEvaluationFailedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['action', 'errorCode', 'evaluatedAt'])
+    && value.action === 'provider.launch'
+    && isNonEmptyString(value.errorCode)
+    && (value.evaluatedAt === undefined || isCanonicalRuntimeTimestamp(value.evaluatedAt))
+  );
+}
+
+export const POLICY_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'policy.evaluated',
+    domain: 'policy',
+    description: 'The Policy Engine evaluated provider.launch for a Stage launch.',
+    schemaVersion: 1,
+    source: 'policy-engine',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    payloadSchema: {
+      required: ['action', 'decision', 'profileId', 'matchedRuleCount', 'evaluatedAt'],
+      optional: [],
+    },
+    validatePayload: isPolicyEvaluatedPayload,
+  },
+  {
+    type: 'policy.denied',
+    domain: 'policy',
+    description: 'A Policy deny decision blocked a provider Stage launch.',
+    schemaVersion: 1,
+    source: 'policy-engine',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    payloadSchema: {
+      required: ['action', 'decision', 'profileId', 'evaluatedAt'],
+      optional: [],
+    },
+    validatePayload: isPolicyDeniedPayload,
+  },
+  {
+    type: 'policy.evaluation_failed',
+    domain: 'policy',
+    description: 'A Policy Engine evaluation failed and the gate failed closed to require_approval.',
+    schemaVersion: 1,
+    source: 'policy-engine',
+    defaultSeverity: 'error',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    payloadSchema: {
+      required: ['action', 'errorCode'],
+      optional: ['evaluatedAt'],
+    },
+    validatePayload: isPolicyEvaluationFailedPayload,
+  },
+];
+
 export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
   const registry = new CentralRuntimeEventRegistry();
   for (const definition of M3_CORE_EVENT_DEFINITIONS) {
@@ -2647,6 +2767,9 @@ export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
     registry.registerCore(definition);
   }
   for (const definition of P6_L1_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of POLICY_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   for (const definition of MF5_MEMORY_EVENT_DEFINITIONS) {
