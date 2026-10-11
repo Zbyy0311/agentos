@@ -134,7 +134,7 @@ describe('ProviderValidationService', () => {
   });
 
   it('fails closed for missing-version adapters without an explicit compatibility freeze', async () => {
-    const result = await service().validate(config({ providerType: 'custom-cli', adapterId: 'builtin.custom-cli', adapterVersion: undefined }));
+    const result = await service().validate(config({ providerType: 'custom-cli', adapterId: 'builtin.unqualified-cli', adapterVersion: undefined }));
     expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_VERSION_UNSUPPORTED' })]);
   });
 

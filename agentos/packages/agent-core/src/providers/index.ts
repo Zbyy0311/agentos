@@ -2,6 +2,7 @@
 export { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
 export { CodexProviderAdapter } from './codexProviderAdapter.js';
 export { OpenCodeProviderAdapter } from './opencodeProviderAdapter.js';
+export { CustomCliAdapter } from './customCliAdapter.js';
 export { ProviderRegistry } from './registry.js';
 export { ProviderValidationService } from './validation.js';
 export { ProviderRegistryError, normalizedProviderError, providerErrorStatus } from './errors.js';
@@ -16,6 +17,9 @@ export {
   OPENCODE_ADAPTER_ID,
   OPENCODE_ADAPTER_VERSION,
   OPENCODE_DEFAULT_EXECUTABLE,
+  CUSTOM_CLI_ADAPTER_ID,
+  CUSTOM_CLI_ADAPTER_VERSION,
+  CUSTOM_CLI_PROVIDER_TYPE,
   LEGACY_KIMI_PROVIDER_TYPE,
   canonicalProviderType,
   PROVIDER_ERROR_CODES,

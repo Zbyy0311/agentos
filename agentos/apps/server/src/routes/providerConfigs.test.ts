@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { createProviderConfigRoutes } from './providerConfigs.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
-import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core/providers';
+import { CustomCliAdapter, KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core/providers';
 import type { ProcessProbePort } from '@agentos/process-runtime';
+import { NodeProcessProbePort } from '@agentos/process-runtime';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-provider-routes-'));
@@ -262,6 +263,57 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
     const otherWorkspace = (await otherWorkspaceResponse.json() as { providerConfig: { id: string; version: number } }).providerConfig;
     const renameInOtherWorkspace = await put(baseB, otherWorkspace.id, { name: 'First Config', expectedVersion: otherWorkspace.version });
     assert.equal(renameInOtherWorkspace.status, 200);
+  } finally {
+    server?.close();
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('default custom-cli provider config validates without PROVIDER_ADAPTER_NOT_FOUND', async () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  let server: ReturnType<express.Express['listen']> | undefined;
+  let serverBase = '';
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const workspace = await manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    // The default in-route registry must contain the builtin.custom-cli adapter,
+    // otherwise the API-default providerType/adapterId can never validate.
+    const validationService = new ProviderValidationService(new ProviderRegistry([
+      new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+      new CustomCliAdapter({ probe: new NodeProcessProbePort() }),
+    ]));
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager, { validationService }));
+    ({ server, base: serverBase } = await listen(app));
+    const base = `${serverBase}/${workspace.id}`;
+
+    const created = await fetch(`${base}/provider-configs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Custom CLI Default', executable: process.execPath }),
+    });
+    assert.equal(created.status, 201);
+    const providerConfig = (await created.json() as {
+      providerConfig: { id: string; providerType: string; adapterId: string };
+    }).providerConfig;
+    assert.equal(providerConfig.providerType, 'custom-cli');
+    assert.equal(providerConfig.adapterId, 'builtin.custom-cli');
+
+    const response = await fetch(`${base}/provider-configs/${providerConfig.id}/validate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ forceRefresh: true }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json() as {
+      validation: { valid: boolean; errors: Array<{ code: string }>; warnings: Array<{ code: string }> };
+    };
+    assert.ok(!body.validation.errors.some(error => error.code === 'PROVIDER_ADAPTER_NOT_FOUND'),
+      `validate must not report PROVIDER_ADAPTER_NOT_FOUND: ${JSON.stringify(body.validation.errors)}`);
+    assert.ok(!body.validation.errors.some(error => error.code === 'PROVIDER_VERSION_UNSUPPORTED'),
+      `validate must not report PROVIDER_VERSION_UNSUPPORTED: ${JSON.stringify(body.validation.errors)}`);
+    assert.equal(body.validation.valid, true);
   } finally {
     server?.close();
     store?.close();

@@ -8,6 +8,7 @@ import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 import {
   CodexProviderAdapter,
+  CustomCliAdapter,
   KimiCodeProviderAdapter,
   OpenCodeProviderAdapter,
   ProviderRegistry,
@@ -131,6 +132,7 @@ export function createProviderConfigRoutes(
       new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
       new CodexProviderAdapter({ probe: new NodeProcessProbePort() }),
       new OpenCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+      new CustomCliAdapter({ probe: new NodeProcessProbePort() }),
     ]));
 
   router.get('/provider-configs', (req: Request, res: Response) => {
