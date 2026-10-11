@@ -15,6 +15,8 @@ import { toSafeFtsQuery } from './MemoryRetrievalService.js';
 import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
 import { MemoryExtractor, type MemoryCandidateDraft } from './MemoryExtractor.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
+import type { SecretTextDetector } from './EventRedactionService.js';
+import { detectMemorySecretViolations } from './MemorySecretGuard.js';
 import type { MergeExactMemorySourcesInput } from '../store/MemoryEntryRepository.js';
 
 /**
@@ -103,6 +105,12 @@ export interface MemoryCandidateGenerationServiceDependencies {
   /** MF-5 seam: atomically emit the bounded Candidate batch and its Events. */
   readonly emitter?: MemoryRuntimeEventEmitter;
   readonly extractor?: Pick<MemoryExtractor, 'extract'>;
+  /**
+   * §76 invariant 10 seam: when supplied, generated drafts that look like
+   * they carry a secret are skipped (with an audit line) instead of becoming
+   * Candidates; the rest of the batch still generates.
+   */
+  readonly secretDetector?: SecretTextDetector;
 }
 
 function nonBlank(value: unknown): value is string {
@@ -155,6 +163,7 @@ export class MemoryCandidateGenerationService {
   private readonly tasks: MemoryCandidateGenerationServiceDependencies['tasks'];
   private readonly emitter: MemoryRuntimeEventEmitter | undefined;
   private readonly extractor: Pick<MemoryExtractor, 'extract'>;
+  private readonly secretDetector: SecretTextDetector | undefined;
 
   constructor(dependencies: MemoryCandidateGenerationServiceDependencies) {
     this.db = dependencies.store.getDatabase();
@@ -164,6 +173,7 @@ export class MemoryCandidateGenerationService {
     this.tasks = dependencies.tasks;
     this.emitter = dependencies.emitter;
     this.extractor = dependencies.extractor ?? new MemoryExtractor();
+    this.secretDetector = dependencies.secretDetector;
   }
 
   generateForRunTerminal(input: GenerateForRunTerminalInput): TerminalGenerationResult {
@@ -232,7 +242,18 @@ export class MemoryCandidateGenerationService {
     const drafts = extraction.drafts.slice(0, 3).filter(draft => draft.operation !== 'ignore'
       && Number.isInteger(draft.confidence) && draft.confidence >= 0 && draft.confidence <= 100
       && nonBlank(draft.title) && nonBlank(draft.summary) && nonBlank(draft.content)
-      && areMemoryTextFieldsSafe([draft.title, draft.summary, draft.content]));
+      && areMemoryTextFieldsSafe([draft.title, draft.summary, draft.content]))
+      .filter(draft => {
+        if (this.secretDetector === undefined) return true;
+        const violations = detectMemorySecretViolations(this.secretDetector, input.workspaceId,
+          { title: draft.title, summary: draft.summary, content: draft.content });
+        if (violations.length === 0) return true;
+        // Audit the skip without echoing the suspected secret value; the
+        // batch continues with the remaining clean drafts.
+        console.warn(`[AgentOS Memory] skipped generated candidate for run ${input.runId}: ` +
+          `${violations.map(violation => violation.field).join('/')} 疑似包含密钥`);
+        return false;
+      });
     if (drafts.length === 0) return { outcome: 'none' };
 
     // Preserve the historical deterministic ID for the first draft; use stable

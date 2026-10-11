@@ -24,6 +24,7 @@ import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import type { MemoryCandidateDraft, MemoryExtractionInput } from './MemoryExtractor.js';
 import { MemoryExtractor } from './MemoryExtractor.js';
+import { EventRedactionService } from './EventRedactionService.js';
 import {
   MemoryCandidateGenerationService,
   MemoryCandidateGenerationError,
@@ -525,5 +526,77 @@ test('generated input rejects forged authority, confidence, scope, and content c
       (error: unknown) => error instanceof MemoryCandidateGenerationError && error.code === 'INPUT_INVALID',
     );
     assert.equal(fx.candidates.listCandidates(WS).length, 0);
+  } finally { fx.close(); }
+});
+
+test('§76 invariant 10: a generated draft carrying a suspected secret is skipped without aborting the batch', () => {
+  const known = 'sup3r-s3cret-valu3!';
+  const cleanDraft: MemoryCandidateDraft = {
+    type: 'experience', title: '执行经验：修复登录页样式',
+    summary: '公开证据足以沉淀经验。', content: '结果：pass: regression tests verified the requested behavior.',
+    confidence: 80, operation: 'create',
+  };
+  const secretDraft: MemoryCandidateDraft = {
+    type: 'experience', title: '执行经验：泄漏',
+    summary: '摘要', content: `结果：api key is ${known}`,
+    confidence: 80, operation: 'create',
+  };
+  const extractor: Pick<MemoryExtractor, 'extract'> = {
+    extract: () => ({ drafts: [secretDraft, cleanDraft], reason: 'explicit_marker' }),
+  };
+  const detector = new EventRedactionService();
+  detector.registerSecrets(WS, [known]);
+  {
+    // Reuse the standard fixture, then swap in the detector-bearing service.
+    const fx = fixture('completed', {}, extractor);
+    try {
+      const service = new MemoryCandidateGenerationService({
+        store: { getDatabase: () => fx.db as unknown as TransactionDatabase },
+        runs: new RunRepository(fx.db as never),
+        stages: new RunStageRepository(fx.db as never),
+        tasks: new TaskRepository(fx.db as never),
+        candidates: fx.candidates,
+        extractor,
+        secretDetector: detector,
+      });
+      const result = service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+      assert.equal(result.outcome, 'created');
+      const created = result.candidates ?? [];
+      assert.equal(created.length, 1);
+      assert.equal(created[0]!.title, cleanDraft.title);
+      assert.equal((created[0]!.content as string | undefined ?? '').includes(known), false);
+      // The skipped secret draft never became a Candidate row.
+      const rows = fx.db.prepare('SELECT title, content FROM memory_candidate_entries WHERE workspace_id = ?').all(WS) as Array<{ title: string; content: string }>;
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]!.content.includes(known), false);
+    } finally { fx.close(); }
+  }
+});
+
+test('§76 invariant 10: generic secret shapes are skipped with no registered value', () => {
+  const extractor: Pick<MemoryExtractor, 'extract'> = {
+    extract: () => ({
+      drafts: [{
+        type: 'experience' as const, title: '执行经验：配置',
+        summary: '摘要', content: '结果：token: sk-abcdefghijklmnop1234',
+        confidence: 80, operation: 'create' as const,
+      }],
+      reason: 'explicit_marker' as const,
+    }),
+  };
+  const fx = fixture('completed', {}, extractor);
+  try {
+    const service = new MemoryCandidateGenerationService({
+      store: { getDatabase: () => fx.db as unknown as TransactionDatabase },
+      runs: new RunRepository(fx.db as never),
+      stages: new RunStageRepository(fx.db as never),
+      tasks: new TaskRepository(fx.db as never),
+      candidates: fx.candidates,
+      extractor,
+      secretDetector: new EventRedactionService(),
+    });
+    const result = service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(result.outcome, 'none');
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM memory_candidate_entries WHERE workspace_id = ?').get(WS) as { n: number }).n, 0);
   } finally { fx.close(); }
 });

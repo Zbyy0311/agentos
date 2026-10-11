@@ -4,6 +4,7 @@ import type { MemoryStatus, MemoryType } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
 import { MemoryService } from '../services/MemoryService.js';
+import { MEMORY_SECRET_DETECTED_CODE, MemorySecretDetectedError, formatMemorySecretDetail } from '../services/MemorySecretGuard.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
 export function createMemoryRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
@@ -35,6 +36,10 @@ export function createMemoryRoutes(store: SqliteStore, workspaceManager: Workspa
       const memory = await service.create({ ...(req.body as Record<string, unknown>), workspaceId: workspace.id, workspaceRoot: workspace.rootPath, memoryEnabled: workspace.memoryEnabled } as never);
       res.status(201).json({ memory, content: memory.content });
     } catch (error) {
+      if (error instanceof MemorySecretDetectedError) {
+        sendProblem(req, res, { status: 400, code: MEMORY_SECRET_DETECTED_CODE, detail: formatMemorySecretDetail(error.violations) });
+        return;
+      }
       sendProblem(req, res, { status: 400, code: 'MEMORY_CREATE_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
@@ -67,6 +72,10 @@ export function createMemoryRoutes(store: SqliteStore, workspaceManager: Workspa
       const memory = await service.update(workspace.id, workspace.rootPath, req.params.memoryId, req.body);
       res.json({ memory, content: memory.content });
     } catch (error) {
+      if (error instanceof MemorySecretDetectedError) {
+        sendProblem(req, res, { status: 400, code: MEMORY_SECRET_DETECTED_CODE, detail: formatMemorySecretDetail(error.violations) });
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       const status = message === 'Memory not found' ? 404 : 400;
       sendProblem(req, res, { status, code: status === 404 ? 'MEMORY_NOT_FOUND' : 'MEMORY_UPDATE_FAILED', detail: message });

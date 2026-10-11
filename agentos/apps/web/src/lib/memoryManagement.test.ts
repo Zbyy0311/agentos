@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   confirmedMemoryEntryLifecyclePayload,
+  isMemorySecretDetected,
   isMemoryVersionConflict,
   memoryDateTimeLocalValue,
   memoryDateTimeToIso,
@@ -9,6 +10,7 @@ import {
   memoryEntryLifecyclePayload,
   memoryEntryWorkspacePromotionPath,
   memoryEntryWorkspacePromotionPayload,
+  memorySecretDetectedGuidance,
   memoryCandidateReviewPath,
   memoryCandidatesPath,
   memoryConflictsPath,
@@ -96,4 +98,15 @@ test('version conflicts offer reload guidance for version and HTTP 409 errors', 
   assert.equal(isMemoryVersionConflict(new Error('network unavailable')), false);
   assert.match(memoryVersionConflictGuidance(new Error('MEMORY_ENTRY_VERSION_CONFLICT')) ?? '', /重新加载最新版本/);
   assert.equal(memoryVersionConflictGuidance(new Error('not found')), undefined);
+});
+
+test('secret-detection errors are recognized by code or message and produce removal guidance', () => {
+  assert.equal(isMemorySecretDetected({ code: 'MEMORY_SECRET_DETECTED' }), true);
+  const err = new Error('content 疑似包含密钥') as Error & { code?: string };
+  err.code = 'MEMORY_SECRET_DETECTED';
+  assert.equal(isMemorySecretDetected(err), true);
+  assert.equal(memorySecretDetectedGuidance(err), '检测到疑似密钥，请移除后再保存。');
+  assert.equal(isMemorySecretDetected(new Error('MEMORY_ENTRY_INPUT_INVALID')), false);
+  assert.equal(memorySecretDetectedGuidance(new Error('x')), undefined);
+  assert.equal(isMemorySecretDetected(null), false);
 });

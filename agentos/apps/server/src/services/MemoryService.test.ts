@@ -52,3 +52,40 @@ test('rejects invalid fields, duplicate titles, path escape, and disabled memory
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('§76 invariant 10: create and update reject suspected secrets (generic pattern and known value)', async () => {
+  const root = createRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const service = new MemoryService(store);
+    const known = 'sup3r-s3cret-valu3!';
+    store.eventRedactionService().registerSecrets('workspace-a', [known]);
+    const base = { workspaceId: 'workspace-a', workspaceRoot: root, memoryEnabled: true, type: 'overview' as const, title: '密钥测试', summary: '概览', content: '内容' };
+
+    // Generic pattern in the title.
+    await assert.rejects(
+      service.create({ ...base, title: 'key sk-abcdefghijklmnop1234' }),
+      (error: unknown) => error instanceof Error && (error as { code?: string }).code === 'MEMORY_SECRET_DETECTED',
+    );
+    // Registered known secret in the content; the error must not echo it.
+    try {
+      await service.create({ ...base, content: `leak ${known}` });
+      assert.fail('expected MEMORY_SECRET_DETECTED');
+    } catch (error) {
+      assert.equal((error as { code?: string }).code, 'MEMORY_SECRET_DETECTED');
+      assert.equal(JSON.stringify(error).includes(known), false);
+    }
+    // Clean create still works; then a secret-bearing update is refused.
+    const created = await service.create(base);
+    await assert.rejects(
+      service.update('workspace-a', root, created.id, { summary: `token ${known}` }),
+      (error: unknown) => error instanceof Error && (error as { code?: string }).code === 'MEMORY_SECRET_DETECTED',
+    );
+    const unchanged = await service.get('workspace-a', root, created.id);
+    assert.equal(unchanged?.summary, '概览');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

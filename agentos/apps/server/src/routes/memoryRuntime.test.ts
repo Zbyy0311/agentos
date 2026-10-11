@@ -644,6 +644,59 @@ test('MF-2 explicit user save: creates the Entry and one Workspace Event in one 
   });
 });
 
+test('§76 invariant 10: explicit entry save and edit reject suspected secrets without echoing them', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    const known = 'sup3r-s3cret-valu3!';
+    store.eventRedactionService().registerSecrets(WS, [known]);
+    const db = store.getDatabase();
+
+    // Generic pattern hit in content (shape the legacy text-safety gate does
+    // not already reject, so the new secret guard is what refuses it).
+    const generic = await postJson(`${baseUrl}/memory/entries`, {
+      title: '配置说明', content: 'aws access key AKIA1234567890ABCDEF in prod', scope: 'workspace', category: 'knowledge',
+    });
+    assert.equal(generic.status, 400);
+    const genericProblem = generic.json as { code: string; detail: string };
+    assert.equal(genericProblem.code, 'MEMORY_SECRET_DETECTED');
+    assert.equal(genericProblem.detail, 'content 疑似包含密钥');
+    assert.equal(genericProblem.detail.includes('AKIA1234567890ABCDEF'), false);
+
+    // Registered known-secret hit in the summary.
+    const knownHit = await postJson(`${baseUrl}/memory/entries`, {
+      title: '部署记录', summary: `api key is ${known}`, content: '普通正文。', scope: 'workspace', category: 'knowledge',
+    });
+    assert.equal(knownHit.status, 400);
+    const knownProblem = knownHit.json as { code: string; detail: string };
+    assert.equal(knownProblem.code, 'MEMORY_SECRET_DETECTED');
+    assert.equal(knownProblem.detail, 'summary 疑似包含密钥');
+    assert.equal(JSON.stringify(knownProblem).includes(known), false);
+
+    // Nothing was persisted and no Event was emitted.
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?').get(WS) as { n: number | bigint }).n), 2);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?').get(WS) as { n: number | bigint }).n), 0);
+
+    // Clean saves still work.
+    const clean = await postJson(`${baseUrl}/memory/entries`, {
+      title: '干净记忆', content: '普通正文，无密钥。', scope: 'workspace', category: 'knowledge',
+    });
+    assert.equal(clean.status, 201);
+
+    // Editing an existing Entry to contain a secret is refused too.
+    const edited = await fetch(`${baseUrl}/memory/entries/${MEM_A}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 1, content: 'deploy uses ghp_abcdefghij0123456789abcd for CI' }),
+    });
+    assert.equal(edited.status, 400);
+    const editProblem = await edited.json() as { code: string; detail: string };
+    assert.equal(editProblem.code, 'MEMORY_SECRET_DETECTED');
+    assert.equal(editProblem.detail, 'content 疑似包含密钥');
+    const entry = new MemoryEntryRepository(db).findById(WS, MEM_A)!;
+    assert.equal(entry.version, 1);
+  });
+});
+
 test('LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup', async () => {
   await withServer(async (baseUrl, store) => {
     seedDurableRows(store);
