@@ -54,7 +54,7 @@ export function ImagePreviewModal({ items, selectedId, onClose, onSelect }: Imag
   };
 
   return <div
-    className={`fixed inset-0 ${uiLayerClass('mediaPreview')} flex items-center justify-center bg-black/75 p-4`}
+    className={`ui-overlay-enter fixed inset-0 ${uiLayerClass('mediaPreview')} flex items-center justify-center bg-black/75 p-4`}
     role="dialog"
     aria-modal="true"
     aria-label={`图片预览：${selectedItem.name}`}

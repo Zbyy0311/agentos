@@ -66,7 +66,17 @@ export default function Home() {
           <button type="button" onClick={() => void handleImport()} disabled={!importPath.trim()} className="ui-button-secondary rounded-lg px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">导入目录</button>
         </div>
 
-        {loading && <div className="rounded-xl border border-dashed ui-border px-4 py-12 text-center text-sm ui-muted"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--app-accent)]" />正在读取工作区…</div>}
+        {loading && <div role="status" aria-label="正在读取工作区…" className="space-y-2">
+          <span className="sr-only">正在读取工作区…</span>
+          {[0, 1, 2].map(index => <div key={index} aria-hidden="true" className="ui-panel flex items-center gap-3 rounded-2xl border p-4 sm:px-5">
+            <span className="ui-skeleton h-11 w-11 shrink-0 rounded-[0.85rem]" />
+            <span className="min-w-0 flex-1">
+              <span className="ui-skeleton block h-3.5 w-40 max-w-full rounded-md" />
+              <span className="ui-skeleton mt-2 block h-3 w-64 max-w-full rounded-md" />
+            </span>
+            <span className="ui-skeleton hidden h-6 w-24 shrink-0 rounded-full sm:block" />
+          </div>)}
+        </div>}
         {error && <div role="alert" className="ui-error rounded-xl border px-4 py-3 text-sm">{error}</div>}
         {!loading && !error && <WorkspaceList workspaces={workspaces} onOpen={handleOpen} onRemove={removeWorkspace} />}
       </section>

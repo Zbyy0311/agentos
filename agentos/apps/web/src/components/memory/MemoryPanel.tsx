@@ -242,7 +242,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
     setQuery('');
   };
 
-  return <div className={`fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`}>
+  return <div className={`ui-surface-enter fixed inset-0 ${uiLayerClass('workspaceSurface')} bg-[var(--app-surface)] p-6`}>
     <div className="mx-auto flex h-full max-w-6xl flex-col">
       <div className="mb-5 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div><div className="text-[11px] tracking-[0.16em] ui-dim">WORKSPACE KNOWLEDGE</div><h2 className="mt-1 text-xl font-semibold ui-text">项目知识</h2></div>

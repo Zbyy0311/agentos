@@ -196,7 +196,7 @@ export function MemoryEntryLifecycle({ entry, saving, onApply }: MemoryEntryLife
       onConfirm={confirmAction}
       onCancel={() => setPendingAction(undefined)}
     />}
-    {validityOpen && <div role="dialog" aria-modal="true" aria-labelledby="memory-validity-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    {validityOpen && <div role="dialog" aria-modal="true" aria-labelledby="memory-validity-title" className="ui-overlay-enter fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="ui-panel w-full max-w-lg rounded-2xl border p-5 shadow-xl">
         <h3 id="memory-validity-title" className="text-base font-semibold ui-text">设置记忆有效期</h3>
         <p className="mt-1 text-xs leading-5 ui-dim">留空会清除该日期。日期按当前时区解释并保存为 ISO 时间。</p>
