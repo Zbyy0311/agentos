@@ -20,23 +20,23 @@ export interface GlassSurfaceSpec {
 export const GLASS_SURFACE_SPECS: Record<GlassSurfaceKind, Record<GlassTheme, GlassSurfaceSpec>> = {
   composer: {
     dark: { tint: 0.55, frost: 0.3, refraction: 70 },
-    light: { tint: 0.45, frost: 0.3, refraction: 70 },
+    light: { tint: 0.72, frost: 0.35, refraction: 70 },
   },
   'chat-header': {
     dark: { tint: 0.66, frost: 0.55, refraction: 55 },
-    light: { tint: 0.58, frost: 0.55, refraction: 55 },
+    light: { tint: 0.78, frost: 0.55, refraction: 55 },
   },
   'page-header': {
     dark: { tint: 0.62, frost: 0.5, refraction: 55 },
-    light: { tint: 0.52, frost: 0.5, refraction: 55 },
+    light: { tint: 0.72, frost: 0.5, refraction: 55 },
   },
   modal: {
     dark: { tint: 0.65, frost: 0.4, refraction: 50 },
-    light: { tint: 0.55, frost: 0.4, refraction: 50 },
+    light: { tint: 1.1, frost: 0.55, refraction: 50 },
   },
   toast: {
     dark: { tint: 0.6, frost: 0.35, refraction: 55 },
-    light: { tint: 0.5, frost: 0.35, refraction: 55 },
+    light: { tint: 0.72, frost: 0.4, refraction: 55 },
   },
 };
 
