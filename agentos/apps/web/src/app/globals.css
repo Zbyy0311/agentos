@@ -466,6 +466,27 @@ input:focus-visible {
   background: color-mix(in srgb, var(--app-surface-raised) 30%, transparent);
 }
 
+/* Light theme keeps far more of the surface fill: over the dimmed, blurred
+   backdrop the 30% fill read as a flat gray wash with weak text contrast. */
+html[data-theme='light'] .glass-dialog[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 88%, transparent);
+}
+
+/* Same wash-out applied to the other glass chrome in light theme: headers,
+   composer and toasts sit over busy content, so they keep a higher fill. */
+html[data-theme='light'] .signal-chat-header[data-liquid-glass='webgl'],
+html[data-theme='light'] .signal-header[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface) 55%, transparent);
+}
+
+html[data-theme='light'] .signal-composer[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 68%, transparent);
+}
+
+html[data-theme='light'] .toast-item[data-liquid-glass='webgl'] {
+  background: color-mix(in srgb, var(--app-surface-raised) 65%, transparent);
+}
+
 .composer-resize-handle {
   display: flex;
   width: 100%;
