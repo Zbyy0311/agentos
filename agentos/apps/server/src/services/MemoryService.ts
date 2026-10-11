@@ -4,6 +4,7 @@ import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import type { MemoryRecord, MemoryStatus, MemoryType } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
+import { assertNoMemorySecrets } from './MemorySecretGuard.js';
 
 const TYPE_DIRECTORIES: Record<MemoryType, string> = {
   overview: 'overview', convention: 'conventions', decision: 'decisions', experience: 'experiences',
@@ -55,6 +56,7 @@ export class MemoryService {
     assertMemoryEnabled(input.memoryEnabled);
     const normalized = normalizeMemoryInput(input);
     assertMemoryTextSafety(normalized);
+    assertNoMemorySecrets(this.store.eventRedactionService(), input.workspaceId, normalized);
     if (this.store.listMemories(input.workspaceId, { status: 'all', limit: 100 }).some(memory => memory.title.toLocaleLowerCase() === normalized.title.toLocaleLowerCase())) {
       throw new Error('Memory title already exists');
     }
@@ -84,6 +86,7 @@ export class MemoryService {
       sourceRunIds: input.sourceRunIds ?? current.sourceRunIds, importance: input.importance ?? current.importance, confidence: input.confidence ?? current.confidence,
     });
     assertMemoryTextSafety(normalized);
+    assertNoMemorySecrets(this.store.eventRedactionService(), workspaceId, normalized);
     if (this.store.listMemories(workspaceId, { status: 'all', limit: 100 }).some(memory => memory.id !== memoryId && memory.title.toLocaleLowerCase() === normalized.title.toLocaleLowerCase())) {
       throw new Error('Memory title already exists');
     }

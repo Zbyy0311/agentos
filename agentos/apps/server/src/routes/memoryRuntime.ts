@@ -23,6 +23,7 @@ import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from
 import { MemoryLifecycleService, type MemoryLifecycleInput } from '../services/MemoryLifecycleService.js';
 import { MemoryWorkspaceKnowledgePromotionError, MemoryWorkspaceKnowledgePromotionService } from '../services/MemoryWorkspaceKnowledgePromotionService.js';
 import { sendProblem } from '../problemDetails.js';
+import { MEMORY_SECRET_DETECTED_CODE, detectMemorySecretViolations, formatMemorySecretDetail } from '../services/MemorySecretGuard.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -271,6 +272,16 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       || keys.some(key => Object.prototype.hasOwnProperty.call(body, key) && body[key] === null)) {
       sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' }); return;
     }
+    const secretViolations = detectMemorySecretViolations(store.eventRedactionService(), workspace.id, {
+      ...(typeof body.title === 'string' ? { title: body.title } : {}),
+      ...(typeof body.summary === 'string' ? { summary: body.summary } : {}),
+      ...(typeof body.content === 'string' ? { content: body.content } : {}),
+      ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag): tag is string => typeof tag === 'string') } : {}),
+    });
+    if (secretViolations.length > 0) {
+      sendProblem(req, res, { status: 400, code: MEMORY_SECRET_DETECTED_CODE, detail: formatMemorySecretDetail(secretViolations) });
+      return;
+    }
     try {
       const updatedAt = new Date().toISOString();
       const entry = inTransaction(store.getDatabase(), () => {
@@ -448,6 +459,11 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       : [];
     if (!areMemoryTextFieldsSafe([title, summary, content, ...tags])) {
       sendProblem(req, res, { status: 400, code: 'MEMORY_ENTRY_INPUT_INVALID', detail: 'MEMORY_ENTRY_INPUT_INVALID' });
+      return;
+    }
+    const secretViolations = detectMemorySecretViolations(store.eventRedactionService(), workspace.id, { title, summary, content, tags });
+    if (secretViolations.length > 0) {
+      sendProblem(req, res, { status: 400, code: MEMORY_SECRET_DETECTED_CODE, detail: formatMemorySecretDetail(secretViolations) });
       return;
     }
     const confidence = body.confidence === undefined ? 1 : body.confidence;

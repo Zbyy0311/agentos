@@ -191,6 +191,9 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     stages: store.runStageRepository(),
     tasks: store.taskRepository(),
     emitter: memoryEventEmitter,
+    // §76 invariant 10: generated drafts are screened against the Workspace's
+    // registered secrets plus the generic patterns before they can persist.
+    secretDetector: store.eventRedactionService(),
   });
   const verifiedMemoryFacts = new VerifiedMemoryFactService(store.getDatabase(), memoryEventEmitter);
   const terminalCandidateGeneratorWithFacts = {

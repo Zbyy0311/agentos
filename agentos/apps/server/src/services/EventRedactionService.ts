@@ -23,6 +23,20 @@ export interface EventRedactionResult {
   readonly redactedFields: number;
 }
 
+/** Which detection lane matched: a registered workspace secret or a generic shape. */
+export type SecretMatchKind = 'known-value' | 'generic-pattern';
+
+/**
+ * Read-only secret detection over a single text. Memory write paths (07
+ * §76 invariant 10) reuse this to REJECT text instead of redacting it, so a
+ * suspected secret never reaches a Memory Store. Returns the match lane or
+ * undefined when the text is clean; the matched value itself is never
+ * exposed by the API contract.
+ */
+export type SecretTextDetector = {
+  detectSecretInText(workspaceId: string, text: string): SecretMatchKind | undefined;
+};
+
 export interface EventPayloadRedactor {
   redactPayload(workspaceId: string, value: unknown): EventRedactionResult;
 }
@@ -57,6 +71,22 @@ export class EventRedactionService implements EventPayloadRedactor {
 
   clearWorkspace(workspaceId: string): void {
     this.#secretsByWorkspace.delete(workspaceId);
+  }
+
+  detectSecretInText(workspaceId: string, text: string): SecretMatchKind | undefined {
+    if (typeof text !== 'string' || text.length === 0) return undefined;
+    const secrets = this.#secretsByWorkspace.get(workspaceId);
+    if (secrets !== undefined) {
+      for (const secret of secrets) {
+        if (secret.length === 0 || !text.includes(secret)) continue;
+        return 'known-value';
+      }
+    }
+    for (const pattern of GENERIC_SECRET_PATTERNS) {
+      pattern.lastIndex = 0;
+      if (pattern.test(text)) return 'generic-pattern';
+    }
+    return undefined;
   }
 
   redactPayload(workspaceId: string, value: unknown): EventRedactionResult {

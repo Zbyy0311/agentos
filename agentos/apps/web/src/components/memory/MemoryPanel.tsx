@@ -18,6 +18,7 @@ import {
   memoryEntryLifecyclePath,
   memoryEntryWorkspacePromotionPath,
   memoryEntryWorkspacePromotionPayload,
+  memorySecretDetectedGuidance,
   memoryVersionConflictGuidance,
   workspaceResponseIsCurrent,
   type MemoryEntryLifecyclePayload,
@@ -161,7 +162,7 @@ function MemoryPanelWorkspace({ workspaceId, onClose, onOpenRun }: MemoryPanelPr
       }
       await loadEntries();
     } catch (saveError) {
-      setError([asMessage(saveError), memoryVersionConflictGuidance(saveError)].filter(Boolean).join(' '));
+      setError([memorySecretDetectedGuidance(saveError), asMessage(saveError), memoryVersionConflictGuidance(saveError)].filter(Boolean).join(' '));
       setStaleEntry(isMemoryVersionConflict(saveError));
     } finally {
       savingRef.current = false;

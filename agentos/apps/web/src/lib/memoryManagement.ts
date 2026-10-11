@@ -176,6 +176,19 @@ export function memoryVersionConflictGuidance(error: unknown): string | undefine
     : undefined;
 }
 
+/** §76 invariant 10: the server refused the write because a text field looks like it carries a secret. */
+export function isMemorySecretDetected(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'MEMORY_SECRET_DETECTED') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /MEMORY_SECRET_DETECTED/.test(message);
+}
+
+export function memorySecretDetectedGuidance(error: unknown): string | undefined {
+  if (!isMemorySecretDetected(error)) return undefined;
+  return '检测到疑似密钥，请移除后再保存。';
+}
+
 export function memoryDateTimeLocalValue(value: string | null): string {
   if (!value) return '';
   const date = new Date(value);

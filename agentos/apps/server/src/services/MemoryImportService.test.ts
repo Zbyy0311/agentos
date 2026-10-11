@@ -156,3 +156,48 @@ test('S7: an Event failure rolls back the Candidate and the import record togeth
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_candidate_sources').get() as { n: number }).n, 0);
   } finally { fx.close(); }
 });
+
+test('§76 invariant 10: confirm skips fragments carrying a suspected secret without aborting the batch', () => {
+  const fx = fixture();
+  try {
+    const known = 'sup3r-s3cret-valu3!';
+    fx.store.eventRedactionService().registerSecrets(WS, [known]);
+    const markdown = [
+      '# Notes',
+      'Intro paragraph.',
+      '',
+      '## Deployment',
+      `api key is ${known}`,
+      '',
+      '## Decisions',
+      'We chose SQLite.',
+    ].join('\n');
+    const bytes = Buffer.from(markdown, 'utf8');
+    // Preview is read-only and unchanged.
+    const preview = fx.service.preview({ fileName: 'notes.md', bytes });
+    assert.equal(preview.fragmentCount, 3);
+    // Confirm skips the secret fragment and imports the rest.
+    const result = fx.service.confirm({ workspaceId: WS, fileName: 'notes.md', bytes, createdAt: NOW });
+    assert.deepEqual(result.imported.map(item => item.title), ['Notes', 'Decisions']);
+    assert.deepEqual(result.skipped.map(item => [item.title, item.reason]), [['Deployment', 'secret-detected']]);
+    assert.equal(fx.rows().length, 2);
+    const events = fx.events();
+    assert.equal(events.length, 2);
+    for (const event of events) {
+      assert.equal(event.type, 'memory.candidate_created');
+      assert.equal(event.payload_json.includes(known), false);
+    }
+  } finally { fx.close(); }
+});
+
+test('§76 invariant 10: confirm catches generic secret shapes with no registered value', () => {
+  const fx = fixture();
+  try {
+    const markdown = ['# Notes', 'token: sk-abcdefghijklmnop1234'].join('\n');
+    const bytes = Buffer.from(markdown, 'utf8');
+    const result = fx.service.confirm({ workspaceId: WS, fileName: 'notes.md', bytes, createdAt: NOW });
+    assert.equal(result.imported.length, 0);
+    assert.deepEqual(result.skipped.map(item => item.reason), ['secret-detected']);
+    assert.equal(fx.rows().length, 0);
+  } finally { fx.close(); }
+});

@@ -5,6 +5,7 @@ import type { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
 import { hashMemoryText, normalizeMemoryText } from './MemoryCandidateGenerationService.js';
+import { detectMemorySecretViolations } from './MemorySecretGuard.js';
 
 /**
  * S7 explicit Markdown import (authorization: S7-import-authorization.md).
@@ -153,11 +154,22 @@ export class MemoryImportService {
   /** Confirm writes the Candidates, immutable records and Workspace Events. */
   confirm(input: { workspaceId: string; fileName: string; bytes: Buffer; createdAt: string }): ImportConfirmResult {
     const preview = previewImport({ fileName: input.fileName, bytes: input.bytes });
+    // §76 invariant 10: a fragment that looks like it carries a secret is
+    // skipped (never becomes a Candidate); the rest of the batch still imports.
+    const guard = this.store.eventRedactionService();
+    const fragments = preview.fragments.filter(fragment => {
+      const violations = detectMemorySecretViolations(guard, input.workspaceId, { title: fragment.title, content: fragment.content });
+      if (violations.length === 0) return true;
+      return false;
+    });
+    const secretSkipped = preview.fragments
+      .filter(fragment => !fragments.includes(fragment))
+      .map(fragment => ({ index: fragment.index, title: fragment.title, reason: 'secret-detected' }));
     return inTransaction(this.store.getDatabase(), () => {
       const db = this.store.getDatabase();
       const imported: { index: number; candidateId: string; title: string }[] = [];
       const converged: { index: number; candidateId: string; title: string }[] = [];
-      for (const fragment of preview.fragments) {
+      for (const fragment of fragments) {
         const existing = db.prepare(`SELECT id, candidate_id AS candidateId, title FROM memory_import_records
           WHERE workspace_id = ? AND source_hash = ? AND fragment_index = ? AND parser_version = ?`)
           .get(input.workspaceId, preview.sourceHash, fragment.index, preview.parserVersion) as
@@ -194,7 +206,7 @@ export class MemoryImportService {
         });
         imported.push({ index: fragment.index, candidateId: candidate.id, title: fragment.title });
       }
-      return { sourceHash: preview.sourceHash, imported, converged, skipped: preview.skipped };
+      return { sourceHash: preview.sourceHash, imported, converged, skipped: [...preview.skipped, ...secretSkipped] };
     });
   }
 
