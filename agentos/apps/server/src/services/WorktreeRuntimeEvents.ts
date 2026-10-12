@@ -179,6 +179,23 @@ export class WorktreeRuntimeEventEmitter implements WorktreeEventSink {
       return;
     }
     const appendOnce = (): void => {
+      const key = type === 'worktree.commit_created' ? 'commitSha'
+        : (type === 'worktree.merged' || type === 'worktree.conflicted') ? 'mergeRecordId' : undefined;
+      if (key && typeof payload[key] === 'string') {
+        const prior = this.db.prepare(`SELECT payload_json AS payload FROM runtime_events
+          WHERE workspace_id = ? AND run_id = ? AND worktree_id = ? AND type = ? AND source = 'worktree-manager'
+            AND json_extract(payload_json, ?) = ? LIMIT 1`)
+          .get(workspaceId, runId, worktreeId, type, `$.${key}`, payload[key]) as { payload: string } | undefined;
+        if (prior) {
+          const persisted = JSON.parse(prior.payload) as Record<string, unknown>;
+          // Text may have been redacted at the standard persistence boundary.
+          // Compare immutable result fields, not the original message/author.
+          const fields = type === 'worktree.commit_created' ? ['commitSha', 'filesChanged']
+            : type === 'worktree.merged' ? ['mergeRecordId', 'resultingTargetCommit', 'mergeCommit', 'strategy'] : ['mergeRecordId'];
+          if (fields.some(field => persisted[field] !== payload[field])) throw new Error('Worktree fact replay result differs');
+          return;
+        }
+      }
       this.writer.appendWithinTransaction({
         type,
         workspaceId,

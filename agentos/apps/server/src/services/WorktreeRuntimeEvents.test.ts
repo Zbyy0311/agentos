@@ -14,6 +14,7 @@ import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
 import { WorktreeControlService } from './WorktreeControlService.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { WorktreeArtifactService } from './WorktreeArtifactService.js';
+import { assertNoPendingWorktreeRefUpdate, prepareWorktreeRefUpdate, recoverWorktreeRefUpdates } from './WorktreeRefJournal.js';
 import { createWorktreeRoutes } from '../routes/worktrees.js';
 
 function git(root: string, args: string[]): string {
@@ -221,6 +222,60 @@ test('legacy DELETE rebuilds recovery evidence for work written after its earlie
     if (server) await new Promise<void>(resolveClose => server!.close(() => resolveClose()));
     fx.close();
   }
+});
+
+test('published merge intent survives an Outbox failure and replays its result exactly once', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const base = git(checkout, ['rev-parse', 'HEAD']);
+    writeFileSync(join(checkout, 'feature.txt'), 'durable feature\n');
+    git(checkout, ['add', '.']); git(checkout, ['commit', '-qm', 'feature']);
+    const head = git(checkout, ['rev-parse', 'HEAD']);
+    fx.store.getDatabase().exec(`CREATE TRIGGER block_merge_outbox BEFORE INSERT ON outbox_messages
+      WHEN (SELECT type FROM runtime_events WHERE id = NEW.event_id) = 'worktree.merged'
+      BEGIN SELECT RAISE(ABORT, 'fixture-merge-outbox-failure'); END`);
+    const merger = new WorktreeMergeService(fx.manager, fx.store.worktreeMergeRepository());
+    await assert.rejects(merger.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: base, requestedBy: 'test' }), /OUTBOX_PERSISTENCE_FAILED/);
+    assert.equal(git(fx.workspace.rootPath, ['rev-parse', 'main']), head);
+    assert.equal(fx.store.worktreeMergeRepository().list().length, 0);
+    await assert.rejects(assertNoPendingWorktreeRefUpdate(fx.manager.getRecord(lease.id)!, 'main'), /requires recovery/);
+    fx.store.getDatabase().exec('DROP TRIGGER block_merge_outbox');
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    assert.deepEqual(await recoverWorktreeRefUpdates(restarted, fx.store.worktreeMergeRepository()), { completed: 1, preserved: 0 });
+    assert.deepEqual(await recoverWorktreeRefUpdates(restarted, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 0 });
+    const records = fx.store.worktreeMergeRepository().list();
+    assert.equal(records.length, 1);
+    assert.equal(records[0].resultingTargetCommit, head);
+    const events = fx.events(lease.id).filter(event => event.type === 'worktree.merged');
+    assert.equal(events.length, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?').get(events[0].id) as { count: number }).count, 1);
+    assert.equal(existsSync(join(fx.workspace.rootPath, 'feature.txt')), false);
+  } finally { fx.close(); }
+});
+
+test('interrupted commit ref publication records its fact without duplicates and preserves unknown intents', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    const old = git(record.absolutePath, ['rev-parse', 'HEAD']);
+    writeFileSync(join(record.absolutePath, 'feature.txt'), 'record this commit\n');
+    git(record.absolutePath, ['add', '.']);
+    const tree = git(record.absolutePath, ['write-tree']);
+    const head = git(record.absolutePath, ['commit-tree', tree, '-p', old, '-m', 'published feature']);
+    const payload = { commitSha: head, message: 'published feature', filesChanged: 1 };
+    await prepareWorktreeRefUpdate(record, { branch: record.branchName, previousCommit: old, resultingCommit: head, eventType: 'worktree.commit_created', payload });
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 1 });
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.commit_created').length, 0);
+    git(record.absolutePath, ['update-ref', `refs/heads/${record.branchName}`, head, old]);
+    fx.store.eventRedactionService().registerSecrets(fx.workspace.id, ['published feature']);
+    fx.manager.recordRuntimeFact(lease.id, 'worktree.commit_created', payload);
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 1, preserved: 0 });
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.commit_created').length, 1);
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 0 });
+  } finally { fx.close(); }
 });
 
 test('startup preserves a partial creating checkout without activating it', async () => {

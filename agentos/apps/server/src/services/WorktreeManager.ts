@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, mkdir, realpath } from 'node:fs/promises';
+import { access, lstat, mkdir, realpath } from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WorktreeLease, WorktreeRecoveryBundle } from '@agentos/shared';
 import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
@@ -361,7 +361,14 @@ export class WorktreeManager {
     this.persist();
   }
   listLeases(): WorktreeLease[] { return [...this.leases.values()].map(publicLease); }
-  markCleanupPending(id: string): void { const record = this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); record.status='cleanup_pending'; record.updatedAt=new Date().toISOString(); this.persist(); }
+  markCleanupPending(id: string): void {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    if (record.status === 'cleaned' || record.status === 'cleanup_pending') return;
+    record.status = 'cleanup_pending';
+    record.updatedAt = new Date().toISOString();
+    this.persistRecord(record);
+  }
   markFailedPreserved(id: string): void {
     const record = this.leases.get(id);
     if (!record) throw new WorktreeError('not_found', 'lease not found');
@@ -405,7 +412,8 @@ export class WorktreeManager {
   async reconcile(workspaceRoots: readonly string[] = []): Promise<WorktreeReconcileReport> {
     const configuredRoot = resolve(this.worktreeRoot);
     let realRoot: string;
-    try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
+    let realRootVerified = false;
+    try { realRoot = await realpath(configuredRoot); realRootVerified = true; } catch { realRoot = configuredRoot; }
     const report: WorktreeReconcileReport = { activated: [], failed: [], incompleteCreations: [], missingGitRegistration: [], orphaned: [] };
     const tracked = [...this.leases.values()].filter(record =>
       record.status === 'creating' || record.status === 'active' || record.status === 'cleanup_pending');
@@ -420,8 +428,13 @@ export class WorktreeManager {
     }
 
     const activatedRecords: LeaseRecord[] = [];
+    const deletedRecords: LeaseRecord[] = [];
     const failedIds = new Set<string>();
     for (const record of tracked) {
+      // Cleanup recovery requires separate filesystem and Git-registration
+      // evidence. The ordinary missing-directory path marks leases failed;
+      // keep cleanup_pending leases out of that transition.
+      if (record.status === 'cleanup_pending') continue;
       try {
         const actualPath = await realpath(record.absolutePath);
         if (!isWithin(realRoot, actualPath)) throw new Error('worktree path escapes configured root');
@@ -436,8 +449,16 @@ export class WorktreeManager {
 
     // git worktree list --porcelain reconciliation (§52/§53.3).
     const gitEntries = new Map<string, GitWorktreeListEntry[]>();
+    const unavailableGitRoots = new Set<string>();
     for (const workspaceRoot of new Set([...workspaceRoots, ...[...this.leases.values()].map(record => record.workspaceRoot)])) {
-      gitEntries.set(workspaceRoot, await listGitWorktrees(workspaceRoot));
+      try {
+        gitEntries.set(workspaceRoot, parseGitWorktreeListPorcelain(await git(workspaceRoot, ['worktree', 'list', '--porcelain'])));
+      } catch {
+        // Existing reconciliation continues to report unavailable roots as
+        // having no entries, but that is not proof that a cleanup completed.
+        gitEntries.set(workspaceRoot, []);
+        unavailableGitRoots.add(workspaceRoot);
+      }
     }
     const canonicalPaths = new Map<string, string>();
     const observedPaths = [...this.leases.values()].map(record => record.absolutePath)
@@ -450,6 +471,34 @@ export class WorktreeManager {
       if (failedIds.has(record.id)) continue;
       const entries = gitEntries.get(record.workspaceRoot) ?? [];
       const entry = entries.find(entry => normalizePath(entry.path) === normalizePath(record.absolutePath));
+      if (record.status === 'cleanup_pending') {
+        if (unavailableGitRoots.has(record.workspaceRoot) || !realRootVerified || !record.recoveryBundle) continue;
+        const resolvedCheckout = resolve(record.absolutePath);
+        let realCheckoutParent: string;
+        try { realCheckoutParent = await realpath(dirname(resolvedCheckout)); }
+        catch { continue; }
+        if (!isWithin(realRoot, realCheckoutParent)) continue;
+        const canonicalCheckout = resolve(realCheckoutParent, basename(resolvedCheckout));
+        if (samePath(canonicalCheckout, realRoot) || !isWithin(realRoot, canonicalCheckout)) continue;
+        let checkoutExists: boolean;
+        try {
+          await lstat(record.absolutePath);
+          checkoutExists = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') continue;
+          checkoutExists = false;
+        }
+        if (!checkoutExists && !entry) {
+          // Git removal may have completed before the prior process could
+          // commit the cleaned row + deleted Event/Outbox transaction.
+          record.status = 'cleaned';
+          record.updatedAt = new Date().toISOString();
+          deletedRecords.push(record);
+          continue;
+        }
+        if (!entry) report.missingGitRegistration.push(record.id);
+        continue;
+      }
       if (!entry) {
         report.missingGitRegistration.push(record.id);
       } else if (record.status === 'creating') {
@@ -496,6 +545,9 @@ export class WorktreeManager {
       }
       for (const record of activatedRecords) {
         this.events.emitLeaseEvent('worktree.activated', record);
+      }
+      for (const record of deletedRecords) {
+        this.events.emitLeaseEvent('worktree.deleted', record);
       }
     };
     const db = this.transactionDatabase;
@@ -555,6 +607,10 @@ export class WorktreeManager {
       && entry.branch === `refs/heads/${record.branchName}`);
     if (!registered) throw new WorktreeError('checkout_identity_mismatch', 'managed worktree registration changed');
 
+    // Make the destructive operation recoverable before Git removes either
+    // the checkout directory or its registration. If the later event/outbox
+    // transaction fails, the durable lease remains cleanup_pending.
+    this.markCleanupPending(id);
     await git(workspace, ['worktree', 'remove', '--force', checkout], true);
     record.status = 'cleaned';
     record.updatedAt = new Date().toISOString();
@@ -563,6 +619,27 @@ export class WorktreeManager {
   }
   private get transactionDatabase(): TransactionDatabase | undefined {
     return this.repository?.transactionDatabase;
+  }
+
+  private persistRecord(record: LeaseRecord): void {
+    if (!this.repository) {
+      this.persist();
+      return;
+    }
+    const save = (): void => this.repository!.save(record);
+    try {
+      const db = this.transactionDatabase;
+      if (db && !isTransactionActive(db)) inTransaction(db, save); else save();
+    } catch (error) {
+      this.restorePersistedRecord(record.id);
+      throw error;
+    }
+  }
+
+  private restorePersistedRecord(id: string): void {
+    if (!this.repository) return;
+    const persisted = this.repository.getById(id);
+    if (persisted) this.leases.set(id, persisted); else this.leases.delete(id);
   }
 
   /**
@@ -584,8 +661,7 @@ export class WorktreeManager {
     try {
       if (isTransactionActive(db)) run(); else inTransaction(db, run);
     } catch (error) {
-      const persisted = this.repository.getById(record.id);
-      if (persisted) this.leases.set(record.id, persisted); else this.leases.delete(record.id);
+      this.restorePersistedRecord(record.id);
       throw error;
     }
   }
@@ -663,14 +739,6 @@ export function parseGitWorktreeListPorcelain(output: string): GitWorktreeListEn
     }
   }
   return entries;
-}
-
-async function listGitWorktrees(workspaceRoot: string): Promise<GitWorktreeListEntry[]> {
-  try {
-    return parseGitWorktreeListPorcelain(await git(workspaceRoot, ['worktree', 'list', '--porcelain']));
-  } catch {
-    return []; // Unreachable git root: directory checks above still apply.
-  }
 }
 
 function normalizeManagedPath(path: string): string {

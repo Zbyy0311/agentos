@@ -25,6 +25,7 @@ const MERGE_ERROR_STATUS: Record<string, number> = {
   WORKTREE_MERGE_IDENTITY_MISMATCH: 409,
   WORKTREE_BRANCH_LOCK_HELD: 409,
   WORKTREE_BRANCH_LOCK_INVALID_REF: 400,
+  WORKTREE_REF_RECOVERY_REQUIRED: 409,
 };
 function errorStatus(error: unknown): number {
   if (error instanceof WorktreeError) {

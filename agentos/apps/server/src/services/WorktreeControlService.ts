@@ -7,6 +7,7 @@ import type { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { WorktreeArtifactService } from './WorktreeArtifactService.js';
 import { WorktreeBranchLockError, withWorktreeBranchLock } from './WorktreeBranchLock.js';
 import { WorktreeError, WorktreeManager } from './WorktreeManager.js';
+import { assertNoPendingWorktreeRefUpdate, prepareWorktreeRefUpdate, WorktreeRefRecoveryError } from './WorktreeRefJournal.js';
 
 const execFileAsync = promisify(execFile);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
@@ -63,6 +64,7 @@ export class WorktreeControlService {
       await this.assertCheckoutIdentity(lease);
       this.requireLease(workspaceId, worktreeId, ACTIVE_CONTROL_STATUSES);
       this.requireTerminalRun(lease);
+      await assertNoPendingWorktreeRefUpdate(lease);
       await this.assertExpectedHead(lease, request.expectedHeadCommit);
       await this.assertNoGitOperation(lease.absolutePath);
       if (!(await gitSucceeds(lease.absolutePath, ['diff', '--cached', '--quiet']))) {
@@ -70,75 +72,119 @@ export class WorktreeControlService {
       }
 
       const addMode = request.includeUntracked ? '--all' : '--update';
+      let stagingStarted = false;
+      let refPublished = false;
+      let refMayHavePublished = false;
+      let stagedPaths: string[] = [];
+      let intent: Awaited<ReturnType<typeof prepareWorktreeRefUpdate>> | undefined;
       try {
-        await git(lease.absolutePath, ['--literal-pathspecs', 'add', addMode, '--', ...request.pathspec]);
-      } catch {
-        await git(lease.absolutePath, ['read-tree', 'HEAD']).catch(() => undefined);
-        throw controlError('WORKTREE_PATHSPEC_INVALID', 400, 'One or more selected paths could not be staged');
-      }
-      const stagedPaths = splitNul(await git(lease.absolutePath, ['diff', '--cached', '--name-only', '-z']));
-      if (stagedPaths.length === 0) {
-        throw controlError('WORKTREE_NO_SELECTED_CHANGES', 409, 'The selected paths contain no changes to commit');
-      }
-      if (stagedPaths.some(path => !pathMatchesAny(path, request.pathspec))) {
-        await git(lease.absolutePath, ['read-tree', 'HEAD']).catch(() => undefined);
-        throw controlError('WORKTREE_PATHSPEC_SCOPE_VIOLATION', 409, 'Staged changes exceeded the selected path scope');
-      }
-      await this.assertExpectedHead(lease, request.expectedHeadCommit);
+        stagingStarted = true;
+        try {
+          await git(lease.absolutePath, ['--literal-pathspecs', 'add', addMode, '--', ...request.pathspec]);
+        } catch {
+          throw controlError('WORKTREE_PATHSPEC_INVALID', 400, 'One or more selected paths could not be staged');
+        }
+        stagedPaths = splitNul(await git(lease.absolutePath, ['diff', '--cached', '--name-only', '-z']));
+        if (stagedPaths.length === 0) {
+          throw controlError('WORKTREE_NO_SELECTED_CHANGES', 409, 'The selected paths contain no changes to commit');
+        }
+        if (stagedPaths.some(path => !pathMatchesAny(path, request.pathspec))) {
+          throw controlError('WORKTREE_PATHSPEC_SCOPE_VIOLATION', 409, 'Staged changes exceeded the selected path scope');
+        }
+        await this.assertExpectedHead(lease, request.expectedHeadCommit);
 
-      const tree = (await git(lease.absolutePath, ['write-tree'])).trim();
-      const identityConfig: string[] = [];
-      if (request.authorName && request.authorEmail) {
-        identityConfig.push('-c', `user.name=${request.authorName}`, '-c', `user.email=${request.authorEmail}`);
-      }
-      const commitSha = (await git(lease.absolutePath, [
-        ...identityConfig,
-        'commit-tree', tree, '-p', request.expectedHeadCommit, '-m', request.message,
-      ])).trim();
-      const branchRef = `refs/heads/${lease.branchName}`;
-      if (!(await gitSucceeds(lease.absolutePath, ['check-ref-format', branchRef]))) {
-        throw controlError('WORKTREE_BRANCH_IDENTITY_INVALID', 409, 'Managed branch identity is invalid');
-      }
-      if (!(await gitSucceeds(lease.absolutePath, ['update-ref', branchRef, commitSha, request.expectedHeadCommit]))) {
-        const head = await git(lease.absolutePath, ['rev-parse', '--verify', 'HEAD']).catch(() => '');
-        throw controlError('WORKTREE_HEAD_MISMATCH', 409, 'Worktree HEAD changed while committing', {
-          expectedHeadCommit: request.expectedHeadCommit,
-          currentHeadCommit: head.trim() || undefined,
+        const tree = (await git(lease.absolutePath, ['write-tree'])).trim();
+        const identityConfig: string[] = [];
+        if (request.authorName && request.authorEmail) {
+          identityConfig.push('-c', `user.name=${request.authorName}`, '-c', `user.email=${request.authorEmail}`);
+        }
+        let commitSha: string;
+        try {
+          commitSha = (await git(lease.absolutePath, [
+            ...identityConfig,
+            'commit-tree', tree, '-p', request.expectedHeadCommit, '-m', request.message,
+          ])).trim();
+        } catch {
+          throw controlError('WORKTREE_COMMIT_CREATE_FAILED', 500, 'Git could not create the requested commit');
+        }
+        const branchRef = `refs/heads/${lease.branchName}`;
+        if (!(await gitSucceeds(lease.absolutePath, ['check-ref-format', branchRef]))) {
+          throw controlError('WORKTREE_BRANCH_IDENTITY_INVALID', 409, 'Managed branch identity is invalid');
+        }
+        const factPayload = {
+          commitSha,
+          message: request.message,
+          filesChanged: stagedPaths.length,
+          ...(request.authorName && request.authorEmail ? { author: `${request.authorName} <${request.authorEmail}>` } : {}),
+        };
+        intent = await prepareWorktreeRefUpdate(lease, {
+          branch: lease.branchName,
+          previousCommit: request.expectedHeadCommit,
+          resultingCommit: commitSha,
+          eventType: 'worktree.commit_created',
+          payload: factPayload,
         });
-      }
 
-      const parentCommit = (await git(lease.absolutePath, ['rev-parse', `${commitSha}^`])).trim();
-      if (parentCommit !== request.expectedHeadCommit) {
-        throw controlError('WORKTREE_COMMIT_PARENT_MISMATCH', 500, 'Committed revision did not use the expected parent');
+        if (!(await gitSucceeds(lease.absolutePath, ['update-ref', branchRef, commitSha, request.expectedHeadCommit]))) {
+          const currentRef = (await git(lease.absolutePath, ['rev-parse', '--verify', branchRef]).catch(() => '')).trim();
+          if (currentRef === request.expectedHeadCommit) {
+            await intent.complete();
+            intent = undefined;
+            throw controlError('WORKTREE_HEAD_MISMATCH', 409, 'Worktree HEAD changed while committing', {
+              expectedHeadCommit: request.expectedHeadCommit,
+              currentHeadCommit: currentRef,
+            });
+          }
+          if (currentRef !== commitSha) {
+            refMayHavePublished = true;
+            throw new WorktreeRefRecoveryError();
+          }
+        }
+        refPublished = true;
+
+        const parentCommit = (await git(lease.absolutePath, ['rev-parse', `${commitSha}^`])).trim();
+        if (parentCommit !== request.expectedHeadCommit) {
+          throw controlError('WORKTREE_COMMIT_PARENT_MISMATCH', 500, 'Committed revision did not use the expected parent');
+        }
+        const committedPaths = splitNul(await git(lease.absolutePath, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]));
+        if (committedPaths.length !== stagedPaths.length || committedPaths.some(path => !pathMatchesAny(path, request.pathspec))) {
+          throw controlError('WORKTREE_COMMIT_SCOPE_MISMATCH', 500, 'Committed revision exceeded the selected path scope');
+        }
+        await this.recordFact(lease, 'worktree.commit_created', factPayload);
+        await intent.complete();
+        intent = undefined;
+
+        const after = await readGitStatus(lease.absolutePath, commitSha);
+        if (after.modifiedCount > 0 || after.untrackedCount > 0) {
+          await this.recordFact(lease, 'worktree.dirty', {
+            headCommit: commitSha,
+            modifiedCount: after.modifiedCount,
+            untrackedCount: after.untrackedCount,
+          });
+        }
+        return {
+          commitSha,
+          parentCommit,
+          message: request.message,
+          filesChanged: committedPaths.length,
+          pathspec: request.pathspec,
+          requestedBy: request.requestedBy,
+          ...(request.approvalRequestId ? { approvalRequestId: request.approvalRequestId } : {}),
+          committedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        if (stagingStarted && !refPublished && !refMayHavePublished) {
+          const restorePaths = stagedPaths.length ? stagedPaths : request.pathspec;
+          try {
+            await git(lease.absolutePath, ['--literal-pathspecs', 'reset', '--quiet', 'HEAD', '--', ...restorePaths]);
+          } catch {
+            throw controlError('WORKTREE_INDEX_RECOVERY_FAILED', 500, 'Git could not restore the selected paths to the worktree index', {
+              restoredPathCount: restorePaths.length,
+            });
+          }
+        }
+        throw error;
       }
-      const committedPaths = splitNul(await git(lease.absolutePath, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]));
-      if (committedPaths.length !== stagedPaths.length || committedPaths.some(path => !pathMatchesAny(path, request.pathspec))) {
-        throw controlError('WORKTREE_COMMIT_SCOPE_MISMATCH', 500, 'Committed revision exceeded the selected path scope');
-      }
-      await this.recordFact(lease, 'worktree.commit_created', {
-        commitSha,
-        message: request.message,
-        filesChanged: committedPaths.length,
-        ...(request.authorName && request.authorEmail ? { author: `${request.authorName} <${request.authorEmail}>` } : {}),
-      });
-      const after = await readGitStatus(lease.absolutePath, commitSha);
-      if (after.modifiedCount > 0 || after.untrackedCount > 0) {
-        await this.recordFact(lease, 'worktree.dirty', {
-          headCommit: commitSha,
-          modifiedCount: after.modifiedCount,
-          untrackedCount: after.untrackedCount,
-        });
-      }
-      return {
-        commitSha,
-        parentCommit,
-        message: request.message,
-        filesChanged: committedPaths.length,
-        pathspec: request.pathspec,
-        requestedBy: request.requestedBy,
-        ...(request.approvalRequestId ? { approvalRequestId: request.approvalRequestId } : {}),
-        committedAt: new Date().toISOString(),
-      };
     });
   }
 
@@ -157,6 +203,7 @@ export class WorktreeControlService {
       await this.assertCheckoutIdentity(lease);
       this.requireLease(workspaceId, worktreeId, REVIEWABLE_STATUSES);
       this.requireTerminalRun(lease);
+      await assertNoPendingWorktreeRefUpdate(lease);
       const headCommit = await this.assertExpectedHead(lease, request.expectedHeadCommit);
       await this.assertNoGitOperation(lease.absolutePath);
       const conflictedFiles = await readConflictedPaths(lease.absolutePath);
@@ -203,6 +250,7 @@ export class WorktreeControlService {
       await this.assertCheckoutIdentity(lease);
       this.requireLease(workspaceId, worktreeId, ACTIVE_CONTROL_STATUSES);
       this.requireTerminalRun(lease);
+      await assertNoPendingWorktreeRefUpdate(lease);
       await this.assertExpectedHead(lease, request.expectedHeadCommit);
       const rebaseState = await readRebaseState(lease.absolutePath);
 
@@ -297,6 +345,7 @@ export class WorktreeControlService {
     return this.withBranchLock(lease, async () => {
       await this.assertCheckoutIdentity(lease);
       this.requireTerminalRun(lease);
+      await assertNoPendingWorktreeRefUpdate(lease);
       await this.assertExpectedHead(lease, request.expectedHeadCommit);
       await this.assertNoGitOperation(lease.absolutePath);
       const conflictedFiles = await readConflictedPaths(lease.absolutePath);
@@ -536,6 +585,9 @@ export class WorktreeControlService {
           : status === 409 ? 'Another control operation holds the branch lock'
             : 'Worktree branch lock failed';
         throw controlError(error.code, status, message);
+      }
+      if (error instanceof WorktreeRefRecoveryError) {
+        throw controlError(error.code, 409, 'Worktree Git reference requires recovery before this operation');
       }
       throw error;
     }

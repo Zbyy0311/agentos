@@ -169,14 +169,15 @@ test('merge rejects when the target branch does not match expectedHeadCommit', a
   }
 });
 
-test('merge conflict aborts, records conflicted result and leaves the worktree clean', async () => {
+for (const conflictStrategy of ['merge-commit', 'squash'] as const) {
+test(`${conflictStrategy} conflict aborts, records conflicted result and leaves the worktree clean`, async () => {
   const fx = await fixture();
   try {
     fx.commitInWorktree('README.md', 'worktree version\n', 'worktree change');
     const targetHead = fx.commitInMain('README.md', 'main version\n', 'main change');
     const leaseId = fx.manager.listLeases()[0].id;
     const error = await fx.service.merge(leaseId, {
-      strategy: 'merge-commit', targetBranch: 'main', expectedHeadCommit: targetHead, requestedBy: 'tester',
+      strategy: conflictStrategy, targetBranch: 'main', expectedHeadCommit: targetHead, requestedBy: 'tester',
     }).then(() => undefined, error => error as WorktreeMergeError);
     assert.ok(error instanceof WorktreeMergeError);
     assert.equal(error.code, 'WORKTREE_MERGE_CONFLICTED');
@@ -193,6 +194,7 @@ test('merge conflict aborts, records conflicted result and leaves the worktree c
     fx.close();
   }
 });
+}
 
 test('target branch lock serializes concurrent merges; loser sees the advanced head', async () => {
   const fx = await fixture();

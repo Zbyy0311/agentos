@@ -9,6 +9,7 @@ import type {
 import { createEntityId } from '../store/Identity.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeBranchLockError, withWorktreeBranchLock } from './WorktreeBranchLock.js';
+import { assertNoPendingWorktreeRefUpdate, prepareWorktreeRefUpdate, WorktreeRefRecoveryError } from './WorktreeRefJournal.js';
 
 /**
  * PR-3B Worktree Merge Runtime (06-Worktree-Runtime §38-43).
@@ -97,6 +98,7 @@ export class WorktreeMergeService {
         withWorktreeBranchLock(lease.absolutePath, lease.branchName, () => this.mergeLocked(lease, request)));
     } catch (error) {
       if (error instanceof WorktreeBranchLockError) throw new WorktreeMergeError(error.code, error.message);
+      if (error instanceof WorktreeRefRecoveryError) throw new WorktreeMergeError(error.code, error.message);
       throw error;
     }
   }
@@ -110,6 +112,8 @@ export class WorktreeMergeService {
     // configured worktree root so a rewritten lease path can never redirect
     // git into the user's main workspace.
     await this.manager.assertManagedCheckout(checkout);
+    await assertNoPendingWorktreeRefUpdate(lease, request.targetBranch);
+    await assertNoPendingWorktreeRefUpdate(lease, lease.branchName);
     if (!MERGEABLE_STATUSES.has(lease.status)) {
       throw new WorktreeMergeError('WORKTREE_MERGE_INVALID_STATUS', 'Worktree is no longer mergeable');
     }
@@ -189,6 +193,7 @@ export class WorktreeMergeService {
           .split('\n').map(line => line.trim()).filter(Boolean);
         const inMerge = await gitSucceeds(checkout, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
         if (inMerge) await git(checkout, ['merge', '--abort']).catch(() => undefined);
+        else await git(checkout, ['reset', '--hard', previousTargetCommit]);
         const summary: WorktreeMergeConflictSummary = { conflictedPaths };
         const record = buildRecord({
           result: 'conflicted',
@@ -207,38 +212,47 @@ export class WorktreeMergeService {
       }
 
       let resultingTargetCommit: string;
+      let record: WorktreeMergeRecord;
+      let completeIntent: () => Promise<void>;
       try {
         resultingTargetCommit = (await git(checkout, ['rev-parse', 'HEAD'])).trim();
+        record = buildRecord({ result: 'merged', resultingTargetCommit,
+          mergeCommit: request.strategy === 'merge-commit' ? resultingTargetCommit : null,
+          completedAt: new Date().toISOString() });
+        const intent = await prepareWorktreeRefUpdate(lease, {
+          branch: request.targetBranch, previousCommit: previousTargetCommit, resultingCommit: resultingTargetCommit,
+          eventType: 'worktree.merged', mergeRecord: record,
+          payload: { mergeRecordId: record.id, sourceBranch: lease.branchName, targetBranch: request.targetBranch,
+            strategy: request.strategy, resultingTargetCommit,
+            ...(record.mergeCommit === null ? {} : { mergeCommit: record.mergeCommit }) },
+        });
+        completeIntent = intent.complete;
         // Atomic compare-and-swap: refuse to move the target branch if it
         // advanced underneath us (out-of-process writers).
         if (!(await gitSucceeds(checkout, ['update-ref', `refs/heads/${request.targetBranch}`, resultingTargetCommit, previousTargetCommit]))) {
-          const record = buildRecord({ result: 'aborted', completedAt: new Date().toISOString() });
-          this.repository.createInTransaction(record);
-          throw new WorktreeMergeError(
-            'WORKTREE_MERGE_HEAD_MISMATCH',
-            `target branch '${request.targetBranch}' advanced during merge; aborted`,
-            record,
-          );
+          const observed = (await git(checkout, ['rev-parse', '--verify', `refs/heads/${request.targetBranch}`]).catch(() => '')).trim();
+          if (observed === previousTargetCommit) {
+            await completeIntent();
+            const aborted = buildRecord({ result: 'aborted', completedAt: new Date().toISOString() });
+            this.repository.createInTransaction(aborted);
+            throw new WorktreeMergeError('WORKTREE_MERGE_HEAD_MISMATCH', 'Target reference was not updated; merge aborted', aborted);
+          }
+          if (observed !== resultingTargetCommit) throw new WorktreeRefRecoveryError();
         }
       } catch (error) {
         // Unexpected git failure after the merge step: record and surface as failed.
-        if (error instanceof WorktreeMergeError) throw error;
+        if (error instanceof WorktreeMergeError || error instanceof WorktreeRefRecoveryError) throw error;
         const record = buildRecord({ result: 'failed', completedAt: new Date().toISOString() });
         this.repository.createInTransaction(record);
         throw new WorktreeMergeError('WORKTREE_MERGE_FAILED', error instanceof Error ? error.message : String(error), record);
       }
 
-      const record = buildRecord({
-        result: 'merged',
-        resultingTargetCommit,
-        mergeCommit: request.strategy === 'merge-commit' ? resultingTargetCommit : null,
-        completedAt: new Date().toISOString(),
-      });
       this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.merged', {
         mergeRecordId: record.id, sourceBranch: lease.branchName, targetBranch: request.targetBranch,
         strategy: request.strategy, resultingTargetCommit,
         ...(record.mergeCommit === null ? {} : { mergeCommit: record.mergeCommit }),
       }));
+      await completeIntent();
       return record;
     } finally {
       try {

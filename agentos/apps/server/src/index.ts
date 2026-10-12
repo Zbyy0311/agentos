@@ -54,6 +54,7 @@ import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
 import { WorktreeMergeService } from './services/WorktreeMergeService.js';
 import { WorktreeRuntimeEventEmitter } from './services/WorktreeRuntimeEvents.js';
+import { recoverWorktreeRefUpdates } from './services/WorktreeRefJournal.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
 import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
@@ -297,6 +298,8 @@ async function bootstrap(): Promise<void> {
     const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
     const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
+    const refRecovery = await recoverWorktreeRefUpdates(worktreeManager, store.worktreeMergeRepository());
+    diagLog(`WORKTREE_REF_RECOVERY completed=${refRecovery.completed} preserved=${refRecovery.preserved}`);
     const workspaceManager = new WorkspaceManager(store);
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
