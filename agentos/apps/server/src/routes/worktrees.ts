@@ -5,6 +5,7 @@ import { WorktreeMergeError, WorktreeMergeService } from '../services/WorktreeMe
 import type { WorktreeMergeStrategy } from '../store/WorktreeMergeRepository.js';
 import { WorktreeError, WorktreeManager } from '../services/WorktreeManager.js';
 import { WorktreeArtifactService } from '../services/WorktreeArtifactService.js';
+import { WorktreeControlError, WorktreeControlService } from '../services/WorktreeControlService.js';
 import type { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -41,13 +42,20 @@ export function createWorktreeRoutes(
   workspaceRootFor: (workspaceId: string) => string | undefined = workspaceId => workspaceManager.get(workspaceId)?.rootPath,
   mergeService?: WorktreeMergeService,
   eventRepository?: RuntimeEventRepository,
+  controlServiceOverride?: WorktreeControlService,
 ): Router {
   const router = Router({ mergeParams: true });
+  const controlService = controlServiceOverride ?? new WorktreeControlService(manager, runLookup, artifactService);
   if (mergeService) {
     router.post('/worktrees/:worktreeId/merge', asyncHandler(async (req: Request, res: Response) => {
       const workspace = workspaceManager.get(req.params.workspaceId);
       if (!workspace) {
         sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+        return;
+      }
+      const lease = manager.getRecord(req.params.worktreeId);
+      if (!lease || lease.workspaceId !== workspace.id) {
+        sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
         return;
       }
       try {
@@ -102,6 +110,39 @@ export function createWorktreeRoutes(
       sendProblem(req, res, { status: 400, code: 'WORKTREE_BUNDLE_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
+  const registerControlRoute = (
+    action: 'commit' | 'review' | 'rebase' | 'cleanup',
+    invoke: (workspaceId: string, leaseId: string, body: unknown) => Promise<unknown>,
+    responseKey: string,
+    successStatus = 200,
+  ): void => {
+    router.post(`/worktrees/:leaseId/${action}`, asyncHandler(async (req: Request, res: Response) => {
+      const workspace = workspaceManager.get(req.params.workspaceId);
+      if (!workspace) {
+        sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+        return;
+      }
+      try {
+        const result = await invoke(workspace.id, req.params.leaseId, req.body ?? {});
+        return res.status(successStatus).json({ [responseKey]: result });
+      } catch (error) {
+        if (error instanceof WorktreeControlError) {
+          sendProblem(req, res, {
+            status: error.status,
+            code: error.code,
+            detail: error.status >= 500 ? 'Worktree control failed' : error.message,
+            ...(error.context ? { context: error.context } : {}),
+          });
+          return;
+        }
+        sendProblem(req, res, { status: 500, code: 'WORKTREE_CONTROL_FAILED', detail: 'Worktree control failed' });
+      }
+    }));
+  };
+  registerControlRoute('commit', (workspaceId, leaseId, body) => controlService.commit(workspaceId, leaseId, body), 'commit', 201);
+  registerControlRoute('review', (workspaceId, leaseId, body) => controlService.review(workspaceId, leaseId, body), 'review');
+  registerControlRoute('rebase', (workspaceId, leaseId, body) => controlService.rebase(workspaceId, leaseId, body), 'rebase');
+  registerControlRoute('cleanup', (workspaceId, leaseId, body) => controlService.cleanup(workspaceId, leaseId, body), 'cleanup');
   router.delete('/worktrees/:leaseId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {

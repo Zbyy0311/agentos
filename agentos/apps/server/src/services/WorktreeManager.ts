@@ -513,8 +513,54 @@ export class WorktreeManager {
     return report;
   }
 
-  async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> { const record=this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required','recovery bundle confirmation is required'); if (!record.recoveryBundle) throw new WorktreeError('bundle_required','verified recovery bundle is required'); await this.assertManagedCheckout(record.absolutePath); await git(record.workspaceRoot,['worktree','remove','--force',record.absolutePath], true); record.status='cleaned'; record.updatedAt=new Date().toISOString(); this.persistRecordWithEvent(record, 'worktree.deleted'); return publicLease(record); }
+  async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required', 'recovery bundle confirmation is required');
+    if (!record.recoveryBundle) throw new WorktreeError('bundle_required', 'verified recovery bundle is required');
+    if (record.status === 'cleaned') return publicLease(record);
 
+    // Deletion is the most destructive lease operation. Revalidate the
+    // recorded checkout immediately before invoking `git worktree remove` so
+    // a stale or rewritten lease can never redirect it to the source checkout.
+    await this.assertManagedCheckout(record.absolutePath);
+    let checkout: string;
+    let workspace: string;
+    try {
+      checkout = await realpath(record.absolutePath);
+      workspace = await realpath(record.workspaceRoot);
+    } catch {
+      throw new WorktreeError('checkout_identity_mismatch', 'managed worktree checkout is unavailable');
+    }
+    if (samePath(checkout, workspace) || isWithin(checkout, workspace) || isWithin(workspace, checkout)) {
+      throw new WorktreeError('checkout_identity_mismatch', 'managed worktree path overlaps the workspace checkout');
+    }
+    const checkoutRoot = resolve((await git(checkout, ['rev-parse', '--show-toplevel'])).trim());
+    const branchName = (await git(checkout, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim();
+    if (!samePath(checkoutRoot, checkout) || branchName !== record.branchName) {
+      throw new WorktreeError('checkout_identity_mismatch', 'managed worktree path or branch identity changed');
+    }
+    const workspaceCommonDir = await realpath((await git(workspace, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
+    const checkoutCommonDir = await realpath((await git(checkout, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
+    if (!samePath(workspaceCommonDir, checkoutCommonDir)) {
+      throw new WorktreeError('checkout_identity_mismatch', 'managed worktree belongs to a different repository');
+    }
+    const worktrees = (await git(workspace, ['worktree', 'list', '--porcelain']))
+      .split(/\r?\n\r?\n/)
+      .map(entry => Object.fromEntries(entry.split(/\r?\n/).map(line => {
+        const index = line.indexOf(' ');
+        return index < 0 ? [line, ''] : [line.slice(0, index), line.slice(index + 1)];
+      })));
+    const registered = worktrees.some(entry => samePath(entry.worktree ?? '', checkout)
+      && entry.branch === `refs/heads/${record.branchName}`);
+    if (!registered) throw new WorktreeError('checkout_identity_mismatch', 'managed worktree registration changed');
+
+    await git(workspace, ['worktree', 'remove', '--force', checkout], true);
+    record.status = 'cleaned';
+    record.updatedAt = new Date().toISOString();
+    this.persistRecordWithEvent(record, 'worktree.deleted');
+    return publicLease(record);
+  }
   private get transactionDatabase(): TransactionDatabase | undefined {
     return this.repository?.transactionDatabase;
   }
@@ -543,6 +589,7 @@ export class WorktreeManager {
       throw error;
     }
   }
+
 
   private persist(): void {
     if (this.repository) {
@@ -641,3 +688,7 @@ function git(cwd: string, args: string[], controlled = false): Promise<string> {
 }
 function gitSucceeds(cwd: string, args: string[]): Promise<boolean> { return git(cwd, args).then(() => true, () => false); }
 function isWithin(root: string, candidate: string): boolean { const child = relative(resolve(root), resolve(candidate)); return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child)); }
+function samePath(left: string, right: string): boolean {
+  const normalize = (path: string): string => process.platform === 'win32' ? resolve(path).toLocaleLowerCase('en-US') : resolve(path);
+  return normalize(left) === normalize(right);
+}

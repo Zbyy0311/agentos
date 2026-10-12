@@ -33,8 +33,11 @@ function mergeRecord(overrides: Partial<WorktreeMergeRecord> = {}): WorktreeMerg
 function appWith(mergeImpl: (worktreeId: string, request: unknown) => Promise<WorktreeMergeRecord>) {
   const app = express();
   app.use(express.json());
-  const workspaceManager = { get: (id: string) => id === 'workspace-a' ? { id, rootPath: '/tmp/x' } : undefined };
+  const workspaceManager = { get: (id: string) => ['workspace-a', 'workspace-b'].includes(id) ? { id, rootPath: '/tmp/x' } : undefined };
   const manager = new WorktreeManager(mkdtempSync(join(tmpdir(), 'agentos-worktree-route-merge-')));
+  Object.assign(manager, {
+    getRecord: (id: string) => id === 'wt_route_a' ? { workspaceId: 'workspace-a' } : undefined,
+  });
   const mergeService = { merge: mergeImpl } as never;
   app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager as never, manager, undefined, undefined, undefined, mergeService));
   return app;
@@ -74,6 +77,10 @@ test('merge route maps error codes to 404/400/409 problem details', async () => 
     { error: new WorktreeMergeError('WORKTREE_MERGE_INVALID_STATUS', 'status'), status: 409 },
     { error: new WorktreeMergeError('WORKTREE_MERGE_HEAD_MISMATCH', 'advanced'), status: 409 },
     { error: new WorktreeMergeError('WORKTREE_MERGE_CONFLICTED', 'conflict', mergeRecord({ result: 'conflicted' })), status: 409 },
+    { error: new WorktreeMergeError('WORKTREE_MERGE_DIRTY', 'dirty'), status: 409 },
+    { error: new WorktreeMergeError('WORKTREE_MERGE_IDENTITY_MISMATCH', 'identity'), status: 409 },
+    { error: new WorktreeMergeError('WORKTREE_BRANCH_LOCK_HELD', 'lock held'), status: 409 },
+    { error: new WorktreeMergeError('WORKTREE_BRANCH_LOCK_INVALID_REF', 'invalid ref'), status: 400 },
   ];
   for (const { error, status } of cases) {
     const app = appWith(async () => { throw error; });
@@ -112,6 +119,26 @@ test('merge route 404s for unknown workspaces and passes requestedBy through', a
     });
     assert.equal(ok.status, 200);
     assert.equal(seenRequestedBy, 'operator-1');
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test('merge route returns 404 for a lease owned by another workspace without calling merge', async () => {
+  let mergeCalled = false;
+  const app = appWith(async () => { mergeCalled = true; return mergeRecord(); });
+  const server = app.listen(0);
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test server did not bind');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/workspaces/workspace-b/worktrees/wt_route_a/merge`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategy: 'ff', targetBranch: 'main', expectedHeadCommit: 'a'.repeat(40) }),
+    });
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).code, 'WORKTREE_NOT_FOUND');
+    assert.equal(mergeCalled, false);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
