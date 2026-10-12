@@ -2074,6 +2074,13 @@ export class SqliteStore implements Store {
     return rows.map(row => this.toRuntimeArtifact(row));
   }
 
+  listCanonicalRuntimeArtifacts(workspaceId: string, runId: string): CanonicalRuntimeArtifactRecord[] {
+    const rows = this.database.prepare(`SELECT id FROM runtime_artifacts
+      WHERE workspace_id = ? AND canonical_run_id = ? AND provenance_kind = 'CANONICAL'
+      ORDER BY created_at ASC, id ASC`).all(workspaceId, runId) as Array<{ id: string }>;
+    return rows.map(row => this.getCanonicalRuntimeArtifactRecord(workspaceId, row.id)!);
+  }
+
   getRuntimeArtifactRecord(workspaceId: string, artifactId: string): RuntimeArtifactRecord | undefined {
     const row = this.database.prepare(`
       SELECT id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,

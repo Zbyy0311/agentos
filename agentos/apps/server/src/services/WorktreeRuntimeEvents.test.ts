@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
@@ -11,6 +11,8 @@ import { TaskRunService } from './TaskRunService.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeMergeService } from './WorktreeMergeService.js';
 import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
+import { WorktreeControlService } from './WorktreeControlService.js';
+import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { createWorktreeRoutes } from '../routes/worktrees.js';
 
 function git(root: string, args: string[]): string {
@@ -123,6 +125,57 @@ test('merge records requested and merged events while preserving the main checko
     await merge.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: base, requestedBy: 'test' });
     assert.deepEqual(fx.events(lease.id).map(event => event.type), ['worktree.reserved', 'worktree.created', 'worktree.merge_requested', 'worktree.merged']);
     assert.equal(existsSync(join(fx.workspace.rootPath, 'feature.txt')), false);
+  } finally { fx.close(); }
+});
+
+test('canonical worktree controls commit, review, merge and clean up with durable recovery evidence', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    fx.store.runRepository().transitionStatus(fx.workspace.id, fx.run.id, fx.run.version, 'cancelled');
+    const artifacts = new RuntimeArtifactService(fx.store, fx.directory);
+    const controls = new WorktreeControlService(fx.manager, {
+      getRun: (workspaceId, runId) => fx.store.runRepository().findById(workspaceId, runId),
+    }, artifacts);
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const originalIndex = readFileSync(join(fx.workspace.rootPath, '.git', 'index'));
+    const originalReadme = readFileSync(join(fx.workspace.rootPath, 'README.md'));
+    const baseCommit = git(checkout, ['rev-parse', 'HEAD']);
+    writeFileSync(join(checkout, 'README.md'), 'owned worktree update\n');
+    const committed = await controls.commit(fx.workspace.id, lease.id, {
+      expectedHeadCommit: baseCommit, message: 'controlled update', pathspec: ['README.md'],
+      includeUntracked: false, requestedBy: 'user',
+    });
+    const review = await controls.review(fx.workspace.id, lease.id, { expectedHeadCommit: committed.commitSha });
+    assert.equal(review.headCommit, committed.commitSha);
+    const merger = new WorktreeMergeService(fx.manager, fx.store.worktreeMergeRepository());
+    await merger.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: baseCommit, requestedBy: 'test' });
+    assert.equal(git(checkout, ['symbolic-ref', '--short', 'HEAD']), lease.branchName);
+    const userArchive = Buffer.from('user archive must survive cleanup\n');
+    writeFileSync(join(checkout, '.agentos-untracked.tar'), userArchive);
+    const result = await controls.cleanup(fx.workspace.id, lease.id, {
+      expectedHeadCommit: committed.commitSha, confirmRecoveryBundle: true,
+    });
+    assert.equal(result.lease?.status, 'cleaned');
+    assert.equal(existsSync(checkout), false);
+    assert.deepEqual(readFileSync(join(fx.workspace.rootPath, 'README.md')), originalReadme);
+    assert.deepEqual(readFileSync(join(fx.workspace.rootPath, '.git', 'index')), originalIndex);
+    const bundle = fx.manager.getRecord(lease.id)!.recoveryBundle!;
+    assert.equal(bundle.entryCount, 1);
+    const persistedArtifacts = artifacts.listForRun(fx.workspace.id, fx.run.id);
+    assert.equal(persistedArtifacts.length, 3);
+    assert.ok(persistedArtifacts.every(artifact => 'canonicalRunId' in artifact && artifact.canonicalRunId === fx.run.id));
+    assert.deepEqual(artifacts.listForRun('another-workspace', fx.run.id), []);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, bundle.manifestArtifactId)).toString('utf8'));
+    assert.equal(manifest[0].path, '.agentos-untracked.tar');
+    assert.equal(manifest[0].sizeBytes, userArchive.byteLength);
+    const events = fx.events(lease.id);
+    assert.deepEqual(events.map(event => event.type), ['worktree.reserved', 'worktree.created',
+      'worktree.commit_created', 'worktree.ready_for_review', 'worktree.merge_requested', 'worktree.merged', 'worktree.deleted']);
+    for (const event of events) {
+      const row = fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?').get(event.id) as { count: number };
+      assert.equal(row.count, 1);
+    }
   } finally { fx.close(); }
 });
 

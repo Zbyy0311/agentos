@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { access, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { RuntimeArtifact } from '@agentos/shared';
+import type { RuntimeArtifact, CanonicalRuntimeArtifactRecord } from '@agentos/shared';
 import type { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { WorktreeArtifactService } from './WorktreeArtifactService.js';
 import { WorktreeBranchLockError, withWorktreeBranchLock } from './WorktreeBranchLock.js';
@@ -364,7 +364,12 @@ export class WorktreeControlService {
     };
     let conflictArtifactId: string;
     try {
-      const artifact = await (this.artifacts as RuntimeArtifactService).create({
+      const artifactService = this.artifacts as RuntimeArtifactService;
+      const create = (input: Parameters<RuntimeArtifactService['create']>[0]) =>
+        typeof artifactService.createWorktreeArtifact === 'function'
+          ? artifactService.createWorktreeArtifact(lease.id, input)
+          : artifactService.create(input);
+      const artifact = await create({
         workspaceId: lease.workspaceId,
         workspaceRoot: lease.absolutePath,
         runId: lease.runId,
@@ -433,10 +438,11 @@ export class WorktreeControlService {
     }
   }
 
-  private async requireArtifact(lease: LeaseRecord, artifactId: string, type: RuntimeArtifact['type']): Promise<RuntimeArtifact> {
+  private async requireArtifact(lease: LeaseRecord, artifactId: string, type: RuntimeArtifact['type']): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
     if (!this.artifacts) throw controlError('ARTIFACT_SERVICE_UNAVAILABLE', 503, 'Artifact service unavailable');
     const artifact = this.artifacts.listForRun(lease.workspaceId, lease.runId)
-      .find(item => item.id === artifactId && item.workspaceId === lease.workspaceId && item.runId === lease.runId && item.type === type);
+      .find(item => item.id === artifactId && item.workspaceId === lease.workspaceId
+        && ('canonicalRunId' in item ? item.canonicalRunId : item.runId) === lease.runId && item.type === type);
     if (!artifact) throw controlError('WORKTREE_ARTIFACT_NOT_FOUND', 404, 'Artifact was not found for this worktree run');
     try {
       await this.artifacts.readContentBytes(lease.workspaceId, artifact.id);

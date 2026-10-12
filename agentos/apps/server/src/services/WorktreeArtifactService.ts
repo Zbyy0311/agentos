@@ -35,16 +35,20 @@ export class WorktreeArtifactService {
       sourceExecutionId: input.executionId,
       agentId: input.agentId,
     };
+    const create = (input: Parameters<RuntimeArtifactService['create']>[0]) =>
+      typeof this.artifacts.createWorktreeArtifact === 'function'
+        ? this.artifacts.createWorktreeArtifact(leaseId, input)
+        : this.artifacts.create(input);
     try {
       if (paths.length) await tar(lease.absolutePath, tempArchive, paths);
-      const patchArtifact = await this.artifacts.create({
+      const patchArtifact = await create({
         ...base, type: 'diff', title: 'Worktree tracked patch', source: { kind: 'text', content: patch },
       });
-      const manifestArtifact = await this.artifacts.create({
+      const manifestArtifact = await create({
         ...base, type: 'manifest', title: 'Worktree untracked manifest',
         source: { kind: 'text', content: JSON.stringify(entries, null, 2) },
       });
-      const archiveArtifact = await this.artifacts.create({
+      const archiveArtifact = await create({
         ...base, type: 'archive', title: 'Worktree untracked archive',
         source: { kind: 'workspace-file', absolutePath: tempArchive },
       });

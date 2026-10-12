@@ -545,7 +545,9 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createMemoryImportRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
-    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store,
+    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, {
+      getRun: (workspaceId, runId) => store!.runRepository().findById(workspaceId, runId) ?? store!.getRun(workspaceId, runId),
+    },
       workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService, store.runtimeEventRepository()));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
