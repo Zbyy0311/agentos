@@ -895,6 +895,8 @@ export interface ProviderConfigurationSnapshotV1 {
   runtimeMode: RuntimeModeV1;
   executable: string | null;
   argsTemplate: string[];
+  /** Omitted in historical snapshots; adapters retain their argument default. */
+  promptDelivery?: 'argument' | 'stdin' | 'file';
   model: string | null;
   environmentProfileId: string | null;
   secretProfileId: string | null;

@@ -1588,6 +1588,7 @@ function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): P
     runtimeMode: snapshot.runtimeMode,
     ...(snapshot.executable === null ? {} : { executable: snapshot.executable }),
     argsTemplate: [...snapshot.argsTemplate],
+    ...(snapshot.promptDelivery === undefined ? {} : { promptDelivery: snapshot.promptDelivery }),
     ...(snapshot.model === null ? {} : { model: snapshot.model }),
     ...(snapshot.environmentProfileId === null ? {} : { environmentProfileId: snapshot.environmentProfileId }),
     ...(snapshot.secretProfileId === null ? {} : { secretProfileId: snapshot.secretProfileId }),

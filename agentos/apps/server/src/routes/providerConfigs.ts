@@ -23,6 +23,7 @@ const VALID_RUNTIME_MODES = ['cli','api','ssh','container'] as const;
 const VALID_WORKING_DIRECTORY_MODES = ['workspace','worktree','custom'] as const;
 const VALID_APPROVAL_MODES = ['agentos','native','hybrid','disabled'] as const;
 const VALID_OUTPUT_MODES = ['structured','parsed-text','raw-stream'] as const;
+const VALID_PROMPT_DELIVERIES = ['argument', 'stdin', 'file'] as const;
 
 const FORBIDDEN_SECRET_VALUE_FIELDS = [
   'apiKey',
@@ -63,7 +64,8 @@ function validateEnumFields(body: Record<string, unknown>): string | undefined {
     ?? validateEnumField(body, 'runtimeMode', VALID_RUNTIME_MODES)
     ?? validateEnumField(body, 'workingDirectoryMode', VALID_WORKING_DIRECTORY_MODES)
     ?? validateEnumField(body, 'approvalMode', VALID_APPROVAL_MODES)
-    ?? validateEnumField(body, 'outputMode', VALID_OUTPUT_MODES);
+    ?? validateEnumField(body, 'outputMode', VALID_OUTPUT_MODES)
+    ?? validateEnumField(body, 'promptDelivery', VALID_PROMPT_DELIVERIES);
 }
 
 /** Validates the optional structured fields shared by POST and PUT. Returns the first error message. */
@@ -221,6 +223,7 @@ console.error('[provider-configs] validate provider configuration failed');
         runtimeMode: (body.runtimeMode as ProviderConfiguration['runtimeMode'] | undefined) || 'cli',
         executable: body.executable as string | undefined,
         argsTemplate: body.argsTemplate as string[] | undefined,
+        promptDelivery: body.promptDelivery as ProviderConfiguration['promptDelivery'] | undefined,
         model: body.model as string | undefined,
         environmentProfileId: body.environmentProfileId as string | undefined,
         secretProfileId: body.secretProfileId as string | undefined,
@@ -293,6 +296,9 @@ console.error('[provider-configs] validate provider configuration failed');
         runtimeMode: (body.runtimeMode as ProviderConfiguration['runtimeMode'] | undefined) ?? existing.runtimeMode,
         executable: body.executable !== undefined ? body.executable as string | undefined : existing.executable,
         argsTemplate: (body.argsTemplate as string[] | undefined) ?? existing.argsTemplate,
+        promptDelivery: body.promptDelivery !== undefined
+          ? body.promptDelivery as ProviderConfiguration['promptDelivery'] | undefined
+          : existing.promptDelivery,
         model: body.model !== undefined ? body.model as string | undefined : existing.model,
         environmentProfileId: body.environmentProfileId !== undefined ? body.environmentProfileId as string | undefined : existing.environmentProfileId,
         secretProfileId: body.secretProfileId !== undefined ? body.secretProfileId as string | undefined : existing.secretProfileId,

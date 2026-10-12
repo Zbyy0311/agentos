@@ -179,6 +179,7 @@ function providerSnapshot(
     runtimeMode: provider.runtimeMode,
     executable,
     argsTemplate: [...argsTemplate],
+    ...(provider.promptDelivery === undefined ? {} : { promptDelivery: provider.promptDelivery }),
     model: provider.model ?? null,
     environmentProfileId: provider.environmentProfileId ?? null,
     secretProfileId: provider.secretProfileId ?? null,

@@ -972,6 +972,7 @@ function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderCon
     && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
     && isSnapshotNullableString(value.executable)
     && isSnapshotStringArray(value.argsTemplate)
+    && (value.promptDelivery === undefined || hasValue(['argument', 'stdin', 'file'], value.promptDelivery))
     && isSnapshotNullableString(value.model)
     && isSnapshotNullableString(value.environmentProfileId)
     && isSnapshotNullableString(value.secretProfileId)

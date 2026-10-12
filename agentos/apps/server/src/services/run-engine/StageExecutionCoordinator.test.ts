@@ -9,6 +9,8 @@ import {
   type AgentSnapshotV1,
   type ProviderConfigurationSnapshotV1,
   type RuntimeEventRecord,
+  type Run,
+  type Workspace,
 } from '@agentos/shared';
 import {
   DurableProcessCoordinator,
@@ -39,6 +41,13 @@ import { MigrationRegistry } from '../../migrations/registry.js';
 import { MigrationRunner } from '../../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../../migrations/default-registry.js';
 import { ProviderSessionRepository } from '../../store/ProviderSessionRepository.js';
+import { ProviderConfigurationRepository } from '../../store/ProviderConfigurationRepository.js';
+import { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
+import { RunStageRepository } from '../../store/RunStageRepository.js';
+import { WorkflowDefinitionRepository } from '../../store/WorkflowDefinitionRepository.js';
+import type { AgentSnapshotSourceRecord } from '../../store/SqliteStore.js';
+import { WorkflowDefinitionResolver } from '../WorkflowDefinitionResolver.js';
+import { SnapshotService } from '../SnapshotService.js';
 import { ProcessRepository } from '../../store/ProcessRepository.js';
 import { ProcessOutputReferenceRepository } from '../../store/ProcessOutputReferenceRepository.js';
 import { OutboxRepository } from '../../store/OutboxRepository.js';
@@ -76,15 +85,15 @@ const AGENT = 'agent_m4';
 const OP = 'op_m4';
 const KIMI_EXE = 'C:/kimi.exe';
 
-function migratedDb(): Db {
+function migratedDb(includeInitialStage = true): Db {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
   new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
-  seedParents(db);
+  seedParents(db, includeInitialStage);
   return db;
 }
 
-function seedParents(db: Db): void {
+function seedParents(db: Db, includeInitialStage = true): void {
   db.prepare(`
     INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
     VALUES (?, ?, '/tmp/m4', '/tmp/m4', ?, ?, ?)
@@ -97,14 +106,16 @@ function seedParents(db: Db): void {
     INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'running', 'initial', 'v2_api', 'test', ?, ?)
   `).run(RUN, WS, TASK, RUN, NOW, NOW);
-  db.prepare(`
-    INSERT INTO run_snapshots (id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version, snapshot_json, content_hash, captured_at)
-    VALUES (?, ?, ?, 'workflow_00000000000000000000000002', 1, '{}', ?, ?)
-  `).run(SNAPSHOT, WS, RUN, 'a'.repeat(64), NOW);
-  db.prepare(`
-    INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
-    VALUES (?, ?, ?, ?, 'plan', 'Plan', 1, 1, 'running', ?, ?, 1)
-  `).run(STAGE, WS, RUN, SNAPSHOT, NOW, NOW);
+  if (includeInitialStage) {
+    db.prepare(`
+      INSERT INTO run_snapshots (id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version, snapshot_json, content_hash, captured_at)
+      VALUES (?, ?, ?, 'workflow_00000000000000000000000002', 1, '{}', ?, ?)
+    `).run(SNAPSHOT, WS, RUN, 'a'.repeat(64), NOW);
+    db.prepare(`
+      INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+      VALUES (?, ?, ?, ?, 'plan', 'Plan', 1, 1, 'running', ?, ?, 1)
+    `).run(STAGE, WS, RUN, SNAPSHOT, NOW, NOW);
+  }
   db.prepare(`
     INSERT INTO provider_configurations (id, workspace_id, name, provider_type, adapter_id, runtime_mode, capabilities_json, timeout_policy_json, created_at, updated_at)
     VALUES (?, ?, 'M4 provider', 'kimicode', 'builtin.kimicode', 'cli', '{}', '{}', ?, ?)
@@ -143,20 +154,6 @@ function providerSnapshot(): ProviderConfigurationSnapshotV1 {
     outputMode: 'structured',
     enabled: true,
     version: 1,
-  };
-}
-
-function customCliProviderSnapshot(argsTemplate: readonly string[]): ProviderConfigurationSnapshotV1 {
-  const adapter = new CustomCliAdapter();
-  return {
-    ...providerSnapshot(),
-    providerType: 'custom-cli',
-    adapterId: CUSTOM_CLI_ADAPTER_ID,
-    runtimeMode: 'cli',
-    executable: process.execPath,
-    argsTemplate: [...argsTemplate],
-    capabilities: adapter.getDefaultCapabilities({}),
-    outputMode: 'parsed-text',
   };
 }
 
@@ -634,16 +631,6 @@ class StdinPromptKimiAdapter extends KimiCodeProviderAdapter {
   }
 }
 
-class StdinCustomCliAdapter extends CustomCliAdapter {
-  override validate(input: Parameters<CustomCliAdapter['validate']>[0]) {
-    return super.validate({ ...input, configuration: { ...input.configuration, promptDelivery: 'stdin' } });
-  }
-
-  override buildLaunchPlan(input: Parameters<CustomCliAdapter['buildLaunchPlan']>[0]) {
-    return super.buildLaunchPlan({ ...input, configuration: { ...input.configuration, promptDelivery: 'stdin' } });
-  }
-}
-
 class RecordingNodeProcessDriver extends NodeProcessDriver {
   lastLaunch?: ValidatedLaunch;
   lastHandle?: NativeProcessHandle;
@@ -696,6 +683,7 @@ interface FixtureOptions {
   readonly processAdapterFactory?: (repo: ProcessRepository) => DurableProcessRepositoryAdapter;
   readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
   readonly failStderrOutput?: boolean;
+  readonly skipInitialSnapshotStage?: boolean;
   readonly adapter?: RuntimeProviderAdapter;
   readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
 }
@@ -703,7 +691,7 @@ interface FixtureOptions {
 function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolean = false) {
   const opts: FixtureOptions = typeof options === 'boolean' ? { authFailure: options } : options;
   const probe = opts.probe ?? probeFor(opts.authFailure ?? false);
-  const db = migratedDb();
+  const db = migratedDb(!opts.skipInitialSnapshotStage);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-coord-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(db, events);
@@ -849,16 +837,115 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
-  it('round-trips a real Custom CLI prompt through child stdin and returns its stdout', { timeout: 30_000 }, async () => {
+  it('round-trips persisted provider promptDelivery through a frozen snapshot and real Custom CLI stdin', { timeout: 30_000 }, async () => {
     const script = "let p='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>p+=c);process.stdin.on('end',()=>process.stdout.write(p+'\\n'));";
     const prompt = 'stdin-roundtrip:你好🌱\n' + 'x'.repeat(20 * 1024 + 17);
     const driver = new RecordingNodeProcessDriver();
-    const adapter = new StdinCustomCliAdapter({ probe: probeFor(false) });
-    const fx = fixture(driver, { adapter });
+    const adapter = new CustomCliAdapter({ probe: probeFor(false) });
+    const fx = fixture(driver, { adapter, skipInitialSnapshotStage: true });
     let execution: Promise<StageExecutionOutcome> | undefined;
     try {
+      const providerRepository = new ProviderConfigurationRepository(fx.db as never);
+      const existingProvider = providerRepository.findById(PCFG);
+      assert.ok(existingProvider);
+      providerRepository.update({
+        ...existingProvider,
+        name: 'Frozen Custom CLI stdin',
+        providerType: 'custom-cli',
+        adapterId: CUSTOM_CLI_ADAPTER_ID,
+        runtimeMode: 'cli',
+        executable: process.execPath,
+        argsTemplate: ['-e', script],
+        promptDelivery: 'stdin',
+        capabilities: adapter.getDefaultCapabilities({}),
+        timeoutPolicy: {
+          discoveryTimeoutMs: 1_000, validationTimeoutMs: 1_000, startupTimeoutMs: 10_000,
+          idleTimeoutMs: null, totalTimeoutMs: null, cancelGracePeriodMs: 1_000, approvalTimeoutMs: null,
+        },
+        approvalMode: 'disabled',
+        outputMode: 'parsed-text',
+      }, existingProvider.version);
+      assert.equal(providerRepository.findById(PCFG)?.promptDelivery, 'stdin');
+
+      const roles = ['codex', 'kimi', 'opencode'] as const;
+      const workspace: Workspace = {
+        id: WS,
+        name: 'Custom CLI Snapshot Test',
+        rootPath: fx.root,
+        gitEnabled: false,
+        memoryEnabled: false,
+        agents: roles.map(role => ({
+          id: role === 'codex' ? AGENT : `snapshot-agent-${role}`,
+          name: role,
+          provider: 'custom',
+          role,
+          enabled: true,
+          cliCommand: process.execPath,
+          cliArgs: ['-e', script],
+          providerConfigId: PCFG,
+        })),
+        lastOpenedAt: NOW,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      const workflowDefinitionResolver = new WorkflowDefinitionResolver(new WorkflowDefinitionRepository(fx.db as never));
+      const snapshotService = new SnapshotService({
+        workflowDefinitionResolver,
+        runSnapshotRepository: () => new RunSnapshotRepository(fx.db as never),
+        runStageRepository: () => new RunStageRepository(fx.db as never),
+        providerConfigurationRepository: () => providerRepository,
+        findAgentSnapshotSource: (_workspaceId, agentId): AgentSnapshotSourceRecord | undefined => {
+          const agent = workspace.agents.find(candidate => candidate.id === agentId);
+          if (!agent) return undefined;
+          return {
+            workspaceId: WS,
+            id: agent.id,
+            name: agent.name,
+            role: agent.role,
+            roleTitle: `${agent.name} role`,
+            systemPrompt: 'Read the user prompt from stdin.',
+            permissions: ['read', 'write'],
+            enabled: true,
+            providerConfigId: PCFG,
+            version: 1,
+          };
+        },
+        now: () => NOW,
+      });
+      const run: Run = {
+        id: RUN,
+        workspaceId: WS,
+        taskId: TASK,
+        rootRunId: RUN,
+        status: 'running',
+        reason: 'initial',
+        origin: 'v2_api',
+        nextEventSequence: 1,
+        createdBy: 'test',
+        createdAt: NOW,
+        updatedAt: NOW,
+        version: 1,
+      };
+      const resolved = snapshotService.resolveLegacy(workspace);
+      const frozen = snapshotService.persistResolvedRun(run, resolved);
+      const snapshotRepository = new RunSnapshotRepository(fx.db as never);
+      const persistedSnapshot = snapshotRepository.findByRunId(WS, RUN);
+      assert.ok(persistedSnapshot);
+      assert.equal(snapshotRepository.verifyHash(persistedSnapshot), true);
+      const frozenStage = persistedSnapshot.payload.workflow.stages[0]!;
+      assert.equal(persistedSnapshot.payload.schemaVersion, 2);
+      assert.equal(frozenStage.provider?.promptDelivery, 'stdin');
+      assert.ok(frozenStage.provider);
+      assert.ok(frozenStage.agent);
+      const persistedStage = new RunStageRepository(fx.db as never).listByRun(WS, RUN)[0]!;
+      assert.equal(persistedStage.id, frozen.stages[0]!.id);
+
       execution = fx.coordinator.execute(stageInput({
-        providerSnapshot: customCliProviderSnapshot(['-e', script]),
+        runId: RUN,
+        stageId: persistedStage.id,
+        workflowStageKey: persistedStage.workflowStageKey,
+        agentSnapshot: frozenStage.agent,
+        providerSnapshot: frozenStage.provider,
         prompt,
         workspaceRoot: fx.root,
         worktreePath: fx.root,

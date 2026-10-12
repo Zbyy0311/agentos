@@ -743,6 +743,12 @@ test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle
 
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: ['--flag', ''] })));
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: [] })));
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({ promptDelivery: 'stdin' })));
+  assert.throws(
+    () => registry.publish(withProviderPatch({ promptDelivery: 'socket' })),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
   assert.doesNotThrow(() => registry.publish(withProviderPatch({
     timeoutPolicy: {
       ...providerTimeoutPolicy,

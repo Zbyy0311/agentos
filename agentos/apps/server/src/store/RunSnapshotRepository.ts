@@ -67,6 +67,7 @@ function assertExactKeys(
   value: Record<string, unknown>,
   path: string,
   keys: readonly string[],
+  optionalKeys: readonly string[] = [],
 ): void {
   const allowed = new Set(keys);
   let ownKeys: (string | symbol)[];
@@ -85,6 +86,7 @@ function assertExactKeys(
     }
   }
   for (const key of keys) {
+    if (optionalKeys.includes(key)) continue;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
       throw validationFailure(`${path}.${key} is missing or invalid`);
@@ -96,9 +98,10 @@ function assertExactObject(
   value: unknown,
   path: string,
   keys: readonly string[],
+  optionalKeys: readonly string[] = [],
 ): Record<string, unknown> {
   if (!isRecord(value)) throw validationFailure(`${path} must be a plain object`);
-  assertExactKeys(value, path, keys);
+  assertExactKeys(value, path, keys, optionalKeys);
   return value;
 }
 
@@ -262,6 +265,7 @@ function validateProvider(value: unknown, path: string): void {
     'runtimeMode',
     'executable',
     'argsTemplate',
+    'promptDelivery',
     'model',
     'environmentProfileId',
     'secretProfileId',
@@ -273,7 +277,7 @@ function validateProvider(value: unknown, path: string): void {
     'outputMode',
     'enabled',
     'version',
-  ]);
+  ], ['promptDelivery']);
   assertString(provider.providerConfigId, `${path}.providerConfigId`, true);
   assertString(provider.name, `${path}.name`, true);
   assertEnum(provider.providerType, `${path}.providerType`, [
@@ -284,6 +288,9 @@ function validateProvider(value: unknown, path: string): void {
   assertNullableString(provider.executable, `${path}.executable`);
   const argsTemplate = assertDenseArray(provider.argsTemplate, `${path}.argsTemplate`);
   for (const [index, argument] of argsTemplate.entries()) assertString(argument, `${path}.argsTemplate[${index}]`);
+  if (provider.promptDelivery !== undefined) {
+    assertEnum(provider.promptDelivery, `${path}.promptDelivery`, ['argument', 'stdin', 'file'] as const);
+  }
   assertNullableString(provider.model, `${path}.model`);
   assertNullableString(provider.environmentProfileId, `${path}.environmentProfileId`);
   assertNullableString(provider.secretProfileId, `${path}.secretProfileId`);

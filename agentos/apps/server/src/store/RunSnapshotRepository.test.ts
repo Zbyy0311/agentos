@@ -363,6 +363,9 @@ describe('RunSnapshotRepository', () => {
         (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).providerType = 'unknown';
       },
       (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).promptDelivery = 'socket';
+      },
+      (payload) => {
         (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).argsTemplate = [null];
       },
       (payload) => {
@@ -516,7 +519,7 @@ describe('RunSnapshotRepository', () => {
     const db = migratedDb();
     try {
       const repository = new RunSnapshotRepository(db);
-      const payload = samplePayload();
+      const payload = samplePayloadWithStage();
       const snapshot = insertSnapshot(repository, payload);
       const row = db.prepare(
         'SELECT id, snapshot_json, content_hash, redaction_applied FROM run_snapshots WHERE run_id = ?',
@@ -530,6 +533,27 @@ describe('RunSnapshotRepository', () => {
       assert.equal(row.snapshot_json, canonicalizeJson(payload));
       assert.equal(row.content_hash, hashCanonicalJson(payload));
       assert.equal(row.redaction_applied, 0);
+      assert.equal(Object.hasOwn(payload.workflow.stages[0]!.provider!, 'promptDelivery'), false,
+        'historical snapshots keep the default argument mode absent');
+      assert.equal(row.snapshot_json.includes('promptDelivery'), false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('round-trips an explicit stdin prompt delivery without changing historical default snapshots', () => {
+    const db = migratedDb();
+    try {
+      const repository = new RunSnapshotRepository(db);
+      const payload = samplePayloadWithStage();
+      const provider = payload.workflow.stages[0]!.provider!;
+      provider.promptDelivery = 'stdin';
+      const snapshot = insertSnapshot(repository, payload);
+      assert.equal(snapshot.payload.schemaVersion, 1);
+      if (snapshot.payload.schemaVersion !== 1) throw new Error('expected a V1 snapshot');
+      assert.equal(snapshot.payload.workflow.stages[0]!.provider?.promptDelivery, 'stdin');
+      assert.equal(snapshot.contentHash, hashCanonicalJson(payload));
+      assert.equal(repository.findByRunId('ws_snapshot', 'run_snapshot')?.payload.workflow.stages[0]!.provider?.promptDelivery, 'stdin');
     } finally {
       db.close();
     }

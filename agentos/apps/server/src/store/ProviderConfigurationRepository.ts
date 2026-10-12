@@ -64,6 +64,7 @@ export type RuntimeMode = 'cli' | 'api' | 'ssh' | 'container';
 export type WorkingDirectoryMode = 'workspace' | 'worktree' | 'custom';
 export type ApprovalMode = 'agentos' | 'native' | 'hybrid' | 'disabled';
 export type OutputMode = 'structured' | 'parsed-text' | 'raw-stream';
+export type PromptDelivery = 'argument' | 'stdin' | 'file';
 
 export interface ProviderConfiguration {
   id: string;
@@ -74,6 +75,7 @@ export interface ProviderConfiguration {
   runtimeMode: RuntimeMode;
   executable?: string;
   argsTemplate?: string[];
+  promptDelivery?: PromptDelivery;
   model?: string;
   environmentProfileId?: string;
   secretProfileId?: string;
@@ -99,6 +101,7 @@ interface ProviderConfigurationRow {
   runtime_mode: RuntimeMode;
   executable: string | null;
   args_template_json: string;
+  prompt_delivery: PromptDelivery | null;
   model: string | null;
   environment_profile_id: string | null;
   secret_profile_id: string | null;
@@ -152,15 +155,16 @@ export class ProviderConfigurationRepository {
     this.db.prepare(`
       INSERT INTO provider_configurations (
         id, workspace_id, name, provider_type, adapter_id, runtime_mode,
-        executable, args_template_json, model, environment_profile_id, secret_profile_id,
+        executable, args_template_json, prompt_delivery, model, environment_profile_id, secret_profile_id,
         working_directory_mode, custom_working_directory, capabilities_json,
         timeout_policy_json, approval_mode, output_mode, enabled, version,
         created_at, updated_at, archived_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       config.id, config.workspaceId ?? null, config.name, config.providerType,
       config.adapterId, config.runtimeMode,
       config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
+      config.promptDelivery ?? null,
       config.model ?? null, config.environmentProfileId ?? null,
       config.secretProfileId ?? null,
       config.workingDirectoryMode, config.customWorkingDirectory ?? null,
@@ -181,7 +185,7 @@ export class ProviderConfigurationRepository {
       const result = this.db.prepare(`
         UPDATE provider_configurations SET
           name = ?, provider_type = ?, adapter_id = ?, runtime_mode = ?,
-          executable = ?, args_template_json = ?, model = ?, environment_profile_id = ?,
+          executable = ?, args_template_json = ?, prompt_delivery = ?, model = ?, environment_profile_id = ?,
           secret_profile_id = ?, working_directory_mode = ?, custom_working_directory = ?,
           capabilities_json = ?, timeout_policy_json = ?, approval_mode = ?, output_mode = ?,
           enabled = ?, updated_at = ?, archived_at = ?, version = version + 1
@@ -189,6 +193,7 @@ export class ProviderConfigurationRepository {
       `).run(
         config.name, config.providerType, config.adapterId, config.runtimeMode,
         config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
+        config.promptDelivery ?? null,
         config.model ?? null, config.environmentProfileId ?? null,
         config.secretProfileId ?? null, config.workingDirectoryMode,
         config.customWorkingDirectory ?? null,
@@ -228,6 +233,7 @@ export class ProviderConfigurationRepository {
       ...(row.args_template_json && row.args_template_json !== '[]'
         ? { argsTemplate: JSON.parse(row.args_template_json) as string[] }
         : {}),
+      ...(row.prompt_delivery === null ? {} : { promptDelivery: row.prompt_delivery }),
       ...(row.model ? { model: row.model } : {}),
       ...(row.environment_profile_id ? { environmentProfileId: row.environment_profile_id } : {}),
       ...(row.secret_profile_id ? { secretProfileId: row.secret_profile_id } : {}),

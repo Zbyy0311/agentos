@@ -131,6 +131,7 @@ test('provider POST validates enums, duplicate names, and forbidden secret field
       { name: 'Bad Workdir', workingDirectoryMode: 'anywhere' },
       { name: 'Bad Approval', approvalMode: 'yolo' },
       { name: 'Bad Output', outputMode: 'telepathy' },
+      { name: 'Bad Prompt Delivery', promptDelivery: 'magic' },
     ];
     for (const body of invalidEnumCases) {
       const response = await post(baseA, body);
@@ -169,8 +170,11 @@ test('provider POST validates enums, duplicate names, and forbidden secret field
     }
 
     // secretProfileId (a reference, not a raw value) remains allowed
-    const withProfileRef = await post(baseA, { name: 'With Secret Profile', secretProfileId: 'secret-profile-1' });
+    const withProfileRef = await post(baseA, {
+      name: 'With Secret Profile', secretProfileId: 'secret-profile-1', promptDelivery: 'stdin',
+    });
     assert.equal(withProfileRef.status, 201);
+    assert.equal((await withProfileRef.json() as { providerConfig: { promptDelivery?: string } }).providerConfig.promptDelivery, 'stdin');
   } finally {
     server?.close();
     store?.close();
@@ -216,6 +220,7 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
       { workingDirectoryMode: 'anywhere' },
       { approvalMode: 'yolo' },
       { outputMode: 'telepathy' },
+      { promptDelivery: 'magic' },
     ];
     for (const patch of invalidEnumCases) {
       const response = await put(baseA, first.id, { ...patch, expectedVersion: first.version });
@@ -236,6 +241,10 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
     const selfRename = await put(baseA, first.id, { name: 'First Config', expectedVersion: first.version });
     assert.equal(selfRename.status, 200);
     const afterSelfRename = (await selfRename.json() as { providerConfig: { version: number } }).providerConfig;
+
+    const stdinMode = await put(baseA, first.id, { promptDelivery: 'stdin', expectedVersion: afterSelfRename.version });
+    assert.equal(stdinMode.status, 200);
+    assert.equal((await stdinMode.json() as { providerConfig: { promptDelivery?: string } }).providerConfig.promptDelivery, 'stdin');
 
     // 7. Forbidden secret value field -> 400 SECRET_VALUE_NOT_ALLOWED
     const secretResponse = await put(baseA, first.id, { credentialValue: 'nope', expectedVersion: afterSelfRename.version });
