@@ -100,6 +100,8 @@ export interface ListPolicyDecisionsQuery {
   readonly runId?: string;
   readonly limit?: number;
   readonly offset?: number;
+  /** evaluated_at ordering; newest-first read APIs pass 'desc'. Default 'asc'. */
+  readonly order?: 'asc' | 'desc';
 }
 
 const ACTIONS = new Set<string>(['provider.launch']);
@@ -364,7 +366,7 @@ export class PolicyRepository {
         clauses.push('run_id = ?');
         params.push(query.runId);
       }
-      let sql = `SELECT * FROM policy_decisions WHERE ${clauses.join(' AND ')} ORDER BY evaluated_at ASC, id ASC`;
+      let sql = `SELECT * FROM policy_decisions WHERE ${clauses.join(' AND ')} ORDER BY evaluated_at ${query.order === 'desc' ? 'DESC' : 'ASC'}, id ${query.order === 'desc' ? 'DESC' : 'ASC'}`;
       if (query.limit !== undefined) {
         if (!Number.isSafeInteger(query.limit) || query.limit < 1) {
           throw new PolicyRepositoryError('INPUT_INVALID', 'limit must be an integer >= 1');

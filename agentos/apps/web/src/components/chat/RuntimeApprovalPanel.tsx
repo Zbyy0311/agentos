@@ -7,6 +7,7 @@ import {
   type RuntimeApprovalDecision,
   type RuntimeApprovalRequest,
 } from '@/lib/runtimeApprovals';
+import { listPolicyDecisions, type PolicyDecision } from '@/lib/policyDecisions';
 
 interface RuntimeApprovalPanelProps {
   readonly apiBase: string;
@@ -18,6 +19,7 @@ interface RuntimeApprovalPanelProps {
 interface RuntimeApprovalCardProps {
   readonly request: RuntimeApprovalRequest;
   readonly busy: boolean;
+  readonly policyDecision?: PolicyDecision;
   readonly onDecision: (decision: RuntimeApprovalDecision) => void;
 }
 
@@ -26,6 +28,7 @@ const UI_ACTOR = 'workspace-ui';
 
 export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
   const [requests, setRequests] = useState<RuntimeApprovalRequest[]>([]);
+  const [policyDecision, setPolicyDecision] = useState<PolicyDecision>();
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string>();
   const [error, setError] = useState<string>();
@@ -41,6 +44,16 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
       if (!disposed()) setLoading(false);
+    }
+    // Decision provenance is a read-only best-effort decoration: any failure
+    // (missing endpoint, no decisions yet, network error) silently degrades
+    // to hiding the row rather than disturbing the approval flow.
+    try {
+      const page = await listPolicyDecisions(props.apiBase, props.workspaceId, { runId: props.runId, limit: 1 }, signal);
+      if (disposed()) return;
+      setPolicyDecision(page.decisions[0]);
+    } catch {
+      if (!disposed()) setPolicyDecision(undefined);
     }
   }, [props.apiBase, props.runId, props.workspaceId]);
 
@@ -90,6 +103,7 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
           key={request.id}
           request={request}
           busy={busyId === request.id}
+          policyDecision={policyDecision}
           onDecision={decision => { void decide(request, decision); }}
         />
       ))}
@@ -97,7 +111,7 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
   );
 }
 
-export function RuntimeApprovalCard({ request, busy, onDecision }: RuntimeApprovalCardProps) {
+export function RuntimeApprovalCard({ request, busy, policyDecision, onDecision }: RuntimeApprovalCardProps) {
   return (
     <article className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-surface-raised)] p-3">
       <div className="text-xs font-semibold ui-text">{request.title}</div>
@@ -105,6 +119,15 @@ export function RuntimeApprovalCard({ request, busy, onDecision }: RuntimeApprov
       <dl className="mt-3 space-y-1 text-[10px] ui-dim">
         <div><dt className="inline">动作指纹：</dt><dd className="inline break-all font-mono">{request.actionFingerprint}</dd></div>
         <div><dt className="inline">策略：</dt><dd className="inline">{request.policyVersion} · 截止 {formatExpiry(request.expiresAt)}</dd></div>
+        {policyDecision ? (
+          <div data-agentos="policy-decision-source">
+            <dt className="inline">决策来源：</dt>
+            <dd className="inline">
+              {policyDecision.decision} · 命中 {policyDecision.matchedRuleIds.length} 条规则
+              {policyDecision.profileId ? <> · profile {shortId(policyDecision.profileId)}</> : null}
+            </dd>
+          </div>
+        ) : null}
       </dl>
       <div className="mt-3 flex justify-end gap-2">
         <button type="button" disabled={busy} onClick={() => onDecision('reject')} className="ui-button-ghost rounded-lg px-3 py-2 text-xs disabled:opacity-50">拒绝执行</button>
@@ -112,6 +135,10 @@ export function RuntimeApprovalCard({ request, busy, onDecision }: RuntimeApprov
       </div>
     </article>
   );
+}
+
+function shortId(id: string): string {
+  return id.length <= 12 ? id : id.slice(0, 12);
 }
 
 function formatExpiry(value: string): string {

@@ -4,6 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { RuntimeApprovalCard } from './RuntimeApprovalPanel.js';
+import type { PolicyDecision } from '@/lib/policyDecisions.js';
 
 const REQUEST = {
   id: 'approval-1',
@@ -37,4 +38,41 @@ test('S3 approval card disables both decisions while a persisted decision is in 
   const markup = renderToStaticMarkup(<RuntimeApprovalCard request={REQUEST} busy onDecision={() => {}} />);
 
   assert.equal((markup.match(/disabled=""/g) ?? []).length, 2);
+});
+
+const POLICY_DECISION: PolicyDecision = {
+  id: 'decision-1',
+  workspaceId: 'workspace-1',
+  runId: 'run-1',
+  stageId: null,
+  action: 'provider.launch',
+  fingerprint: null,
+  decision: 'require_approval',
+  matchedRuleIds: ['policyRule-aaa', 'policyRule-bbb'],
+  profileId: 'policyProfile-1234567890',
+  evaluatedAt: '2026-09-12T10:30:00.000Z',
+};
+
+test('S3 approval card renders the read-only policy decision provenance row', () => {
+  const markup = renderToStaticMarkup(
+    <RuntimeApprovalCard request={REQUEST} busy={false} policyDecision={POLICY_DECISION} onDecision={() => {}} />,
+  );
+
+  assert.ok(markup.includes('决策来源'));
+  assert.ok(markup.includes('require_approval'));
+  assert.ok(markup.includes('命中'));
+  assert.ok(markup.includes('条规则'));
+  assert.ok(markup.includes('profile '));
+  assert.ok(markup.includes('policyProfil'));
+  assert.ok(markup.includes('policy-decision-source'));
+});
+
+test('S3 approval card silently degrades when no policy decision is available', () => {
+  const markup = renderToStaticMarkup(
+    <RuntimeApprovalCard request={REQUEST} busy={false} onDecision={() => {}} />,
+  );
+
+  assert.ok(!markup.includes('决策来源'));
+  assert.ok(!markup.includes('policy-decision-source'));
+  assert.ok(markup.includes('批准本次执行'), 'approval flow itself is untouched');
 });

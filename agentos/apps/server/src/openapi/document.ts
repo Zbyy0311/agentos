@@ -357,6 +357,30 @@ export const OPENAPI_DOCUMENT = {
         },
       }),
     },
+    '/api/workspaces/{workspaceId}/policy/profile': {
+      get: v2Operation('Get default policy profile', 'Policy Runtime read-only surface: the workspace default policy profile with its enabled rules (selector, decision, priority, specificity). Never seeds the default profile; returns 404 when none exists.', {
+        parameters: [WORKSPACE_ID_PARAMETER],
+        responses: {
+          '200': jsonResponse(200, 'Default policy profile with enabled rules', { type: 'object' }),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or POLICY_PROFILE_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/policy-decisions': {
+      get: v2Operation('List policy decisions', 'Policy Runtime read-only surface: immutable policy decision audit trail, newest first, paginated (default limit 50, capped at 200) with optional runId filter.', {
+        parameters: [
+          WORKSPACE_ID_PARAMETER,
+          { name: 'runId', in: 'query', required: false, schema: { type: 'string' }, description: 'Filter by the run that triggered the evaluation.' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 200 }, description: 'Page size; values above 200 are truncated to 200.' },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Page offset.' },
+        ],
+        responses: {
+          '200': jsonResponse(200, 'Policy decision page', { type: 'object' }),
+          '400': problemResponse(400, 'POLICY_QUERY_INVALID'),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND'),
+        },
+      }),
+    },
     '/api/tasks/{taskId}/runs': {
       post: canonicalOperation('Create run', 'Canonical run creation (M3 P4B). Delegates to the same TaskRunService application behavior and durable idempotency chain as the current-v2 route; the owning workspace is resolved from the opaque taskId. Returns the created queued run (201).', {
         parameters: [TASK_ID_PARAMETER, IDEMPOTENCY_KEY_PARAMETER],
