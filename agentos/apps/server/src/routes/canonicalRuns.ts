@@ -20,6 +20,8 @@ import {
  *   POST /api/tasks/:taskId/runs   (Create Run)
  *   GET  /api/runs/:runId          (Get Run, emits the P4A version ETag)
  *   POST /api/runs/:runId/cancel   (Cancel Run)
+ *   POST /api/runs/:runId/pause    (Pause Run, logical marker)
+ *   POST /api/runs/:runId/resume   (Resume Run, logical marker)
  *
  * These routes are pure delegating compatibility surfaces: every command
  * reuses the existing TaskRunService application behavior (including the
@@ -44,6 +46,29 @@ const CANONICAL_RUN_REASONS: readonly V2RunReason[] = [
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+const PAUSE_REASONS = ['user', 'policy', 'approval', 'scheduler', 'maintenance'] as const;
+const RESUME_MODES = ['native-session', 'process-restart', 'scheduler'] as const;
+
+function parsePauseReason(value: unknown): 'user' | 'policy' | 'approval' | 'scheduler' | 'maintenance' | undefined {
+  if (value === undefined) return undefined;
+  if ((PAUSE_REASONS as readonly unknown[]).includes(value)) return value as 'user' | 'policy' | 'approval' | 'scheduler' | 'maintenance';
+  throw new V2ValidationError(`invalid reason: ${String(value)}`);
+}
+
+function parseResumeMode(value: unknown): 'native-session' | 'process-restart' | 'scheduler' | undefined {
+  if (value === undefined) return undefined;
+  if ((RESUME_MODES as readonly unknown[]).includes(value)) return value as 'native-session' | 'process-restart' | 'scheduler';
+  throw new V2ValidationError(`invalid resumeMode: ${String(value)}`);
+}
+
+function parseOptionalRequestedBy(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new V2ValidationError('requestedBy must be a non-empty string');
+  }
+  return value;
 }
 
 export function createCanonicalRunRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
@@ -123,6 +148,67 @@ export function createCanonicalRunRoutes(store: TaskRunServiceDeps, workspaceMan
     const normalizedKey = parseIdempotencyKey(req);
     try {
       const result = service.cancelQueuedRunForV2(workspaceId, runId, normalizedKey, precondition.expectedVersion);
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      return { status: result.httpStatus, body: result.body };
+    } catch (error) {
+      if (precondition.fromHeader && isVersionConflictError(error)) {
+        throw new StorageVersionConflictError('The run was changed by another request');
+      }
+      throw error;
+    }
+  }));
+
+  /**
+   * P4 Run-level Pause/Resume (canonical, no /v2 prefix). Mirrors the Cancel
+   * shape exactly: opaque runId locator, If-Match/body version precondition,
+   * durable idempotency, replay header, and 412-on-header-conflict mapping.
+   * Pause only succeeds from running (already-paused is an idempotent 200);
+   * resume only from paused (already-running is an idempotent 200); every
+   * other state fails with 409. Both are record-level logical markers: no
+   * provider process is suspended or restarted in this slice.
+   */
+  router.post('/runs/:runId/pause', (req: Request, res: Response) => respondV2(req, res, () => {
+    const { runId } = req.params as { runId: string };
+    const workspaceId = resolveRunWorkspace(runId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const precondition = resolveVersionPrecondition(req, parseOptionalExpectedVersion(body.expectedVersion));
+    const normalizedKey = parseIdempotencyKey(req);
+    const reason = parsePauseReason(body.reason);
+    const requestedBy = parseOptionalRequestedBy(body.requestedBy);
+    try {
+      const result = service.pauseRunForV2(
+        workspaceId,
+        runId,
+        normalizedKey,
+        precondition.expectedVersion,
+        { ...(reason === undefined ? {} : { reason }), ...(requestedBy === undefined ? {} : { requestedBy }) },
+      );
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      return { status: result.httpStatus, body: result.body };
+    } catch (error) {
+      if (precondition.fromHeader && isVersionConflictError(error)) {
+        throw new StorageVersionConflictError('The run was changed by another request');
+      }
+      throw error;
+    }
+  }));
+
+  router.post('/runs/:runId/resume', (req: Request, res: Response) => respondV2(req, res, () => {
+    const { runId } = req.params as { runId: string };
+    const workspaceId = resolveRunWorkspace(runId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const precondition = resolveVersionPrecondition(req, parseOptionalExpectedVersion(body.expectedVersion));
+    const normalizedKey = parseIdempotencyKey(req);
+    const resumeMode = parseResumeMode(body.resumeMode);
+    const requestedBy = parseOptionalRequestedBy(body.requestedBy);
+    try {
+      const result = service.resumeRunForV2(
+        workspaceId,
+        runId,
+        normalizedKey,
+        precondition.expectedVersion,
+        { ...(resumeMode === undefined ? {} : { resumeMode }), ...(requestedBy === undefined ? {} : { requestedBy }) },
+      );
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
       return { status: result.httpStatus, body: result.body };
     } catch (error) {

@@ -54,6 +54,7 @@ import { migration053 } from './migrations/053-collaboration-candidate-content-h
 import { migration054 } from './migrations/054-p2-recovery.js';
 import { migration055 } from './migrations/055-policy-core.js';
 import { migration056 } from './migrations/056-worktree-store.js';
+import { migration057 } from './migrations/057-run-pause-resume.js';
 import type { Migration } from './types.js';
 
 /**
@@ -104,6 +105,7 @@ import type { Migration } from './types.js';
  * 054: P2 interrupted/failure recovery ledgers
  * 055: Policy Runtime core (policy_profiles / policy_rules / policy_decisions)
  * 056: Worktree Runtime lease persistence (worktrees)
+ * 057: Run-level Pause/Resume idempotent mutations (widened idempotency_records operation CHECK)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -162,4 +164,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration054,
   migration055,
   migration056,
+  migration057,
 ];

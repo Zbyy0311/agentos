@@ -32,6 +32,8 @@ const V2_ERROR_STATUS: Record<string, number> = {
   TASK_BLOCKED: 409,
   TASK_DONE: 409,
   RUN_NOT_CANCELLABLE: 409,
+  RUN_NOT_PAUSABLE: 409,
+  RUN_NOT_RESUMABLE: 409,
   INVALID_TASK_TRANSITION: 409,
   INVALID_RUN_TRANSITION: 409,
   VERSION_CONFLICT: 409,
@@ -45,6 +47,8 @@ const V2_ERROR_STATUS: Record<string, number> = {
 };
 
 const V2_SAFE_ERROR_MESSAGE: Record<string, string> = {
+  RUN_NOT_PAUSABLE: 'Run is not in a pausable state',
+  RUN_NOT_RESUMABLE: 'Run is not in a resumable state',
   AGENT_NOT_AVAILABLE: 'Agent is not available',
   PROVIDER_CONFIG_NOT_AVAILABLE: 'Provider configuration is not available',
   WORKFLOW_NOT_AVAILABLE: 'Workflow is not available',
