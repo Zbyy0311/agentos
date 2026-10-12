@@ -668,8 +668,36 @@ export class WorktreeManager {
     // Make the destructive operation recoverable before Git removes either
     // the checkout directory or its registration. If the later event/outbox
     // transaction fails, the durable lease remains cleanup_pending.
+    const previousStatus = record.status;
     this.markCleanupPending(id);
-    await git(workspace, ['worktree', 'remove', '--force', checkout], true);
+    try {
+      await git(workspace, ['worktree', 'remove', '--force', checkout], true);
+    } catch (error) {
+      // A failed Git process does not prove that removal had no side effects.
+      // Restore the prior terminal status only when the checkout is still a
+      // real directory and Git still registers that path on the recorded
+      // branch. Otherwise leave cleanup_pending for startup reconciliation.
+      let checkoutStillPresentAndRegistered = false;
+      try {
+        const checkoutStat = await lstat(checkout);
+        if (checkoutStat.isDirectory() && !checkoutStat.isSymbolicLink()) {
+          const remainingWorktrees = parseGitWorktreeListPorcelain(
+            await git(workspace, ['worktree', 'list', '--porcelain']),
+          );
+          checkoutStillPresentAndRegistered = remainingWorktrees.some(entry => samePath(entry.path, checkout)
+            && entry.branch === record.branchName);
+        }
+      } catch {
+        // Missing checkout or unavailable Git evidence is ambiguous; retain
+        // cleanup_pending so recovery can reconcile it conservatively.
+      }
+      if (checkoutStillPresentAndRegistered && record.status === 'cleanup_pending') {
+        record.status = previousStatus;
+        record.updatedAt = new Date().toISOString();
+        this.persistRecord(record);
+      }
+      throw error;
+    }
     record.status = 'cleaned';
     record.updatedAt = new Date().toISOString();
     this.persistRecordWithEvent(record, 'worktree.deleted');

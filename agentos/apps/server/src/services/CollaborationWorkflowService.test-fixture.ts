@@ -21,6 +21,7 @@ import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
 import { recoverInterruptedRuns } from '../runRecovery.js';
 import { RunEngine } from './run-engine/RunEngine.js';
 import { StageExecutor } from './run-engine/StageExecutor.js';
+import { ResumeFallbackQueueRecovery } from './run-engine/ResumeFallbackQueueRecovery.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorkspaceGitRootRegistry } from './WorkspaceGitRootRegistry.js';
 
@@ -276,6 +277,9 @@ export function productionServiceFor(
 ) {
   const slices = productionCollaborationSlices();
   const authority = new WorkspaceAdmissionAuthority({ store: fx.store });
+  const fallbackRecovery = new ResumeFallbackQueueRecovery(fx.store,
+    input => authority.requestCanonicalRun(input), dispatchRun,
+    input => authority.releaseCanonicalRun(input));
   let approvalResumes = 0;
   const chain = {
     admissionAuthority: {
@@ -288,6 +292,7 @@ export function productionServiceFor(
       },
     },
     dispatcher: { driveSafely: dispatchRun, cancelRun: async () => { assert.fail('no native cancellation is allowed in the startup fixture'); } },
+    resumeGrantedResumeFallbackChildren: (workspaceId?: string) => fallbackRecovery.resumeGrantedChildren(workspaceId),
     approvalGate: { resumeApprovedUnconsumed: async () => { approvalResumes++; } },
   };
   const environment = { env: { AGENTOS_RUNTIME_DISPATCH_ENABLED: runtimeValue } };
@@ -306,7 +311,12 @@ export function productionServiceFor(
       const observed = { resumeGrantedQueuedRuns: (...args: Parameters<CollaborationWorkflowService['resumeGrantedQueuedRuns']>) => {
         const result = service.resumeGrantedQueuedRuns(...args); pending.push(result); return result;
       } };
-      const withDispatchPermit = async (operation: () => Promise<void>) => { await operation(); return true; };
+      const withDispatchPermit = async (operation: () => Promise<void>) => {
+        const result = operation();
+        pending.push(result);
+        await result;
+        return true;
+      };
       const start = new Function('collaborationService', 'providerExecutionChain', 'process', 'diagLog', 'maintenanceBarrier', 'withDispatchPermit', compile(`${slices.flag}\n${slices.background}`));
       start(observed, chain, environment, () => undefined, { snapshot: { quiescing } }, withDispatchPermit);
       await Promise.all(pending);

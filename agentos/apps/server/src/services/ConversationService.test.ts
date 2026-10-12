@@ -9,6 +9,7 @@ import { EventBus } from '../events/EventBus.js';
 import { MemoryService } from './MemoryService.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { WorktreeManager } from './WorktreeManager.js';
+import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
 import { execFileSync } from 'node:child_process';
 import type { AgentEvent } from '@agentos/shared';
 
@@ -621,7 +622,8 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
       { conversationId: 'isolated-group', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-19T00:00:00.000Z' },
       { conversationId: 'isolated-group', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-19T00:00:00.000Z' },
     ]);
-    const manager = new WorktreeManager(worktreeRoot);
+    const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter());
+    const manager = new WorktreeManager(worktreeRoot, store.worktreeRepository(), worktreeEvents);
     const service = new ConversationService(store, undefined, new RuntimeArtifactService(store, root), undefined, manager);
     const result = await service.sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'isolated-group', content: '隔离执行测试' });
     const leases = manager.listLeases();

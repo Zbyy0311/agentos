@@ -31,6 +31,8 @@
   避免丢失旧恢复包创建后新增的文件。临时归档采用随机名称和独占创建。
   Git 删除前持久化 `cleanup_pending`，重启核对目录和 Git 注册均已消失后，
   才补齐 cleaned 状态与删除事件，避免把查询失败当作删除证明。
+  删除报错后，只有管理目录仍在且 Git 仍注册对应分支时才恢复原终态；
+  删除副作用不明确时保留 pending，由启动恢复继续核对。
 - 工作树证据支持已有 canonical Artifact 来源，不伪造旧版 Run/Execution。
   `/worktrees/:leaseId/events` 从持久化事件按 sequence 分页读取。
 

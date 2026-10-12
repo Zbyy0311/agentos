@@ -394,6 +394,9 @@ test('explicit Child survives restart, replays its request key, and is re-driven
     assert.ok(codexProvider);
     fx.store.providerConfigurationRepository().update({
       ...codexProvider,
+      // Discovery must reach the injected failing probe on a clean CI host,
+      // without relying on a separately installed Codex executable.
+      executable: process.execPath,
       outputMode: 'structured',
       updatedAt: NOW,
     }, codexProvider.version);

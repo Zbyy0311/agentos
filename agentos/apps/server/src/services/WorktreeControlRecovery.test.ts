@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import childProcess, { execFileSync } from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,20 @@ import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
   return execFileSync('git', args, { cwd, env, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+function replaceExecFile(replace: (original: typeof childProcess.execFile, args: unknown[]) => unknown): () => void {
+  const original = childProcess.execFile;
+  childProcess.execFile = ((...args: unknown[]) => replace(original, args)) as typeof childProcess.execFile;
+  syncBuiltinESMExports();
+  return () => {
+    childProcess.execFile = original;
+    syncBuiltinESMExports();
+  };
+}
+
+function isGitWorktreeRemoval(file: unknown, args: unknown): boolean {
+  return file === 'git' && Array.isArray(args) && args.includes('worktree') && args.includes('remove');
 }
 
 async function fixture() {
@@ -118,6 +133,83 @@ test('cleanup_pending survives Git removal and Outbox failure, then restart reco
     const outbox = fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?')
       .get(deleted[0]!.id) as { count: number };
     assert.equal(outbox.count, 1);
+  } finally { fx.close(); }
+});
+
+test('a Git removal failure restores the prior terminal status only when checkout and registration remain', async () => {
+  const fx = await fixture();
+  try {
+    const checkout = fx.manager.getRecord(fx.lease.id)!.absolutePath;
+    const userFile = join(checkout, 'user-owned.txt');
+    writeFileSync(userFile, 'preserve after a rejected Git removal\n');
+    fx.manager.markRecoveryBundleVerified(fx.lease.id, {
+      trackedPatchArtifactId: 'tracked',
+      untrackedArchiveArtifactId: 'archive',
+      manifestArtifactId: 'manifest',
+      entryCount: 0,
+    });
+    assert.equal(fx.manager.getLease(fx.lease.id)?.status, 'completed');
+
+    let removeCalls = 0;
+    const restoreExecFile = replaceExecFile((original, args) => {
+      if (!isGitWorktreeRemoval(args[0], args[1])) return Reflect.apply(original, childProcess, args);
+      removeCalls += 1;
+      const callback = args[3] as (error: Error, stdout: string, stderr: string) => void;
+      queueMicrotask(() => callback(Object.assign(new Error('injected explicit Git failure'), { code: 1 }), '', 'injected failure'));
+      return undefined;
+    });
+    try {
+      await assert.rejects(fx.manager.removeLease(fx.lease.id, true), /injected explicit Git failure/);
+    } finally { restoreExecFile(); }
+
+    assert.equal(removeCalls, 1);
+    assert.equal(existsSync(checkout), true);
+    assert.equal(readFileSync(userFile, 'utf8'), 'preserve after a rejected Git removal\n');
+    assert.ok(git(fx.workspace.rootPath, ['worktree', 'list', '--porcelain'])
+      .split(/\r?\n/).includes(`branch refs/heads/${fx.lease.branchName}`));
+    assert.equal(fx.manager.getLease(fx.lease.id)?.status, 'completed');
+    assert.equal(fx.store.worktreeRepository().getById(fx.lease.id)?.status, 'completed');
+    assert.equal(fx.events().filter(event => event.type === 'worktree.deleted').length, 0);
+  } finally { fx.close(); }
+});
+
+test('a Git removal error after the checkout disappears keeps cleanup_pending for reconciliation', async () => {
+  const fx = await fixture();
+  try {
+    const checkout = fx.manager.getRecord(fx.lease.id)!.absolutePath;
+    fx.manager.markRecoveryBundleVerified(fx.lease.id, {
+      trackedPatchArtifactId: 'tracked',
+      untrackedArchiveArtifactId: 'archive',
+      manifestArtifactId: 'manifest',
+      entryCount: 0,
+    });
+
+    const restoreExecFile = replaceExecFile((original, args) => {
+      if (!isGitWorktreeRemoval(args[0], args[1])) return Reflect.apply(original, childProcess, args);
+      const callback = args[3] as (error: Error | null, stdout: string, stderr: string) => void;
+      const wrappedArgs = [...args];
+      wrappedArgs[3] = (error: Error | null, stdout: string, stderr: string): void => {
+        if (error) {
+          callback(error, stdout, stderr);
+          return;
+        }
+        callback(Object.assign(new Error('injected post-removal Git failure'), { code: 1 }), stdout, 'reported after removal');
+      };
+      return Reflect.apply(original, childProcess, wrappedArgs);
+    });
+    try {
+      await assert.rejects(fx.manager.removeLease(fx.lease.id, true), /injected post-removal Git failure/);
+    } finally { restoreExecFile(); }
+
+    assert.equal(existsSync(checkout), false, 'the real Git side effect completed before the injected process error');
+    assert.equal(git(fx.workspace.rootPath, ['worktree', 'list', '--porcelain']).includes(checkout), false);
+    assert.equal(fx.manager.getLease(fx.lease.id)?.status, 'cleanup_pending');
+    assert.equal(fx.store.worktreeRepository().getById(fx.lease.id)?.status, 'cleanup_pending');
+
+    await fx.manager.reconcile([fx.workspace.rootPath]);
+    assert.equal(fx.manager.getLease(fx.lease.id)?.status, 'cleaned');
+    assert.equal(fx.store.worktreeRepository().getById(fx.lease.id)?.status, 'cleaned');
+    assert.equal(fx.events().filter(event => event.type === 'worktree.deleted').length, 1);
   } finally { fx.close(); }
 });
 
