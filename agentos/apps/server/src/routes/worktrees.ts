@@ -160,9 +160,26 @@ export function createWorktreeRoutes(
       return;
     }
     try {
-      return res.json({ lease: await manager.removeLease(lease.id, req.body?.confirmRecoveryBundle === true) });
+      if (req.body?.confirmRecoveryBundle !== true) {
+        throw new WorktreeControlError('WORKTREE_RECOVERY_BUNDLE_CONFIRMATION_REQUIRED', 409, 'Cleanup requires confirmRecoveryBundle: true');
+      }
+      if (!manager.getRecord(lease.id)?.recoveryBundle) {
+        throw new WorktreeControlError('WORKTREE_RECOVERY_BUNDLE_REQUIRED', 409, 'A verified recovery bundle is required');
+      }
+      if (lease.status === 'cleaned') return res.json({ lease });
+      const head = req.body?.expectedHeadCommit ?? (await manager.gitStatusSnapshot(lease.id)).head;
+      // Rebuild and verify the bundle while holding the same branch lock as
+      // other controls. A historical bundle cannot authorize deleting new WIP.
+      const result = await controlService.cleanup(workspace.id, lease.id, {
+        expectedHeadCommit: head, confirmRecoveryBundle: true,
+      });
+      return res.json({ lease: result.lease });
     } catch (error) {
-      sendProblem(req, res, { status: 409, code: 'WORKTREE_LEASE_REMOVE_FAILED', detail: error instanceof Error ? error.message : String(error) });
+      const status = error instanceof WorktreeControlError ? error.status : 500;
+      sendProblem(req, res, { status,
+        code: error instanceof WorktreeControlError ? error.code : 'WORKTREE_LEASE_REMOVE_FAILED',
+        detail: status >= 500 ? 'Worktree cleanup failed' : (error as Error).message,
+      });
     }
   }));
   router.post('/worktrees/adopt', asyncHandler(async (req: Request, res: Response) => {

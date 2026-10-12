@@ -13,6 +13,7 @@ import { WorktreeMergeService } from './WorktreeMergeService.js';
 import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
 import { WorktreeControlService } from './WorktreeControlService.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import { WorktreeArtifactService } from './WorktreeArtifactService.js';
 import { createWorktreeRoutes } from '../routes/worktrees.js';
 
 function git(root: string, args: string[]): string {
@@ -177,6 +178,49 @@ test('canonical worktree controls commit, review, merge and clean up with durabl
       assert.equal(row.count, 1);
     }
   } finally { fx.close(); }
+});
+
+test('legacy DELETE rebuilds recovery evidence for work written after its earlier bundle', async () => {
+  const fx = await fixture();
+  let server: ReturnType<ReturnType<typeof express>['listen']> | undefined;
+  try {
+    const lease = await fx.createLease();
+    fx.store.runRepository().transitionStatus(fx.workspace.id, fx.run.id, fx.run.version, 'cancelled');
+    const artifacts = new RuntimeArtifactService(fx.store, fx.directory);
+    const bundleService = new WorktreeArtifactService(artifacts, fx.manager);
+    const prior = await bundleService.createBundle(lease.id, {
+      workspaceId: fx.workspace.id, runId: fx.run.id, executionId: lease.executionId, agentId: lease.agentId,
+    });
+    assert.equal(prior.entryCount, 0);
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const receipt = Buffer.from([0, 255, 22, 10]);
+    writeFileSync(join(checkout, 'late-receipt.bin'), receipt);
+    const app = express(); app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(fx.workspaces, fx.manager, artifacts, {
+      getRun: (workspaceId, runId) => fx.store.runRepository().findById(workspaceId, runId),
+    }, undefined, undefined, fx.store.runtimeEventRepository()));
+    server = app.listen(0);
+    await new Promise<void>(resolveListen => server!.once('listening', resolveListen));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test server did not bind');
+    const url = `http://127.0.0.1:${address.port}/api/workspaces/${fx.workspace.id}/worktrees/${lease.id}`;
+    const request = (body: unknown) => fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await request({ confirmRecoveryBundle: true, expectedHeadCommit: '0'.repeat(40) })).status, 409);
+    assert.ok(existsSync(checkout));
+    assert.equal((await request({ confirmRecoveryBundle: true })).status, 200);
+    assert.equal(existsSync(checkout), false);
+    const current = fx.manager.getRecord(lease.id)!.recoveryBundle!;
+    assert.notEqual(current.manifestArtifactId, prior.manifestArtifactId);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, current.manifestArtifactId)).toString('utf8'));
+    assert.equal(manifest[0].path, 'late-receipt.bin');
+    assert.equal(manifest[0].sizeBytes, receipt.byteLength);
+    await bundleService.verifyRecoveryBundle(current, fx.workspace.id);
+    assert.equal((await request({ confirmRecoveryBundle: true })).status, 200);
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.deleted').length, 1);
+  } finally {
+    if (server) await new Promise<void>(resolveClose => server!.close(() => resolveClose()));
+    fx.close();
+  }
 });
 
 test('startup preserves a partial creating checkout without activating it', async () => {
