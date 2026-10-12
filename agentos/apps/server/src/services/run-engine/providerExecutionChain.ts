@@ -28,6 +28,7 @@ import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
 import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
+import { ResumeFallbackQueueRecovery } from './ResumeFallbackQueueRecovery.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
@@ -63,6 +64,8 @@ export interface ProviderExecutionChain {
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
+  /** Replays only granted, durable resume-fallback Child Starts. */
+  readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
   readonly memoryContextResolver: MemoryContextResolver;
   readonly approvalGate: RuntimeApprovalGate;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
@@ -97,6 +100,21 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     new CustomCliAdapter({ probe }),
   ]);
   let dispatcher!: RunEngineProviderDispatcher;
+  const resumeFallbackQueue = new ResumeFallbackQueueRecovery(
+    store,
+    input => admissionAuthority.requestCanonicalRun(input),
+    async (workspaceId, runId) => {
+      const drive = () => dispatcher.driveSafely(workspaceId, runId);
+      if (options.withDispatchPermit) {
+        await options.withDispatchPermit(drive);
+      } else {
+        await drive();
+      }
+    },
+    input => admissionAuthority.releaseCanonicalRun(input),
+  );
+  const resumeGrantedResumeFallbackChildren = (workspaceId?: string): Promise<void> =>
+    resumeFallbackQueue.resumeGrantedChildren(workspaceId);
   const approvalGate = new RuntimeApprovalGate(store, {
     continueRun: async (workspaceId, runId) => {
       if (await options.continueOwnedRun?.(workspaceId, runId)) return;
@@ -230,9 +248,14 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
     collaborationStageHooks: options.collaborationStageHooks,
+    onRunTerminal: async ({ workspaceId, runId }) => {
+      await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
+      await resumeGrantedResumeFallbackChildren(workspaceId);
+    },
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
+    resumeGrantedResumeFallbackChildren,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
   };
 }

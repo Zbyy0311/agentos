@@ -743,6 +743,16 @@ export class SqliteStore implements Store {
     return this.workspaceAdmissionRepo;
   }
 
+  /** True when a collaboration task owns this canonical Task or Run. */
+  isManagedCollaborationRun(workspaceId: string, runId: string, taskId: string): boolean {
+    const row = this.database.prepare(`
+      SELECT 1 FROM collaboration_tasks
+      WHERE workspace_id = ? AND (canonical_run_id = ? OR canonical_task_id = ?)
+      LIMIT 1
+    `).get(workspaceId, runId, taskId);
+    return row !== undefined;
+  }
+
   /** PR-3A Worktree lease repository (shares this store's SQLite handle). */
   worktreeRepository(): WorktreeRepository {
     return this.worktreeRepo;

@@ -15,7 +15,7 @@ import type { InsertOperationInput } from '../store/OperationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import { hashIdempotencyRequest } from '../idempotency/fingerprint.js';
 import type { Run, Task, Workspace } from '@agentos/shared';
-import { RunSnapshotFailedError } from './SnapshotService.js';
+import { RunSnapshotFailedError, type SnapshotService } from './SnapshotService.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 
 interface Fixture {
@@ -2444,6 +2444,239 @@ test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities
     }
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(child.id) as { count: number }).count, events.length);
     assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE run_id = ? AND type = 'run.start'").get(parent.id) as { count: number }).count, 1);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P4 default logical resume preserves Run identity, Snapshot, and completed Stages', async () => {
+  const fx = await fixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'logical-resume-parent',
+      title: 'logical resume parent',
+      createdBy: 'legacy_pipeline',
+      objective: 'continue the paused workflow at its next incomplete stage',
+      workspace: fx.workspace,
+    });
+    const parent = fx.store.runRepository().findById(fx.workspace.id, created.run.id)!;
+    const stagesBefore = fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id);
+    assert.ok(stagesBefore.length > 0);
+    const completedStage = stagesBefore[0]!;
+    const timestamp = '2026-08-01T00:00:00.000Z';
+    fx.store.getDatabase().prepare(`
+      UPDATE runs SET status = 'running', started_at = ? WHERE workspace_id = ? AND id = ?
+    `).run(timestamp, fx.workspace.id, parent.id);
+    fx.store.getDatabase().prepare(`
+      UPDATE run_stages
+      SET status = 'completed', started_at = ?, completed_at = ?, updated_at = ?, version = version + 1
+      WHERE workspace_id = ? AND run_id = ? AND id = ?
+    `).run(timestamp, timestamp, timestamp, fx.workspace.id, parent.id, completedStage.id);
+    const frozenSnapshot = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id)!;
+
+    fx.service.pauseRunForV2(fx.workspace.id, parent.id);
+    const result = fx.service.resumeRunForV2(fx.workspace.id, parent.id);
+    const resumedParent = fx.store.runRepository().findById(fx.workspace.id, parent.id)!;
+    const stagesAfter = fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id);
+    const events = fx.store.runtimeEventRepository().listByRunAfterSequence(parent.id, 0)
+      .flatMap(record => record.kind === 'known' ? [record.event] : []);
+    const resumedEvents = events.filter(event => event.type === 'run.resumed');
+
+    assert.equal(result.body.run.id, parent.id);
+    assert.equal(resumedParent.status, 'running');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspace.id, parent.taskId).length, 1);
+    assert.deepEqual(fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id), frozenSnapshot);
+    assert.equal(stagesAfter.length, stagesBefore.length);
+    assert.equal(stagesAfter[0]?.id, completedStage.id);
+    assert.equal(stagesAfter[0]?.status, 'completed');
+    assert.equal(stagesAfter[0]?.completedAt, timestamp);
+    assert.equal(resumedEvents.length, 1);
+    assert.equal((resumedEvents[0] as { payload?: { resumeMode?: string } } | undefined)?.payload?.resumeMode, 'process-restart');
+    assert.equal(events.filter(event => event.type === 'run.failed').length, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P4 explicit child-run fallback atomically persists a fresh Child graph and keyed replay reuses it', async () => {
+  const fx = await fixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'resume-fallback-parent',
+      title: 'resume fallback parent',
+      createdBy: 'legacy_pipeline',
+      objective: 'continue the interrupted objective in a new run',
+      workspace: fx.workspace,
+    });
+    const parent = fx.store.runRepository().findById(fx.workspace.id, created.run.id)!;
+    fx.store.getDatabase().prepare(`
+      UPDATE runs SET status = 'paused', started_at = ? WHERE workspace_id = ? AND id = ?
+    `).run('2026-08-01T00:00:00.000Z', fx.workspace.id, parent.id);
+    const parentSnapshotBefore = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id)!;
+    const parentStagesBefore = fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id);
+    const service = new TaskRunService(fx.store, {
+      idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    });
+
+    const result = service.resumeRunForV2(
+      fx.workspace.id,
+      parent.id,
+      'resume-fallback-service-key',
+      parent.version,
+      { resumeMode: 'child-run' },
+    );
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.replayed, false);
+    const childId = result.body.run.id;
+    const persistedParent = fx.store.runRepository().findById(fx.workspace.id, parent.id)!;
+    const child = fx.store.runRepository().findById(fx.workspace.id, childId)!;
+    const childSnapshot = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, child.id)!;
+    const childStages = fx.store.runStageRepository().listByRun(fx.workspace.id, child.id);
+
+    assert.equal(persistedParent.status, 'failed');
+    assert.equal(persistedParent.failureCode, 'PROVIDER_SESSION_NOT_RESUMABLE');
+    assert.equal(child.id === parent.id, false);
+    assert.equal(child.workspaceId, parent.workspaceId);
+    assert.equal(child.taskId, parent.taskId);
+    assert.equal(child.parentRunId, parent.id);
+    assert.equal(child.rootRunId, parent.rootRunId);
+    assert.equal(child.reason, 'resume-fallback');
+    assert.equal(child.origin, 'v2_api');
+    assert.equal(child.status, 'queued');
+    assert.equal(result.body.run.version, 1);
+
+    assert.notEqual(childSnapshot.id, parentSnapshotBefore.id);
+    assert.equal(fx.store.runSnapshotRepository().verifyHash(childSnapshot), true);
+    assert.equal(childSnapshot.payload.run.parentRunId, parent.id);
+    assert.equal(childSnapshot.payload.run.rootRunId, parent.rootRunId);
+    assert.equal(childSnapshot.payload.run.reason, 'resume-fallback');
+    assert.deepEqual(childSnapshot.payload.workflow, parentSnapshotBefore.payload.workflow);
+    assert.deepEqual(
+      fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id),
+      parentSnapshotBefore,
+      'fallback must preserve the parent Snapshot byte-for-byte',
+    );
+    assert.equal(childStages.length, parentStagesBefore.length);
+    for (const [index, childStage] of childStages.entries()) {
+      const parentStage = parentStagesBefore[index]!;
+      assert.notEqual(childStage.id, parentStage.id);
+      assert.equal(childStage.runId, child.id);
+      assert.equal(childStage.runSnapshotId, childSnapshot.id);
+      assert.equal(childStage.workflowStageKey, parentStage.workflowStageKey);
+      assert.equal(childStage.sequence, parentStage.sequence);
+      assert.equal(childStage.status, 'pending');
+    }
+
+    const startOperations = fx.store.operationService().listByRun(fx.workspace.id, child.id)
+      .filter(operation => operation.type === 'run.start');
+    assert.equal(startOperations.length, 1);
+    assert.equal(startOperations[0]!.status, 'queued');
+    assert.equal(startOperations[0]!.aggregateId, child.id);
+
+    const eventCount = (fx.store.getDatabase().prepare(
+      'SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?',
+    ).get(parent.id) as { count: number }).count
+      + (fx.store.getDatabase().prepare(
+        'SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?',
+      ).get(child.id) as { count: number }).count;
+    const outboxCount = (fx.store.getDatabase().prepare(
+      'SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id IN (?, ?)',
+    ).get(parent.id, child.id) as { count: number }).count;
+    assert.equal(outboxCount, eventCount, 'parent failure and child graph Events each have a durable Outbox row');
+
+    const replay = service.resumeRunForV2(
+      fx.workspace.id,
+      parent.id,
+      'resume-fallback-service-key',
+      parent.version,
+      { resumeMode: 'child-run' },
+    );
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.body.run.id, child.id);
+    assert.equal(fx.store.runRepository().listByTask(fx.workspace.id, parent.taskId)
+      .filter(run => run.parentRunId === parent.id && run.reason === 'resume-fallback').length, 1);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P4 explicit child-run fallback fails closed while the paused parent has an active or uncertain process owner', async () => {
+  const fx = await fixture();
+  try {
+    const created = fx.service.createRun(fx.workspace.id, {
+      taskId: fx.service.createTask(fx.workspace.id, { title: 'active-process-resume', createdBy: 'test' }).id,
+      createdBy: 'test',
+    });
+    fx.store.getDatabase().prepare(`
+      UPDATE runs SET status = 'paused', started_at = ? WHERE workspace_id = ? AND id = ?
+    `).run('2026-08-01T00:00:00.000Z', fx.workspace.id, created.id);
+    const parent = fx.store.runRepository().findById(fx.workspace.id, created.id)!;
+    const deps = new Proxy(fx.store as unknown as TaskRunServiceDeps, {
+      get(target, property) {
+        if (property === 'processRepository') {
+          return () => ({ listByRun: () => [{ status: 'orphaned' }] });
+        }
+        const value = Reflect.get(target, property, target) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const service = new TaskRunService(deps, {
+      idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    });
+
+    assert.throws(
+      () => service.resumeRunForV2(fx.workspace.id, parent.id, 'resume-active-process-key', parent.version, { resumeMode: 'child-run' }),
+      (error: unknown) => (error as { code?: string }).code === 'RUN_RESUME_PROCESS_ACTIVE',
+    );
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, parent.id)?.status, 'paused');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspace.id, parent.taskId).length, 1);
+    assert.equal(basicTableRowCount(fx, 'idempotency_records'), 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P4 explicit Child fallback rejects required Worktree before mutating the paused parent', async () => {
+  const fx = await fixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'resume-required-worktree',
+      title: 'required worktree resume',
+      createdBy: 'legacy_pipeline',
+      objective: 'resume in a dedicated Child worktree',
+      workspace: fx.workspace,
+    });
+    const parent = fx.store.runRepository().findById(fx.workspace.id, created.run.id)!;
+    fx.store.getDatabase().prepare(`
+      UPDATE runs SET status = 'paused', started_at = ? WHERE workspace_id = ? AND id = ?
+    `).run('2026-08-01T00:00:00.000Z', fx.workspace.id, parent.id);
+    const source = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id)!;
+    const snapshotService = {
+      prepareRetryClone: () => ({
+        workflowDefinitionId: source.workflowDefinitionId,
+        payload: {
+          ...structuredClone(source.payload),
+          workflow: { ...structuredClone(source.payload.workflow), worktreeMode: 'required' },
+        },
+        stages: fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id).map(stage => ({
+          workflowStageKey: stage.workflowStageKey,
+          sequence: stage.sequence,
+        })),
+      }),
+      persistRetryClone: () => { throw new Error('must not persist a Child without its required isolated Worktree'); },
+    } as unknown as SnapshotService;
+    const service = new TaskRunService(fx.store, { snapshotService });
+
+    assert.throws(
+      () => service.resumeRunForV2(fx.workspace.id, parent.id, undefined, parent.version, { resumeMode: 'child-run' }),
+      (error: unknown) => (error as { code?: string }).code === 'RUN_RESUME_WORKTREE_UNAVAILABLE',
+    );
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, parent.id)?.status, 'paused');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspace.id, parent.taskId).length, 1);
+    assert.equal(basicTableRowCount(fx, 'idempotency_records'), 0);
   } finally {
     close(fx);
   }

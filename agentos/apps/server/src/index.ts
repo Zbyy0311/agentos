@@ -205,6 +205,8 @@ async function resumeProductionQueues(input: {
   await input.withDispatchPermit(async () => {
     await input.collaborationService.resumeGrantedQueuedRuns()
       .catch(error => input.diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    await input.providerExecutionChain.resumeGrantedResumeFallbackChildren()
+      .catch(error => input.diagLog(`RESUME_FALLBACK_QUEUE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     await input.providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
       .catch(error => input.diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
   });
@@ -328,9 +330,15 @@ async function bootstrap(): Promise<void> {
         await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },
       requestRunAdmission: input => providerExecutionChain.admissionAuthority.requestCanonicalRun(input),
-      releaseRunAdmission: input => providerExecutionChain.admissionAuthority.releaseCanonicalRun(input),
+      releaseRunAdmission: async input => {
+        await providerExecutionChain.admissionAuthority.releaseCanonicalRun(input);
+        if (runtimeDispatchEnabled) await providerExecutionChain.resumeGrantedResumeFallbackChildren(input.workspaceId);
+      },
       requestApplicationAdmission: async input => Boolean((await providerExecutionChain.admissionAuthority.requestCollaborationApplication(input)).grantedAdmission),
-      releaseApplicationAdmission: async input => { await providerExecutionChain.admissionAuthority.releaseCollaborationApplication(input); },
+      releaseApplicationAdmission: async input => {
+        await providerExecutionChain.admissionAuthority.releaseCollaborationApplication(input);
+        if (runtimeDispatchEnabled) await providerExecutionChain.resumeGrantedResumeFallbackChildren(input.workspaceId);
+      },
       cancelRun: input => providerExecutionChain.dispatcher.cancelRun(input),
       registerWorktreePath: (runId, path) => collaborationWorktreePaths.set(runId, path),
       runtimeDispatchEnabled,
@@ -551,13 +559,21 @@ async function bootstrap(): Promise<void> {
       runStreamService: store.runStreamService(),
     }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
-    // P4B: resume re-drive. Both run route families trigger exactly one
-    // background RunEngineProviderDispatcher drive after a genuine
-    // paused -> running resume, behind the same dispatch permit and runtime
-    // dispatch gate as the canonical start route.
+    // Re-drive a logical Run or explicit fallback Child only after obtaining
+    // its own canonical Workspace Admission. A Child also releases its now-
+    // terminal parent's Admission so it cannot hold the workspace queue.
     const resumeDispatch = {
       enabled: runtimeDispatchEnabled,
       drive: async (workspaceId: string, runId: string) => {
+        const run = store!.runRepository().findById(workspaceId, runId);
+        if (run?.reason === 'resume-fallback' && run.parentRunId !== undefined) {
+          await providerExecutionChain.admissionAuthority.releaseCanonicalRun({
+            workspaceId,
+            runId: run.parentRunId,
+          });
+        }
+        const admitted = await providerExecutionChain.admissionAuthority.requestCanonicalRun({ workspaceId, runId });
+        if (!admitted) return;
         await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },
     };
@@ -633,6 +649,8 @@ async function bootstrap(): Promise<void> {
       void withDispatchPermit(async () => {
         await collaborationService.resumeGrantedQueuedRuns()
           .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+        await providerExecutionChain.resumeGrantedResumeFallbackChildren()
+          .catch(error => diagLog(`RESUME_FALLBACK_QUEUE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
         await providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
           .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
       }).catch(error => diagLog(`RUNTIME_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));

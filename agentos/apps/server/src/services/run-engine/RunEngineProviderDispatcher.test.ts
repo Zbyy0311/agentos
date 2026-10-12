@@ -374,6 +374,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly memoryContextResolver?: import('./RunEngineProviderDispatcher.js').MemoryContextResolverPort;
   readonly memoryCandidateGenerator?: import('./RunEngineProviderDispatcher.js').MemoryCandidateGenerationPort;
   readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
+  readonly onRunTerminal?: import('./RunEngineProviderDispatcher.js').RunEngineProviderDispatcherOptions['onRunTerminal'];
   readonly artifactResults?: import('./RunEngineProviderDispatcher.js').RunEngineProviderDispatcherOptions['artifactResults'];
   readonly runtimeApproval?: boolean;
   readonly deferApprovalContinuation?: boolean;
@@ -499,6 +500,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     ...(behavior.memoryContextResolver === undefined ? {} : { memoryContextResolver: behavior.memoryContextResolver }),
     ...(behavior.memoryCandidateGenerator === undefined ? {} : { memoryCandidateGenerator: behavior.memoryCandidateGenerator }),
     ...(behavior.onCandidateGenerationError === undefined ? {} : { onCandidateGenerationError: behavior.onCandidateGenerationError }),
+    ...(behavior.onRunTerminal === undefined ? {} : { onRunTerminal: behavior.onRunTerminal }),
     onDispatchFailure: report => { dispatchFailures.push(report); },
   });
   dispatcher = assignedDispatcher;
@@ -1311,6 +1313,19 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
       assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
       assert.equal(fx.dispatchFailures.length, 0);
+    } finally { close(fx); }
+  });
+
+  it('driveSafely wakes terminal Admission and queued-Child recovery after the Run commits terminal', async () => {
+    const terminalCalls: Array<{ workspaceId: string; runId: string }> = [];
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, {
+      onRunTerminal: async input => { terminalCalls.push(input); },
+    });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.deepEqual(terminalCalls, [{ workspaceId: WS, runId: RUN }],
+        'the queue wake follows the terminal Run commit');
     } finally { close(fx); }
   });
 

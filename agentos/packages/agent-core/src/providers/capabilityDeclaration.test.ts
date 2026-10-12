@@ -126,6 +126,13 @@ describe('LITE-04-007 capability declarations match tested behavior', () => {
     }
   });
 
+  it('does not declare native session resume for adapters without an implemented resume operation', () => {
+    for (const adapter of adapters()) {
+      expect({ adapter: adapter.name, sessionResume: adapter.capabilities.sessionResume })
+        .toEqual({ adapter: adapter.name, sessionResume: false });
+    }
+  });
+
   it('observes every capability declared true in the adapter real output', () => {
     for (const adapter of adapters()) {
       const declared = adapter.capabilities;

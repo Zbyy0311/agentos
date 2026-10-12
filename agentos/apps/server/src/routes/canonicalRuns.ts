@@ -22,7 +22,7 @@ import {
  *   GET  /api/runs/:runId          (Get Run, emits the P4A version ETag)
  *   POST /api/runs/:runId/cancel   (Cancel Run)
  *   POST /api/runs/:runId/pause    (Pause Run, logical marker)
- *   POST /api/runs/:runId/resume   (Resume Run, logical marker)
+ *   POST /api/runs/:runId/resume   (Logical resume or explicit fallback Child)
  *
  * These routes are pure delegating compatibility surfaces: every command
  * reuses the existing TaskRunService application behavior (including the
@@ -50,7 +50,7 @@ function optionalString(value: unknown): string | undefined {
 }
 
 const PAUSE_REASONS = ['user', 'policy', 'approval', 'scheduler', 'maintenance'] as const;
-const RESUME_MODES = ['native-session', 'process-restart', 'scheduler'] as const;
+const RESUME_MODES = ['native-session', 'process-restart', 'scheduler', 'child-run'] as const;
 
 function parsePauseReason(value: unknown): 'user' | 'policy' | 'approval' | 'scheduler' | 'maintenance' | undefined {
   if (value === undefined) return undefined;
@@ -58,9 +58,9 @@ function parsePauseReason(value: unknown): 'user' | 'policy' | 'approval' | 'sch
   throw new V2ValidationError(`invalid reason: ${String(value)}`);
 }
 
-function parseResumeMode(value: unknown): 'native-session' | 'process-restart' | 'scheduler' | undefined {
+function parseResumeMode(value: unknown): 'native-session' | 'process-restart' | 'scheduler' | 'child-run' | undefined {
   if (value === undefined) return undefined;
-  if ((RESUME_MODES as readonly unknown[]).includes(value)) return value as 'native-session' | 'process-restart' | 'scheduler';
+  if ((RESUME_MODES as readonly unknown[]).includes(value)) return value as 'native-session' | 'process-restart' | 'scheduler' | 'child-run';
   throw new V2ValidationError(`invalid resumeMode: ${String(value)}`);
 }
 
@@ -74,12 +74,10 @@ function parseOptionalRequestedBy(value: unknown): string | undefined {
 
 export interface CanonicalRunRouteOptions {
   /**
-   * P4B resume re-drive seam. When present and enabled, a resume that
-   * actually transitioned the Run paused -> running (not an idempotent
-   * already-running 200, not an idempotency replay) triggers exactly one
-   * background dispatch through the same RunEngineProviderDispatcher channel
-   * as the canonical start route. Fire-and-forget: the drive contains its
-   * own failures.
+   * Provider resume fallback seam. When present and enabled, an accepted
+   * paused Run creates a durable Child and triggers one background drive for
+   * that Child. Native session resume is rejected by the service until a real
+   * adapter operation exists. Idempotency replays never dispatch.
    */
   readonly resumeDispatch?: RunLifecycleDispatchOptions;
 }
@@ -177,13 +175,9 @@ export function createCanonicalRunRoutes(
   }));
 
   /**
-   * P4 Run-level Pause/Resume (canonical, no /v2 prefix). Mirrors the Cancel
-   * shape exactly: opaque runId locator, If-Match/body version precondition,
-   * durable idempotency, replay header, and 412-on-header-conflict mapping.
-   * Pause only succeeds from running (already-paused is an idempotent 200);
-   * resume only from paused (already-running is an idempotent 200); every
-   * other state fails with 409. Both are record-level logical markers: no
-   * provider process is suspended or restarted in this slice.
+   * Canonical Pause/Resume. The default logical resume re-drives the same Run;
+   * explicit child-run dispatches the new Child. ETag and durable idempotency
+   * semantics match the other Run commands.
    */
   router.post('/runs/:runId/pause', (req: Request, res: Response) => respondV2(req, res, () => {
     const { runId } = req.params as { runId: string };
@@ -229,11 +223,16 @@ export function createCanonicalRunRoutes(
         { ...(resumeMode === undefined ? {} : { resumeMode }), ...(requestedBy === undefined ? {} : { requestedBy }) },
       );
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
-      // P4B: only a genuine paused -> running transition re-drives. The
-      // idempotent already-running 200 and idempotency replays converge on
-      // durable evidence and must never re-dispatch.
-      if (resumeDispatch?.enabled === true && !result.replayed && before?.status === 'paused') {
-        void resumeDispatch.drive(workspaceId, runId).catch(() => {
+      // Only a genuine paused -> running command is re-driven. Logical resume
+      // dispatches the same Run; explicit child-run dispatches its new Child.
+      // Idempotency replays never dispatch again.
+      if (
+        resumeDispatch?.enabled === true
+        && !result.replayed
+        && before?.status === 'paused'
+      ) {
+        const driveRunId = result.body.run.id;
+        void resumeDispatch.drive(workspaceId, driveRunId).catch(() => {
           // Containment backstop: drive implementations contain their own
           // failures; this only guarantees no unhandled rejection escapes.
         });

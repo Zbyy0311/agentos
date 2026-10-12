@@ -47,6 +47,7 @@ test('production entry installs write fence before routes and guards canonical, 
   assert.match(source, /dispatchRun:\s*async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
   assert.match(source, /runtimeDispatch:\s*\{\s*enabled: runtimeDispatchEnabled,\s*drive: async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
   assert.match(source, /if \(!input\.runtimeDispatchEnabled \|\| input\.barrier\.snapshot\.quiescing\) return;[\s\S]*?await input\.withDispatchPermit\(async \(\) => \{\s*await input\.collaborationService\.resumeGrantedQueuedRuns/u);
+  assert.match(source, /await input\.providerExecutionChain\.resumeGrantedResumeFallbackChildren\(\)[\s\S]*?await input\.providerExecutionChain\.approvalGate\.resumeApprovedUnconsumed\(\)/u);
   assert.match(source, /resumeBackgroundQueueWorkers = resumeQueueWorkers/u);
   assert.match(source, /if \(runtimeDispatchEnabled && !maintenanceBarrier\.snapshot\.quiescing\) \{\s*void withDispatchPermit\(async \(\) => \{\s*await collaborationService\.resumeGrantedQueuedRuns/u);
 });
