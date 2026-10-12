@@ -57,6 +57,7 @@ import { createApprovalRoutes } from './routes/approvals.js';
 import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
 import { createArtifactCompletionRoutes } from './routes/artifactCompletions.js';
 import { createRuntimeApprovalRoutes } from './routes/runtimeApprovals.js';
+import { createPolicyRoutes } from './routes/policy.js';
 import { createProviderConfigRoutes } from './routes/providerConfigs.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 import { acquireServerOwnership, type ServerOwnership } from './serverOwnership.js';
@@ -523,6 +524,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
     app.use('/api/workspaces/:workspaceId', createArtifactCompletionRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createRuntimeApprovalRoutes(store, workspaceManager, providerExecutionChain.approvalGate));
+    app.use('/api/workspaces/:workspaceId', createPolicyRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
     app.use('/api/workspaces/:workspaceId', createMemoryRuntimeRoutes(store, workspaceManager));
