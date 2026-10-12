@@ -119,8 +119,20 @@ export class WorktreeManager {
     record.updatedAt = new Date().toISOString();
     this.persist();
   }
-  async reconcile(): Promise<void> {
+  /**
+   * Realpath containment check for git execution inside a lease checkout
+   * (used by the merge runtime): the resolved path must stay inside the
+   * configured worktree root so a rewritten lease can never redirect git
+   * into the user's main workspace.
+   */
+  async assertManagedCheckout(absolutePath: string): Promise<void> {
     const configuredRoot = resolve(this.worktreeRoot);
+    let realRoot: string;
+    try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
+    const actualPath = await realpath(absolutePath);
+    if (!isWithin(realRoot, actualPath)) throw new WorktreeError('path_escapes_root', 'worktree path escapes configured root');
+  }
+  async reconcile(): Promise<void> {    const configuredRoot = resolve(this.worktreeRoot);
     let realRoot: string;
     try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
     for (const record of this.leases.values()) {

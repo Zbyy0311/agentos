@@ -52,6 +52,7 @@ import { createPreferenceRoutes } from './routes/preferences.js';
 import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
+import { WorktreeMergeService } from './services/WorktreeMergeService.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
 import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
@@ -291,6 +292,7 @@ async function bootstrap(): Promise<void> {
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository());
+    const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
     const workspaceManager = new WorkspaceManager(store);
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
@@ -534,7 +536,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store,
-      workspaceId => workspaceGitRoots.rootPathFor(workspaceId)));
+      workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));

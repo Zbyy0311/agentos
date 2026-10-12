@@ -15,6 +15,7 @@ export const ENTITY_ID_PREFIXES = {
   event: 'evt',
   process: 'proc',
   worktree: 'wt',
+  worktreeMerge: 'wtmg',
   memory: 'mem',
   memoryCandidate: 'mcand',
   memoryContext: 'mctx',
