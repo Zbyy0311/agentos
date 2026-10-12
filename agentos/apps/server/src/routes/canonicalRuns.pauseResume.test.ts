@@ -29,12 +29,9 @@ import { createV2TaskRoutes } from './v2Tasks.js';
 
 /**
  * P4 Run-level Pause/Resume route tests (canonical + current-v2 families).
- *
- * Pause and resume are record-level logical markers in this slice: no
- * provider process is suspended or restarted (that is a follow-up PR; all
- * adapters still report sessionResume: false). The routes only drive the
- * Lifecycle running <-> paused single transitions, emitting run.paused /
- * run.resumed Events and Outbox rows in the same transaction.
+ * Pause records the logical marker. Default/process-restart resume transitions
+ * the same Run back to running; an explicit child-run request creates a
+ * durable Child because no current Provider supports native session restore.
  *
  * Surface under test:
  * - POST /api/runs/:runId/pause    (canonical)
@@ -333,38 +330,56 @@ test('P4 pause with an invalid reason is 400 VALIDATION_FAILED', async () => {
   }
 });
 
-test('P4 resume a paused Run returns 200 running and emits run.resumed', async () => {
+test('P4 explicit child-run fallback returns a durable Child and preserves parent history', async () => {
   const fx = await createFixture();
   try {
     const runId = createRunningRun(fx);
     const paused = await api(fx, 'POST', `/runs/${runId}/pause`, { body: {} });
     assert.equal(paused.status, 200);
 
-    const resumed = await api(fx, 'POST', `/runs/${runId}/resume`, { body: {} });
+    const resumed = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'child-run' } });
     assert.equal(resumed.status, 200);
-    const run = resumed.json?.run as Record<string, unknown> | undefined;
-    assert.equal(run?.status, 'running');
+    const childDto = resumed.json?.run as Record<string, unknown> | undefined;
+    assert.equal(childDto?.status, 'queued');
+    assert.equal(childDto?.reason, 'resume-fallback');
+    assert.equal(childDto?.parentRunId, runId);
 
-    const events = runEvents(fx, runId).filter(event => event.type === 'run.resumed');
-    assert.equal(events.length, 1);
-    assert.equal(events[0].payload.resumeMode, 'process-restart');
-    assert.equal(events[0].stageId, undefined, 'run.resumed must not bind a Stage');
+    const parent = fx.store.runRepository().findById(fx.workspaceId, runId)!;
+    const child = fx.store.runRepository().findById(fx.workspaceId, String(childDto?.id))!;
+    assert.equal(parent.status, 'failed');
+    assert.equal(parent.failureCode, 'PROVIDER_SESSION_NOT_RESUMABLE');
+    assert.equal(child.id, childDto?.id);
+    assert.equal(child.rootRunId, parent.rootRunId);
+    assert.equal(fx.store.runSnapshotRepository().findByRunId(fx.workspaceId, runId)?.payload.run.reason, 'initial');
+    assert.equal(fx.store.runSnapshotRepository().findByRunId(fx.workspaceId, child.id)?.payload.run.parentRunId, runId);
+
+    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.resumed').length, 0);
+    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.failed').length, 1);
+    assert.equal(runEvents(fx, child.id).filter(event => event.type === 'run.created').length, 1);
+    assert.equal(fx.store.operationService().listByRun(fx.workspaceId, child.id)
+      .filter(operation => operation.type === 'run.start' && operation.status === 'queued').length, 1);
   } finally {
     await closeFixture(fx);
   }
 });
 
-test('P4 resume carries resumeMode and requestedBy into the run.resumed payload', async () => {
+test('P4 process-restart resumes the same logical Run and emits run.resumed', async () => {
   const fx = await createFixture();
   try {
     const runId = createRunningRun(fx);
     await api(fx, 'POST', `/runs/${runId}/pause`, { body: {} });
-    const res = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'scheduler', requestedBy: 'operator-2' } });
+    const res = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'process-restart', requestedBy: 'operator-2' } });
     assert.equal(res.status, 200);
-    const events = runEvents(fx, runId).filter(event => event.type === 'run.resumed');
-    assert.equal(events.length, 1);
-    assert.equal(events[0].payload.resumeMode, 'scheduler');
-    assert.equal(events[0].payload.requestedBy, 'operator-2');
+    const resumedRun = res.json?.run as Record<string, unknown> | undefined;
+    assert.equal(resumedRun?.id, runId);
+    assert.equal(resumedRun?.status, 'running');
+    assert.equal(resumedRun?.reason, 'initial');
+    assert.equal(fx.store.runRepository().findById(fx.workspaceId, runId)?.status, 'running');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, fx.store.runRepository().findById(fx.workspaceId, runId)!.taskId).length, 1);
+    const resumedEvents = runEvents(fx, runId).filter(event => event.type === 'run.resumed');
+    assert.equal(resumedEvents.length, 1);
+    assert.equal(resumedEvents[0]?.payload.resumeMode, 'process-restart');
+    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.failed').length, 0);
   } finally {
     await closeFixture(fx);
   }
@@ -374,16 +389,15 @@ test('P4 resume is idempotent on a running Run (200, no new event)', async () =>
   const fx = await createFixture();
   try {
     const runId = createRunningRun(fx);
-    await api(fx, 'POST', `/runs/${runId}/pause`, { body: {} });
     const first = await api(fx, 'POST', `/runs/${runId}/resume`, { body: {} });
     if (first.status !== 200) throw new Error("FIRSTBODY:" + JSON.stringify(first.json));
-    const before = (fx.store.runRepository().findById(fx.workspaceId, runId))!.version;
     const second = await api(fx, 'POST', `/runs/${runId}/resume`, { body: {} });
     assert.equal(second.status, 200);
     const run = second.json?.run as Record<string, unknown> | undefined;
     assert.equal(run?.status, 'running');
-    assert.equal(run?.version, before, 'idempotent resume must not bump the version');
-    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.resumed').length, 1);
+    const taskId = fx.store.runRepository().findById(fx.workspaceId, runId)!.taskId;
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, taskId).length, 1);
+    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.resumed').length, 0);
   } finally {
     await closeFixture(fx);
   }
@@ -412,6 +426,17 @@ test('P4 pause and resume participate in durable idempotency replay', async () =
     assert.equal(replay.status, 200);
     assert.equal(replay.replayed, 'true');
     assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.paused').length, 1);
+
+    const resumed = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'child-run' }, key: 'resume-key-1' });
+    assert.equal(resumed.status, 200);
+    const childId = (resumed.json?.run as Record<string, unknown> | undefined)?.id as string;
+    assert.ok(childId && childId !== runId);
+    const resumeReplay = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'child-run' }, key: 'resume-key-1' });
+    assert.equal(resumeReplay.status, 200);
+    assert.equal(resumeReplay.replayed, 'true');
+    assert.equal((resumeReplay.json?.run as Record<string, unknown> | undefined)?.id, childId);
+    const taskId = fx.store.runRepository().findById(fx.workspaceId, runId)!.taskId;
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, taskId).length, 2);
   } finally {
     await closeFixture(fx);
   }
@@ -431,7 +456,41 @@ test('P4 pause stale If-Match is 412 STORAGE_VERSION_CONFLICT with zero mutation
   }
 });
 
-test('P4 current-v2 family exposes the same pause/resume contract', async () => {
+test('P4 resume stale If-Match is 412 STORAGE_VERSION_CONFLICT with no Child or parent mutation', async () => {
+  const fx = await createFixture();
+  try {
+    const runId = createRunningRun(fx);
+    const pause = await api(fx, 'POST', `/runs/${runId}/pause`, { body: {} });
+    assert.equal(pause.status, 200);
+    const beforeParent = structuredClone(fx.store.runRepository().findById(fx.workspaceId, runId)!);
+    const res = await api(fx, 'POST', `/runs/${runId}/resume`, { body: {}, ifMatch: '"v1"' });
+    assert.equal(res.status, 412);
+    assertProblem(res.json, 412, 'STORAGE_VERSION_CONFLICT');
+    assert.deepEqual(fx.store.runRepository().findById(fx.workspaceId, runId), beforeParent);
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, beforeParent.taskId).length, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 terminal parent cannot create a second resume Child', async () => {
+  const fx = await createFixture();
+  try {
+    const runId = createRunningRun(fx);
+    await api(fx, 'POST', `/runs/${runId}/pause`, { body: {} });
+    const first = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'child-run' } });
+    assert.equal(first.status, 200);
+    const again = await api(fx, 'POST', `/runs/${runId}/resume`, { body: { resumeMode: 'child-run' }, key: 'different-resume-key' });
+    assert.equal(again.status, 409);
+    assertProblem(again.json, 409, 'RUN_NOT_RESUMABLE');
+    const taskId = fx.store.runRepository().findById(fx.workspaceId, runId)!.taskId;
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, taskId).length, 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 current-v2 default resume preserves the same Run identity', async () => {
   const fx = await createFixture();
   try {
     const runId = createRunningRun(fx);
@@ -440,8 +499,11 @@ test('P4 current-v2 family exposes the same pause/resume contract', async () => 
     assert.equal((pause.json?.run as Record<string, unknown> | undefined)?.status, 'paused');
     const resume = await api(fx, 'POST', `/workspaces/${fx.workspaceId}/v2/runs/${runId}/resume`, { body: {} });
     assert.equal(resume.status, 200);
-    assert.equal((resume.json?.run as Record<string, unknown> | undefined)?.status, 'running');
+    const resumedRun = resume.json?.run as Record<string, unknown> | undefined;
+    assert.equal(resumedRun?.id, runId);
+    assert.equal(resumedRun?.status, 'running');
     assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.paused').length, 1);
+    assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.failed').length, 0);
     assert.equal(runEvents(fx, runId).filter(event => event.type === 'run.resumed').length, 1);
   } finally {
     await closeFixture(fx);

@@ -11,11 +11,13 @@
  * ownership. The reported handle PID is always the actual provider PID.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { PassThrough, type Readable } from 'node:stream';
+import { PassThrough, type Readable, type Writable } from 'node:stream';
 import type {
   GracefulStopResult,
   IdentityInspection,
   NativeProcessHandle,
+  NativeProcessStdin,
+  ProcessControlResult,
   NativeProcessStreams,
   PlatformProcessDriver,
   SurvivorVerification,
@@ -29,7 +31,9 @@ import {
   type ProcessTreeController,
   type ProcessTreeHandle,
 } from './platform-process-tree.js';
+import { readLinuxProcessBirthIdentity } from './posix-process-tree.js';
 import { STREAM_CHUNK_LIMIT_BYTES } from './streams.js';
+import { BoundedNativeProcessStdin } from './stdin.js';
 
 export interface NodeProcessDriverOptions {
   readonly gracefulSignal?: NodeJS.Signals;
@@ -52,6 +56,7 @@ interface NodeNativeBackend {
   readonly nativeBirthIdentity?: string | null;
   readonly stdout: Readable | null;
   readonly stderr: Readable | null;
+  readonly stdin: Writable | null;
   readonly exit: Promise<NativeExitObservation>;
   requestGracefulStop(signal: NodeJS.Signals): Promise<boolean>;
 }
@@ -61,8 +66,10 @@ function childBackend(child: ChildProcess): NodeNativeBackend {
     pid: child.pid ?? -1,
     executablePath: typeof child.spawnargs[0] === 'string' ? child.spawnargs[0] : '',
     groupId: process.platform === 'win32' ? undefined : String(child.pid ?? -1),
+    nativeBirthIdentity: readLinuxProcessBirthIdentity(child.pid ?? -1),
     stdout: child.stdout,
     stderr: child.stderr,
+    stdin: child.stdin,
     exit: new Promise<NativeExitObservation>(resolve => {
       child.once('exit', (exitCode, signal) => resolve({ exitCode, signal: signal ?? null }));
     }),
@@ -78,6 +85,7 @@ function ownedBackend(owned: OwnedSpawnResult): NodeNativeBackend {
     nativeBirthIdentity: owned.nativeBirthIdentity ?? null,
     stdout: owned.stdout,
     stderr: owned.stderr,
+    stdin: owned.stdin ?? null,
     exit: owned.waitExit().then(evidence => ({ exitCode: evidence.exitCode, signal: evidence.signal })),
     requestGracefulStop: () => owned.requestGracefulStop(),
   };
@@ -99,7 +107,10 @@ export class NodeProcessDriver implements PlatformProcessDriver {
   async spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle> {
     // Windows production path: atomic suspended-create + Job assignment. The
     // provider cannot execute before ownership; its real PID is reported.
-    if (process.platform === 'win32' && supportsOwnedSpawn(this.processTree)) {
+    if (process.platform === 'win32') {
+      if (!supportsOwnedSpawn(this.processTree)) {
+        throw new Error('windows-owned-spawn-unavailable');
+      }
       const owned = await this.processTree.spawnOwned(launch);
       return NodeNativeProcessHandle.fromOwned(owned, this.now(), tree => this.processTree.verifySurvivors(tree));
     }
@@ -113,7 +124,7 @@ export class NodeProcessDriver implements PlatformProcessDriver {
       shell: false,
       windowsHide: true,
       detached: process.platform !== 'win32',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [launch.stdinMode === 'pipe' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
     return new Promise<NativeProcessHandle>((resolve, reject) => {
       const onError = (error: Error): void => {
@@ -155,6 +166,36 @@ export class NodeProcessDriver implements PlatformProcessDriver {
     }
     const delivered = await nativeHandle.backend.requestGracefulStop(this.gracefulSignal);
     return { delivered, detail: delivered ? 'signal-delivered' : 'signal-failed' };
+  }
+
+  async suspend(handle: NativeProcessHandle): Promise<ProcessControlResult> {
+    const nativeHandle = asNodeHandle(handle);
+    if (nativeHandle.hasExited()) return { status: 'rejected', reason: 'process-already-exited' };
+    if (nativeHandle.cleanupWasRequested()) return { status: 'rejected', reason: 'process-cleanup-started' };
+    const control = this.processTree.suspend;
+    if (control === undefined) {
+      return { status: 'unsupported', reason: 'platform-suspend-unavailable' };
+    }
+    try {
+      return await control.call(this.processTree, nativeHandle.tree, nativeHandle.identity);
+    } catch {
+      return { status: 'rejected', reason: 'native-suspend-failed' };
+    }
+  }
+
+  async resume(handle: NativeProcessHandle): Promise<ProcessControlResult> {
+    const nativeHandle = asNodeHandle(handle);
+    if (nativeHandle.hasExited()) return { status: 'rejected', reason: 'process-already-exited' };
+    if (nativeHandle.cleanupWasRequested()) return { status: 'rejected', reason: 'process-cleanup-started' };
+    const control = this.processTree.resume;
+    if (control === undefined) {
+      return { status: 'unsupported', reason: 'platform-resume-unavailable' };
+    }
+    try {
+      return await control.call(this.processTree, nativeHandle.tree, nativeHandle.identity);
+    } catch {
+      return { status: 'rejected', reason: 'native-resume-failed' };
+    }
   }
 
   async terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult> {
@@ -201,6 +242,7 @@ class NodeNativeProcessHandle implements NativeProcessHandle {
   readonly pid: number;
   readonly identity: NativeIdentity;
   readonly streams: NativeProcessStreams;
+  readonly stdin: NativeProcessStdin | null;
   readonly backend: NodeNativeBackend;
   tree: ProcessTreeHandle;
   private readonly exit: Promise<ExitEvidence>;
@@ -228,6 +270,7 @@ class NodeNativeProcessHandle implements NativeProcessHandle {
       stdout: byteIterable(backend.stdout),
       stderr: byteIterable(backend.stderr),
     };
+    this.stdin = backend.stdin === null ? null : new BoundedNativeProcessStdin(backend.stdin);
     this.exit = backend.exit.then(({ exitCode, signal }) => {
       this.exitObserved = true;
       const evidence: ExitEvidence = { exitCode, signal, exitedAt: Date.now() };
@@ -261,6 +304,10 @@ class NodeNativeProcessHandle implements NativeProcessHandle {
 
   hasExited(): boolean {
     return this.exitObserved;
+  }
+
+  cleanupWasRequested(): boolean {
+    return this.cleanupRequested;
   }
 
   setTree(tree: ProcessTreeHandle): void {

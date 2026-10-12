@@ -5,7 +5,9 @@ import { WorktreeMergeError, WorktreeMergeService } from '../services/WorktreeMe
 import type { WorktreeMergeStrategy } from '../store/WorktreeMergeRepository.js';
 import { WorktreeError, WorktreeManager } from '../services/WorktreeManager.js';
 import { WorktreeArtifactService } from '../services/WorktreeArtifactService.js';
+import { WorktreeControlError, WorktreeControlService } from '../services/WorktreeControlService.js';
 import type { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
+import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 type RunLookup = { getRun(workspaceId: string, runId: string): { status: string } | undefined };
@@ -19,6 +21,11 @@ const MERGE_ERROR_STATUS: Record<string, number> = {
   WORKTREE_MERGE_HEAD_MISMATCH: 409,
   WORKTREE_MERGE_CONFLICTED: 409,
   WORKTREE_MERGE_FAILED: 500,
+  WORKTREE_MERGE_DIRTY: 409,
+  WORKTREE_MERGE_IDENTITY_MISMATCH: 409,
+  WORKTREE_BRANCH_LOCK_HELD: 409,
+  WORKTREE_BRANCH_LOCK_INVALID_REF: 400,
+  WORKTREE_REF_RECOVERY_REQUIRED: 409,
 };
 function errorStatus(error: unknown): number {
   if (error instanceof WorktreeError) {
@@ -35,13 +42,21 @@ export function createWorktreeRoutes(
   runLookup?: RunLookup,
   workspaceRootFor: (workspaceId: string) => string | undefined = workspaceId => workspaceManager.get(workspaceId)?.rootPath,
   mergeService?: WorktreeMergeService,
+  eventRepository?: RuntimeEventRepository,
+  controlServiceOverride?: WorktreeControlService,
 ): Router {
   const router = Router({ mergeParams: true });
+  const controlService = controlServiceOverride ?? new WorktreeControlService(manager, runLookup, artifactService);
   if (mergeService) {
     router.post('/worktrees/:worktreeId/merge', asyncHandler(async (req: Request, res: Response) => {
       const workspace = workspaceManager.get(req.params.workspaceId);
       if (!workspace) {
         sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+        return;
+      }
+      const lease = manager.getRecord(req.params.worktreeId);
+      if (!lease || lease.workspaceId !== workspace.id) {
+        sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
         return;
       }
       try {
@@ -57,12 +72,12 @@ export function createWorktreeRoutes(
           sendProblem(req, res, {
             status: MERGE_ERROR_STATUS[error.code] ?? 500,
             code: error.code,
-            detail: error.message,
+            detail: (MERGE_ERROR_STATUS[error.code] ?? 500) >= 500 ? 'Worktree merge failed' : error.message,
             context: { worktreeId: req.params.worktreeId },
           });
           return;
         }
-        sendProblem(req, res, { status: 500, code: 'WORKTREE_MERGE_FAILED', detail: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 500, code: 'WORKTREE_MERGE_FAILED', detail: 'Worktree merge failed' });
       }
     }));
   }
@@ -96,6 +111,39 @@ export function createWorktreeRoutes(
       sendProblem(req, res, { status: 400, code: 'WORKTREE_BUNDLE_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
+  const registerControlRoute = (
+    action: 'commit' | 'review' | 'rebase' | 'cleanup',
+    invoke: (workspaceId: string, leaseId: string, body: unknown) => Promise<unknown>,
+    responseKey: string,
+    successStatus = 200,
+  ): void => {
+    router.post(`/worktrees/:leaseId/${action}`, asyncHandler(async (req: Request, res: Response) => {
+      const workspace = workspaceManager.get(req.params.workspaceId);
+      if (!workspace) {
+        sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+        return;
+      }
+      try {
+        const result = await invoke(workspace.id, req.params.leaseId, req.body ?? {});
+        return res.status(successStatus).json({ [responseKey]: result });
+      } catch (error) {
+        if (error instanceof WorktreeControlError) {
+          sendProblem(req, res, {
+            status: error.status,
+            code: error.code,
+            detail: error.status >= 500 ? 'Worktree control failed' : error.message,
+            ...(error.context ? { context: error.context } : {}),
+          });
+          return;
+        }
+        sendProblem(req, res, { status: 500, code: 'WORKTREE_CONTROL_FAILED', detail: 'Worktree control failed' });
+      }
+    }));
+  };
+  registerControlRoute('commit', (workspaceId, leaseId, body) => controlService.commit(workspaceId, leaseId, body), 'commit', 201);
+  registerControlRoute('review', (workspaceId, leaseId, body) => controlService.review(workspaceId, leaseId, body), 'review');
+  registerControlRoute('rebase', (workspaceId, leaseId, body) => controlService.rebase(workspaceId, leaseId, body), 'rebase');
+  registerControlRoute('cleanup', (workspaceId, leaseId, body) => controlService.cleanup(workspaceId, leaseId, body), 'cleanup');
   router.delete('/worktrees/:leaseId', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
@@ -113,9 +161,26 @@ export function createWorktreeRoutes(
       return;
     }
     try {
-      return res.json({ lease: await manager.removeLease(lease.id, req.body?.confirmRecoveryBundle === true) });
+      if (req.body?.confirmRecoveryBundle !== true) {
+        throw new WorktreeControlError('WORKTREE_RECOVERY_BUNDLE_CONFIRMATION_REQUIRED', 409, 'Cleanup requires confirmRecoveryBundle: true');
+      }
+      if (!manager.getRecord(lease.id)?.recoveryBundle) {
+        throw new WorktreeControlError('WORKTREE_RECOVERY_BUNDLE_REQUIRED', 409, 'A verified recovery bundle is required');
+      }
+      if (lease.status === 'cleaned') return res.json({ lease });
+      const head = req.body?.expectedHeadCommit ?? (await manager.gitStatusSnapshot(lease.id)).head;
+      // Rebuild and verify the bundle while holding the same branch lock as
+      // other controls. A historical bundle cannot authorize deleting new WIP.
+      const result = await controlService.cleanup(workspace.id, lease.id, {
+        expectedHeadCommit: head, confirmRecoveryBundle: true,
+      });
+      return res.json({ lease: result.lease });
     } catch (error) {
-      sendProblem(req, res, { status: 409, code: 'WORKTREE_LEASE_REMOVE_FAILED', detail: error instanceof Error ? error.message : String(error) });
+      const status = error instanceof WorktreeControlError ? error.status : 500;
+      sendProblem(req, res, { status,
+        code: error instanceof WorktreeControlError ? error.code : 'WORKTREE_LEASE_REMOVE_FAILED',
+        detail: status >= 500 ? 'Worktree cleanup failed' : (error as Error).message,
+      });
     }
   }));
   router.post('/worktrees/adopt', asyncHandler(async (req: Request, res: Response) => {
@@ -190,8 +255,17 @@ export function createWorktreeRoutes(
       sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
       return;
     }
-    // No worktree event model exists yet (deferred to a later PR); expose the
-    // minimal status timeline derivable from the lease record itself.
+    if (eventRepository) {
+      const afterSequence = Number(req.query.afterSequence ?? 0);
+      if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+        sendProblem(req, res, { status: 400, code: 'INVALID_SEQUENCE', detail: 'afterSequence must be a non-negative integer' });
+        return;
+      }
+      const events = eventRepository.listByWorktree(workspace.id, lease.id, afterSequence)
+        .filter(result => result.kind === 'known').map(result => result.event);
+      return res.json({ events, eventModel: 'runtime_events', nextSequence: events.at(-1)?.sequence ?? afterSequence });
+    }
+    // Legacy embedded callers without an Event Store retain their minimal timeline.
     const events = [{ at: lease.createdAt, type: 'created', status: lease.status }, { at: lease.updatedAt, type: 'updated', status: lease.status }];
     return res.json({ events, eventModel: 'lease_timeline_minimal' });
   });

@@ -27,6 +27,7 @@ import {
 } from './m3-runtime.js';
 import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
 import { MF5_MEMORY_EVENT_DEFINITIONS } from './mf5-memory-events.js';
+import { WORKTREE_EVENT_DEFINITIONS } from './worktree-events.js';
 import {
   WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS,
   isWorkspaceEventStreamType,
@@ -971,6 +972,7 @@ function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderCon
     && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
     && isSnapshotNullableString(value.executable)
     && isSnapshotStringArray(value.argsTemplate)
+    && (value.promptDelivery === undefined || hasValue(['argument', 'stdin', 'file'], value.promptDelivery))
     && isSnapshotNullableString(value.model)
     && isSnapshotNullableString(value.environmentProfileId)
     && isSnapshotNullableString(value.secretProfileId)
@@ -2773,6 +2775,9 @@ export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
     registry.registerCore(definition);
   }
   for (const definition of MF5_MEMORY_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of WORKTREE_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   return registry;

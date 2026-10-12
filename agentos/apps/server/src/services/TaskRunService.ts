@@ -24,7 +24,8 @@ import {
   InvalidTaskTransitionError,
 } from '../store/TaskRepository.js';
 import type { RunRepository } from '../store/RunRepository.js';
-import { RunNotFoundError } from '../store/RunRepository.js';
+import { ACTIVE_RUN_STATUSES, RunNotFoundError } from '../store/RunRepository.js';
+import type { ProcessRepository } from '../store/ProcessRepository.js';
 import { VersionConflictError } from '../store/Version.js';
 import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRepository.js';
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
@@ -80,6 +81,10 @@ export interface TaskRunServiceDeps {
    * any mutation when the capability is absent.
    */
   operationService?(): OperationService;
+  /** M4 durable process ownership, required before an explicit Child fallback. */
+  processRepository?(): ProcessRepository;
+  /** Required to route managed collaboration Runs through their own recovery path. */
+  isManagedCollaborationRun?(workspaceId: string, runId: string, taskId: string): boolean;
 }
 
 export interface CreateLegacyRunForBridgeInput {
@@ -107,13 +112,17 @@ export interface TaskRunServiceOptions {
   snapshotService?: SnapshotService;
   clock?: () => string;
   idempotencyService?: IdempotencyService;
+  /** Route wiring proves an async post-commit preparer exists for required Child worktrees. */
+  resumeFallbackWorktreePreparationAvailable?: boolean;
 }
+
+export type RunResumeMode = RunResumedPayload['resumeMode'] | 'child-run';
 
 /** P4 Pause/Resume route-level options. Both fields are optional; the service
  * applies the spec defaults ('user' reason, 'process-restart' resume mode). */
 export interface PauseResumeOptions {
   readonly reason?: RunPausedPayload['reason'];
-  readonly resumeMode?: RunResumedPayload['resumeMode'];
+  readonly resumeMode?: RunResumeMode;
   readonly requestedBy?: string;
 }
 
@@ -247,6 +256,7 @@ const LEGACY_RESTART_EXECUTION_MESSAGE = 'Server restarted during Legacy canonic
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
   private readonly idempotencyService?: IdempotencyService;
+  private readonly resumeFallbackWorktreePreparationAvailable: boolean;
 
   constructor(
     private readonly deps: TaskRunServiceDeps,
@@ -264,6 +274,7 @@ export class TaskRunService {
       throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
     }
     this.idempotencyService = options.idempotencyService;
+    this.resumeFallbackWorktreePreparationAvailable = options.resumeFallbackWorktreePreparationAvailable === true;
     if (options.snapshotService) {
       this.snapshotService = options.snapshotService;
       return;
@@ -410,15 +421,12 @@ export class TaskRunService {
   }
 
   /**
-   * P4 Run-level Resume (logical marker only). Records paused -> running in the
-   * same atomic Lifecycle Transaction as the run.resumed Event and Outbox row.
-   * The dispatch-side re-drive lands in P4B: the resume routes trigger one
-   * background RunEngineProviderDispatcher drive after a genuine
-   * paused -> running transition. Resume is idempotent: a Run already running
-   * is returned unchanged with 200 (and never re-dispatched); any
-   * non-paused/non-running state fails with RUN_NOT_RESUMABLE (409).
-   * resumeMode defaults to 'process-restart' because no adapter currently
-   * supports native-session resume.
+   * Resume a paused Run. Default/process-restart/scheduler preserve the
+   * logical pause contract by transitioning the same Run to running and
+   * emitting run.resumed; completed stages stay attached to that Run.
+   * Only explicit child-run creates a durable resume-fallback Child. Current
+   * adapters do not implement native session restoration, so native-session
+   * fails closed. A keyed Child fallback replay returns the original Child DTO.
    */
   resumeRunForV2(
     workspaceId: string,
@@ -1400,9 +1408,9 @@ export class TaskRunService {
   }
 
   /**
-   * V2 Resume mirrors Pause: paused -> running, run.resumed Event, and Outbox
-   * row commit atomically. No Stage or process is resumed in this slice; the
-   * dispatch-side re-drive lands in the follow-up PR.
+   * Native session resume is rejected until an actual adapter resume operation
+   * exists. Child Run fallback is explicit; ordinary logical resume preserves
+   * the existing Run identity and completed-stage history.
    */
   private resumeRunForV2InTransaction(
     workspaceId: string,
@@ -1417,21 +1425,125 @@ export class TaskRunService {
     if (run.status !== 'paused') {
       throw domainError('RUN_NOT_RESUMABLE', `Run ${runId} is not resumable in status '${run.status}'`);
     }
-    const lifecycleTransactionService = this.requireLifecycleTransactionService();
-    if (typeof lifecycleTransactionService.transitionRunWithinTransaction !== 'function') {
-      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    if (options.resumeMode === 'native-session') {
+      throw domainError(
+        'PROVIDER_SESSION_NOT_RESUMABLE',
+        'Native Provider session resume is unavailable because no adapter resume operation is wired into the runtime',
+      );
     }
-    const result = lifecycleTransactionService.transitionRunWithinTransaction({
+
+    if (options.resumeMode !== 'child-run') {
+      const lifecycleTransactionService = this.requireLifecycleTransactionService();
+      if (typeof lifecycleTransactionService.transitionRunWithinTransaction !== 'function') {
+        throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+      }
+      const result = lifecycleTransactionService.transitionRunWithinTransaction({
+        workspaceId,
+        runId: run.id,
+        expectedVersion: version,
+        expectedFrom: 'paused',
+        to: 'running',
+        resumeMode: options.resumeMode ?? 'process-restart',
+        ...(options.requestedBy === undefined ? {} : { requestedBy: options.requestedBy }),
+        correlationId: run.id,
+      });
+      return result.run;
+    }
+
+    if (typeof this.deps.isManagedCollaborationRun !== 'function') {
+      throw domainError('RUN_RESUME_COLLABORATION_STATE_UNAVAILABLE', 'Managed collaboration ownership cannot be verified for resume fallback');
+    }
+    let managedCollaborationRun: boolean;
+    try {
+      managedCollaborationRun = this.deps.isManagedCollaborationRun(workspaceId, run.id, run.taskId);
+    } catch {
+      throw domainError('RUN_RESUME_COLLABORATION_STATE_UNAVAILABLE', 'Managed collaboration ownership cannot be verified for resume fallback');
+    }
+    if (managedCollaborationRun) {
+      throw domainError('RUN_RESUME_COLLABORATION_REQUIRED', 'Managed collaboration Runs must resume through collaboration recovery');
+    }
+
+    const processRepository = this.deps.processRepository?.();
+    if (!processRepository || typeof processRepository.listByRun !== 'function') {
+      throw domainError('RUN_RESUME_PROCESS_STATE_UNAVAILABLE', 'Provider process ownership cannot be verified for resume fallback');
+    }
+    let processes;
+    try {
+      processes = processRepository.listByRun(workspaceId, run.id);
+    } catch {
+      throw domainError('RUN_RESUME_PROCESS_STATE_UNAVAILABLE', 'Provider process ownership cannot be verified for resume fallback');
+    }
+    if (processes.some(process => process.status !== 'exited' && process.status !== 'failed')) {
+      throw domainError(
+        'RUN_RESUME_PROCESS_ACTIVE',
+        'A Provider process for the paused Run is still active or its exit is unproven; resume fallback was not started',
+      );
+    }
+
+    const otherActiveRun = this.deps.runRepository().listByTask(workspaceId, run.taskId).find(candidate => (
+      candidate.id !== run.id && ACTIVE_RUN_STATUSES.includes(candidate.status)
+    ));
+    if (otherActiveRun) {
+      throw domainError('RUN_ACTIVE_EXISTS', 'Task already has another active Run');
+    }
+
+    const operationService = this.requireRetryOperationService();
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    const snapshotService = this.requireRetrySnapshotService();
+    let preparedClone;
+    try {
+      preparedClone = snapshotService.prepareRetryClone(run);
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) {
+        throw domainError('RUN_RESUME_STATE_INCONSISTENT', 'Run snapshot cannot be used for resume fallback');
+      }
+      throw error;
+    }
+    if (preparedClone.payload.workflow.worktreeMode === 'required'
+      && !this.resumeFallbackWorktreePreparationAvailable) {
+      throw domainError('RUN_RESUME_WORKTREE_UNAVAILABLE', 'A dedicated Child worktree cannot be established for resume fallback');
+    }
+
+    const failedParent = lifecycleTransactionService.transitionRunWithinTransaction({
       workspaceId,
-      runId,
+      runId: run.id,
       expectedVersion: version,
       expectedFrom: 'paused',
-      to: 'running',
-      resumeMode: options.resumeMode ?? 'process-restart',
-      ...(options.requestedBy === undefined ? {} : { requestedBy: options.requestedBy }),
+      to: 'failed',
+      errorCode: 'PROVIDER_SESSION_NOT_RESUMABLE',
+      message: 'Provider session was not resumed; a linked Child Run will continue from the frozen Run snapshot.',
+      phase: 'resume',
+      retryable: false,
       correlationId: run.id,
     });
-    return result.run;
+    if (failedParent.run.status !== 'failed') {
+      throw new IdempotencyRecordInvalidError();
+    }
+
+    const child = this.deps.runRepository().insert({
+      workspaceId,
+      taskId: run.taskId,
+      parentRunId: run.id,
+      origin: 'v2_api',
+      reason: 'resume-fallback',
+      objective: run.objective,
+      createdBy: run.createdBy,
+    });
+    let persisted;
+    try {
+      persisted = snapshotService.persistRetryClone(child, preparedClone);
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) {
+        throw domainError('RUN_RESUME_STATE_INCONSISTENT', 'Resume Child snapshot could not be persisted');
+      }
+      throw error;
+    }
+
+    lifecycleTransactionService.createRunGraphEventsWithinTransaction(child, persisted.snapshot, persisted.stages);
+    // A Child Run requires its own Engine authority; the parent resume command
+    // never authorizes execution under the parent's identity.
+    this.acceptRunStartInTransaction(workspaceId, child.id, undefined, operationService);
+    return child;
   }
 
   private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string, expectedVersion?: number): Task {

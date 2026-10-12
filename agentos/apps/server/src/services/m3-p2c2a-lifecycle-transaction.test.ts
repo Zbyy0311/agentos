@@ -432,6 +432,7 @@ test('P2C-2A rejects all unsupported Stage composite transitions without writes'
 test('P2C-2A transition classification is exhaustive for every Run and Stage pair', () => {
   const runSingle = new Set([
     'queued->starting',
+    'queued->failed',
     'starting->failed',
     'running->paused',
     'running->failed',
@@ -475,7 +476,7 @@ test('P2C-2A transition classification is exhaustive for every Run and Stage pai
       stageCounts = { ...stageCounts, [classification]: stageCounts[classification] + 1 };
     }
   }
-  assert.deepEqual(runCounts, { SINGLE: 6, COMPOSITE: 11, INVALID: 55 });
+  assert.deepEqual(runCounts, { SINGLE: 7, COMPOSITE: 11, INVALID: 54 });
   assert.deepEqual(stageCounts, { SINGLE: 8, COMPOSITE: 11, INVALID: 91 });
 });
 

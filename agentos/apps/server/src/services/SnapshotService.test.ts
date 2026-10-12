@@ -241,6 +241,37 @@ test('SnapshotService resolves Legacy stages once and projects one runner bindin
   assert.equal(runnerWorkspace.agents[0]!.cliCommand, resolved.stages[0]!.provider!.executable);
 });
 
+test('SnapshotService freezes explicit prompt delivery but leaves historical argument defaults absent', () => {
+  const legacyService = new SnapshotService(makeDeps({ providers: legacyProviders(), sources: legacySources() }));
+  const legacyProvider = legacyService.resolveLegacy(workspace()).stages[0]!.provider!;
+  assert.equal(Object.hasOwn(legacyProvider, 'promptDelivery'), false);
+
+  const configured = provider('provider-codex', {
+    providerType: 'custom-cli',
+    adapterId: 'builtin.custom-cli',
+    promptDelivery: 'stdin',
+    argsTemplate: ['-e', 'process.stdin.resume()'],
+  });
+  const service = new SnapshotService(makeDeps({
+    providers: { ...legacyProviders(), 'provider-codex': configured },
+    sources: legacySources(),
+  }));
+  const resolved = service.resolveLegacy(workspace());
+  assert.equal(resolved.stages[0]!.provider?.promptDelivery, 'stdin');
+
+  const captured: unknown[] = [];
+  const persisted = new SnapshotService(makeDeps({
+    providers: { ...legacyProviders(), 'provider-codex': configured },
+    sources: legacySources(),
+    onSnapshot: payload => captured.push(payload),
+  })).persistResolvedRun(run, resolved);
+  assert.equal(persisted.snapshot.payload.schemaVersion, 2);
+  if (persisted.snapshot.payload.schemaVersion === 2) {
+    assert.equal(persisted.snapshot.payload.workflow.stages[0]!.provider?.promptDelivery, 'stdin');
+  }
+  assert.equal((captured[0] as { workflow: { stages: Array<{ provider: { promptDelivery?: string } }> } }).workflow.stages[0]!.provider.promptDelivery, 'stdin');
+});
+
 test('SnapshotService persists one immutable payload and four initial Legacy stages', () => {
   const captured: unknown[] = [];
   const stageKeys: string[] = [];

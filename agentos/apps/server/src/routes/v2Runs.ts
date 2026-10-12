@@ -14,7 +14,7 @@ import {
 } from './versionPrecondition.js';
 
 const PAUSE_REASONS = ['user', 'policy', 'approval', 'scheduler', 'maintenance'] as const;
-const RESUME_MODES = ['native-session', 'process-restart', 'scheduler'] as const;
+const RESUME_MODES = ['native-session', 'process-restart', 'scheduler', 'child-run'] as const;
 
 function parsePauseReason(value: unknown): 'user' | 'policy' | 'approval' | 'scheduler' | 'maintenance' | undefined {
   if (value === undefined) return undefined;
@@ -22,9 +22,9 @@ function parsePauseReason(value: unknown): 'user' | 'policy' | 'approval' | 'sch
   throw new V2ValidationError(`invalid reason: ${String(value)}`);
 }
 
-function parseResumeMode(value: unknown): 'native-session' | 'process-restart' | 'scheduler' | undefined {
+function parseResumeMode(value: unknown): 'native-session' | 'process-restart' | 'scheduler' | 'child-run' | undefined {
   if (value === undefined) return undefined;
-  if ((RESUME_MODES as readonly unknown[]).includes(value)) return value as 'native-session' | 'process-restart' | 'scheduler';
+  if ((RESUME_MODES as readonly unknown[]).includes(value)) return value as 'native-session' | 'process-restart' | 'scheduler' | 'child-run';
   throw new V2ValidationError(`invalid resumeMode: ${String(value)}`);
 }
 
@@ -48,10 +48,11 @@ export function createV2RunRoutes(
 ): Router {
   const router = Router({ mergeParams: true });
   const idempotencyService = createOptionalIdempotencyService(store);
+  const resumeDispatch = options.resumeDispatch;
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
+    resumeFallbackWorktreePreparationAvailable: resumeDispatch?.prepareResumeFallbackChild !== undefined,
   });
-  const resumeDispatch = options.resumeDispatch;
 
   router.get('/runs/:runId', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
@@ -89,10 +90,10 @@ export function createV2RunRoutes(
   }));
 
   /**
-   * P4 Run-level Pause/Resume (current-v2 family). Same contract as the
-   * canonical pause/resume routes: running -> paused / paused -> running,
-   * idempotent 200 on the already-target state, 409 otherwise. Record-level
-   * logical markers only — no process suspension or restart in this slice.
+   * P4 Run-level Pause/Resume (current-v2 family). Pause is a logical marker.
+   * Default resume continues the same Run; explicit child-run creates and
+   * dispatches a durable Child. An already-running Run is an idempotent 200,
+   * while other invalid states return 409.
    */
   router.post('/runs/:runId/pause', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
@@ -138,10 +139,16 @@ export function createV2RunRoutes(
         { ...(resumeMode === undefined ? {} : { resumeMode }), ...(requestedBy === undefined ? {} : { requestedBy }) },
       );
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
-      // P4B: only a genuine paused -> running transition re-drives; the
-      // idempotent already-running 200 and replays never re-dispatch.
-      if (resumeDispatch?.enabled === true && !result.replayed && before?.status === 'paused') {
-        void resumeDispatch.drive(workspaceId, runId).catch(() => {
+      // Only a genuine paused -> running command is re-driven. Logical resume
+      // dispatches the same Run; explicit child-run dispatches its Child.
+      // The idempotent already-running response and keyed replays never dispatch.
+      if (
+        resumeDispatch?.enabled === true
+        && !result.replayed
+        && before?.status === 'paused'
+      ) {
+        const driveRunId = result.body.run.id;
+        void resumeDispatch.drive(workspaceId, driveRunId).catch(() => {
           // Containment backstop only; the drive contains its own failures.
         });
       }

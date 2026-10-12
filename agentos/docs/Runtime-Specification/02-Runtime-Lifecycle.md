@@ -2494,6 +2494,7 @@ Run 状态迁移必须使用：
 |---|---|---|---|
 | ∅ | queued | Run creation | Yes |
 | queued | starting | Scheduler | Yes |
+| queued | failed | Pre-dispatch isolation failure | Yes |
 | queued | cancelled | User cancel | Yes |
 | starting | running | First stage active | Yes |
 | starting | failed | Startup error | Yes |

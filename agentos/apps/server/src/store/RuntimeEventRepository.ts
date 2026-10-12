@@ -49,6 +49,7 @@ export interface DurableRuntimeFactInput {
   readonly providerSessionId?: string;
   readonly processId?: string;
   readonly artifactId?: string;
+  readonly worktreeId?: string;
   readonly timestamp: string;
   /**
    * Optional Runtime Event source. Omission preserves the historical
@@ -192,6 +193,7 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
       ...(input.providerSessionId === undefined ? {} : { providerSessionId: input.providerSessionId }),
       ...(input.processId === undefined ? {} : { processId: input.processId }),
       ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
+      ...(input.worktreeId === undefined ? {} : { worktreeId: input.worktreeId }),
       sequence,
       timestamp: input.timestamp,
       source: input.source ?? 'process-manager',
@@ -686,6 +688,17 @@ export class RuntimeEventRepository {
       WHERE run_id = ? AND correlation_id = ?
       ORDER BY sequence ASC
     `).all(runId, correlationId) as RuntimeEventRow[];
+    return rows.map(row => this.consumeRow(row)!);
+  }
+
+  listByWorktree(workspaceId: string, worktreeId: string, afterSequence = 0, limit = 200): RuntimeEventConsumptionResult[] {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_READ_FAILED', 'Worktree event query is invalid');
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM runtime_events WHERE workspace_id = ? AND worktree_id = ? AND sequence > ?
+        AND durability = 'durable' ORDER BY sequence ASC LIMIT ?
+    `).all(workspaceId, worktreeId, afterSequence, limit) as RuntimeEventRow[];
     return rows.map(row => this.consumeRow(row)!);
   }
 

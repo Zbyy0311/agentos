@@ -63,7 +63,7 @@ function createDb() {
     name TEXT NOT NULL,
     provider_type TEXT NOT NULL CHECK (provider_type IN ('codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote')),
     adapter_id TEXT NOT NULL, runtime_mode TEXT NOT NULL CHECK (runtime_mode IN ('cli','api','ssh','container')),
-    executable TEXT, args_template_json TEXT NOT NULL DEFAULT '[]', model TEXT,
+    executable TEXT, args_template_json TEXT NOT NULL DEFAULT '[]', prompt_delivery TEXT, model TEXT,
     environment_profile_id TEXT, secret_profile_id TEXT,
     working_directory_mode TEXT NOT NULL DEFAULT 'workspace' CHECK (working_directory_mode IN ('workspace','worktree','custom')),
     custom_working_directory TEXT, capabilities_json TEXT NOT NULL,
@@ -111,6 +111,21 @@ test('insert and findById', () => {
   assert.equal(found!.name, 'Default Codex CLI');
   assert.equal(found!.providerType, 'codex');
   assert.deepEqual(found!.capabilities.structuredEvents, true);
+});
+
+test('insert/update persist optional promptDelivery and preserve the legacy argument default', () => {
+  const db = createDb();
+  const repo = new ProviderConfigurationRepository(db as any);
+  const legacy = makeConfig({ id: 'provider_legacy' });
+  const stdin = makeConfig({ id: 'provider_stdin', promptDelivery: 'stdin' });
+  repo.insert(legacy);
+  repo.insert(stdin);
+  assert.equal(repo.findById(legacy.id)?.promptDelivery, undefined);
+  assert.equal(repo.findById(stdin.id)?.promptDelivery, 'stdin');
+
+  const updated = repo.update({ ...legacy, promptDelivery: 'argument' }, legacy.version);
+  assert.equal(updated.promptDelivery, 'argument');
+  assert.equal(repo.findById(legacy.id)?.promptDelivery, 'argument');
 });
 
 test('findByWorkspace returns matching configs', () => {

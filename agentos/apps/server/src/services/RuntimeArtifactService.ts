@@ -141,6 +141,50 @@ export class RuntimeArtifactService {
     return artifact;
   }
 
+  /** Managed checkout evidence can belong to a canonical Run without a legacy Execution. */
+  async createWorktreeArtifact(worktreeId: string, input: CreateRuntimeArtifactInput): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
+    const assertLease = (): void => {
+      const lease = this.store.worktreeRepository().getById(worktreeId);
+      if (!lease || lease.workspaceId !== input.workspaceId || lease.runId !== input.runId
+        || lease.executionId !== input.sourceExecutionId || lease.agentId !== input.agentId
+        || resolve(lease.absolutePath) !== resolve(input.workspaceRoot) || lease.status === 'cleaned') {
+        throw new Error('Worktree artifact provenance is invalid');
+      }
+    };
+    assertLease();
+    if (!this.store.runRepository().findById(input.workspaceId, input.runId)) return this.create(input);
+    if (input.completion) throw new Error('Worktree evidence cannot declare review or test completion');
+    const title = input.title.trim();
+    if (!title) throw new Error('Runtime artifact title is required');
+    const source = await this.readSource(input.source, input.workspaceRoot);
+    const bytes = source.bytes;
+    if (!bytes || bytes.byteLength > MAX_BYTES[input.type]) throw new Error('Worktree artifact content exceeds its byte limit');
+    if (input.type === 'image' && !isSupportedRaster(bytes)) throw new Error('Unsupported image artifact format');
+    const id = randomUUID();
+    const storageKey = `canonical-worktrees/${id}/content`;
+    const directory = join(this.artifactRoot, 'canonical-worktrees', id);
+    await mkdir(directory, { recursive: true });
+    try {
+      await writeFile(join(directory, 'content'), bytes, { flag: 'wx' });
+      inTransaction(this.store.getDatabase(), () => {
+        assertLease();
+        if (this.store.listCanonicalRuntimeArtifacts(input.workspaceId, input.runId).length >= MAX_ARTIFACTS_PER_RUN) {
+          throw new Error('Runtime artifact limit reached for run');
+        }
+        this.store.createCanonicalRuntimeArtifact({ id, workspaceId: input.workspaceId, agentId: input.agentId,
+          type: input.type, title, summary: input.summary?.trim() || source.summary,
+          originalPath: normalizeOriginalPath(input.originalPath, input.workspaceRoot) ?? source.originalPath,
+          mimeType: input.mimeType ?? inferMimeType(title), sizeBytes: bytes.byteLength,
+          sha256: hash(bytes), contentAvailable: true, createdAt: new Date().toISOString(),
+        }, { kind: 'CANONICAL', canonicalRunId: input.runId }, storageKey);
+      });
+      return this.store.getCanonicalRuntimeArtifactRecord(input.workspaceId, id)!;
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
   async createCanonicalCompleted(input: {
     workspaceId: string; runId: string; stageId: string; stageAttempt: number; operationId: string; agentId: string;
     type: 'review' | 'test'; conclusion: ArtifactCompletionConclusion; summary: string; sourceKey: string;
@@ -227,9 +271,9 @@ export class RuntimeArtifactService {
   }
 
   /** Read-only listing channel for the worktree control API (diff/bundle/inspect views). */
-  listForRun(workspaceId: string, runId: string): RuntimeArtifact[] {
+  listForRun(workspaceId: string, runId: string): Array<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
     if (!runId) return [];
-    return this.store.listRuntimeArtifacts(workspaceId, runId);
+    return [...this.store.listRuntimeArtifacts(workspaceId, runId), ...this.store.listCanonicalRuntimeArtifacts(workspaceId, runId)];
   }
 
   async cleanupConversation(workspaceId: string, conversationId: string): Promise<void> {

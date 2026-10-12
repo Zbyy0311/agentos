@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { NativeProcessHandle, SurvivorVerification, TreeTerminationResult } from './driver.js';
 import { cleanupVerdictFromVerification } from './driver.js';
+import { NATIVE_STDIN_MAX_CHUNK_BYTES } from './driver.js';
 import { NodeProcessDriver } from './node-driver.js';
+import { UnavailableProcessTreeController } from './platform-process-tree.js';
 import type { ProcessTreeController, ProcessTreeHandle } from './platform-process-tree.js';
 import { STREAM_CHUNK_LIMIT_BYTES } from './streams.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
@@ -262,6 +264,15 @@ async function waitForFile(path: string): Promise<string> {
   throw new Error('timed out waiting for ' + path);
 }
 
+async function waitForFileLength(path: string, minimumLength: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (existsSync(path) && readFileSync(path, 'utf8').length >= minimumLength) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error('timed out waiting for file length ' + minimumLength + ': ' + path);
+}
+
 function basicLaunch(executable: string, args: readonly string[]) {
   const env: Record<string, string> = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot ?? 'C:\\Windows' } : {};
   return {
@@ -276,24 +287,39 @@ function basicLaunch(executable: string, args: readonly string[]) {
 
 class ExitObservationController implements ProcessTreeController {
   verifyCalls = 0;
+  private readonly windows = new WindowsProcessTreeController();
+
+  spawnOwned(launch: Parameters<WindowsProcessTreeController['spawnOwned']>[0]) {
+    return this.windows.spawnOwned(launch);
+  }
 
   async attach(identity: NativeIdentity): Promise<ProcessTreeHandle> {
     return { platform: 'unavailable', rootPid: identity.pid, state: 'test' };
   }
 
-  async terminateTree(): Promise<TreeTerminationResult> {
+  async terminateTree(handle: ProcessTreeHandle): Promise<TreeTerminationResult> {
+    if (process.platform === 'win32') return this.windows.terminateTree(handle);
     return { classification: 'unknown', attemptedMembers: [], errors: [] };
   }
 
-  async verifySurvivors(): Promise<SurvivorVerification> {
+  async verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification> {
     this.verifyCalls += 1;
+    if (process.platform === 'win32') return this.windows.verifySurvivors(handle);
     return { classification: 'unknown', knownPids: [] };
   }
 
-  async dispose(): Promise<void> {}
+  async dispose(handle: ProcessTreeHandle): Promise<void> {
+    if (process.platform === 'win32') await this.windows.dispose(handle);
+  }
 }
 
 describe('NodeProcessDriver', () => {
+  it.skipIf(process.platform !== 'win32')('does not fall back to an unowned ordinary spawn when atomic Windows ownership is unavailable', async () => {
+    const driver = new NodeProcessDriver({ processTreeController: new UnavailableProcessTreeController('test-unavailable') });
+    await expect(driver.spawn(basicLaunch(process.execPath, ['-e', 'process.exit(0)'])))
+      .rejects.toThrow('windows-owned-spawn-unavailable');
+  });
+
   it('W12 snapshot excludes its own observer after tracked PID reuse', () => {
     const record: AuditRecord = {
       pid: 3_524,
@@ -452,12 +478,14 @@ describe('NodeProcessDriver', () => {
       const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', childScript]));
       try {
         expect(Number(await waitForFile(readyPath))).toBe(handle.pid);
-        // This controller intentionally is not an owned Windows Job. Hold
-        // the control child alive until its birth identity is captured; an
-        // immediate exit could leave only a PID that another suite reuses.
+        // Hold the owned process alive until its birth identity is inspected;
+        // an immediate exit could leave only a PID that another suite reuses.
         track(handle, 'test-owned-control');
         if (process.platform === 'win32') {
-          expect(auditRecords[auditRecords.length - 1]?.identityAtTrack?.creationTimeUtc).toBeTruthy();
+          expect(
+            isValidNativeBirthIdentity(handle.identity.nativeBirthIdentity)
+              || Boolean(auditRecords[auditRecords.length - 1]?.identityAtTrack?.creationTimeUtc),
+          ).toBe(true);
         }
         expect(processTreeController.verifyCalls).toBe(0);
       } finally {
@@ -479,6 +507,7 @@ describe('NodeProcessDriver', () => {
     const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', "process.stdout.write('hello'); process.exit(3);"]));
     track(handle);
     expect(handle.pid).toBeGreaterThan(0);
+    expect(handle.stdin).toBeNull();
     let stdout = '';
     for await (const chunk of handle.streams.stdout) stdout += Buffer.from(chunk).toString('utf8');
     const exit = await handle.waitExit();
@@ -486,6 +515,77 @@ describe('NodeProcessDriver', () => {
     expect(exit.exitCode).toBe(3);
     await driver.verifySurvivors(handle);
   });
+
+  it('round-trips bounded binary stdin through the owned process and closes it with EOF', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
+    const driver = new NodeProcessDriver();
+    const trailer = Buffer.from([0, 255, 65, 66]);
+    const script = [
+      "process.stdin.on('data', chunk => process.stdout.write(chunk));",
+      "process.stdin.on('end', () => process.stdout.write(Buffer.from([0,255,65,66])));",
+    ].join(' ');
+    const handle = await driver.spawn({ ...basicLaunch(process.execPath, ['-e', script]), stdinMode: 'pipe' });
+    track(handle);
+    const outputPromise = collectChunks(handle.streams.stdout);
+    const input = Buffer.alloc(NATIVE_STDIN_MAX_CHUNK_BYTES * 4 + 701);
+    for (let i = 0; i < input.length; i += 1) input[i] = (i * 31) & 0xff;
+    try {
+      expect(handle.stdin).not.toBeNull();
+      for (let offset = 0; offset < input.length; offset += NATIVE_STDIN_MAX_CHUNK_BYTES) {
+        await handle.stdin!.write(input.subarray(offset, Math.min(offset + NATIVE_STDIN_MAX_CHUNK_BYTES, input.length)));
+      }
+      await handle.stdin!.close();
+      await expect(handle.waitExit()).resolves.toMatchObject({ exitCode: 0 });
+      expect(await outputPromise).toEqual(Buffer.concat([input, trailer]));
+      await driver.verifySurvivors(handle);
+    } finally {
+      if (pidIsAlive(handle.pid)) {
+        await driver.terminateTree(handle).catch(() => undefined);
+        await handle.waitExit().catch(() => undefined);
+      }
+    }
+  });
+
+  it.skipIf(process.platform !== 'win32' && process.platform !== 'linux')(
+    'suspends and resumes the owned root, then cancels it while suspended',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const driver = new NodeProcessDriver();
+      const fixtureDir = mkdtempSync(join(tmpdir(), 'agentos-process-control-'));
+      const marker = join(fixtureDir, 'ticks');
+      const script = [
+        "const fs=require('node:fs');",
+        'fs.writeFileSync(process.argv[1], "ready\\n");',
+        'setInterval(() => fs.appendFileSync(process.argv[1], "x"), 25);',
+      ].join(' ');
+      let handle: Awaited<ReturnType<NodeProcessDriver['spawn']>> | undefined;
+      try {
+        handle = await driver.spawn(basicLaunch(process.execPath, ['-e', script, marker]));
+        track(handle);
+        await waitForFileLength(marker, 7);
+
+        await expect(driver.suspend(handle)).resolves.toMatchObject({ status: 'completed' });
+        const frozenLength = readFileSync(marker, 'utf8').length;
+        await new Promise(resolve => setTimeout(resolve, 250));
+        expect(readFileSync(marker, 'utf8').length).toBe(frozenLength);
+
+        await expect(driver.resume(handle)).resolves.toMatchObject({ status: 'completed' });
+        await waitForFileLength(marker, frozenLength + 1);
+
+        await expect(driver.suspend(handle)).resolves.toMatchObject({ status: 'completed' });
+        await expect(driver.terminateTree(handle)).resolves.toMatchObject({ classification: 'complete' });
+        const exit = await handle.waitExit();
+        expect(exit.exitCode ?? exit.signal).not.toBeNull();
+        await expect(driver.verifySurvivors(handle)).resolves.toMatchObject({ classification: 'complete', knownPids: [] });
+      } finally {
+        if (handle !== undefined) {
+          await driver.terminateTree(handle).catch(() => undefined);
+          await handle.waitExit().catch(() => undefined);
+          await driver.verifySurvivors(handle).catch(() => undefined);
+        }
+        rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('gracefulStop delivers a signal and the child terminates', { timeout: REAL_SPAWN_TIMEOUT_MS }, async () => {
     const driver = new NodeProcessDriver();

@@ -1,0 +1,382 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import express from 'express';
+import { SqliteStore } from '../store/SqliteStore.js';
+import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { TaskRunService } from './TaskRunService.js';
+import { WorktreeManager } from './WorktreeManager.js';
+import { WorktreeMergeService } from './WorktreeMergeService.js';
+import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
+import { WorktreeControlService } from './WorktreeControlService.js';
+import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import { WorktreeArtifactService } from './WorktreeArtifactService.js';
+import { assertNoPendingWorktreeRefUpdate, prepareWorktreeRefUpdate, recoverWorktreeRefUpdates } from './WorktreeRefJournal.js';
+import { createWorktreeRoutes } from '../routes/worktrees.js';
+
+function git(root: string, args: string[]): string {
+  return execFileSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' }).trim();
+}
+
+async function fixture() {
+  const directory = mkdtempSync(join(tmpdir(), 'agentos-worktree-events-'));
+  mkdirSync(join(directory, 'workspace'));
+  writeFileSync(join(directory, 'workspace', 'workspaces.json'), '{"workspaces":[]}');
+  const store = new SqliteStore(directory);
+  const workspaces = new WorkspaceManager(store);
+  const workspace = await workspaces.create('Worktree events', join(directory, 'source'), { git: false, memory: false, readme: false, docs: false });
+  git(workspace.rootPath, ['init', '-q', '-b', 'main']);
+  git(workspace.rootPath, ['config', 'user.name', 'Events fixture']);
+  git(workspace.rootPath, ['config', 'user.email', 'events@agentos.invalid']);
+  git(workspace.rootPath, ['config', 'core.autocrlf', 'false']);
+  writeFileSync(join(workspace.rootPath, 'README.md'), 'base\n');
+  git(workspace.rootPath, ['add', '.']);
+  git(workspace.rootPath, ['commit', '-qm', 'base']);
+  const service = new TaskRunService(store);
+  const task = service.createTask(workspace.id, { title: 'Event task', createdBy: 'test' });
+  const run = service.createRun(workspace.id, { taskId: task.id, createdBy: 'test' });
+  const audit: string[] = [];
+  const sink = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: line => audit.push(line) });
+  const worktreeRoot = join(directory, 'worktrees');
+  const manager = new WorktreeManager(worktreeRoot, store.worktreeRepository(), sink);
+  const createLease = () => manager.createLease({ workspaceId: workspace.id, workspaceRoot: workspace.rootPath, runId: run.id, executionId: 'exec-test', agentId: 'agent-test' });
+  const events = (id: string) => store.runtimeEventRepository().listByWorktree(workspace.id, id).map(result => {
+    assert.equal(result.kind, 'known'); return result.event;
+  });
+  return { directory, store, workspaces, workspace, run, audit, sink, worktreeRoot, manager, createLease, events,
+    close: () => {
+      store.close();
+      try { rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+      catch (error) {
+        if (process.platform !== 'win32' || !['ENOTEMPTY', 'EBUSY', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+        process.emitWarning(`Fixture cleanup incomplete; retained ${directory}: ${(error as NodeJS.ErrnoException).code}`);
+      }
+    } };
+}
+
+test('lease mutation persists a registered event and exactly one outbox handoff', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    fx.manager.abandonLease(lease.id);
+    const events = fx.events(lease.id);
+    assert.deepEqual(events.map(event => event.type), ['worktree.reserved', 'worktree.created', 'worktree.abandoned']);
+    assert.deepEqual(events.map(event => event.sequence), [2, 3, 4]);
+    for (const event of events) {
+      assert.equal(event.source, 'worktree-manager');
+      assert.equal(event.runId, fx.run.id);
+      assert.equal(event.workspaceId, fx.workspace.id);
+      const outbox = fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?').get(event.id) as { count: number };
+      assert.equal(outbox.count, 1);
+    }
+    assert.deepEqual(fx.store.runtimeEventRepository().listByWorktree('other-workspace', lease.id), []);
+  } finally { fx.close(); }
+});
+
+test('missing canonical Run records an audit line instead of inventing a Run event', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.manager.createLease({ workspaceId: fx.workspace.id, workspaceRoot: fx.workspace.rootPath, runId: 'legacy-run', executionId: 'legacy-exec', agentId: 'agent-test' });
+    assert.deepEqual(fx.events(lease.id), []);
+    assert.ok(fx.audit.some(line => line.includes('run-not-persisted')));
+  } finally { fx.close(); }
+});
+
+test('startup reconciliation finds and preserves an orphan with no database leases', async () => {
+  const fx = await fixture();
+  try {
+    mkdirSync(fx.worktreeRoot);
+    const orphan = join(fx.worktreeRoot, 'orphan');
+    git(fx.workspace.rootPath, ['worktree', 'add', '-q', '-b', 'orphan', orphan]);
+    const report = await fx.manager.reconcile([fx.workspace.rootPath]);
+    assert.equal(report.orphaned.length, 1);
+    assert.equal(report.orphaned[0].action, 'preserve');
+    assert.ok(existsSync(join(orphan, 'README.md')));
+    assert.equal(fx.manager.listLeases().length, 0);
+    assert.ok(fx.audit.some(line => line.includes('WORKTREE_ORPHAN_PRESERVED')));
+  } finally { fx.close(); }
+});
+
+test('restart reactivates a creating lease with recovery and activation events', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    fx.store.worktreeRepository().save({ ...record, status: 'creating' });
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    const report = await restarted.reconcile([fx.workspace.rootPath]);
+    assert.deepEqual(report.activated, [lease.id]);
+    assert.equal(restarted.getLease(lease.id)?.status, 'active');
+    assert.ok(fx.events(lease.id).some(event => event.type === 'worktree.activated'));
+    assert.ok(fx.store.runtimeEventRepository().listByRunAfterSequence(fx.run.id, 0).some(result => result.event.type === 'worktree.recovery_started'));
+  } finally { fx.close(); }
+});
+
+test('merge records requested and merged events while preserving the main checkout', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const base = git(fx.workspace.rootPath, ['rev-parse', 'HEAD']);
+    writeFileSync(join(checkout, 'feature.txt'), 'feature\n');
+    git(checkout, ['add', '.']); git(checkout, ['commit', '-qm', 'feature']);
+    const merge = new WorktreeMergeService(fx.manager, fx.store.worktreeMergeRepository());
+    await merge.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: base, requestedBy: 'test' });
+    assert.deepEqual(fx.events(lease.id).map(event => event.type), ['worktree.reserved', 'worktree.created', 'worktree.merge_requested', 'worktree.merged']);
+    assert.equal(existsSync(join(fx.workspace.rootPath, 'feature.txt')), false);
+  } finally { fx.close(); }
+});
+
+test('canonical worktree controls commit, review, merge and clean up with durable recovery evidence', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    fx.store.runRepository().transitionStatus(fx.workspace.id, fx.run.id, fx.run.version, 'cancelled');
+    const artifacts = new RuntimeArtifactService(fx.store, fx.directory);
+    const controls = new WorktreeControlService(fx.manager, {
+      getRun: (workspaceId, runId) => fx.store.runRepository().findById(workspaceId, runId),
+    }, artifacts);
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const originalIndex = readFileSync(join(fx.workspace.rootPath, '.git', 'index'));
+    const originalReadme = readFileSync(join(fx.workspace.rootPath, 'README.md'));
+    const baseCommit = git(checkout, ['rev-parse', 'HEAD']);
+    writeFileSync(join(checkout, 'README.md'), 'owned worktree update\n');
+    const committed = await controls.commit(fx.workspace.id, lease.id, {
+      expectedHeadCommit: baseCommit, message: 'controlled update', pathspec: ['README.md'],
+      includeUntracked: false, requestedBy: 'user',
+    });
+    const review = await controls.review(fx.workspace.id, lease.id, { expectedHeadCommit: committed.commitSha });
+    assert.equal(review.headCommit, committed.commitSha);
+    const merger = new WorktreeMergeService(fx.manager, fx.store.worktreeMergeRepository());
+    await merger.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: baseCommit, requestedBy: 'test' });
+    assert.equal(git(checkout, ['symbolic-ref', '--short', 'HEAD']), lease.branchName);
+    const userArchive = Buffer.from('user archive must survive cleanup\n');
+    writeFileSync(join(checkout, '.agentos-untracked.tar'), userArchive);
+    const result = await controls.cleanup(fx.workspace.id, lease.id, {
+      expectedHeadCommit: committed.commitSha, confirmRecoveryBundle: true,
+    });
+    assert.equal(result.lease?.status, 'cleaned');
+    assert.equal(existsSync(checkout), false);
+    assert.deepEqual(readFileSync(join(fx.workspace.rootPath, 'README.md')), originalReadme);
+    assert.deepEqual(readFileSync(join(fx.workspace.rootPath, '.git', 'index')), originalIndex);
+    const bundle = fx.manager.getRecord(lease.id)!.recoveryBundle!;
+    assert.equal(bundle.entryCount, 1);
+    const persistedArtifacts = artifacts.listForRun(fx.workspace.id, fx.run.id);
+    assert.equal(persistedArtifacts.length, 3);
+    assert.ok(persistedArtifacts.every(artifact => 'canonicalRunId' in artifact && artifact.canonicalRunId === fx.run.id));
+    assert.deepEqual(artifacts.listForRun('another-workspace', fx.run.id), []);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, bundle.manifestArtifactId)).toString('utf8'));
+    assert.equal(manifest[0].path, '.agentos-untracked.tar');
+    assert.equal(manifest[0].sizeBytes, userArchive.byteLength);
+    const events = fx.events(lease.id);
+    assert.deepEqual(events.map(event => event.type), ['worktree.reserved', 'worktree.created',
+      'worktree.commit_created', 'worktree.ready_for_review', 'worktree.merge_requested', 'worktree.merged', 'worktree.deleted']);
+    for (const event of events) {
+      const row = fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?').get(event.id) as { count: number };
+      assert.equal(row.count, 1);
+    }
+  } finally { fx.close(); }
+});
+
+test('legacy DELETE rebuilds recovery evidence for work written after its earlier bundle', async () => {
+  const fx = await fixture();
+  let server: ReturnType<ReturnType<typeof express>['listen']> | undefined;
+  try {
+    const lease = await fx.createLease();
+    fx.store.runRepository().transitionStatus(fx.workspace.id, fx.run.id, fx.run.version, 'cancelled');
+    const artifacts = new RuntimeArtifactService(fx.store, fx.directory);
+    const bundleService = new WorktreeArtifactService(artifacts, fx.manager);
+    const prior = await bundleService.createBundle(lease.id, {
+      workspaceId: fx.workspace.id, runId: fx.run.id, executionId: lease.executionId, agentId: lease.agentId,
+    });
+    assert.equal(prior.entryCount, 0);
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const receipt = Buffer.from([0, 255, 22, 10]);
+    writeFileSync(join(checkout, 'late-receipt.bin'), receipt);
+    const app = express(); app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(fx.workspaces, fx.manager, artifacts, {
+      getRun: (workspaceId, runId) => fx.store.runRepository().findById(workspaceId, runId),
+    }, undefined, undefined, fx.store.runtimeEventRepository()));
+    server = app.listen(0);
+    await new Promise<void>(resolveListen => server!.once('listening', resolveListen));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test server did not bind');
+    const url = `http://127.0.0.1:${address.port}/api/workspaces/${fx.workspace.id}/worktrees/${lease.id}`;
+    const request = (body: unknown) => fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await request({ confirmRecoveryBundle: true, expectedHeadCommit: '0'.repeat(40) })).status, 409);
+    assert.ok(existsSync(checkout));
+    assert.equal((await request({ confirmRecoveryBundle: true })).status, 200);
+    assert.equal(existsSync(checkout), false);
+    const current = fx.manager.getRecord(lease.id)!.recoveryBundle!;
+    assert.notEqual(current.manifestArtifactId, prior.manifestArtifactId);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, current.manifestArtifactId)).toString('utf8'));
+    assert.equal(manifest[0].path, 'late-receipt.bin');
+    assert.equal(manifest[0].sizeBytes, receipt.byteLength);
+    await bundleService.verifyRecoveryBundle(current, fx.workspace.id);
+    assert.equal((await request({ confirmRecoveryBundle: true })).status, 200);
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.deleted').length, 1);
+  } finally {
+    if (server) await new Promise<void>(resolveClose => server!.close(() => resolveClose()));
+    fx.close();
+  }
+});
+
+test('published merge intent survives an Outbox failure and replays its result exactly once', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const checkout = fx.manager.getRecord(lease.id)!.absolutePath;
+    const base = git(checkout, ['rev-parse', 'HEAD']);
+    writeFileSync(join(checkout, 'feature.txt'), 'durable feature\n');
+    git(checkout, ['add', '.']); git(checkout, ['commit', '-qm', 'feature']);
+    const head = git(checkout, ['rev-parse', 'HEAD']);
+    fx.store.getDatabase().exec(`CREATE TRIGGER block_merge_outbox BEFORE INSERT ON outbox_messages
+      WHEN (SELECT type FROM runtime_events WHERE id = NEW.event_id) = 'worktree.merged'
+      BEGIN SELECT RAISE(ABORT, 'fixture-merge-outbox-failure'); END`);
+    const merger = new WorktreeMergeService(fx.manager, fx.store.worktreeMergeRepository());
+    await assert.rejects(merger.merge(lease.id, { strategy: 'ff', targetBranch: 'main', expectedHeadCommit: base, requestedBy: 'test' }), /OUTBOX_PERSISTENCE_FAILED/);
+    assert.equal(git(fx.workspace.rootPath, ['rev-parse', 'main']), head);
+    assert.equal(fx.store.worktreeMergeRepository().list().length, 0);
+    await assert.rejects(assertNoPendingWorktreeRefUpdate(fx.manager.getRecord(lease.id)!, 'main'), /requires recovery/);
+    fx.store.getDatabase().exec('DROP TRIGGER block_merge_outbox');
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    assert.deepEqual(await recoverWorktreeRefUpdates(restarted, fx.store.worktreeMergeRepository()), { completed: 1, preserved: 0 });
+    assert.deepEqual(await recoverWorktreeRefUpdates(restarted, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 0 });
+    const records = fx.store.worktreeMergeRepository().list();
+    assert.equal(records.length, 1);
+    assert.equal(records[0].resultingTargetCommit, head);
+    const events = fx.events(lease.id).filter(event => event.type === 'worktree.merged');
+    assert.equal(events.length, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE event_id = ?').get(events[0].id) as { count: number }).count, 1);
+    assert.equal(existsSync(join(fx.workspace.rootPath, 'feature.txt')), false);
+  } finally { fx.close(); }
+});
+
+test('interrupted commit ref publication records its fact without duplicates and preserves unknown intents', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    const old = git(record.absolutePath, ['rev-parse', 'HEAD']);
+    writeFileSync(join(record.absolutePath, 'feature.txt'), 'record this commit\n');
+    git(record.absolutePath, ['add', '.']);
+    const tree = git(record.absolutePath, ['write-tree']);
+    const head = git(record.absolutePath, ['commit-tree', tree, '-p', old, '-m', 'published feature']);
+    const payload = { commitSha: head, message: 'published feature', filesChanged: 1 };
+    await prepareWorktreeRefUpdate(record, { branch: record.branchName, previousCommit: old, resultingCommit: head, eventType: 'worktree.commit_created', payload });
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 1 });
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.commit_created').length, 0);
+    git(record.absolutePath, ['update-ref', `refs/heads/${record.branchName}`, head, old]);
+    fx.store.eventRedactionService().registerSecrets(fx.workspace.id, ['published feature']);
+    fx.manager.recordRuntimeFact(lease.id, 'worktree.commit_created', payload);
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 1, preserved: 0 });
+    assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.commit_created').length, 1);
+    assert.deepEqual(await recoverWorktreeRefUpdates(fx.manager, fx.store.worktreeMergeRepository()), { completed: 0, preserved: 0 });
+  } finally { fx.close(); }
+});
+
+test('startup preserves a partial creating checkout without activating it', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    unlinkSync(join(record.absolutePath, 'README.md'));
+    fx.store.worktreeRepository().save({ ...record, status: 'creating' });
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    const report = await restarted.reconcile([fx.workspace.rootPath]);
+    assert.deepEqual(report.activated, []);
+    assert.deepEqual(report.incompleteCreations, [lease.id]);
+    assert.equal(restarted.getLease(lease.id)?.status, 'failed');
+    assert.ok(existsSync(join(record.absolutePath, '.git')));
+    assert.ok(!fx.events(lease.id).some(event => event.type === 'worktree.activated'));
+  } finally { fx.close(); }
+});
+
+test('startup refuses to activate a creating checkout on a different branch', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    git(record.absolutePath, ['checkout', '-qb', 'foreign-branch']);
+    fx.store.worktreeRepository().save({ ...record, status: 'creating' });
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    const report = await restarted.reconcile([fx.workspace.rootPath]);
+    assert.deepEqual(report.incompleteCreations, [lease.id]);
+    assert.equal(restarted.getLease(lease.id)?.status, 'failed');
+    assert.equal(git(record.absolutePath, ['symbolic-ref', '--short', 'HEAD']), 'foreign-branch');
+    assert.ok(existsSync(join(record.absolutePath, 'README.md')));
+  } finally { fx.close(); }
+});
+
+test('event API serves durable workspace-scoped events with sequence pagination', async () => {
+  const fx = await fixture();
+  const app = express();
+  app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(fx.workspaces, fx.manager, undefined, undefined, undefined, undefined, fx.store.runtimeEventRepository()));
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once('listening', resolve));
+  try {
+    const lease = await fx.createLease(); fx.manager.abandonLease(lease.id);
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/${fx.workspace.id}/worktrees/${lease.id}/events`;
+    const response = await fetch(`${base}?afterSequence=3`);
+    const body = await response.json();
+    assert.equal(body.eventModel, 'runtime_events');
+    assert.deepEqual(body.events.map((event: { type: string }) => event.type), ['worktree.abandoned']);
+    assert.equal(body.nextSequence, 4);
+    assert.equal((await fetch(`${base}?afterSequence=-1`)).status, 400);
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())); fx.close(); }
+});
+
+test('failed outbox insert rolls back the lease mutation and its runtime event', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    fx.store.getDatabase().exec("CREATE TRIGGER block_outbox BEFORE INSERT ON outbox_messages BEGIN SELECT RAISE(ABORT, 'fixture-outbox-failure'); END");
+    assert.throws(() => fx.manager.abandonLease(lease.id), /OUTBOX_PERSISTENCE_FAILED/);
+    assert.equal(fx.manager.getLease(lease.id)?.status, 'active');
+    assert.equal(fx.store.worktreeRepository().getById(lease.id)?.status, 'active');
+    assert.deepEqual(fx.events(lease.id).map(event => event.type), ['worktree.reserved', 'worktree.created']);
+  } finally { fx.close(); }
+});
+
+test('reservation persistence fails before Git creates a branch or checkout', async () => {
+  const fx = await fixture();
+  try {
+    fx.store.getDatabase().exec("CREATE TRIGGER block_outbox BEFORE INSERT ON outbox_messages BEGIN SELECT RAISE(ABORT, 'fixture-outbox-failure'); END");
+    await assert.rejects(fx.createLease(), /OUTBOX_PERSISTENCE_FAILED/);
+    assert.deepEqual(fx.manager.listLeases(), []);
+    assert.deepEqual(fx.store.worktreeRepository().list(), []);
+    assert.equal(git(fx.workspace.rootPath, ['for-each-ref', '--format=%(refname)', 'refs/heads/agentos/']), '');
+    assert.equal(git(fx.workspace.rootPath, ['worktree', 'list', '--porcelain']).split('\n').filter(line => line.startsWith('worktree ')).length, 1);
+  } finally { fx.close(); }
+});
+
+test('empty execution identity is rejected before reserving a lease or creating Git content', async () => {
+  const fx = await fixture();
+  try {
+    await assert.rejects(fx.manager.createLease({ workspaceId: fx.workspace.id, workspaceRoot: fx.workspace.rootPath,
+      runId: fx.run.id, executionId: 'execution', agentId: '',
+    }), error => (error as { code?: string }).code === 'invalid_identity');
+    assert.deepEqual(fx.store.worktreeRepository().list(), []);
+    assert.equal(git(fx.workspace.rootPath, ['for-each-ref', '--format=%(refname)', 'refs/heads/agentos/']), '');
+  } finally { fx.close(); }
+});
+
+test('startup event failure restores creating status in both database and manager cache', async () => {
+  const fx = await fixture();
+  try {
+    const lease = await fx.createLease();
+    const record = fx.manager.getRecord(lease.id)!;
+    fx.store.worktreeRepository().save({ ...record, status: 'creating' });
+    const restarted = new WorktreeManager(fx.worktreeRoot, fx.store.worktreeRepository(), fx.sink);
+    fx.store.getDatabase().exec("CREATE TRIGGER block_outbox BEFORE INSERT ON outbox_messages BEGIN SELECT RAISE(ABORT, 'fixture-outbox-failure'); END");
+    await assert.rejects(restarted.reconcile([fx.workspace.rootPath]), /OUTBOX_PERSISTENCE_FAILED/);
+    assert.equal(restarted.getLease(lease.id)?.status, 'creating');
+    assert.equal(fx.store.worktreeRepository().getById(lease.id)?.status, 'creating');
+    assert.ok(!fx.events(lease.id).some(event => event.type === 'worktree.activated'));
+    assert.ok(existsSync(join(record.absolutePath, 'README.md')));
+  } finally { fx.close(); }
+});

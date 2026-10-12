@@ -56,6 +56,7 @@ import { migration055 } from './migrations/055-policy-core.js';
 import { migration056 } from './migrations/056-worktree-store.js';
 import { migration057 } from './migrations/057-run-pause-resume.js';
 import { migration058 } from './migrations/058-worktree-merges.js';
+import { migration059 } from './migrations/059-provider-prompt-delivery.js';
 import type { Migration } from './types.js';
 
 /**
@@ -108,6 +109,7 @@ import type { Migration } from './types.js';
  * 056: Worktree Runtime lease persistence (worktrees)
  * 057: Run-level Pause/Resume idempotent mutations (widened idempotency_records operation CHECK)
  * 058: Worktree merge records (worktree_merges)
+ * 059: Optional provider prompt delivery mode (provider_configurations.prompt_delivery)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -168,4 +170,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration056,
   migration057,
   migration058,
+  migration059,
 ];

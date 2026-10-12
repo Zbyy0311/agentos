@@ -199,6 +199,7 @@ function cloneProvider(provider: ProviderConfigurationSnapshotV1): ProviderConfi
     runtimeMode: provider.runtimeMode,
     executable: provider.executable,
     argsTemplate: [...provider.argsTemplate],
+    ...(provider.promptDelivery === undefined ? {} : { promptDelivery: provider.promptDelivery }),
     model: provider.model,
     environmentProfileId: provider.environmentProfileId,
     secretProfileId: provider.secretProfileId,

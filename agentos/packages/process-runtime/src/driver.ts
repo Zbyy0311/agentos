@@ -11,6 +11,21 @@ export interface NativeProcessStreams {
   readonly stderr: AsyncIterable<Uint8Array>;
 }
 
+/** One backpressure-aware, bounded input write surface for an owned process. */
+export interface NativeProcessStdin {
+  /** Accepts one bounded chunk and resolves only after the native write settles. */
+  write(chunk: Uint8Array): Promise<void>;
+  /** Closes the child input exactly once; subsequent closes are idempotent. */
+  close(): Promise<void>;
+}
+
+export const NATIVE_STDIN_MAX_CHUNK_BYTES = 16 * 1024;
+
+export type ProcessControlResult =
+  | { readonly status: 'completed' }
+  | { readonly status: 'unsupported'; readonly reason: string }
+  | { readonly status: 'rejected'; readonly reason: string };
+
 /**
  * Opaque native process handle returned exactly once by the single Driver
  * spawn call. waitExit never rejects for a non-zero exit code.
@@ -19,6 +34,8 @@ export interface NativeProcessHandle {
   readonly pid: number;
   readonly identity: NativeIdentity;
   readonly streams: NativeProcessStreams;
+  /** Present only when spawn explicitly opted into stdinMode: 'pipe'. */
+  readonly stdin?: NativeProcessStdin | null;
   waitExit(): Promise<ExitEvidence>;
 }
 
@@ -60,6 +77,9 @@ export interface PlatformProcessDriver {
   terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: NativeProcessHandle): Promise<SurvivorVerification>;
   inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection>;
+  /** Process-level control. Unsupported platforms must return an explicit result. */
+  suspend?(handle: NativeProcessHandle): Promise<ProcessControlResult>;
+  resume?(handle: NativeProcessHandle): Promise<ProcessControlResult>;
 }
 
 export interface CleanupVerdict {

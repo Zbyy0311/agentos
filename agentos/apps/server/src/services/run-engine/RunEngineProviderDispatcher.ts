@@ -81,6 +81,8 @@ export interface RunEngineProviderDispatcherOptions {
   readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
   readonly artifactResults?: { capture(input: CanonicalArtifactResultInput): Promise<string[]> };
   readonly collaborationStageHooks?: CollaborationStageHooks;
+  /** Release terminal Run Admission and wake durable fallback Children. */
+  readonly onRunTerminal?: (input: { readonly workspaceId: string; readonly runId: string }) => Promise<void>;
 }
 
 export interface MemoryCandidateGenerationPort {
@@ -224,6 +226,7 @@ export class RunEngineProviderDispatcher {
   private readonly onCandidateGenerationError: ((error: unknown, runId: string) => void) | undefined;
   private readonly artifactResults: RunEngineProviderDispatcherOptions['artifactResults'];
   private readonly collaborationStageHooks: CollaborationStageHooks | undefined;
+  private readonly onRunTerminal: RunEngineProviderDispatcherOptions['onRunTerminal'];
   private readonly preparedCollaborationStages = new Map<string, CollaborationStagePreparation>();
 
   constructor(options: RunEngineProviderDispatcherOptions) {
@@ -244,6 +247,7 @@ export class RunEngineProviderDispatcher {
     this.onCandidateGenerationError = options.onCandidateGenerationError;
     this.artifactResults = options.artifactResults;
     this.collaborationStageHooks = options.collaborationStageHooks;
+    this.onRunTerminal = options.onRunTerminal;
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
@@ -347,6 +351,21 @@ export class RunEngineProviderDispatcher {
       return;
     } catch (error) {
       await this.containDispatchFailure(workspaceId, runId, claimed, error);
+    } finally {
+      const finalRun = this.runRepository.findById(workspaceId, runId);
+      if (finalRun !== undefined && isTerminalRun(finalRun.status) && this.onRunTerminal) {
+        try {
+          await this.onRunTerminal({ workspaceId, runId });
+        } catch (error) {
+          this.onDispatchFailure?.({
+            workspaceId,
+            runId,
+            phase: 'unknown',
+            code: 'RUN_TERMINAL_QUEUE_RECOVERY_FAILED',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
   }
 

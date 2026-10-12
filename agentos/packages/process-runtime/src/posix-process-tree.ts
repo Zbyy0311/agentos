@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
-import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
+import type { ProcessControlResult, SurvivorVerification, TreeTerminationResult } from './driver.js';
 import type { NativeIdentity } from './types.js';
 import { boundedErrorDetail, type ProcessTreeController, type ProcessTreeHandle } from './platform-process-tree.js';
 
@@ -29,11 +30,30 @@ export interface PosixSessionEnumeration {
 export type PosixSessionReader = (sessionId: number) => Promise<PosixSessionEnumeration>;
 export type PosixGroupTerminator = (groupId: number) => void;
 
+/** Lossless Linux /proc start-time token captured from the spawned child. */
+export function readLinuxProcessBirthIdentity(pid: number): string | null {
+  if (process.platform !== 'linux' || !Number.isSafeInteger(pid) || pid <= 0) return null;
+  try {
+    const stat = readFileSync('/proc/' + pid + '/stat', 'utf8');
+    const close = stat.lastIndexOf(')');
+    if (close < 0) return null;
+    const fields = stat.slice(close + 1).trim().split(/\s+/);
+    const startTicks = fields[19]; // proc stat field 22; comm is field 2.
+    return startTicks !== undefined && /^\d+$/.test(startTicks)
+      ? 'linux:proc-start-ticks:' + startTicks
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 interface PosixTreeState {
   readonly sessionId: number;
   readonly readSession: PosixSessionReader;
   readonly terminateGroup: PosixGroupTerminator;
   cleanupRequested: boolean;
+  suspendedByAgentOs: boolean;
+  nativeBirthIdentity: string | null;
   closedVerification?: SurvivorVerification;
 }
 
@@ -115,6 +135,8 @@ export class PosixProcessTreeController implements ProcessTreeController {
       readSession: this.readSession,
       terminateGroup: this.terminateGroup,
       cleanupRequested: false,
+      suspendedByAgentOs: false,
+      nativeBirthIdentity: identity.nativeBirthIdentity ?? null,
     };
     return { platform: 'posix', rootPid: identity.pid, state };
   }
@@ -129,11 +151,11 @@ export class PosixProcessTreeController implements ProcessTreeController {
     if (state.closedVerification?.classification === 'complete') {
       return { classification: 'complete', attemptedMembers: [], errors: [] };
     }
+    state.cleanupRequested = true;
     let members: readonly number[] = [];
     try {
       const enumeration = await state.readSession(state.sessionId);
       members = enumeration.members;
-      state.cleanupRequested = true;
       const errors: string[] = [];
       for (const groupId of enumeration.groupIds) {
         // Only groups observed inside the owned session are ever signalled.
@@ -181,6 +203,61 @@ export class PosixProcessTreeController implements ProcessTreeController {
         return { classification: 'unknown', knownPids: [] };
       }
       await new Promise(resolve => setTimeout(resolve, CLEANUP_POLL_MS));
+    }
+  }
+
+  async suspend(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult> {
+    return this.controlRoot(handle, identity, 'SIGSTOP');
+  }
+
+  async resume(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult> {
+    return this.controlRoot(handle, identity, 'SIGCONT');
+  }
+
+  private async controlRoot(
+    handle: ProcessTreeHandle,
+    identity: NativeIdentity,
+    signal: 'SIGSTOP' | 'SIGCONT',
+  ): Promise<ProcessControlResult> {
+    if (handle.platform !== 'posix') return { status: 'unsupported', reason: 'posix-process-control-unavailable' };
+    if (process.platform !== 'linux') {
+      return { status: 'unsupported', reason: 'posix-process-control-requires-linux-birth-identity' };
+    }
+    const state = handle.state as PosixTreeState;
+    if (
+      handle.rootPid !== identity.pid
+      || state.sessionId !== identity.pid
+      || identity.groupId !== String(state.sessionId)
+      || !identity.nativeBirthIdentity
+      || state.nativeBirthIdentity !== identity.nativeBirthIdentity
+    ) return { status: 'rejected', reason: 'process-identity-mismatch' };
+    if (state.cleanupRequested || state.closedVerification?.classification === 'complete') {
+      return { status: 'rejected', reason: 'process-cleanup-started' };
+    }
+    if (signal === 'SIGCONT' && !state.suspendedByAgentOs) {
+      return { status: 'rejected', reason: 'process-not-suspended-by-agentos' };
+    }
+
+    let enumeration: PosixSessionEnumeration;
+    try {
+      enumeration = await state.readSession(state.sessionId);
+    } catch {
+      return { status: 'rejected', reason: 'process-ownership-unavailable' };
+    }
+    if (state.cleanupRequested) return { status: 'rejected', reason: 'process-cleanup-started' };
+    if (!enumeration.members.includes(identity.pid)) {
+      return { status: 'rejected', reason: 'process-identity-not-in-owned-session' };
+    }
+    if (readLinuxProcessBirthIdentity(identity.pid) !== identity.nativeBirthIdentity) {
+      return { status: 'rejected', reason: 'process-birth-identity-mismatch' };
+    }
+    try {
+      process.kill(identity.pid, signal);
+      state.suspendedByAgentOs = signal === 'SIGSTOP';
+      return { status: 'completed' };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return { status: 'rejected', reason: code === 'ESRCH' ? 'process-already-exited' : 'native-process-control-failed' };
     }
   }
 

@@ -743,6 +743,16 @@ export class SqliteStore implements Store {
     return this.workspaceAdmissionRepo;
   }
 
+  /** True when a collaboration task owns this canonical Task or Run. */
+  isManagedCollaborationRun(workspaceId: string, runId: string, taskId: string): boolean {
+    const row = this.database.prepare(`
+      SELECT 1 FROM collaboration_tasks
+      WHERE workspace_id = ? AND (canonical_run_id = ? OR canonical_task_id = ?)
+      LIMIT 1
+    `).get(workspaceId, runId, taskId);
+    return row !== undefined;
+  }
+
   /** PR-3A Worktree lease repository (shares this store's SQLite handle). */
   worktreeRepository(): WorktreeRepository {
     return this.worktreeRepo;
@@ -2062,6 +2072,13 @@ export class SqliteStore implements Store {
       ORDER BY artifacts.created_at ASC, artifacts.id ASC
     `).all(workspaceId, runId) as RuntimeArtifactRow[];
     return rows.map(row => this.toRuntimeArtifact(row));
+  }
+
+  listCanonicalRuntimeArtifacts(workspaceId: string, runId: string): CanonicalRuntimeArtifactRecord[] {
+    const rows = this.database.prepare(`SELECT id FROM runtime_artifacts
+      WHERE workspace_id = ? AND canonical_run_id = ? AND provenance_kind = 'CANONICAL'
+      ORDER BY created_at ASC, id ASC`).all(workspaceId, runId) as Array<{ id: string }>;
+    return rows.map(row => this.getCanonicalRuntimeArtifactRecord(workspaceId, row.id)!);
   }
 
   getRuntimeArtifactRecord(workspaceId: string, artifactId: string): RuntimeArtifactRecord | undefined {

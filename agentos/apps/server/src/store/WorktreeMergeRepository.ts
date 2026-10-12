@@ -121,8 +121,8 @@ export class WorktreeMergeRepository {
   }
 
   /** Insert the pending record and its terminal result in one transaction. */
-  createInTransaction(record: WorktreeMergeRecord): void {
-    inTransaction(this.db, () => this.create(record));
+  createInTransaction(record: WorktreeMergeRecord, appendFact?: () => void): void {
+    inTransaction(this.db, () => { this.create(record); appendFact?.(); });
   }
 
   getById(id: string): WorktreeMergeRecord | undefined {

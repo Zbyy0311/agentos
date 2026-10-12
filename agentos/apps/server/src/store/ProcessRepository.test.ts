@@ -177,6 +177,18 @@ describe('ProcessRepository', () => {
     }
   });
 
+  it('lists process ownership by workspace and Run for safe resume decisions', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const created = repository.createProcess(rootInput()).process;
+      assert.deepEqual(repository.listByRun(WS, RUN).map(process => process.id), [created.id]);
+      assert.deepEqual(repository.listByRun('workspace_other', RUN), []);
+    } finally {
+      db.close();
+    }
+  });
+
   it('exactly-one root claim per Stage attempt; losers join', () => {
     const db = migratedDb();
     try {

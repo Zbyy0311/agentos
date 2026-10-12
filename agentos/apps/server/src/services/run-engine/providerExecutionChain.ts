@@ -28,6 +28,7 @@ import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
 import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
+import { ResumeFallbackQueueRecovery } from './ResumeFallbackQueueRecovery.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
@@ -48,6 +49,7 @@ export interface ProviderExecutionChainOptions {
   readonly artifactRoot: string;
   readonly workspaceRootFor: (workspaceId: string) => string;
   readonly worktreePathFor?: (workspaceId: string, runId: string) => string | undefined;
+  readonly prepareResumeFallbackChild?: (workspaceId: string, runId: string) => Promise<void>;
   readonly continueOwnedRun?: (workspaceId: string, runId: string) => Promise<boolean>;
   readonly withDispatchPermit?: (operation: () => Promise<void>) => Promise<boolean>;
   readonly environment?: Readonly<Record<string, string | undefined>>;
@@ -63,6 +65,10 @@ export interface ProviderExecutionChain {
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
+  /** Replays only granted, durable resume-fallback Child Starts. */
+  readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
+  /** Prepares, admits, and dispatches one explicitly accepted fallback Child. */
+  readonly resumeFallbackChild: (workspaceId: string, runId: string) => Promise<void>;
   readonly memoryContextResolver: MemoryContextResolver;
   readonly approvalGate: RuntimeApprovalGate;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
@@ -97,6 +103,35 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     new CustomCliAdapter({ probe }),
   ]);
   let dispatcher!: RunEngineProviderDispatcher;
+  const resumeFallbackQueue = new ResumeFallbackQueueRecovery(
+    store,
+    input => admissionAuthority.requestCanonicalRun(input),
+    async (workspaceId, runId) => {
+      const drive = () => dispatcher.driveSafely(workspaceId, runId);
+      if (options.withDispatchPermit) {
+        await options.withDispatchPermit(drive);
+      } else {
+        await drive();
+      }
+    },
+    input => admissionAuthority.releaseCanonicalRun(input),
+    async (workspaceId, runId) => {
+      const snapshot = store.runSnapshotRepository().findByRunId(workspaceId, runId);
+      if (!snapshot || snapshot.payload.schemaVersion !== 2) throw new Error('RUN_RESUME_STATE_INCONSISTENT');
+      if (snapshot.payload.workflow.worktreeMode === 'required' && !options.prepareResumeFallbackChild) {
+        throw new Error('RUN_RESUME_WORKTREE_UNAVAILABLE');
+      }
+      await options.prepareResumeFallbackChild?.(workspaceId, runId);
+      if (snapshot.payload.workflow.worktreeMode === 'required'
+        && !options.worktreePathFor?.(workspaceId, runId)) {
+        throw new Error('RUN_RESUME_WORKTREE_UNAVAILABLE');
+      }
+    },
+  );
+  const resumeGrantedResumeFallbackChildren = (workspaceId?: string): Promise<void> =>
+    resumeFallbackQueue.resumeGrantedChildren(workspaceId);
+  const resumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
+    resumeFallbackQueue.resumeChild(workspaceId, runId);
   const approvalGate = new RuntimeApprovalGate(store, {
     continueRun: async (workspaceId, runId) => {
       if (await options.continueOwnedRun?.(workspaceId, runId)) return;
@@ -230,9 +265,15 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
     collaborationStageHooks: options.collaborationStageHooks,
+    onRunTerminal: async ({ workspaceId, runId }) => {
+      await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
+      await resumeGrantedResumeFallbackChildren(workspaceId);
+    },
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
+    resumeGrantedResumeFallbackChildren,
+    resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
   };
 }

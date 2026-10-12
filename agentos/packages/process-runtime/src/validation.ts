@@ -85,6 +85,9 @@ export function validateLaunch(
   if (request.detached === true) {
     throw new ProcessError('PROCESS_POLICY_DENIED', 'detached launch is denied by default policy');
   }
+  if (request.stdinMode !== undefined && request.stdinMode !== 'pipe') {
+    throw new ProcessError('PROCESS_REQUEST_INVALID', 'stdinMode must be pipe when specified');
+  }
   if (typeof request.cwd !== 'string' || request.cwd.length === 0 || !isAbsolute(request.cwd)) {
     throw new ProcessError('PROCESS_CWD_INVALID', 'cwd must be an absolute path');
   }
@@ -110,6 +113,7 @@ export function validateLaunch(
     executable,
     args: Object.freeze([...request.args]),
     cwd: realCwd,
+    ...(request.stdinMode === 'pipe' ? { stdinMode: 'pipe' as const } : {}),
     env,
     envDiagnostics: diagnostics,
     shell: false,

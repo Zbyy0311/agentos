@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -21,6 +22,8 @@ test('creates a byte-verifiable bundle for tracked and untracked files', async (
   await mkdir(join(root, 'nested'));
   const binary = Buffer.from([0, 1, 2, 255, 13, 10]);
   await writeFile(join(root, 'nested', 'new.bin'), binary);
+  const existingArchive = Buffer.from('user-owned archive content\n');
+  await writeFile(join(root, '.agentos-untracked.tar'), existingArchive);
   const expectedTracked = await readFile(join(root, 'tracked.txt'));
 
   const artifacts: Array<{ id: string; type: string; bytes: Buffer }> = [];
@@ -49,14 +52,19 @@ test('creates a byte-verifiable bundle for tracked and untracked files', async (
   const bundle = await new WorktreeArtifactService(fakeArtifacts as never, fakeWorktrees as never).createBundle('lease-1', {
     workspaceId: 'workspace-1', runId: 'run-1', executionId: 'exec-1', agentId: 'agent-1',
   });
-  assert.equal(bundle.entryCount, 1);
+  assert.equal(bundle.entryCount, 2);
   assert.equal(verified, true);
   assert.deepEqual(artifacts.map(item => item.type), ['diff', 'manifest', 'archive']);
   assert.match(artifacts[0]?.bytes.toString('utf8') ?? '', /tracked\.txt/);
   assert.deepEqual(JSON.parse(artifacts[1]?.bytes.toString('utf8') ?? ''), [{
+    path: '.agentos-untracked.tar', sizeBytes: existingArchive.byteLength,
+    sha256: createHash('sha256').update(existingArchive).digest('hex'),
+  }, {
     path: 'nested/new.bin', sizeBytes: binary.byteLength,
     sha256: 'de6c83f562fd0a7ca52b97d2b8b80ea93bb6363d2db5e0ed014bacd95e794ce7',
   }]);
+  assert.deepEqual(await readFile(join(root, '.agentos-untracked.tar')), existingArchive);
+  assert.deepEqual((await readdir(root)).filter(path => path.startsWith('.agentos-untracked-')), []);
   const archivePath = join(root, 'bundle.tar');
   await writeFile(archivePath, artifacts[2]?.bytes ?? Buffer.alloc(0));
   assert.match((await exec('tar', ['-tf', archivePath])).stdout, /nested[\\/]new\.bin/);
@@ -76,6 +84,7 @@ test('creates a byte-verifiable bundle for tracked and untracked files', async (
   await exec('tar', ['-xf', join(restored, 'untracked.tar'), '-C', restored]);
   assert.deepEqual(await readFile(join(restored, 'tracked.txt')), expectedTracked);
   assert.deepEqual(await readFile(join(restored, 'nested', 'new.bin')), binary);
+  assert.deepEqual(await readFile(join(restored, '.agentos-untracked.tar')), existingArchive);
 });
 
 test('rejects a symlink that escapes the worktree', async () => {

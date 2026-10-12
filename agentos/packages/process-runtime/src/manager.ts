@@ -6,6 +6,8 @@ import type {
   CleanupVerdict,
   IdentityInspection,
   NativeProcessHandle,
+  NativeProcessStdin,
+  ProcessControlResult,
   PlatformProcessDriver,
   SurvivorVerification,
 } from './driver.js';
@@ -96,6 +98,10 @@ export interface ProcessOutputReadOptions {
   readonly offsetBytes?: number;
   readonly maxBytes?: number;
 }
+
+export type ManagedProcessControlResult = ProcessControlResult & {
+  readonly snapshot: ProcessSnapshot;
+};
 
 /** Optional bound for state waits: deadline via the injected clock, or abort. */
 export interface WaitForStateOptions {
@@ -205,6 +211,7 @@ export class ProcessManager {
   >();
   readonly #timers = new Map<ProcessId, ProcessTimers>();
   readonly #stops = new Map<ProcessId, InternalStop>();
+  readonly #processControlsInFlight = new Set<ProcessId>();
   readonly #reclaimTtlMs: number;
   readonly #reclaimSweepIntervalMs: number;
   #reclaimSweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -533,6 +540,128 @@ export class ProcessManager {
     }
   }
 
+  /**
+   * Writes one bounded chunk to an explicitly pipe-enabled process. Concurrent
+   * writes are rejected by the per-handle stdin port instead of being queued.
+   */
+  async writeStdin(id: ProcessId, claim: ClaimIdentity, chunk: Uint8Array): Promise<void> {
+    const stdin = await this.#store.withLock(() => this.#requireStdinPort(id, claim));
+    try {
+      await stdin.write(chunk);
+    } catch {
+      throw new ProcessError('PROCESS_STDIN_WRITE_FAILED', 'native stdin write failed');
+    }
+  }
+
+  /** Closes an explicitly pipe-enabled process stdin and signals EOF. */
+  async closeStdin(id: ProcessId, claim: ClaimIdentity): Promise<void> {
+    const stdin = await this.#store.withLock(() => this.#requireStdinPort(id, claim));
+    try {
+      await stdin.close();
+    } catch {
+      throw new ProcessError('PROCESS_STDIN_CLOSED', 'native stdin could not be closed');
+    }
+  }
+
+  /**
+   * Suspends the owned root process and enters `waiting`; idle time pauses,
+   * while startup and total deadlines continue to run.
+   */
+  suspend(id: ProcessId, claim: ClaimIdentity): Promise<ManagedProcessControlResult> {
+    return this.#withExclusiveProcessControl(id, () => this.#suspendExclusive(id, claim));
+  }
+
+  async #suspendExclusive(id: ProcessId, claim: ClaimIdentity): Promise<ManagedProcessControlResult> {
+    const prepared = await this.#store.withLock(() => {
+      const record = this.#requireRecord(id);
+      this.#assertClaim(record, claim);
+      if (record.state !== 'running') {
+        throw new ProcessError('PROCESS_REQUEST_INVALID', 'only a running process can be suspended');
+      }
+      const control = this.#driver.suspend;
+      if (control === undefined) {
+        return { kind: 'unsupported' as const, result: { status: 'unsupported', reason: 'platform-suspend-unavailable' } as const, snapshot: this.#store.snapshotOf(record) };
+      }
+      const handle = this.#registry.get(id);
+      if (handle === undefined) {
+        throw new ProcessError('PROCESS_REQUEST_INVALID', 'running process has no owned native handle');
+      }
+      return { kind: 'handle' as const, handle };
+    });
+    if (prepared.kind === 'unsupported') return { ...prepared.result, snapshot: prepared.snapshot };
+
+    let result: ProcessControlResult;
+    try {
+      result = await this.#driver.suspend!(prepared.handle);
+    } catch {
+      result = { status: 'rejected', reason: 'native-suspend-failed' };
+    }
+    return this.#store.withLock(() => {
+      const record = this.#requireRecord(id);
+      this.#assertClaim(record, claim);
+      if (result.status === 'completed') {
+        if (record.state === 'running') {
+          this.#store.transition(record, record.version, 'waiting');
+          record.waitingReason = 'process-suspended';
+          this.#timers.get(id)?.pauseIdle();
+          this.#store.notify(id);
+          return { ...result, snapshot: this.#store.snapshotOf(record) };
+        }
+        return { status: 'rejected', reason: 'process-state-changed', snapshot: this.#store.snapshotOf(record) };
+      }
+      return { ...result, snapshot: this.#store.snapshotOf(record) };
+    });
+  }
+
+  /** Resumes only a process previously suspended through this Manager. */
+  resume(id: ProcessId, claim: ClaimIdentity): Promise<ManagedProcessControlResult> {
+    return this.#withExclusiveProcessControl(id, () => this.#resumeExclusive(id, claim));
+  }
+
+  async #resumeExclusive(id: ProcessId, claim: ClaimIdentity): Promise<ManagedProcessControlResult> {
+    const prepared = await this.#store.withLock(() => {
+      const record = this.#requireRecord(id);
+      this.#assertClaim(record, claim);
+      if (record.state !== 'waiting' || record.waitingReason !== 'process-suspended') {
+        throw new ProcessError('PROCESS_REQUEST_INVALID', 'process is not suspended by this Manager');
+      }
+      const control = this.#driver.resume;
+      if (control === undefined) {
+        return { kind: 'unsupported' as const, result: { status: 'unsupported', reason: 'platform-resume-unavailable' } as const, snapshot: this.#store.snapshotOf(record) };
+      }
+      const handle = this.#registry.get(id);
+      if (handle === undefined) {
+        throw new ProcessError('PROCESS_REQUEST_INVALID', 'suspended process has no owned native handle');
+      }
+      return { kind: 'handle' as const, handle };
+    });
+    if (prepared.kind === 'unsupported') return { ...prepared.result, snapshot: prepared.snapshot };
+
+    let result: ProcessControlResult;
+    try {
+      result = await this.#driver.resume!(prepared.handle);
+    } catch {
+      result = { status: 'rejected', reason: 'native-resume-failed' };
+    }
+    return this.#store.withLock(() => {
+      const record = this.#requireRecord(id);
+      this.#assertClaim(record, claim);
+      if (result.status !== 'completed') return { ...result, snapshot: this.#store.snapshotOf(record) };
+      if (record.state !== 'waiting' || record.waitingReason !== 'process-suspended') {
+        return { status: 'rejected', reason: 'process-state-changed', snapshot: this.#store.snapshotOf(record) };
+      }
+      this.#store.transition(record, record.version, 'running');
+      record.waitingReason = null;
+      const timers = this.#timers.get(id);
+      if (timers !== undefined) {
+        timers.resumeIdle();
+        timers.notifyActivity();
+      }
+      this.#store.notify(id);
+      return { ...result, snapshot: this.#store.snapshotOf(record) };
+    });
+  }
+
   /** Enter an approved wait; the idle deadline pauses. */
   enterWaiting(id: ProcessId, reason: string): Promise<ProcessSnapshot> {
     return this.#store.withLock(() => {
@@ -556,6 +685,9 @@ export class ProcessManager {
       if (record.state !== 'waiting') {
         throw new ProcessError('PROCESS_REQUEST_INVALID', 'process is not waiting');
       }
+      if (record.waitingReason === 'process-suspended') {
+        throw new ProcessError('PROCESS_REQUEST_INVALID', 'a suspended process must be resumed through resume()');
+      }
       this.#store.transition(record, record.version, 'running');
       record.waitingReason = null;
       const timers = this.#timers.get(id);
@@ -566,6 +698,27 @@ export class ProcessManager {
       this.#store.notify(id);
       return this.#store.snapshotOf(record);
     });
+  }
+
+  #requireStdinPort(id: ProcessId, claim: ClaimIdentity): NativeProcessStdin {
+    const record = this.#requireRecord(id);
+    this.#assertClaim(record, claim);
+    if (record.state !== 'running' && record.state !== 'waiting') {
+      throw new ProcessError('PROCESS_STDIN_CLOSED', 'process is not accepting stdin');
+    }
+    const handle = this.#registry.get(id);
+    if (handle === undefined || handle.stdin == null) {
+      throw new ProcessError('PROCESS_STDIN_CLOSED', 'process stdin was not opened');
+    }
+    return handle.stdin;
+  }
+
+  #withExclusiveProcessControl<T>(id: ProcessId, action: () => Promise<T>): Promise<T> {
+    if (this.#processControlsInFlight.has(id)) {
+      return Promise.reject(new ProcessError('PROCESS_REQUEST_INVALID', 'a process control action is already in progress'));
+    }
+    this.#processControlsInFlight.add(id);
+    return action().finally(() => { this.#processControlsInFlight.delete(id); });
   }
 
   /**

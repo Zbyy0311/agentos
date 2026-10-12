@@ -12,6 +12,7 @@ import { migration002 } from '../migrations/migrations/002-add-aggregate-version
 import { migration003 } from '../migrations/migrations/003-workspace-provider-config.js';
 import { migration004 } from '../migrations/migrations/004-workspace-tombstones.js';
 import { migration011 } from '../migrations/migrations/011-legacy-data-migration-foundation.js';
+import { migration059 } from '../migrations/migrations/059-provider-prompt-delivery.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { canonicalizeLegacyJson } from './LegacySourceParser.js';
@@ -64,6 +65,7 @@ function applySchema(db: Db): void {
   db.exec('PRAGMA foreign_keys = ON');
   for (const migration of [baselineMigration, migration002, migration003, migration004]) migration.apply({ db });
   migration011.apply({ db });
+  migration059.apply({ db });
 }
 
 function insertWorkspace(db: Db, value: Record<string, unknown>): void {
@@ -152,6 +154,7 @@ async function legacyAdoptionFixture(options: {
   migration003.apply({ db });
   migration004.apply({ db });
   migration011.apply({ db });
+  migration059.apply({ db });
   const { WorkspaceCompatibilityMigrationService } = await import('./WorkspaceCompatibilityMigrationService.js') as {
     WorkspaceCompatibilityMigrationService: new (options?: Record<string, unknown>) => any;
   };
@@ -768,7 +771,7 @@ test('[M27-P2-T009] Restart after adoption is boot-compatible and does not dupli
       records: (fx.db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
     };
     fx.db.exec('CREATE TABLE _schema_migrations (migration_id TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL, execution_ms INTEGER NOT NULL, app_version TEXT)');
-    for (const id of ['001', '002', '003', '004', '011']) {
+    for (const id of ['001', '002', '003', '004', '011', '059']) {
       const migration = DEFAULT_REGISTRY_MIGRATIONS.find(candidate => candidate.id === id)!;
       fx.db.prepare('INSERT INTO _schema_migrations (migration_id, name, checksum, applied_at, execution_ms, app_version) VALUES (?, ?, ?, ?, 0, NULL)')
         .run(migration.id, migration.name, migration.checksum, NOW);

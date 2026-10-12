@@ -927,8 +927,20 @@ export class CollaborationWorkflowService {
       ['Provider session', 'SELECT COUNT(*) AS count FROM provider_sessions WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
       ['运行进程', 'SELECT COUNT(*) AS count FROM runtime_processes WHERE workspace_id = ? AND run_id = ?', [workspaceId, runId]],
       ['阶段输出', 'SELECT COUNT(*) AS count FROM collaboration_stage_outputs WHERE workspace_id = ? AND collaboration_task_id = ? AND canonical_run_id = ?', [workspaceId, collaborationTaskId, runId]],
-      ['运行阶段事件', `SELECT COUNT(*) AS count FROM runtime_events WHERE workspace_id = ? AND run_id = ?
-        AND type NOT IN ('run.created','stage.created')`, [workspaceId, runId]],
+      // Preparing the uniquely-owned recovery checkout precedes Start. Its
+      // reservation/creation facts are not Provider execution evidence. Every
+      // other worktree fact (commit, dirty, merge, etc.) still fences replay.
+      ['运行阶段事件', `SELECT COUNT(*) AS count FROM runtime_events e WHERE e.workspace_id = ? AND e.run_id = ?
+        AND e.type NOT IN ('run.created','stage.created')
+        AND NOT (
+          e.type IN ('worktree.reserved','worktree.created','worktree.activated')
+          AND e.source = 'worktree-manager'
+          AND EXISTS (
+            SELECT 1 FROM worktrees w WHERE w.id = e.worktree_id
+              AND w.workspace_id = e.workspace_id AND w.run_id = e.run_id
+              AND w.execution_id = ? AND w.status IN ('creating','active')
+          )
+        )`, [workspaceId, runId, `collaboration-${collaborationTaskId}`]],
     ];
     for (const [label, sql, params] of checks) {
       const row = db.prepare(sql).get(...params) as { count: number | bigint };

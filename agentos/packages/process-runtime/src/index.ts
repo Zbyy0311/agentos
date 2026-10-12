@@ -16,6 +16,7 @@ export * from './redaction.js';
 export * from './environment.js';
 export * from './validation.js';
 export * from './driver.js';
+export * from './stdin.js';
 export * from './handle-registry.js';
 export * from './store.js';
 export * from './streams.js';

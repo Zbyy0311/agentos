@@ -743,6 +743,12 @@ test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle
 
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: ['--flag', ''] })));
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: [] })));
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({ promptDelivery: 'stdin' })));
+  assert.throws(
+    () => registry.publish(withProviderPatch({ promptDelivery: 'socket' })),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
   assert.doesNotThrow(() => registry.publish(withProviderPatch({
     timeoutPolicy: {
       ...providerTimeoutPolicy,
@@ -872,10 +878,11 @@ test('rejects omission of every required payload field for all 26 registered Eve
   assert.equal(omissionCount, 70);
 });
 
-test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
+test('maps all 18 Run and 19 Stage transitions without terminal outgoing edges', () => {
   const expectedRunMatrix = [
     { aggregate: 'run', from: null, to: 'queued', primaryEvent: 'run.created', terminal: false },
     { aggregate: 'run', from: 'queued', to: 'starting', primaryEvent: 'run.dequeued', terminal: false },
+    { aggregate: 'run', from: 'queued', to: 'failed', primaryEvent: 'run.failed', terminal: true },
     { aggregate: 'run', from: 'queued', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
     { aggregate: 'run', from: 'starting', to: 'running', primaryEvent: 'run.started', terminal: false },
     { aggregate: 'run', from: 'starting', to: 'failed', primaryEvent: 'run.failed', terminal: true },
@@ -916,7 +923,7 @@ test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges',
 
   assert.deepEqual(M3_RUN_TRANSITION_EVENT_CONTRACTS, expectedRunMatrix);
   assert.deepEqual(M3_STAGE_TRANSITION_EVENT_CONTRACTS, expectedStageMatrix);
-  assert.equal(new Set(M3_RUN_TRANSITION_EVENT_CONTRACTS.map(contract => `${contract.from}->${contract.to}`)).size, 17);
+  assert.equal(new Set(M3_RUN_TRANSITION_EVENT_CONTRACTS.map(contract => `${contract.from}->${contract.to}`)).size, 18);
   assert.equal(new Set(M3_STAGE_TRANSITION_EVENT_CONTRACTS.map(contract => `${contract.from}->${contract.to}`)).size, 19);
 
   for (const from of [null, ...M3_RUN_STATUSES]) {

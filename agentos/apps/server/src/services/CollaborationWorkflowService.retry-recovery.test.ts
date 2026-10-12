@@ -15,7 +15,48 @@ import { TaskRunService } from './TaskRunService.js';
 import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
 import { recoverInterruptedRuns } from '../runRecovery.js';
 import { WorktreeManager } from './WorktreeManager.js';
+import { WorktreeRuntimeEventEmitter } from './WorktreeRuntimeEvents.js';
 import { NOW, fixture, preparePortableWorkspace, createMappedCleanClone, grantRecoveryFixturePermissions, productionServiceFor, recoverFullStartup, admitFollowerToApproval } from './CollaborationWorkflowService.test-fixture.js';
+
+for (const fact of ['dirty', 'commit_created'] as const) {
+  test(`recovery preparation facts do not bypass a worktree.${fact} execution fence`, async () => {
+    const fx = fixture({ runtimeDispatchEnabled: false });
+    try {
+      grantRecoveryFixturePermissions(fx);
+      const manager = new WorktreeManager(join(fx.root, 'worktrees'), fx.store.worktreeRepository(),
+        new WorktreeRuntimeEventEmitter(fx.store.getDatabase(), fx.store.runtimeEventOutboxWriter()));
+      const create = manager.createLease.bind(manager);
+      manager.createLease = async input => {
+        const lease = await create(input);
+        manager.recordRuntimeFact(lease.id, `worktree.${fact}`, fact === 'dirty'
+          ? { headCommit: lease.baseCommit, modifiedCount: 1, untrackedCount: 0 }
+          : { commitSha: lease.baseCommit, message: 'Prior committed execution', filesChanged: 1 });
+        return lease;
+      };
+      const service = new CollaborationWorkflowService({
+        store: fx.store, workspaces: fx.workspaces, worktrees: manager,
+        runtimeDispatchEnabled: false, dispatchRun: async () => assert.fail('fenced recovery must not dispatch'),
+        requestRunAdmission: async () => false, releaseRunAdmission: async () => undefined,
+        registerWorktreePath: () => undefined,
+        cancelRun: async () => assert.fail('fenced recovery must not cancel a Provider'),
+      });
+      const { run, collaboration } = fx.runningWithCompletedStart();
+      const failed = fx.store.runRepository().transitionStatus('workspace-a', run.id, run.version, 'failed', {
+        failureCode: 'RUN_CONFIGURATION_INVALID', failureMessage: 'Pre-Provider configuration rejection',
+      });
+      const blocked = fx.repository.progress({ workspaceId: 'workspace-a', id: fx.plan.id,
+        expectedVersion: collaboration.version, status: 'blocked', expectedRunId: run.id });
+      await assert.rejects(service.recover({ workspaceId: 'workspace-a', collaborationId: fx.plan.id,
+        expectedTaskVersion: blocked.version, expectedRunId: failed.id, expectedRunVersion: failed.version,
+        idempotencyKey: `worktree-${fact}-fence`, action: 'retry-known-failure',
+      }), error => (error as { code?: string }).code === 'COLLABORATION_RECOVERY_REQUIRED');
+      const child = fx.store.runRepository().listByTask('workspace-a', run.taskId).find(candidate => candidate.parentRunId === failed.id);
+      assert.ok(child);
+      assert.equal(child.status, 'queued');
+      assert.equal(fx.store.operationService().listByRun('workspace-a', child.id).filter(operation => operation.type === 'run.start').length, 0);
+    } finally { await fx.close(); }
+  });
+}
 
 
 test('P2 recovery review: deterministic failure duplicate continue creates one canonical retry Run', async () => {

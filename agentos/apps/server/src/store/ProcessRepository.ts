@@ -681,6 +681,16 @@ export class ProcessRepository {
     return row === undefined ? undefined : mapProcess(row);
   }
 
+  /** Read the durable process ownership history for one canonical Run. */
+  listByRun(workspaceId: string, runId: string): RuntimeProcess[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM runtime_processes
+      WHERE workspace_id = ? AND run_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(workspaceId, runId) as RuntimeProcessRow[];
+    return rows.map(mapProcess);
+  }
+
   findByRootClaim(
     workspaceId: string,
     runId: string,

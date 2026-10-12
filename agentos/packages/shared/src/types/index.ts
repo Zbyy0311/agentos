@@ -895,6 +895,8 @@ export interface ProviderConfigurationSnapshotV1 {
   runtimeMode: RuntimeModeV1;
   executable: string | null;
   argsTemplate: string[];
+  /** Omitted in historical snapshots; adapters retain their argument default. */
+  promptDelivery?: 'argument' | 'stdin' | 'file';
   model: string | null;
   environmentProfileId: string | null;
   secretProfileId: string | null;
@@ -1007,6 +1009,7 @@ export * from './mf0-memory-contracts.js';
 export * from './mf3-memory-ranking.js';
 export * from './mf5-memory-events.js';
 export * from './mf5-workspace-events.js';
+export * from './worktree-events.js';
 export * from './cr0-conversation-contracts.js';
 export * from './wf-templates.js';
 export * from './wf-template-instantiation.js';

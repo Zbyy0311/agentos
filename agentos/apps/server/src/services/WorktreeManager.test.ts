@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, renameSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,42 @@ test('rejects dirty repositories and creates execution-unique worktree names', a
   const first = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'exec-1', agentId:'a' });
   const second = await manager.createLease({ workspaceId:'w', workspaceRoot:root, runId:'run', executionId:'exec-2', agentId:'a' });
   assert.notEqual(first.branchName, second.branchName); assert.notEqual(first.pathLabel, second.pathLabel);
+});
+
+test('lease ownership rejects a clean checkout attached to the wrong branch', async () => {
+  const root = repo();
+  const manager = new WorktreeManager(mkdtempSync(join(tmpdir(), 'agentos-lease-ownership-')));
+  const lease = await manager.createLease({ workspaceId: 'w', workspaceRoot: root, runId: 'run', executionId: 'exec', agentId: 'a' });
+  const checkout = manager.getRecord(lease.id)!.absolutePath;
+  execFileSync('git', ['switch', '-c', 'unowned-checkout'], { cwd: checkout });
+
+  await assert.rejects(
+    manager.assertLeaseOwnership(lease.id),
+    (error: unknown) => (error as { code?: string }).code === 'lease_ownership_mismatch',
+  );
+  assert.equal(manager.getLease(lease.id)?.status, 'active', 'failed attestation preserves the durable lease for recovery');
+  assert.equal(existsSync(checkout), true, 'ownership verification is read-only');
+});
+
+test('lease ownership preserves and rejects a clean same-HEAD checkout from a different repository', async () => {
+  const root = repo();
+  const manager = new WorktreeManager(mkdtempSync(join(tmpdir(), 'agentos-lease-replacement-')));
+  const lease = await manager.createLease({ workspaceId: 'w', workspaceRoot: root, runId: 'run', executionId: 'exec', agentId: 'a' });
+  const checkout = manager.getRecord(lease.id)!.absolutePath;
+  const preservedOriginal = `${checkout}-preserved`;
+  renameSync(checkout, preservedOriginal);
+  execFileSync('git', ['clone', '--shared', '--quiet', root, checkout]);
+
+  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim(), lease.baseCommit,
+    'the replacement deliberately has the same clean commit as the durable lease');
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: checkout, encoding: 'utf8' }), '');
+  await assert.rejects(
+    manager.assertLeaseOwnership(lease.id),
+    (error: unknown) => (error as { code?: string }).code === 'lease_ownership_mismatch',
+  );
+  assert.equal(existsSync(checkout), true, 'the replacement checkout is not deleted or rewritten');
+  assert.equal(existsSync(preservedOriginal), true, 'the original leased content is preserved for recovery');
+  assert.equal(manager.getLease(lease.id)?.status, 'active', 'attestation does not silently mutate lease state');
 });
 
 test('reconciles missing paths as failed without deleting worktrees', async () => {

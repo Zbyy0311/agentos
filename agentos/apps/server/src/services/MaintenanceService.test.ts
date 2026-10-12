@@ -103,7 +103,13 @@ async function createFixture(gitEnabled = false): Promise<Fixture> {
   return {
     root, dataRoot, workspaceRoot, store, workspace, service,
     cleanup() {
-      try { store.close(); } finally { rmSync(root, { recursive: true, force: true, maxRetries: 10 }); }
+      try { store.close(); } finally {
+        try { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+        catch (error) {
+          if (process.platform !== 'win32' || !['ENOTEMPTY', 'EBUSY', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+          process.emitWarning(`Fixture cleanup incomplete; retained ${root}: ${(error as NodeJS.ErrnoException).code}`);
+        }
+      }
     },
   };
 }

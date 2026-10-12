@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,9 +23,10 @@ export class WorktreeArtifactService {
     const paths = (await git(lease.absolutePath, ['ls-files', '--others', '--exclude-standard', '-z']))
       .split('\0').filter(Boolean).sort();
     const entries = await this.buildManifest(lease.absolutePath, paths);
-    const tempArchive = join(lease.absolutePath, '.agentos-untracked.tar');
-    if (paths.length) await tar(lease.absolutePath, tempArchive, paths);
-    else await writeFile(tempArchive, Buffer.alloc(0));
+    const tempArchive = join(lease.absolutePath, `.agentos-untracked-${randomUUID()}.tar`);
+    // Reserve a fresh file before tar can overwrite it. The user's untracked
+    // files, including the historical temporary name, belong in the bundle.
+    await writeFile(tempArchive, Buffer.alloc(0), { flag: 'wx' });
 
     const base = {
       workspaceId: input.workspaceId,
@@ -34,15 +35,20 @@ export class WorktreeArtifactService {
       sourceExecutionId: input.executionId,
       agentId: input.agentId,
     };
+    const create = (input: Parameters<RuntimeArtifactService['create']>[0]) =>
+      typeof this.artifacts.createWorktreeArtifact === 'function'
+        ? this.artifacts.createWorktreeArtifact(leaseId, input)
+        : this.artifacts.create(input);
     try {
-      const patchArtifact = await this.artifacts.create({
+      if (paths.length) await tar(lease.absolutePath, tempArchive, paths);
+      const patchArtifact = await create({
         ...base, type: 'diff', title: 'Worktree tracked patch', source: { kind: 'text', content: patch },
       });
-      const manifestArtifact = await this.artifacts.create({
+      const manifestArtifact = await create({
         ...base, type: 'manifest', title: 'Worktree untracked manifest',
         source: { kind: 'text', content: JSON.stringify(entries, null, 2) },
       });
-      const archiveArtifact = await this.artifacts.create({
+      const archiveArtifact = await create({
         ...base, type: 'archive', title: 'Worktree untracked archive',
         source: { kind: 'workspace-file', absolutePath: tempArchive },
       });

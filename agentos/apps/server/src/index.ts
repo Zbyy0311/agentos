@@ -53,6 +53,8 @@ import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
 import { WorktreeMergeService } from './services/WorktreeMergeService.js';
+import { WorktreeRuntimeEventEmitter } from './services/WorktreeRuntimeEvents.js';
+import { recoverWorktreeRefUpdates } from './services/WorktreeRefJournal.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
 import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
@@ -79,6 +81,7 @@ import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './ser
 import { MaintenanceService } from './services/MaintenanceService.js';
 import { closeLocalShutdownControl, startLocalShutdownControl } from './services/LocalShutdownControl.js';
 import { WorkspaceGitRootRegistry } from './services/WorkspaceGitRootRegistry.js';
+import { ResumeFallbackWorktreePreparer } from './services/ResumeFallbackWorktreePreparer.js';
 import { createDiagnosticLogger } from './services/DiagnosticLogger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -204,6 +207,8 @@ async function resumeProductionQueues(input: {
   await input.withDispatchPermit(async () => {
     await input.collaborationService.resumeGrantedQueuedRuns()
       .catch(error => input.diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+    await input.providerExecutionChain.resumeGrantedResumeFallbackChildren()
+      .catch(error => input.diagLog(`RESUME_FALLBACK_QUEUE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     await input.providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
       .catch(error => input.diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
   });
@@ -291,12 +296,23 @@ async function bootstrap(): Promise<void> {
 
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository());
+    const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
+    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
     const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
+    const refRecovery = await recoverWorktreeRefUpdates(worktreeManager, store.worktreeMergeRepository());
+    diagLog(`WORKTREE_REF_RECOVERY completed=${refRecovery.completed} preserved=${refRecovery.preserved}`);
     const workspaceManager = new WorkspaceManager(store);
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
     const collaborationWorktreePaths = new Map<string, string>();
+    const resumeFallbackWorktreePreparer = new ResumeFallbackWorktreePreparer({
+      store,
+      worktrees: worktreeManager,
+      workspaceGitRootFor: workspaceId => workspaceGitRoots.rootPathFor(workspaceId),
+      registerWorktreePath: (_workspaceId, runId, path) => collaborationWorktreePaths.set(runId, path),
+    });
+    const prepareResumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
+      resumeFallbackWorktreePreparer.prepare(workspaceId, runId);
     let collaborationService!: CollaborationWorkflowService;
     const providerExecutionChain = createProviderExecutionChain({
       store,
@@ -308,6 +324,7 @@ async function bootstrap(): Promise<void> {
         return workspaceGitRoots.rootPathFor(workspaceId) ?? workspace.rootPath;
       },
       worktreePathFor: (_workspaceId, runId) => collaborationWorktreePaths.get(runId),
+      prepareResumeFallbackChild,
       continueOwnedRun: (workspaceId, runId) => collaborationService.resumeRun(workspaceId, runId),
       collaborationStageHooks: {
         canDispatch: (workspaceId, runId) => collaborationService.canDispatch(workspaceId, runId),
@@ -326,9 +343,15 @@ async function bootstrap(): Promise<void> {
         await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },
       requestRunAdmission: input => providerExecutionChain.admissionAuthority.requestCanonicalRun(input),
-      releaseRunAdmission: input => providerExecutionChain.admissionAuthority.releaseCanonicalRun(input),
+      releaseRunAdmission: async input => {
+        await providerExecutionChain.admissionAuthority.releaseCanonicalRun(input);
+        if (runtimeDispatchEnabled) await providerExecutionChain.resumeGrantedResumeFallbackChildren(input.workspaceId);
+      },
       requestApplicationAdmission: async input => Boolean((await providerExecutionChain.admissionAuthority.requestCollaborationApplication(input)).grantedAdmission),
-      releaseApplicationAdmission: async input => { await providerExecutionChain.admissionAuthority.releaseCollaborationApplication(input); },
+      releaseApplicationAdmission: async input => {
+        await providerExecutionChain.admissionAuthority.releaseCollaborationApplication(input);
+        if (runtimeDispatchEnabled) await providerExecutionChain.resumeGrantedResumeFallbackChildren(input.workspaceId);
+      },
       cancelRun: input => providerExecutionChain.dispatcher.cancelRun(input),
       registerWorktreePath: (runId, path) => collaborationWorktreePaths.set(runId, path),
       runtimeDispatchEnabled,
@@ -535,8 +558,10 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createMemoryImportRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
-    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store,
-      workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService));
+    app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, {
+      getRun: (workspaceId, runId) => store!.runRepository().findById(workspaceId, runId) ?? store!.getRun(workspaceId, runId),
+    },
+      workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService, store.runtimeEventRepository()));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
@@ -549,13 +574,20 @@ async function bootstrap(): Promise<void> {
       runStreamService: store.runStreamService(),
     }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
-    // P4B: resume re-drive. Both run route families trigger exactly one
-    // background RunEngineProviderDispatcher drive after a genuine
-    // paused -> running resume, behind the same dispatch permit and runtime
-    // dispatch gate as the canonical start route.
+    // Re-drive a logical Run or explicit fallback Child only after obtaining
+    // its own canonical Workspace Admission. A Child also releases its now-
+    // terminal parent's Admission so it cannot hold the workspace queue.
     const resumeDispatch = {
       enabled: runtimeDispatchEnabled,
+      prepareResumeFallbackChild,
       drive: async (workspaceId: string, runId: string) => {
+        const run = store!.runRepository().findById(workspaceId, runId);
+        if (run?.reason === 'resume-fallback' && run.parentRunId !== undefined) {
+          await providerExecutionChain.resumeFallbackChild(workspaceId, runId);
+          return;
+        }
+        const admitted = await providerExecutionChain.admissionAuthority.requestCanonicalRun({ workspaceId, runId });
+        if (!admitted) return;
         await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
       },
     };
@@ -611,7 +643,8 @@ async function bootstrap(): Promise<void> {
       }
       if (!worktreeReconcileStarted) {
         worktreeReconcileStarted = true;
-        worktreeReconcile = worktreeManager.reconcile()
+        worktreeReconcile = worktreeManager.reconcile(workspaceManager.list().map(workspace => workspace.rootPath))
+          .then(report => { diagLog(`WORKTREE_RECONCILE activated=${report.activated.length} failed=${report.failed.length} orphaned=${report.orphaned.length} missingRegistration=${report.missingGitRegistration.length}`); })
           .catch(error => { diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`); })
           .finally(() => { worktreeReconcile = undefined; });
       }
@@ -630,6 +663,8 @@ async function bootstrap(): Promise<void> {
       void withDispatchPermit(async () => {
         await collaborationService.resumeGrantedQueuedRuns()
           .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
+        await providerExecutionChain.resumeGrantedResumeFallbackChildren()
+          .catch(error => diagLog(`RESUME_FALLBACK_QUEUE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
         await providerExecutionChain.approvalGate.resumeApprovedUnconsumed()
           .catch(error => diagLog(`RUNTIME_APPROVAL_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
       }).catch(error => diagLog(`RUNTIME_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
