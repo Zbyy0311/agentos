@@ -639,6 +639,8 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       'task.reopen',
       'run.start',
       'run.retry',
+      'run.pause',
+      'run.resume',
     ]);
     assert.deepEqual(IDEMPOTENCY_HTTP_STATUS, {
       'task.create': 201,
@@ -649,6 +651,8 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       'task.reopen': 200,
       'run.start': 202,
       'run.retry': 201,
+      'run.pause': 200,
+      'run.resume': 200,
     });
   });
 

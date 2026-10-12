@@ -19,6 +19,8 @@ export const IDEMPOTENCY_OPERATIONS = Object.freeze([
   'task.reopen',
   'run.start',
   'run.retry',
+  'run.pause',
+  'run.resume',
 ] as const);
 
 export type IdempotencyOperation = (typeof IDEMPOTENCY_OPERATIONS)[number];
@@ -34,6 +36,8 @@ export const IDEMPOTENCY_HTTP_STATUS: Readonly<Record<IdempotencyOperation, Idem
   'task.reopen': 200,
   'run.start': 202,
   'run.retry': 201,
+  'run.pause': 200,
+  'run.resume': 200,
 });
 
 export const TASK_RESULT_OPERATIONS = Object.freeze([
@@ -48,6 +52,8 @@ export type TaskResultOperation = (typeof TASK_RESULT_OPERATIONS)[number];
 export const RUN_RESULT_OPERATIONS = Object.freeze([
   'run.create',
   'run.cancel',
+  'run.pause',
+  'run.resume',
 ] as const);
 
 export type RunResultOperation = (typeof RUN_RESULT_OPERATIONS)[number];

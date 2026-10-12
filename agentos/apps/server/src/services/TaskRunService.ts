@@ -7,6 +7,8 @@ import type {
   RunSnapshot,
   RunSnapshotPayloadV2,
   RunStage,
+  RunPausedPayload,
+  RunResumedPayload,
   RuntimeEventEnvelope,
   Task,
   Workspace,
@@ -105,6 +107,14 @@ export interface TaskRunServiceOptions {
   snapshotService?: SnapshotService;
   clock?: () => string;
   idempotencyService?: IdempotencyService;
+}
+
+/** P4 Pause/Resume route-level options. Both fields are optional; the service
+ * applies the spec defaults ('user' reason, 'process-restart' resume mode). */
+export interface PauseResumeOptions {
+  readonly reason?: RunPausedPayload['reason'];
+  readonly resumeMode?: RunResumedPayload['resumeMode'];
+  readonly requestedBy?: string;
 }
 
 /** Frozen M2.6 P3 v2 mutation result: live and replay share the typed envelope body. */
@@ -358,6 +368,82 @@ export class TaskRunService {
         expectedVersion: expectedVersion ?? null,
       },
       mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunForV2InTransaction(workspaceId, runId, expectedVersion)),
+    });
+  }
+
+  /**
+   * P4 Run-level Pause (logical marker only). Records running -> paused through
+   * the canonical Lifecycle Transaction so the Run row, run.paused Event, and
+   * Outbox row commit atomically. No provider process is suspended here — the
+   * actual process-level hold lands in a follow-up PR (adapters still report
+   * sessionResume: false). Pause is idempotent: a Run already paused is
+   * returned unchanged with 200; any non-running/non-paused state fails with
+   * RUN_NOT_PAUSABLE (409).
+   */
+  pauseRunForV2(
+    workspaceId: string,
+    runId: string,
+    normalizedKey?: string,
+    expectedVersion?: number,
+    options?: PauseResumeOptions,
+  ): V2MutationExecutionResult<RunResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
+    const reason = options?.reason ?? 'user';
+    const requestedBy = options?.requestedBy;
+    return this.executeV2Mutation<RunResultEnvelopeV1>({
+      operation: 'run.pause',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'run.pause',
+        workspaceId,
+        pathParams: { runId },
+        domainInput: {
+          reason,
+          ...(requestedBy === undefined ? {} : { requestedBy }),
+        },
+        expectedVersion: expectedVersion ?? null,
+      },
+      mutate: () => buildRunResultEnvelopeV1('run.pause', this.pauseRunForV2InTransaction(workspaceId, runId, expectedVersion, { reason, ...(requestedBy === undefined ? {} : { requestedBy }) })),
+    });
+  }
+
+  /**
+   * P4 Run-level Resume (logical marker only). Records paused -> running in the
+   * same atomic Lifecycle Transaction as the run.resumed Event and Outbox row.
+   * No provider process is restarted or re-dispatched here — that is the
+   * follow-up PR. Resume is idempotent: a Run already running is returned
+   * unchanged with 200; any non-paused/non-running state fails with
+   * RUN_NOT_RESUMABLE (409). resumeMode defaults to 'process-restart' because
+   * no adapter currently supports native-session resume.
+   */
+  resumeRunForV2(
+    workspaceId: string,
+    runId: string,
+    normalizedKey?: string,
+    expectedVersion?: number,
+    options?: PauseResumeOptions,
+  ): V2MutationExecutionResult<RunResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
+    const resumeMode = options?.resumeMode ?? 'process-restart';
+    const requestedBy = options?.requestedBy;
+    return this.executeV2Mutation<RunResultEnvelopeV1>({
+      operation: 'run.resume',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'run.resume',
+        workspaceId,
+        pathParams: { runId },
+        domainInput: {
+          resumeMode,
+          ...(requestedBy === undefined ? {} : { requestedBy }),
+        },
+        expectedVersion: expectedVersion ?? null,
+      },
+      mutate: () => buildRunResultEnvelopeV1('run.resume', this.resumeRunForV2InTransaction(workspaceId, runId, expectedVersion, { resumeMode, ...(requestedBy === undefined ? {} : { requestedBy }) })),
     });
   }
 
@@ -1271,6 +1357,78 @@ export class TaskRunService {
     });
     const task = this.requireTask(workspaceId, run.taskId);
     this.resolveTaskAfterRunTerminal(task, result.run);
+    return result.run;
+  }
+
+  /**
+   * V2 Pause uses the caller-owned Lifecycle Transaction boundary so the Run
+   * transition, run.paused Runtime Event, and Outbox row commit together.
+   * Paused is a logical marker in this slice: no Stage is touched and no
+   * process is signalled.
+   */
+  private pauseRunForV2InTransaction(
+    workspaceId: string,
+    runId: string,
+    expectedVersion: number | undefined,
+    options: PauseResumeOptions,
+  ): Run {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const version = this.mutationVersion('runs', runId, run.version, expectedVersion);
+    if (run.status === 'paused') return run;
+    if (run.status !== 'running') {
+      throw domainError('RUN_NOT_PAUSABLE', `Run ${runId} is not pausable in status '${run.status}'`);
+    }
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    if (typeof lifecycleTransactionService.transitionRunWithinTransaction !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    const result = lifecycleTransactionService.transitionRunWithinTransaction({
+      workspaceId,
+      runId,
+      expectedVersion: version,
+      expectedFrom: 'running',
+      to: 'paused',
+      reason: options.reason ?? 'user',
+      resumable: true,
+      ...(options.requestedBy === undefined ? {} : { requestedBy: options.requestedBy }),
+      correlationId: run.id,
+    });
+    return result.run;
+  }
+
+  /**
+   * V2 Resume mirrors Pause: paused -> running, run.resumed Event, and Outbox
+   * row commit atomically. No Stage or process is resumed in this slice; the
+   * dispatch-side re-drive lands in the follow-up PR.
+   */
+  private resumeRunForV2InTransaction(
+    workspaceId: string,
+    runId: string,
+    expectedVersion: number | undefined,
+    options: PauseResumeOptions,
+  ): Run {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const version = this.mutationVersion('runs', runId, run.version, expectedVersion);
+    if (run.status === 'running') return run;
+    if (run.status !== 'paused') {
+      throw domainError('RUN_NOT_RESUMABLE', `Run ${runId} is not resumable in status '${run.status}'`);
+    }
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    if (typeof lifecycleTransactionService.transitionRunWithinTransaction !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    const result = lifecycleTransactionService.transitionRunWithinTransaction({
+      workspaceId,
+      runId,
+      expectedVersion: version,
+      expectedFrom: 'paused',
+      to: 'running',
+      resumeMode: options.resumeMode ?? 'process-restart',
+      ...(options.requestedBy === undefined ? {} : { requestedBy: options.requestedBy }),
+      correlationId: run.id,
+    });
     return result.run;
   }
 
