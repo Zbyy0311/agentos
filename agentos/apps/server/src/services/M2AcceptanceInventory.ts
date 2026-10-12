@@ -606,17 +606,20 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
   {
     domainId: 'operational_json_exclusions',
     currentStorage: [
-      '.agentos/worktrees/leases.json',
+      'SQLite worktrees table (.agentos/agentos.sqlite; PR-3A)',
+      '.agentos/worktrees/leases.json(.migrated) one-shot legacy archive',
       'agent-memory/records/**/*.md',
       '.agentos/artifacts/* plus SQLite artifact metadata',
     ],
     authoritativeReadSource: [
       'apps/server/src/services/WorktreeManager.ts:WorktreeManager',
+      'apps/server/src/store/WorktreeRepository.ts:WorktreeRepository',
       'apps/server/src/services/MemoryService.ts:MemoryService',
       'apps/server/src/services/RuntimeArtifactService.ts:RuntimeArtifactService',
     ],
     authoritativeWriteSource: [
       'apps/server/src/services/WorktreeManager.ts:WorktreeManager',
+      'apps/server/src/store/WorktreeRepository.ts:WorktreeRepository',
       'apps/server/src/services/MemoryService.ts:MemoryService',
       'apps/server/src/services/RuntimeArtifactService.ts:RuntimeArtifactService',
     ],
@@ -645,7 +648,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     ],
     startupEntrypoints: [],
     storageOwners: [
-      'WorktreeManager:.agentos/worktrees/leases.json',
+      'WorktreeManager:SQLite worktrees table (legacy leases.json archived as .migrated)',
       'MemoryService:agent-memory/records/**/*.md',
       'RuntimeArtifactService:.agentos/artifacts/*',
     ],

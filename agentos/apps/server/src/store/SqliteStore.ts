@@ -87,6 +87,7 @@ import { RunStreamService } from '../services/RunStreamService.js';
 import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
 import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
 import { ConversationRepository } from './ConversationRepository.js';
+import { WorktreeRepository } from './WorktreeRepository.js';
 import { AgentTurnRepository } from './AgentTurnRepository.js';
 import { MessageProjectionRepository } from './MessageProjectionRepository.js';
 import { GroupInteractionRepository } from './GroupInteractionRepository.js';
@@ -493,6 +494,7 @@ export class SqliteStore implements Store {
   private readonly groupInteractionRepo: GroupInteractionRepository;
   private readonly turnContextSnapshotRepo: TurnContextSnapshotRepository;
   private readonly workspaceAdmissionRepo: WorkspaceAdmissionRepository;
+  private readonly worktreeRepo: WorktreeRepository;
   private readonly workspaceEventRepo: WorkspaceEventRepository;
   private readonly workspaceEventWriterRepo: WorkspaceEventWriter;
   private readonly legacy: JsonFileStore;
@@ -576,6 +578,7 @@ export class SqliteStore implements Store {
       this.groupInteractionRepo = new GroupInteractionRepository(this.database as any);
       this.turnContextSnapshotRepo = new TurnContextSnapshotRepository(this.database as any);
       this.workspaceAdmissionRepo = new WorkspaceAdmissionRepository(this.database as any);
+      this.worktreeRepo = new WorktreeRepository(this.database as any);
       this.runMigrations(dataDir);
       // Keep a defensive additive guard for databases whose agent_runs table
       // was rebuilt by an older recovery path after migration 032 was recorded.
@@ -735,6 +738,11 @@ export class SqliteStore implements Store {
   /** P6-L1 workspace admission repository (read access for the Conversation bridge). */
   workspaceAdmissionRepository(): WorkspaceAdmissionRepository {
     return this.workspaceAdmissionRepo;
+  }
+
+  /** PR-3A Worktree lease repository (shares this store's SQLite handle). */
+  worktreeRepository(): WorktreeRepository {
+    return this.worktreeRepo;
   }
 
   /** CR-3 durable Conversation streaming seam. */
