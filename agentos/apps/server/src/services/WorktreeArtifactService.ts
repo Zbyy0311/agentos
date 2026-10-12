@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,9 +23,10 @@ export class WorktreeArtifactService {
     const paths = (await git(lease.absolutePath, ['ls-files', '--others', '--exclude-standard', '-z']))
       .split('\0').filter(Boolean).sort();
     const entries = await this.buildManifest(lease.absolutePath, paths);
-    const tempArchive = join(lease.absolutePath, '.agentos-untracked.tar');
-    if (paths.length) await tar(lease.absolutePath, tempArchive, paths);
-    else await writeFile(tempArchive, Buffer.alloc(0));
+    const tempArchive = join(lease.absolutePath, `.agentos-untracked-${randomUUID()}.tar`);
+    // Reserve a fresh file before tar can overwrite it. The user's untracked
+    // files, including the historical temporary name, belong in the bundle.
+    await writeFile(tempArchive, Buffer.alloc(0), { flag: 'wx' });
 
     const base = {
       workspaceId: input.workspaceId,
@@ -35,6 +36,7 @@ export class WorktreeArtifactService {
       agentId: input.agentId,
     };
     try {
+      if (paths.length) await tar(lease.absolutePath, tempArchive, paths);
       const patchArtifact = await this.artifacts.create({
         ...base, type: 'diff', title: 'Worktree tracked patch', source: { kind: 'text', content: patch },
       });
