@@ -1,9 +1,9 @@
 import { Router, type Request, type Response } from 'express';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
-import { WorktreeManager } from '../services/WorktreeManager.js';
 import { WorktreeMergeError, WorktreeMergeService } from '../services/WorktreeMergeService.js';
 import type { WorktreeMergeStrategy } from '../store/WorktreeMergeRepository.js';
+import { WorktreeError, WorktreeManager } from '../services/WorktreeManager.js';
 import { WorktreeArtifactService } from '../services/WorktreeArtifactService.js';
 import type { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -20,6 +20,13 @@ const MERGE_ERROR_STATUS: Record<string, number> = {
   WORKTREE_MERGE_CONFLICTED: 409,
   WORKTREE_MERGE_FAILED: 500,
 };
+function errorStatus(error: unknown): number {
+  if (error instanceof WorktreeError) {
+    if (error.code === 'not_found') return 404;
+    if (['state_conflict', 'already_managed', 'branch_managed'].includes(error.code)) return 409;
+  }
+  return 400;
+}
 
 export function createWorktreeRoutes(
   workspaceManager: WorkspaceManager,
@@ -111,6 +118,142 @@ export function createWorktreeRoutes(
       sendProblem(req, res, { status: 409, code: 'WORKTREE_LEASE_REMOVE_FAILED', detail: error instanceof Error ? error.message : String(error) });
     }
   }));
+  router.post('/worktrees/adopt', asyncHandler(async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const lease = await manager.adoptLease({
+        path: String(body.path ?? ''),
+        branchName: String(body.branchName ?? ''),
+        workspaceId: workspace.id,
+        workspaceRoot: workspaceRootFor(workspace.id) ?? '',
+        runId: body.runId === undefined ? '' : String(body.runId),
+        executionId: body.executionId === undefined ? '' : String(body.executionId),
+        agentId: body.agentId === undefined ? '' : String(body.agentId),
+      });
+      return res.status(201).json({ lease });
+    } catch (error) {
+      sendProblem(req, res, { status: errorStatus(error), code: error instanceof WorktreeError ? error.code : 'adopt_failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }));
+  router.get('/worktrees/:leaseId/status', asyncHandler(async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const lease = manager.getLease(req.params.leaseId);
+    if (!lease || lease.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    try {
+      return res.json({ lease, git: await manager.gitStatusSnapshot(lease.id) });
+    } catch (error) {
+      sendProblem(req, res, { status: errorStatus(error), code: error instanceof WorktreeError ? error.code : 'worktree_status_failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }));
+  router.get('/worktrees/:leaseId/diff', asyncHandler(async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const lease = manager.getLease(req.params.leaseId);
+    if (!lease || lease.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    const maxBytes = req.query.maxBytes === undefined ? undefined : Number(req.query.maxBytes);
+    if (maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes < 1024 || maxBytes > 16 * 1024 * 1024)) {
+      sendProblem(req, res, { status: 400, code: 'INVALID_MAX_BYTES', detail: 'maxBytes must be an integer between 1024 and 16777216' });
+      return;
+    }
+    try {
+      return res.json({ diff: await manager.diffFromBase(lease.id, maxBytes) });
+    } catch (error) {
+      sendProblem(req, res, { status: errorStatus(error), code: error instanceof WorktreeError ? error.code : 'worktree_diff_failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }));
+  router.get('/worktrees/:leaseId/events', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const lease = manager.getLease(req.params.leaseId);
+    if (!lease || lease.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    // No worktree event model exists yet (deferred to a later PR); expose the
+    // minimal status timeline derivable from the lease record itself.
+    const events = [{ at: lease.createdAt, type: 'created', status: lease.status }, { at: lease.updatedAt, type: 'updated', status: lease.status }];
+    return res.json({ events, eventModel: 'lease_timeline_minimal' });
+  });
+  router.get('/worktrees/:leaseId/artifacts', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const record = manager.getRecord(req.params.leaseId);
+    if (!record || record.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    if (!artifactService) {
+      sendProblem(req, res, { status: 503, code: 'ARTIFACT_SERVICE_UNAVAILABLE', detail: 'Artifact service unavailable' });
+      return;
+    }
+    const bundle = record.recoveryBundle;
+    const bundleArtifactIds = bundle ? [bundle.trackedPatchArtifactId, bundle.untrackedArchiveArtifactId, bundle.manifestArtifactId] : [];
+    const artifacts = artifactService.listForRun(workspace.id, record.runId)
+      .map(artifact => ({ ...artifact, recoveryBundleMember: bundleArtifactIds.includes(artifact.id) }));
+    return res.json({ artifacts, recoveryBundle: bundle ?? null });
+  });
+  router.post('/worktrees/:leaseId/inspect', asyncHandler(async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const lease = manager.getLease(req.params.leaseId);
+    if (!lease || lease.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    try {
+      return res.json({ report: await manager.inspectReport(lease.id) });
+    } catch (error) {
+      sendProblem(req, res, { status: errorStatus(error), code: error instanceof WorktreeError ? error.code : 'worktree_inspect_failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }));
+  router.post('/worktrees/:leaseId/abandon', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
+      return;
+    }
+    const lease = manager.getLease(req.params.leaseId);
+    if (!lease || lease.workspaceId !== workspace.id) {
+      sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
+      return;
+    }
+    if (req.body?.confirm !== true) {
+      sendProblem(req, res, { status: 400, code: 'CONFIRMATION_REQUIRED', detail: 'abandon requires body { confirm: true }; the worktree directory is preserved on disk' });
+      return;
+    }
+    try {
+      return res.json({ lease: manager.abandonLease(lease.id) });
+    } catch (error) {
+      sendProblem(req, res, { status: errorStatus(error), code: error instanceof WorktreeError ? error.code : 'worktree_abandon_failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  });
   router.post('/runs/:runId/worktrees', asyncHandler(async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {

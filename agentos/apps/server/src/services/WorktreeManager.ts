@@ -12,6 +12,40 @@ import { WorktreeRepository } from '../store/WorktreeRepository.js';
 type LeaseRecord = WorktreeLeaseRecord;
 type PreflightOptions = { readonly controlledGitContent?: boolean };
 type CreateInput = { workspaceId: string; workspaceRoot: string; runId: string; executionId: string; agentId: string; expectedBaseCommit?: string } & PreflightOptions;
+type AdoptInput = { path: string; branchName: string; workspaceId: string; workspaceRoot: string; runId?: string; executionId?: string; agentId?: string };
+
+export const DEFAULT_DIFF_MAX_BYTES = 1_048_576;
+
+export interface WorktreeGitStatus {
+  baseCommit: string;
+  branch: string;
+  exists: boolean;
+  gitReachable: boolean;
+  head?: string;
+  dirtyFiles: number;
+  ahead: number;
+  behind: number;
+}
+
+export interface WorktreeDiff {
+  baseCommit: string;
+  stat: { filesChanged: number; insertions: number; deletions: number };
+  patch: string;
+  patchBytes: number;
+  truncated: boolean;
+}
+
+export interface WorktreeInspectReport {
+  leaseId: string;
+  leaseStatus: WorktreeLease['status'];
+  checks: {
+    directoryExists: boolean;
+    gitReachable: boolean;
+    pathWithinRoot: boolean | null;
+    statusConsistent: boolean;
+  };
+  consistent: boolean;
+}
 
 export class WorktreeError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
@@ -96,6 +130,181 @@ export class WorktreeManager {
         throw error; // Preserve the owned lease/branch and recovery evidence.
       }
     } finally { await context?.dispose(); }
+  }
+
+  /**
+   * Read-only git-side status snapshot for the control/query API family.
+   * Never mutates lease state; git failures are reported as
+   * `gitReachable: false` instead of throwing so the caller can surface a
+   * degraded-but-honest status view.
+   */
+  async gitStatusSnapshot(id: string): Promise<WorktreeGitStatus> {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    const snapshot: WorktreeGitStatus = {
+      baseCommit: record.baseCommit,
+      branch: record.branchName,
+      exists: false,
+      gitReachable: false,
+      dirtyFiles: 0,
+      ahead: 0,
+      behind: 0,
+    };
+    let root: string;
+    try { root = await realpath(record.absolutePath); } catch { return snapshot; }
+    snapshot.exists = true;
+    try {
+      await access(join(root, '.git'));
+      snapshot.head = (await git(root, ['rev-parse', '--verify', 'HEAD'])).trim();
+      const porcelain = await git(root, ['status', '--porcelain=v1', '-z']);
+      snapshot.dirtyFiles = porcelain.split('\0').filter(Boolean).length;
+      snapshot.ahead = parseInt((await git(root, ['rev-list', '--count', `${record.baseCommit}..HEAD`])).trim(), 10) || 0;
+      snapshot.behind = parseInt((await git(root, ['rev-list', '--count', `HEAD..${record.baseCommit}`])).trim(), 10) || 0;
+      snapshot.gitReachable = true;
+    } catch { /* unreachable git is reported, not thrown */ }
+    return snapshot;
+  }
+
+  /**
+   * Read-only base→worktree diff with size cap. `truncated` reports when the
+   * patch hit `maxBytes`; no lease or git state is modified.
+   */
+  async diffFromBase(id: string, maxBytes = DEFAULT_DIFF_MAX_BYTES): Promise<WorktreeDiff> {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    const diff: WorktreeDiff = {
+      baseCommit: record.baseCommit,
+      stat: { filesChanged: 0, insertions: 0, deletions: 0 },
+      patch: '',
+      patchBytes: 0,
+      truncated: false,
+    };
+    let root: string;
+    try { root = await realpath(record.absolutePath); } catch { throw new WorktreeError('worktree_missing', 'worktree directory does not exist'); }
+    const numstat = await git(root, ['diff', '--numstat', record.baseCommit]).catch(() => '');
+    for (const line of numstat.split('\n')) {
+      if (!line.trim()) continue;
+      const [added, removed] = line.split('\t');
+      diff.stat.filesChanged += 1;
+      diff.stat.insertions += /^\d+$/.test(added) ? parseInt(added, 10) : 0;
+      diff.stat.deletions += /^\d+$/.test(removed) ? parseInt(removed, 10) : 0;
+    }
+    let patch = await git(root, ['diff', '--binary', record.baseCommit]);
+    if (Buffer.byteLength(patch, 'utf8') > maxBytes) {
+      patch = patch.slice(0, patch.length - (Buffer.byteLength(patch, 'utf8') - maxBytes));
+      // Never split a UTF-8 multibyte sequence at the cut point.
+      while (patch.length && (patch.charCodeAt(patch.length - 1) & 0xc0) === 0x80) patch = patch.slice(0, -1);
+      diff.truncated = true;
+    }
+    diff.patch = patch;
+    diff.patchBytes = Buffer.byteLength(patch, 'utf8');
+    return diff;
+  }
+
+  /**
+   * Read-only reconcile report for `POST /worktrees/:id/inspect`. Performs a
+   * one-shot directory/.git/scope/consistency check and returns the findings
+   * without writing anything (unlike `reconcile()`, which mutates status).
+   */
+  async inspectReport(id: string): Promise<WorktreeInspectReport> {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    const report: WorktreeInspectReport = {
+      leaseId: record.id,
+      leaseStatus: record.status,
+      checks: { directoryExists: false, gitReachable: false, pathWithinRoot: null, statusConsistent: false },
+      consistent: false,
+    };
+    const configuredRoot = resolve(this.worktreeRoot);
+    let realRoot: string;
+    try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
+    let actualPath: string | undefined;
+    try { actualPath = await realpath(record.absolutePath); } catch { /* missing directory */ }
+    if (actualPath) {
+      report.checks.directoryExists = true;
+      report.checks.pathWithinRoot = isWithin(realRoot, actualPath);
+      try {
+        await access(join(actualPath, '.git'));
+        await git(actualPath, ['rev-parse', '--show-toplevel']);
+        report.checks.gitReachable = true;
+      } catch { /* unreachable */ }
+    }
+    const expectedPresent = record.status === 'creating' || record.status === 'active' || record.status === 'completed' || record.status === 'cleanup_pending';
+    if (expectedPresent) {
+      report.checks.statusConsistent = report.checks.directoryExists && report.checks.gitReachable && report.checks.pathWithinRoot === true;
+    } else {
+      report.checks.statusConsistent = true;
+    }
+    report.consistent = Object.values(report.checks).every(value => value !== false);
+    return report;
+  }
+
+  /**
+   * Abandon a lease: mark it `failed` per the lease state machine while
+   * deliberately keeping the directory and branch on disk (spec default is
+   * preservation; removal goes through the confirmed cleanup path).
+   */
+  abandonLease(id: string): WorktreeLease {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    if (!['creating', 'active', 'completed', 'cleanup_pending'].includes(record.status)) {
+      throw new WorktreeError('state_conflict', `lease status '${record.status}' cannot be abandoned`);
+    }
+    record.status = 'failed';
+    record.updatedAt = new Date().toISOString();
+    this.persist();
+    return publicLease(record);
+  }
+
+  /**
+   * Adopt an unmanaged on-disk worktree into lease management. Strict
+   * validation: absolute path, realpath inside the managed root, reachable
+   * .git, existing branch in the workspace repo, and no duplicate lease by
+   * path or branch. A failed adoption never creates a partial record.
+   */
+  async adoptLease(input: AdoptInput): Promise<WorktreeLease> {
+    if (!input || typeof input.path !== 'string' || !isAbsolute(input.path)) throw new WorktreeError('invalid_path', 'adopt requires an absolute worktree path');
+    if (typeof input.branchName !== 'string' || !input.branchName.trim() || input.branchName.includes('..') || input.branchName.includes('~') || input.branchName.startsWith('-')) throw new WorktreeError('invalid_branch', 'adopt requires a valid branch name');
+    const workspaceId = String(input.workspaceId ?? '');
+    const workspaceRoot = String(input.workspaceRoot ?? '');
+    if (!workspaceId || !workspaceRoot || !isAbsolute(workspaceRoot)) throw new WorktreeError('invalid_workspace', 'adopt requires a workspace id and absolute workspace root');
+    const branchName = input.branchName.trim();
+    const configuredRoot = resolve(this.worktreeRoot);
+    let realRoot: string;
+    try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
+    let actualPath: string;
+    try { actualPath = await realpath(input.path); } catch { throw new WorktreeError('path_not_found', 'adopt path does not exist'); }
+    if (!isWithin(realRoot, actualPath)) throw new WorktreeError('path_outside_root', 'adopt path is outside the managed worktree root');
+    try { await access(join(actualPath, '.git')); } catch { throw new WorktreeError('not_git', 'adopt path is not a git worktree'); }
+    try { await git(workspaceRoot, ['rev-parse', '--verify', 'HEAD']); } catch { throw new WorktreeError('not_git', 'workspace is not a Git repository with a HEAD'); }
+    if (!(await gitSucceeds(workspaceRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`]))) {
+      throw new WorktreeError('branch_not_found', `branch '${branchName}' does not exist in the workspace repository`);
+    }
+    for (const record of this.leases.values()) {
+      let existingReal: string | undefined;
+      try { existingReal = await realpath(record.absolutePath); } catch { /* gone */ }
+      if (existingReal === actualPath) throw new WorktreeError('already_managed', 'a lease already manages this worktree path');
+      if (record.workspaceId === workspaceId && record.branchName === branchName) throw new WorktreeError('branch_managed', `branch '${branchName}' is already managed by another lease`);
+    }
+    const baseCommit = (await git(workspaceRoot, ['merge-base', 'HEAD', branchName])).trim();
+    const id = randomUUID(); const now = new Date().toISOString();
+    const record: LeaseRecord = {
+      id,
+      workspaceId,
+      runId: String(input.runId ?? ''),
+      executionId: String(input.executionId ?? ''),
+      agentId: String(input.agentId ?? ''),
+      branchName,
+      pathLabel: `worktree/adopted/${segment(`${workspaceId}:${actualPath}`)}`,
+      baseCommit,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+      absolutePath: actualPath,
+      workspaceRoot,
+    };
+    this.leases.set(id, record); this.persist();
+    return publicLease(record);
   }
 
   getLease(id: string): WorktreeLease | undefined { const record = this.leases.get(id); return record && publicLease(record); }
