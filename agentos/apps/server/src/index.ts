@@ -547,14 +547,24 @@ async function bootstrap(): Promise<void> {
       runStreamService: store.runStreamService(),
     }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
-    app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
+    // P4B: resume re-drive. Both run route families trigger exactly one
+    // background RunEngineProviderDispatcher drive after a genuine
+    // paused -> running resume, behind the same dispatch permit and runtime
+    // dispatch gate as the canonical start route.
+    const resumeDispatch = {
+      enabled: runtimeDispatchEnabled,
+      drive: async (workspaceId: string, runId: string) => {
+        await withDispatchPermit(() => providerExecutionChain.dispatcher.driveSafely(workspaceId, runId));
+      },
+    };
+    app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager, { resumeDispatch }));
     // M3 P4B canonical top-level Run compatibility routes and the Basic
     // OpenAPI document. Mounted after the global strict JSON parser (the
     // same body-contract seam as the v2 routers) and after the more
     // specific /api/runs/:runId/preferences route, before the API 404
     // fallback. Legacy, current-v2, and the frozen Start/Retry/Operation
     // routes are preserved unchanged.
-    app.use('/api', createCanonicalRunRoutes(store, workspaceManager));
+    app.use('/api', createCanonicalRunRoutes(store, workspaceManager, { resumeDispatch }));
     app.use('/api', createOpenApiRoutes());
     app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager, undefined,
       workspaceId => workspaceGitRoots.rootPathFor(workspaceId)));

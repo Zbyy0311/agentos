@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
+import type { RunLifecycleDispatchOptions } from './runLifecycle.js';
 import { buildV2RunDetailResponse, parseV2RunInclude } from './v2RunApi.js';
 import { parseOptionalExpectedVersion, requireV2Workspace, respondV2, V2ValidationError } from './v2Tasks.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
@@ -35,12 +36,22 @@ function parseOptionalRequestedBy(value: unknown): string | undefined {
   return value;
 }
 
-export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
+export interface V2RunRouteOptions {
+  /** P4B resume re-drive seam; same contract as the canonical family. */
+  readonly resumeDispatch?: RunLifecycleDispatchOptions;
+}
+
+export function createV2RunRoutes(
+  store: TaskRunServiceDeps,
+  workspaceManager: WorkspaceManager,
+  options: V2RunRouteOptions = {},
+): Router {
   const router = Router({ mergeParams: true });
   const idempotencyService = createOptionalIdempotencyService(store);
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
   });
+  const resumeDispatch = options.resumeDispatch;
 
   router.get('/runs/:runId', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
@@ -118,6 +129,7 @@ export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: W
     const resumeMode = parseResumeMode(body.resumeMode);
     const requestedBy = parseOptionalRequestedBy(body.requestedBy);
     try {
+      const before = store.runRepository().findById(workspaceId, runId);
       const result = service.resumeRunForV2(
         workspaceId,
         runId,
@@ -126,6 +138,13 @@ export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: W
         { ...(resumeMode === undefined ? {} : { resumeMode }), ...(requestedBy === undefined ? {} : { requestedBy }) },
       );
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      // P4B: only a genuine paused -> running transition re-drives; the
+      // idempotent already-running 200 and replays never re-dispatch.
+      if (resumeDispatch?.enabled === true && !result.replayed && before?.status === 'paused') {
+        void resumeDispatch.drive(workspaceId, runId).catch(() => {
+          // Containment backstop only; the drive contains its own failures.
+        });
+      }
       return { status: result.httpStatus, body: result.body };
     } catch (error) {
       if (precondition.fromHeader && isVersionConflictError(error)) {

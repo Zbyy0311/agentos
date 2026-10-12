@@ -352,6 +352,18 @@ export interface CompleteRunInput extends StageCompositeInput {
   readonly worktreeStatus?: string;
 }
 
+/**
+ * P4B Resume re-evaluation completion. Every Stage already reached a terminal
+ * success state (completed/skipped) while the Run was paused — the last
+ * in-flight Stage completion was recorded stage-only and the Run-level
+ * completion was deferred. On the resume re-drive the Run is running again
+ * and this composite transaction records running -> completed plus the
+ * run.completed Event without touching any Stage row.
+ */
+export interface CompleteDeferredRunInput extends RunOnlyCompositeInput {
+  readonly runId: string;
+}
+
 export interface CompositeLifecycleTransactionResult {
   readonly run: Run;
   readonly stages: RunStage[];
@@ -1606,6 +1618,61 @@ export class LifecycleTransactionService {
       );
       const runOutbox = this.insertOutbox(runEvent, timestamp);
     return this.compositeResult(input.workspaceId, input.runId, [stageEvent, runEvent], [stageOutbox, runOutbox]);
+  }
+
+  completeDeferredRun(input: CompleteDeferredRunInput): CompositeLifecycleTransactionResult {
+    return this.dependencies.runInTransaction(() => this.completeDeferredRunWithinTransaction(input));
+  }
+
+  completeDeferredRunWithinTransaction(input: CompleteDeferredRunInput): CompositeLifecycleTransactionResult {
+    this.validateCompositeCommonInput(input);
+    this.validateRunId(input.runId);
+    const expectedRunVersion = this.expectedRunVersion(input);
+
+    const run = this.requireRun(input.workspaceId, input.runId);
+    const stages = this.dependencies.runStageRepository.listByRun(input.workspaceId, input.runId);
+    this.assertExpectedRunState(run, 'running');
+    this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+    if (stages.some(candidate => !['completed', 'skipped'].includes(candidate.status))) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_COMPLETION_RULE_NOT_SATISFIED',
+        `Run ${run.id} has incomplete Stage records`,
+      );
+    }
+    const timestamp = this.transactionTimestamp();
+    const completedStageIds = stages
+      .filter(candidate => candidate.status === 'completed')
+      .map(candidate => candidate.id);
+    const startedAtMs = Date.parse(run.startedAt ?? '');
+    const durationMs = Number.isFinite(startedAtMs)
+      ? Math.max(0, Date.parse(timestamp) - startedAtMs)
+      : 0;
+
+    const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      expectedVersion: expectedRunVersion,
+      expectedFrom: 'running',
+      to: 'completed',
+      timestamp,
+    });
+    const runEvent = this.appendEvent(
+      nextRun,
+      undefined,
+      'run.completed',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      {
+        durationMs,
+        completedStageIds,
+        artifactIds: [],
+      },
+    );
+    const runOutbox = this.insertOutbox(runEvent, timestamp);
+    return this.compositeResult(input.workspaceId, input.runId, [runEvent], [runOutbox]);
   }
 
   private validateRunGraphCreation(

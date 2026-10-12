@@ -13,10 +13,11 @@ import { RunNotFoundError, type RunRepository } from '../../store/RunRepository.
 import type { OperationType } from '../../store/OperationRepository.js';
 import type { OutboxMessage } from '../../store/OutboxRepository.js';
 import type { OperationService } from '../OperationService.js';
-import type {
-  LifecycleTransactionService,
-  StageTransitionInput,
-  RunLifecycleTransitionResult,
+import {
+  LifecycleTransactionError,
+  type LifecycleTransactionService,
+  type StageTransitionInput,
+  type RunLifecycleTransitionResult,
 } from '../LifecycleTransactionService.js';
 import type { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
 import type { RunStageRepository } from '../../store/RunStageRepository.js';
@@ -77,6 +78,7 @@ export interface RunEngineDependencies {
       | 'failRunStartupWithinTransaction'
       | 'startStage'
       | 'completeRun'
+      | 'completeDeferredRunWithinTransaction'
   >>;
   readonly snapshotRepository?: Pick<RunSnapshotRepository, 'findByRunId'>;
   readonly runStageRepository?: Pick<RunStageRepository, 'listByRun'>;
@@ -357,28 +359,7 @@ export class RunEngine {
       stage.id === selection.stage.id || stage.status === 'completed' || stage.status === 'skipped'
     ));
     if (othersComplete) {
-      const completeRun = this.dependencies.lifecycleTransactionService.completeRun;
-      if (!completeRun) throw this.missingDependency('completeRun');
-      const result = completeRun.call(this.dependencies.lifecycleTransactionService, {
-        workspaceId: run.workspaceId,
-        runId: run.id,
-        stageId: selection.stage.id,
-        expectedRunVersion: run.version,
-        expectedStageVersion: selection.stage.version,
-        correlationId: operation.id,
-        durationMs: outcome.durationMs,
-        artifactIds: [...outcome.artifactIds],
-        outputContractSatisfied: outcome.outputContractSatisfied,
-        ...(outcome.summaryArtifactId === undefined ? {} : { summaryArtifactId: outcome.summaryArtifactId }),
-      });
-      return {
-        outcome: 'progressed',
-        run: result.run,
-        stage: result.stages.find(stage => stage.id === selection.stage.id),
-        operation,
-        events: result.events,
-        outboxes: result.outboxes,
-      };
+      return this.completeRunHandlingPaused(operation, run, selection.stage, outcome);
     }
 
     const transition = this.requireLifecycleTransitionStage();
@@ -405,6 +386,83 @@ export class RunEngine {
     };
   }
 
+  /**
+   * P4B: last-Stage completion. When the Run was paused while this Stage was
+   * in flight, the composite running -> completed transaction must not fire
+   * (that would emit run.completed against a paused Run and trip the
+   * `running` assertion as LIFECYCLE_STATE_MISMATCH). The Stage completion is
+   * recorded stage-only and the Run stays paused; the resume re-drive
+   * re-evaluates Run-level completion via `completeDeferredRun`.
+   */
+  private completeRunHandlingPaused(
+    operation: ApiOperation,
+    run: Run,
+    stage: RunStage,
+    outcome: Extract<StageExecutorResult, { outcome: 'completed' }>,
+  ): RunEngineDispatchResult {
+    const latestRun = this.requireRun(run.workspaceId, run.id);
+    if (latestRun.status === 'paused') {
+      return this.completeStageOnly(operation, latestRun, stage, outcome);
+    }
+    const completeRun = this.dependencies.lifecycleTransactionService.completeRun;
+    if (!completeRun) throw this.missingDependency('completeRun');
+    try {
+      const result = completeRun.call(this.dependencies.lifecycleTransactionService, {
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        stageId: stage.id,
+        expectedRunVersion: latestRun.version,
+        expectedStageVersion: stage.version,
+        correlationId: operation.id,
+        durationMs: outcome.durationMs,
+        artifactIds: [...outcome.artifactIds],
+        outputContractSatisfied: outcome.outputContractSatisfied,
+        ...(outcome.summaryArtifactId === undefined ? {} : { summaryArtifactId: outcome.summaryArtifactId }),
+      });
+      return {
+        outcome: 'progressed',
+        run: result.run,
+        stage: result.stages.find(candidate => candidate.id === stage.id),
+        operation,
+        events: result.events,
+        outboxes: result.outboxes,
+      };
+    } catch (error) {
+      // Pause can interleave with the composite completion between the
+      // status re-read above and the transaction commit. The completion
+      // rolled back; if the Run is paused now, fall back to stage-only.
+      if (error instanceof LifecycleTransactionError && error.code === 'LIFECYCLE_STATE_MISMATCH') {
+        const afterPause = this.requireRun(run.workspaceId, run.id);
+        if (afterPause.status === 'paused') {
+          return this.completeStageOnly(operation, afterPause, stage, outcome);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private completeStageOnly(
+    operation: ApiOperation,
+    run: Run,
+    stage: RunStage,
+    outcome: Extract<StageExecutorResult, { outcome: 'completed' }>,
+  ): RunEngineDispatchResult {
+    const currentStage = this.requireStage(run, stage.id);
+    return this.transitionStageStep(operation, {
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      stageId: currentStage.id,
+      expectedVersion: currentStage.version,
+      expectedFrom: 'running',
+      to: 'completed',
+      correlationId: operation.id,
+      durationMs: outcome.durationMs,
+      artifactIds: [...outcome.artifactIds],
+      outputContractSatisfied: outcome.outputContractSatisfied,
+      ...(outcome.summaryArtifactId === undefined ? {} : { summaryArtifactId: outcome.summaryArtifactId }),
+    });
+  }
+
   private propagateFailureOrNoop(
     run: Run,
     operation: ApiOperation,
@@ -414,6 +472,34 @@ export class RunEngine {
       .filter(stage => stage.status === 'failed')
       .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))[0];
     if (!failed) {
+      // P4B resume re-evaluation: every Stage reached a terminal success state
+      // while the Run was paused (stage-only completion), so no Stage remains
+      // eligible. With the Run running again, complete it through the
+      // deferred-completion composite transaction.
+      if (
+        graph.input.stages.length > 0
+        && graph.input.stages.every(stage => stage.status === 'completed' || stage.status === 'skipped')
+      ) {
+        const completeDeferredRun = this.dependencies.lifecycleTransactionService.completeDeferredRunWithinTransaction;
+        if (completeDeferredRun) {
+          const result = completeDeferredRun.call(
+            this.dependencies.lifecycleTransactionService,
+            {
+              workspaceId: run.workspaceId,
+              runId: run.id,
+              expectedRunVersion: run.version,
+              correlationId: operation.id,
+            },
+          );
+          return {
+            outcome: 'progressed',
+            run: result.run,
+            operation,
+            events: result.events,
+            outboxes: result.outboxes,
+          };
+        }
+      }
       return { outcome: 'noop', reason: 'no-next-stage', runId: run.id, run, operation };
     }
 
