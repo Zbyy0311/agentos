@@ -14,6 +14,7 @@ import {
   DurableProcessCoordinator,
   FileArtifactSink,
   MockNativeProcessHandle,
+  MockNativeProcessStdin,
   NodeProcessDriver,
   type ExitEvidence,
   type NativeIdentity,
@@ -23,9 +24,16 @@ import {
   type ProcessStopResult,
   type SurvivorVerification,
   type TreeTerminationResult,
+  type ValidatedLaunch,
 } from '@agentos/process-runtime';
 import { FakeClock } from '@agentos/process-runtime';
-import { KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import {
+  CUSTOM_CLI_ADAPTER_ID,
+  CustomCliAdapter,
+  KimiCodeProviderAdapter,
+  ProviderRegistry,
+  type RuntimeProviderAdapter,
+} from '@agentos/agent-core/providers';
 import type { ProcessProbePort } from '@agentos/process-runtime';
 import { MigrationRegistry } from '../../migrations/registry.js';
 import { MigrationRunner } from '../../migrations/MigrationRunner.js';
@@ -135,6 +143,20 @@ function providerSnapshot(): ProviderConfigurationSnapshotV1 {
     outputMode: 'structured',
     enabled: true,
     version: 1,
+  };
+}
+
+function customCliProviderSnapshot(argsTemplate: readonly string[]): ProviderConfigurationSnapshotV1 {
+  const adapter = new CustomCliAdapter();
+  return {
+    ...providerSnapshot(),
+    providerType: 'custom-cli',
+    adapterId: CUSTOM_CLI_ADAPTER_ID,
+    runtimeMode: 'cli',
+    executable: process.execPath,
+    argsTemplate: [...argsTemplate],
+    capabilities: adapter.getDefaultCapabilities({}),
+    outputMode: 'parsed-text',
   };
 }
 
@@ -436,8 +458,14 @@ class GatedOutputHandle implements NativeProcessHandle {
 
 class FakeDriver implements PlatformProcessDriver {
   spawnCalls = 0;
+  lastLaunch?: ValidatedLaunch;
   constructor(private readonly handle: NativeProcessHandle | null, private readonly spawnError?: Error) {}
-  async spawn() { this.spawnCalls += 1; if (this.spawnError !== undefined) throw this.spawnError; return this.handle!; }
+  async spawn(launch: ValidatedLaunch) {
+    this.spawnCalls += 1;
+    this.lastLaunch = launch;
+    if (this.spawnError !== undefined) throw this.spawnError;
+    return this.handle!;
+  }
   gracefulStop = async () => ({ delivered: true, detail: 'ok' });
   terminateTree = async (): Promise<TreeTerminationResult> => ({ classification: 'complete', attemptedMembers: [], errors: [] });
   verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [], proof: { kind: 'owned-tree-enumeration' } });
@@ -594,6 +622,40 @@ class RecordingKimiAdapter extends KimiCodeProviderAdapter {
   }
 }
 
+class StdinPromptKimiAdapter extends KimiCodeProviderAdapter {
+  override async buildLaunchPlan(input: Parameters<KimiCodeProviderAdapter['buildLaunchPlan']>[0]) {
+    const plan = await super.buildLaunchPlan(input);
+    return {
+      ...plan,
+      args: ['--prompt-from-stdin'],
+      stdinMode: 'prompt' as const,
+      promptDelivery: 'stdin' as const,
+    };
+  }
+}
+
+class StdinCustomCliAdapter extends CustomCliAdapter {
+  override validate(input: Parameters<CustomCliAdapter['validate']>[0]) {
+    return super.validate({ ...input, configuration: { ...input.configuration, promptDelivery: 'stdin' } });
+  }
+
+  override buildLaunchPlan(input: Parameters<CustomCliAdapter['buildLaunchPlan']>[0]) {
+    return super.buildLaunchPlan({ ...input, configuration: { ...input.configuration, promptDelivery: 'stdin' } });
+  }
+}
+
+class RecordingNodeProcessDriver extends NodeProcessDriver {
+  lastLaunch?: ValidatedLaunch;
+  lastHandle?: NativeProcessHandle;
+
+  override async spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle> {
+    this.lastLaunch = launch;
+    const handle = await super.spawn(launch);
+    this.lastHandle = handle;
+    return handle;
+  }
+}
+
 class BlockingCancelAdapter extends RecordingKimiAdapter {
   readonly cancelEntered = testDeferred<void>();
   readonly releaseCancel = testDeferred<void>();
@@ -634,7 +696,7 @@ interface FixtureOptions {
   readonly processAdapterFactory?: (repo: ProcessRepository) => DurableProcessRepositoryAdapter;
   readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
   readonly failStderrOutput?: boolean;
-  readonly adapter?: KimiCodeProviderAdapter;
+  readonly adapter?: RuntimeProviderAdapter;
   readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
 }
 
@@ -787,6 +849,158 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
+  it('round-trips a real Custom CLI prompt through child stdin and returns its stdout', { timeout: 30_000 }, async () => {
+    const script = "let p='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>p+=c);process.stdin.on('end',()=>process.stdout.write(p+'\\n'));";
+    const prompt = 'stdin-roundtrip:你好🌱\n' + 'x'.repeat(20 * 1024 + 17);
+    const driver = new RecordingNodeProcessDriver();
+    const adapter = new StdinCustomCliAdapter({ probe: probeFor(false) });
+    const fx = fixture(driver, { adapter });
+    let execution: Promise<StageExecutionOutcome> | undefined;
+    try {
+      execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: customCliProviderSnapshot(['-e', script]),
+        prompt,
+        workspaceRoot: fx.root,
+        worktreePath: fx.root,
+      }));
+      const outcome = await execution;
+      assert.equal(outcome.kind, 'completed');
+      if (outcome.kind === 'completed') assert.equal(outcome.output, prompt);
+      assert.deepEqual(driver.lastLaunch?.args, ['-e', script]);
+      assert.equal(driver.lastLaunch?.stdinMode, 'pipe');
+      assert.equal(JSON.stringify(driver.lastLaunch?.args).includes(prompt), false);
+    } finally {
+      if (driver.lastHandle !== undefined) {
+        await driver.terminateTree(driver.lastHandle).catch(() => undefined);
+        await driver.lastHandle.waitExit().catch(() => undefined);
+        await driver.verifySurvivors(driver.lastHandle).catch(() => undefined);
+      }
+      if (execution !== undefined) await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('pipes a stdin-delivered prompt through the opted-in Process launch and closes EOF', async () => {
+    const prompt = 'prompt over stdin: 你好';
+    const stdin = new MockNativeProcessStdin();
+    const handle = new MockNativeProcessHandle(7373, KIMI_EXE, stdin);
+    const driver = new FakeDriver(handle);
+    const adapter = new StdinPromptKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const execution = fx.coordinator.execute(stageInput({
+      prompt,
+      workspaceRoot: fx.root,
+      worktreePath: fx.root,
+    }));
+    try {
+      const stdinDeadline = Date.now() + 5000;
+      while (!stdin.closed && Date.now() < stdinDeadline) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(driver.spawnCalls, 1, 'the Stage launch must reach the Process driver');
+      assert.equal(stdin.closed, true);
+      assert.equal(new TextDecoder().decode(Buffer.concat(stdin.writes.map(chunk => Buffer.from(chunk)))), prompt);
+      assert.deepEqual(driver.lastLaunch?.args, ['--prompt-from-stdin']);
+      assert.equal(driver.lastLaunch?.stdinMode, 'pipe');
+
+      handle.pushStdout('{"type":"assistant","role":"assistant","content":"stdin transport ok"}\n');
+      handle.emitExit({ exitCode: 0 });
+      const outcome = await execution;
+      assert.equal(outcome.kind, 'completed');
+      if (outcome.kind === 'completed') assert.equal(outcome.output, 'stdin transport ok');
+    } finally {
+      handle.emitExit({ exitCode: 0 });
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('does not report success when natural exit closes stdin before prompt delivery settles', { timeout: 5000 }, async () => {
+    let markWriteEntered: () => void = () => undefined;
+    let rejectWrite: (error: Error) => void = () => undefined;
+    const writeEntered = new Promise<void>(resolve => { markWriteEntered = resolve; });
+    const stdin = {
+      write: async () => {
+        markWriteEntered();
+        return new Promise<void>((_resolve, reject) => { rejectWrite = reject; });
+      },
+      close: async () => undefined,
+    };
+    const handle = new MockNativeProcessHandle(7374, KIMI_EXE, stdin);
+    const driver = new FakeDriver(handle);
+    const adapter = new StdinPromptKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const execution = fx.coordinator.execute(stageInput({
+      prompt: 'must not hold exit observation',
+      workspaceRoot: fx.root,
+      worktreePath: fx.root,
+    }));
+    try {
+      await writeEntered;
+      handle.pushStdout('{"type":"assistant","role":"assistant","content":"early exit"}\n');
+      handle.emitExit({ exitCode: 0 });
+      rejectWrite(new Error('PROCESS_STDIN_CLOSED'));
+      const outcome = await execution;
+      assert.notEqual(outcome.kind, 'completed');
+    } finally {
+      handle.emitExit({ exitCode: 0 });
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('cancellation settles while a prompt write is still pending', { timeout: 5000 }, async () => {
+    let markWriteEntered: () => void = () => undefined;
+    const writeEntered = new Promise<void>(resolve => { markWriteEntered = resolve; });
+    const stdin = {
+      write: async () => {
+        markWriteEntered();
+        return new Promise<void>(() => undefined);
+      },
+      close: async () => undefined,
+    };
+    const handle = new MockNativeProcessHandle(7375, KIMI_EXE, stdin);
+    const driver = new FakeDriver(handle);
+    driver.terminateTree = async (): Promise<TreeTerminationResult> => {
+      handle.emitExit({ exitCode: 1 });
+      return { classification: 'complete', attemptedMembers: [handle.pid], errors: [] };
+    };
+    const adapter = new StdinPromptKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...providerSnapshot(),
+        timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 },
+      },
+      workspaceRoot: fx.root,
+      worktreePath: fx.root,
+    }));
+    try {
+      await writeEntered;
+      const stopped = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'stdin-pending-cancel',
+        causationId: 'stdin-pending-cancel',
+      });
+      assert.equal(stopped.kind, 'stopped');
+      assert.equal((await execution).kind, 'stopped');
+    } finally {
+      handle.emitExit({ exitCode: 1 });
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
   for (let repetition = 1; repetition <= 3; repetition++) {
     it(`collaboration launch fence rejects before discovery or reservation (${repetition}/3)`, async () => {
       const driver = new FakeDriver(new FakeHandle([]));

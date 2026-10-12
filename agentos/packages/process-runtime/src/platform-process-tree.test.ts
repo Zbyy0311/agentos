@@ -7,6 +7,7 @@ import {
   type PosixSessionEnumeration,
 } from './posix-process-tree.js';
 import { UnavailableProcessTreeController } from './platform-process-tree.js';
+import type { ProcessTreeHandle } from './platform-process-tree.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
 
 const identity = {
@@ -148,6 +149,34 @@ describe('POSIX session-tree ownership', () => {
     const controller = new UnavailableProcessTreeController('test-unavailable');
     const handle = await controller.attach(identity);
     expect(await controller.verifySurvivors(handle)).toEqual({ classification: 'unknown', knownPids: [100] });
+  });
+
+  it.skipIf(process.platform === 'linux')('reports POSIX suspend/resume as unsupported without Linux identity support', async () => {
+    const controller = new PosixProcessTreeController();
+    const handle = await controller.attach({ ...identity, nativeBirthIdentity: 'linux:proc-start-ticks:1' });
+    const nativeIdentity = { ...identity, nativeBirthIdentity: 'linux:proc-start-ticks:1' };
+    await expect(controller.suspend(handle, nativeIdentity)).resolves.toEqual({
+      status: 'unsupported', reason: 'posix-process-control-requires-linux-birth-identity',
+    });
+    await expect(controller.resume(handle, nativeIdentity)).resolves.toEqual({
+      status: 'unsupported', reason: 'posix-process-control-requires-linux-birth-identity',
+    });
+  });
+
+  it('reports Windows suspend/resume as unsupported for attached, non-owned handles', async () => {
+    const controller = new WindowsProcessTreeController();
+    const handle: ProcessTreeHandle = {
+      platform: 'windows',
+      rootPid: identity.pid,
+      state: { ownedProcessControl: false, cleanupRequested: false },
+    };
+    const nativeIdentity = { ...identity, nativeBirthIdentity: 'win32:filetime:123' };
+    await expect(controller.suspend(handle, nativeIdentity)).resolves.toEqual({
+      status: 'unsupported', reason: 'windows-process-control-requires-owned-spawn',
+    });
+    await expect(controller.resume(handle, nativeIdentity)).resolves.toEqual({
+      status: 'unsupported', reason: 'windows-process-control-requires-owned-spawn',
+    });
   });
 
   it.skipIf(process.platform !== 'win32')('fails closed when the Windows ownership helper is unavailable', async () => {

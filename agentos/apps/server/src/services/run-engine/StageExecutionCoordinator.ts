@@ -29,6 +29,7 @@ import type {
   RuntimeEventRecord,
 } from '@agentos/shared';
 import {
+  NATIVE_STDIN_MAX_CHUNK_BYTES,
   ProcessTimers,
   SystemClock,
   redactArgs,
@@ -213,6 +214,7 @@ interface LiveAttemptRendezvous {
   captureStopped: boolean;
   stdoutDrain?: Promise<void>;
   stderrDrain?: Promise<void>;
+  stdinDelivery?: Promise<void>;
   stdoutDecoder?: TextDecoder;
   stderrDecoder?: TextDecoder;
   parserFinished?: boolean;
@@ -510,12 +512,21 @@ export class StageExecutionCoordinator {
           executable: plan.executable,
           args: [...plan.args],
           cwd: plan.cwd,
+          ...(plan.stdinMode === 'none' ? {} : { stdinMode: 'pipe' as const }),
           env: { ...plan.environment },
           envDiagnostics: [],
           shell: false,
         };
         const handle = await this.driver.spawn(launch);
         entry.handle = handle;
+        this.startOutputDrains(entry);
+        if (plan.stdinMode === 'prompt' && plan.promptDelivery === 'stdin') {
+          entry.stdinDelivery = this.deliverPrompt(handle, input.prompt);
+          // The coordinator observes the task at process exit. This handler
+          // prevents an early rejected write from becoming an unhandled
+          // rejection while the spawned Process is still being bound.
+          void entry.stdinDelivery.catch(() => undefined);
+        }
         return handle;
       },
     });
@@ -867,17 +878,45 @@ export class StageExecutionCoordinator {
   private async runToFinal(entry: LiveAttemptRendezvous): Promise<void> {
     const handle = entry.handle;
     if (handle === undefined) return;
-    const stdoutDecoder = new TextDecoder('utf-8');
-    const stderrDecoder = new TextDecoder('utf-8');
-    entry.stdoutDecoder = stdoutDecoder;
-    entry.stderrDecoder = stderrDecoder;
-    entry.stdoutDrain = this.drainStdout(entry, stdoutDecoder);
-    entry.stderrDrain = this.drainStderr(entry, stderrDecoder);
+    this.startOutputDrains(entry);
+    const stdoutDecoder = entry.stdoutDecoder!;
+    const stderrDecoder = entry.stderrDecoder!;
     try {
-      const observed = await Promise.race([
+      const terminal = Promise.race([
         handle.waitExit().then(exit => ({ kind: 'exit' as const, exit })),
         entry.captureStop.promise.then(() => ({ kind: 'stop' as const })),
       ]);
+      let observed = await (entry.stdinDelivery === undefined
+        ? terminal
+        : Promise.race([
+          terminal,
+          entry.stdinDelivery.then(
+            () => ({ kind: 'stdin-delivered' as const }),
+            error => ({ kind: 'stdin-failed' as const, error }),
+          ),
+        ]));
+      if (observed.kind === 'exit' && entry.stdinDelivery !== undefined) {
+        // The process may exit before the stdin write callback settles. Native
+        // stdin ports settle outstanding writes when the child closes its
+        // input; wait for that bounded result before treating exit as success.
+        // A concurrent accepted stop still wins so timeout/cancel cannot hang.
+        observed = await Promise.race([
+          entry.stdinDelivery.then(
+            () => ({ kind: 'stdin-delivered' as const }),
+            error => ({ kind: 'stdin-failed' as const, error }),
+          ),
+          entry.captureStop.promise.then(() => ({ kind: 'stop' as const })),
+        ]);
+      }
+      if (observed.kind === 'stdin-failed') {
+        if (entry.stopRequestPromise !== undefined) {
+          await this.stopEntry(entry, entry.stopOrigin ?? 'P4_ACTIVATION_FAILURE').catch(() => undefined);
+          return;
+        }
+        await this.stopEntry(entry, 'P4_ACTIVATION_FAILURE').catch(() => undefined);
+        return;
+      }
+      if (observed.kind === 'stdin-delivered') observed = await terminal;
       if (observed.kind === 'stop') {
         await Promise.allSettled([entry.stdoutDrain, entry.stderrDrain]);
         return;
@@ -930,8 +969,31 @@ export class StageExecutionCoordinator {
       await this.finalizeAttemptOnce(entry, entry.naturalDisposition);
     } catch (error) {
       if (entry.stopAccepted) return;
+      if (entry.stopRequestPromise !== undefined) {
+        await this.stopEntry(entry, entry.stopOrigin ?? 'EXPLICIT_CANCEL').catch(() => undefined);
+        return;
+      }
       await this.finalizeAttemptOnce(entry, { kind: 'runtime-failure', error });
     }
+  }
+
+  private startOutputDrains(entry: LiveAttemptRendezvous): void {
+    if (entry.stdoutDrain !== undefined || entry.stderrDrain !== undefined) return;
+    const stdoutDecoder = new TextDecoder('utf-8');
+    const stderrDecoder = new TextDecoder('utf-8');
+    entry.stdoutDecoder = stdoutDecoder;
+    entry.stderrDecoder = stderrDecoder;
+    entry.stdoutDrain = this.drainStdout(entry, stdoutDecoder);
+    entry.stderrDrain = this.drainStderr(entry, stderrDecoder);
+  }
+
+  private async deliverPrompt(handle: NativeProcessHandle, prompt: string): Promise<void> {
+    if (handle.stdin == null) throw new Error('PROCESS_STDIN_UNAVAILABLE');
+    const bytes = new TextEncoder().encode(prompt);
+    for (let offset = 0; offset < bytes.byteLength; offset += NATIVE_STDIN_MAX_CHUNK_BYTES) {
+      await handle.stdin.write(bytes.subarray(offset, Math.min(offset + NATIVE_STDIN_MAX_CHUNK_BYTES, bytes.byteLength)));
+    }
+    await handle.stdin.close();
   }
 
   private async drainStdout(entry: LiveAttemptRendezvous, decoder: TextDecoder): Promise<void> {

@@ -2,8 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server, type Socket } from 'node:net';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
-import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
+import { PassThrough, Writable } from 'node:stream';
+import type { ProcessControlResult, SurvivorVerification, TreeTerminationResult } from './driver.js';
 import type { NativeIdentity, ValidatedLaunch } from './types.js';
 import { canonicalizeNativeBirthIdentityDecimal } from './native-birth-identity.js';
 import {
@@ -24,6 +24,9 @@ const FRAME_STDOUT = 1;
 const FRAME_STDERR = 2;
 const FRAME_STDOUT_EOF = 3;
 const FRAME_STDERR_EOF = 4;
+const FRAME_STDIN = 5;
+const FRAME_STDIN_EOF = 6;
+const MAX_STDIN_FRAME_BYTES = 16 * 1024;
 
 /**
  * MEDIUM-1: translate a stable Win32 native spawn error code to the
@@ -106,6 +109,7 @@ public sealed class AgentOsLaunchSpec
     [DataMember(Name = "args")] public string[] Args;
     [DataMember(Name = "cwd")] public string Cwd;
     [DataMember(Name = "env")] public Dictionary<string, string> Env;
+    [DataMember(Name = "stdinPipe")] public bool StdinPipe;
 }
 
 public sealed class AgentOsFrameWriter
@@ -434,6 +438,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
     private const uint INFINITE = 0xFFFFFFFF;
     private const uint STILL_ACTIVE = 259;
     private const uint HANDLE_FLAG_INHERIT = 0x00000001;
+    private const int MAX_STDIN_FRAME_BYTES = 16384;
 
     private readonly AgentOsFrameWriter writer;
     private readonly AgentOsFrameWriter dataWriter;
@@ -443,18 +448,26 @@ public sealed class AgentOsOwnedProcess : IDisposable
     private IntPtr threadHandle;
     private IntPtr readOut;
     private IntPtr readErr;
+    private IntPtr stdinWrite;
+    private readonly bool stdinPipe;
+    private readonly object stdinSync = new object();
+    private bool stdinClosed;
+    private bool suspendedByAgentOs;
     private Thread pumpOut;
     private Thread pumpErr;
 
     public readonly int Pid;
+    public string BirthIdentity;
 
-    private AgentOsOwnedProcess(int pid, IntPtr processHandle, IntPtr threadHandle, IntPtr readOut, IntPtr readErr, AgentOsFrameWriter writer, AgentOsFrameWriter dataWriter)
+    private AgentOsOwnedProcess(int pid, IntPtr processHandle, IntPtr threadHandle, IntPtr readOut, IntPtr readErr, IntPtr stdinWrite, bool stdinPipe, AgentOsFrameWriter writer, AgentOsFrameWriter dataWriter)
     {
         Pid = pid;
         this.processHandle = processHandle;
         this.threadHandle = threadHandle;
         this.readOut = readOut;
         this.readErr = readErr;
+        this.stdinWrite = stdinWrite;
+        this.stdinPipe = stdinPipe;
         this.writer = writer;
         this.dataWriter = dataWriter;
     }
@@ -472,6 +485,8 @@ public sealed class AgentOsOwnedProcess : IDisposable
         IntPtr writeOut = IntPtr.Zero;
         IntPtr readErr = IntPtr.Zero;
         IntPtr writeErr = IntPtr.Zero;
+        IntPtr readIn = IntPtr.Zero;
+        IntPtr writeIn = IntPtr.Zero;
         IntPtr nul = new IntPtr(-1);
         try
         {
@@ -479,13 +494,18 @@ public sealed class AgentOsOwnedProcess : IDisposable
             if (!SetHandleInformation(readOut, HANDLE_FLAG_INHERIT, 0)) AgentOsJob.ThrowLastError();
             if (!CreatePipe(out readErr, out writeErr, ref sa, 0)) AgentOsJob.ThrowLastError();
             if (!SetHandleInformation(readErr, HANDLE_FLAG_INHERIT, 0)) AgentOsJob.ThrowLastError();
+            if (spec.StdinPipe)
+            {
+                if (!CreatePipe(out readIn, out writeIn, ref sa, 0)) AgentOsJob.ThrowLastError();
+                if (!SetHandleInformation(writeIn, HANDLE_FLAG_INHERIT, 0)) AgentOsJob.ThrowLastError();
+            }
             nul = CreateFileW("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, ref sa, OPEN_EXISTING, 0, IntPtr.Zero);
             if (nul == new IntPtr(-1)) AgentOsJob.ThrowLastError();
 
             var si = new STARTUPINFO();
             si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
             si.dwFlags = STARTF_USESTDHANDLES;
-            si.hStdInput = nul;
+            si.hStdInput = spec.StdinPipe ? readIn : nul;
             si.hStdOutput = writeOut;
             si.hStdError = writeErr;
 
@@ -508,12 +528,16 @@ public sealed class AgentOsOwnedProcess : IDisposable
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
-            return new AgentOsOwnedProcess(unchecked((int)pi.dwProcessId), pi.hProcess, pi.hThread, readOut, readErr, writer, dataWriter);
+            var owned = new AgentOsOwnedProcess(unchecked((int)pi.dwProcessId), pi.hProcess, pi.hThread, readOut, readErr, writeIn, spec.StdinPipe, writer, dataWriter);
+            writeIn = IntPtr.Zero;
+            return owned;
         }
         finally
         {
             if (writeOut != IntPtr.Zero) AgentOsJob.CloseHandle(writeOut);
             if (writeErr != IntPtr.Zero) AgentOsJob.CloseHandle(writeErr);
+            if (readIn != IntPtr.Zero) AgentOsJob.CloseHandle(readIn);
+            if (writeIn != IntPtr.Zero) AgentOsJob.CloseHandle(writeIn);
             if (nul != new IntPtr(-1)) AgentOsJob.CloseHandle(nul);
         }
     }
@@ -555,7 +579,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
         exitFrameSent.Set();
     }
 
-    public void Resume()
+    public void Resume(Stream stdinTransport)
     {
         if (ResumeThread(threadHandle) == 0xFFFFFFFF) AgentOsJob.ThrowLastError();
         AgentOsJob.CloseHandle(threadHandle);
@@ -566,6 +590,12 @@ public sealed class AgentOsOwnedProcess : IDisposable
         pumpErr.IsBackground = true;
         pumpOut.Start();
         pumpErr.Start();
+        if (stdinPipe)
+        {
+            var pumpStdin = new Thread(delegate() { PumpStdin(stdinTransport); });
+            pumpStdin.IsBackground = true;
+            pumpStdin.Start();
+        }
         var monitor = new Thread(MonitorExit);
         monitor.IsBackground = true;
         monitor.Start();
@@ -574,6 +604,79 @@ public sealed class AgentOsOwnedProcess : IDisposable
     public void Terminate()
     {
         if (!TerminateProcess(processHandle, 1)) AgentOsJob.ThrowLastError();
+    }
+
+    public void Suspend()
+    {
+        EnsureBirthIdentity();
+        if (suspendedByAgentOs) return;
+        if (NtSuspendProcess(processHandle) != 0) throw new InvalidOperationException("nt-suspend-process-failed");
+        suspendedByAgentOs = true;
+    }
+
+    public void ResumeFromSuspend()
+    {
+        EnsureBirthIdentity();
+        if (!suspendedByAgentOs) throw new InvalidOperationException("process-not-suspended-by-agentos");
+        if (NtResumeProcess(processHandle) != 0) throw new InvalidOperationException("nt-resume-process-failed");
+        suspendedByAgentOs = false;
+    }
+
+    private void EnsureBirthIdentity()
+    {
+        if (processHandle == IntPtr.Zero || BirthIdentity == null) throw new InvalidOperationException("owned-process-identity-unavailable");
+        if (AgentOsProcessIdentity.ReadCreationFileTime(processHandle) != BirthIdentity) throw new InvalidOperationException("owned-process-identity-mismatch");
+    }
+
+    private void PumpStdin(Stream transport)
+    {
+        try
+        {
+            var header = new byte[5];
+            while (ReadExact(transport, header, header.Length))
+            {
+                int length = header[1] | (header[2] << 8) | (header[3] << 16) | (header[4] << 24);
+                if (length < 0 || length > MAX_STDIN_FRAME_BYTES) throw new InvalidOperationException("stdin-frame-invalid-length");
+                var payload = new byte[length];
+                if (length > 0 && !ReadExact(transport, payload, length)) throw new EndOfStreamException();
+                if (header[0] == 5 && length > 0) WriteStdin(payload);
+                else if (header[0] == 6 && length == 0) { CloseStdin(); return; }
+                else throw new InvalidOperationException("stdin-frame-invalid-channel");
+            }
+        }
+        catch { CloseStdin(); }
+    }
+
+    private static bool ReadExact(Stream stream, byte[] buffer, int length)
+    {
+        int offset = 0;
+        while (offset < length)
+        {
+            int read = stream.Read(buffer, offset, length - offset);
+            if (read <= 0) return false;
+            offset += read;
+        }
+        return true;
+    }
+
+    private void WriteStdin(byte[] payload)
+    {
+        lock (stdinSync)
+        {
+            if (stdinClosed || stdinWrite == IntPtr.Zero) throw new InvalidOperationException("stdin-closed");
+            using (var stream = new FileStream(new SafeFileHandle(stdinWrite, false), FileAccess.Write, MAX_STDIN_FRAME_BYTES, false))
+                stream.Write(payload, 0, payload.Length);
+        }
+    }
+
+    private void CloseStdin()
+    {
+        lock (stdinSync)
+        {
+            if (stdinClosed) return;
+            stdinClosed = true;
+            if (stdinWrite != IntPtr.Zero) { AgentOsJob.CloseHandle(stdinWrite); stdinWrite = IntPtr.Zero; }
+        }
     }
 
     public bool WaitExitFrame(int milliseconds)
@@ -611,6 +714,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
         try
         {
             WaitForSingleObject(processHandle, INFINITE);
+            CloseStdin();
             // The bounded join prevents exit evidence from waiting behind a stalled data consumer.
             // Pumps remain alive after the deadline so bytes are not silently discarded.
             if (pumpOut != null) pumpOut.Join(2000);
@@ -634,6 +738,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
         if (readOut != IntPtr.Zero) { AgentOsJob.CloseHandle(readOut); readOut = IntPtr.Zero; }
         if (readErr != IntPtr.Zero) { AgentOsJob.CloseHandle(readErr); readErr = IntPtr.Zero; }
         if (threadHandle != IntPtr.Zero) { AgentOsJob.CloseHandle(threadHandle); threadHandle = IntPtr.Zero; }
+        CloseStdin();
         if (processHandle != IntPtr.Zero) { AgentOsJob.CloseHandle(processHandle); processHandle = IntPtr.Zero; }
     }
 
@@ -762,6 +867,12 @@ public sealed class AgentOsOwnedProcess : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtSuspendProcess(IntPtr processHandle);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtResumeProcess(IntPtr processHandle);
 }
 
 public static class AgentOsJobServer
@@ -803,7 +914,7 @@ public static class AgentOsJobServer
         AgentOsJob job = null;
         AgentOsOwnedProcess owned = null;
         using (var controlPipe = new NamedPipeClientStream(".", controlPipeName, PipeDirection.Out))
-        using (var dataPipe = new NamedPipeClientStream(".", dataPipeName, PipeDirection.Out))
+        using (var dataPipe = new NamedPipeClientStream(".", dataPipeName, PipeDirection.InOut))
         {
             controlPipe.Connect(30000);
             dataPipe.Connect(30000);
@@ -843,8 +954,9 @@ public static class AgentOsJobServer
                             string birthIdentity = null;
                             try { birthIdentity = AgentOsProcessIdentity.ReadCreationFileTime(created.Handle); }
                             catch { birthIdentity = null; }
+                            created.BirthIdentity = birthIdentity;
                             writer.WriteLine("assigned|" + owned.Pid);
-                            owned.Resume();
+                            owned.Resume(dataPipe);
                             resumed = true;
                             writer.WriteLine("launched|" + owned.Pid + "|" + (birthIdentity == null ? "-" : birthIdentity));
                         }
@@ -917,6 +1029,17 @@ public static class AgentOsJobServer
                         if (owned == null) throw new InvalidOperationException("no-owned-process");
                         owned.Terminate();
                         writer.WriteLine("ok|stoproot");
+                    }
+                    else if (line.StartsWith("suspend|") || line.StartsWith("resume|"))
+                    {
+                        if (owned == null) throw new InvalidOperationException("no-owned-process");
+                        var parts = line.Split('|');
+                        int requestedPid;
+                        if (parts.Length != 3 || !int.TryParse(parts[1], out requestedPid) || requestedPid != owned.Pid || owned.BirthIdentity == null || parts[2] != owned.BirthIdentity)
+                            throw new InvalidOperationException("owned-process-identity-mismatch");
+                        if (parts[0] == "suspend") owned.Suspend();
+                        else owned.ResumeFromSuspend();
+                        writer.WriteLine("ok|" + parts[0] + "|" + owned.Pid + "|" + owned.BirthIdentity);
                     }
                     else if (line == "close")
                     {
@@ -1068,6 +1191,8 @@ class FrameDemux {
 interface WindowsTreeState {
   readonly session: WindowsJobSession;
   cleanupRequested: boolean;
+  readonly ownedProcessControl: boolean;
+  suspendedByAgentOs: boolean;
   closedVerification?: SurvivorVerification;
 }
 
@@ -1090,6 +1215,7 @@ class WindowsJobSession {
   readonly exitObserved: Promise<OwnedExit>;
   readonly stdout = new PassThrough({ highWaterMark: 64 * 1024 });
   readonly stderr = new PassThrough({ highWaterMark: 64 * 1024 });
+  readonly stdin: Writable;
 
   private constructor(
     private readonly helper: ChildProcess,
@@ -1100,6 +1226,26 @@ class WindowsJobSession {
     private readonly trace?: (event: WindowsOwnershipTraceEvent) => void,
     private readonly transportTrace?: (event: WindowsTransportTraceEvent) => void,
   ) {
+    this.stdin = new Writable({
+      write: (chunk, _encoding, callback) => {
+        if (this.closed || this.dataSocket.destroyed) {
+          callback(new Error('windows-tree-helper-closed'));
+          return;
+        }
+        if (chunk.length === 0 || chunk.length > MAX_STDIN_FRAME_BYTES) {
+          callback(new Error('windows-tree-stdin-invalid-chunk'));
+          return;
+        }
+        this.writeStdinFrame(FRAME_STDIN, chunk, callback);
+      },
+      final: callback => {
+        if (this.closed || this.dataSocket.destroyed) {
+          callback(new Error('windows-tree-helper-closed'));
+          return;
+        }
+        this.writeStdinFrame(FRAME_STDIN_EOF, Buffer.alloc(0), callback);
+      },
+    });
     let resolver: (exit: OwnedExit) => void = () => undefined;
     this.exitObserved = new Promise<OwnedExit>(resolve => { resolver = resolve; });
     this.exitResolve = resolver;
@@ -1213,6 +1359,7 @@ class WindowsJobSession {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.stdin.destroy();
     try { await this.request('close'); } catch { /* helper failure is already fail-closed */ }
     try { this.helper.stdin?.end(); } catch { /* best effort */ }
     if (this.helper.exitCode === null) {
@@ -1234,6 +1381,14 @@ class WindowsJobSession {
     const response = await withTimeout(this.lines.next(), COMMAND_TIMEOUT_MS, 'windows-tree-helper-response-timeout');
     if (response.startsWith('error|')) throw this.classifyErrorResponse(response);
     return response;
+  }
+
+  private writeStdinFrame(channel: number, payload: Buffer, callback: (error?: Error | null) => void): void {
+    const frame = Buffer.allocUnsafe(5 + payload.length);
+    frame[0] = channel;
+    frame.writeUInt32LE(payload.length, 1);
+    payload.copy(frame, 5);
+    this.dataSocket.write(frame, error => callback(error));
   }
 
  /**
@@ -1272,6 +1427,10 @@ class WindowsJobSession {
       const exitCode = Number(parts[2]);
       this.rootExited = true;
       if (Number.isSafeInteger(pid) && pid > 0) this.trace?.({ kind: 'exit', pid, at: Date.now() });
+      // A remote process exit closes its input even if a bounded stdin write
+      // is still waiting for the duplex transport. Destroying the local
+      // Writable makes that write settle so callers can observe exit/cancel.
+      this.stdin.destroy();
       this.settleExit({ exitCode: Number.isSafeInteger(exitCode) ? exitCode : null, signal: null });
       return;
     }
@@ -1334,6 +1493,7 @@ class WindowsJobSession {
 
   private fail(error: Error): void {
     this.lines.fail(error);
+    this.stdin.destroy();
     this.settleExit({ exitCode: null, signal: null });
     this.endStreams();
   }
@@ -1404,6 +1564,7 @@ export class WindowsProcessTreeController implements ProcessTreeController {
       args: [...launch.args],
       cwd: launch.cwd,
       env: { ...launch.env },
+      stdinPipe: launch.stdinMode === 'pipe',
     };
     const encoded = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64');
     if (encoded.length > MAX_LAUNCH_SPEC_BASE64) throw new Error('windows-launch-spec-too-large');
@@ -1419,7 +1580,7 @@ export class WindowsProcessTreeController implements ProcessTreeController {
     }
     const pid = launched.pid;
     this.trace?.({ kind: 'launched', pid, at: Date.now() });
-    const state: WindowsTreeState = { session, cleanupRequested: false };
+    const state: WindowsTreeState = { session, cleanupRequested: false, ownedProcessControl: true, suspendedByAgentOs: false };
     const tree: ProcessTreeHandle = { platform: 'windows', rootPid: pid, state };
     return {
       pid,
@@ -1427,6 +1588,7 @@ export class WindowsProcessTreeController implements ProcessTreeController {
       executablePath: launch.executable,
       stdout: session.stdout,
       stderr: session.stderr,
+      stdin: launch.stdinMode === 'pipe' ? session.stdin : null,
       waitExit: () => session.exitObserved.then(exit => ({
         exitCode: exit.exitCode,
         signal: exit.signal,
@@ -1483,11 +1645,64 @@ export class WindowsProcessTreeController implements ProcessTreeController {
       session = await WindowsJobSession.start(this.shell, this.trace);
       const response = await session.request('attach|' + identity.pid);
       if (response !== 'ok|attach') throw new Error('windows-tree-helper-attach-failed');
-      const state: WindowsTreeState = { session, cleanupRequested: false };
+      const state: WindowsTreeState = { session, cleanupRequested: false, ownedProcessControl: false, suspendedByAgentOs: false };
       return { platform: 'windows', rootPid: identity.pid, state };
     } catch (error) {
       await session?.close();
       return { platform: 'unavailable', rootPid: identity.pid, state: boundedErrorDetail(error, 'windows-tree-unavailable') };
+    }
+  }
+
+  suspend(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult> {
+    return this.controlProcess(handle, identity, 'suspend');
+  }
+
+  resume(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult> {
+    return this.controlProcess(handle, identity, 'resume');
+  }
+
+  private async controlProcess(
+    handle: ProcessTreeHandle,
+    identity: NativeIdentity,
+    action: 'suspend' | 'resume',
+  ): Promise<ProcessControlResult> {
+    if (handle.platform !== 'windows') return { status: 'unsupported', reason: 'windows-process-control-unavailable' };
+    const state = handle.state as WindowsTreeState;
+    if (!state.ownedProcessControl) return { status: 'unsupported', reason: 'windows-process-control-requires-owned-spawn' };
+    const prefix = 'win32:filetime:';
+    const birth = identity.nativeBirthIdentity;
+    if (
+      handle.rootPid !== identity.pid
+      || !birth?.startsWith(prefix)
+      || !/^\d+$/.test(birth.slice(prefix.length))
+    ) return { status: 'rejected', reason: 'process-identity-mismatch' };
+    if (state.cleanupRequested || state.closedVerification?.classification === 'complete') {
+      return { status: 'rejected', reason: 'process-cleanup-started' };
+    }
+    if (action === 'resume' && !state.suspendedByAgentOs) {
+      return { status: 'rejected', reason: 'process-not-suspended-by-agentos' };
+    }
+
+    try {
+      const observed = await state.session.request('probe-identity|' + identity.pid);
+      if (state.cleanupRequested) return { status: 'rejected', reason: 'process-cleanup-started' };
+      const fields = observed.split('|');
+      if (fields.length !== 3 || fields[0] !== 'identity' || Number(fields[1]) !== identity.pid
+        || fields[2] !== birth.slice(prefix.length)) {
+        return { status: 'rejected', reason: 'process-birth-identity-mismatch' };
+      }
+      const response = await state.session.request(action + '|' + identity.pid + '|' + fields[2]);
+      if (state.cleanupRequested) return { status: 'rejected', reason: 'process-cleanup-started' };
+      if (response !== 'ok|' + action + '|' + identity.pid + '|' + fields[2]) {
+        return { status: 'rejected', reason: 'windows-process-control-response-mismatch' };
+      }
+      state.suspendedByAgentOs = action === 'suspend';
+      return { status: 'completed' };
+    } catch (error) {
+      const detail = boundedErrorDetail(error, 'windows-process-control-failed');
+      return detail.includes('unsupported')
+        ? { status: 'unsupported', reason: detail }
+        : { status: 'rejected', reason: detail };
     }
   }
 
@@ -1497,10 +1712,10 @@ export class WindowsProcessTreeController implements ProcessTreeController {
     if (state.closedVerification?.classification === 'complete') {
       return { classification: 'complete', attemptedMembers: [], errors: [] };
     }
+    state.cleanupRequested = true;
     let members: readonly number[] = [];
     try {
       members = parseMembers(await state.session.request('members'));
-      state.cleanupRequested = true;
       const response = await state.session.request('terminate');
       if (response !== 'ok|terminate') throw new Error('windows-tree-helper-terminate-failed');
       return { classification: 'complete', attemptedMembers: members, errors: [] };

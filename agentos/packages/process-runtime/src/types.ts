@@ -37,6 +37,8 @@ export interface LaunchRequest {
   readonly executable: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  /** Opt in to a writable child stdin pipe; omitted preserves closed stdin. */
+  readonly stdinMode?: 'pipe';
   readonly env?: LaunchEnvironmentInput;
   /** Only false/absent is accepted; true is denied by policy. */
   readonly shell?: boolean;
@@ -66,6 +68,8 @@ export interface ValidatedLaunch {
   readonly executable: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  /** Present only when the launch explicitly requested a writable stdin pipe. */
+  readonly stdinMode?: 'pipe';
   readonly env: Readonly<Record<string, string>>;
   readonly envDiagnostics: readonly EnvironmentDiagnostic[];
   readonly shell: false;

@@ -1,5 +1,5 @@
-import type { Readable } from 'node:stream';
-import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
+import type { Readable, Writable } from 'node:stream';
+import type { ProcessControlResult, SurvivorVerification, TreeTerminationResult } from './driver.js';
 import type { ExitEvidence, NativeIdentity, ValidatedLaunch } from './types.js';
 import { PosixProcessTreeController } from './posix-process-tree.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
@@ -15,6 +15,8 @@ export interface ProcessTreeController {
   terminateTree(handle: ProcessTreeHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification>;
   dispose(handle: ProcessTreeHandle): Promise<void>;
+  suspend?(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult>;
+  resume?(handle: ProcessTreeHandle, identity: NativeIdentity): Promise<ProcessControlResult>;
 }
 
 /**
@@ -36,6 +38,8 @@ export interface OwnedSpawnResult {
   readonly executablePath: string;
   readonly stdout: Readable;
   readonly stderr: Readable;
+  /** Present only when launch.stdinMode opted into a pipe. */
+  readonly stdin?: Writable | null;
   readonly waitExit: () => Promise<ExitEvidence>;
   /** Terminates the provider root only (Windows SIGTERM-equivalent). */
   readonly requestGracefulStop: () => Promise<boolean>;
@@ -80,6 +84,14 @@ export class UnavailableProcessTreeController implements ProcessTreeController {
       classification: 'unknown',
       knownPids: handle.rootPid > 0 ? [handle.rootPid] : [],
     };
+  }
+
+  async suspend(_handle: ProcessTreeHandle, _identity: NativeIdentity): Promise<ProcessControlResult> {
+    return { status: 'unsupported', reason: 'platform-process-control-unavailable:' + this.reason };
+  }
+
+  async resume(_handle: ProcessTreeHandle, _identity: NativeIdentity): Promise<ProcessControlResult> {
+    return { status: 'unsupported', reason: 'platform-process-control-unavailable:' + this.reason };
   }
 
   async dispose(_handle: ProcessTreeHandle): Promise<void> {

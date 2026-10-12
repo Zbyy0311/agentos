@@ -256,14 +256,14 @@ describe('CustomCliAdapter', () => {
     ]));
 
     const stdinDelivery = await adapter.validate({
-      configuration: config({ promptDelivery: 'stdin' }),
+      configuration: config({ promptDelivery: 'stdin', argsTemplate: ['run'] }),
       environment: {},
       workspaceRoot: 'C:/workspace',
+      discover: async input => discovered(input),
+      probe: probeFor(() => ({ stdout: '1.0.0', stderr: '', exitCode: 0, signal: null })),
     });
-    expect(stdinDelivery.valid).toBe(false);
-    expect(stdinDelivery.errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'PROVIDER_CAPABILITY_UNAVAILABLE', message: expect.stringContaining('promptDelivery') }),
-    ]));
+    expect(stdinDelivery.valid).toBe(true);
+    expect(stdinDelivery.capabilities.interactiveInput).toBe(false);
   });
 
   it('warns about unresolved template variables while keeping them verbatim', async () => {
@@ -327,16 +327,29 @@ describe('CustomCliAdapter', () => {
     )).toEqual(['p']);
   });
 
-  it('rejects stdin and file prompt delivery at launch plan build time', async () => {
+  it('builds an opt-in stdin prompt plan without leaking the prompt into arguments', async () => {
     const adapter = new CustomCliAdapter();
-    for (const promptDelivery of ['stdin', 'file'] as const) {
-      await expect(adapter.buildLaunchPlan({
-        configuration: config({ promptDelivery }),
-        workspaceRoot: 'C:/workspace',
-        prompt: 'hello',
-        environment: {},
-      })).rejects.toThrow(/PROMPT_DELIVERY_UNSUPPORTED/);
-    }
+    const plan = await adapter.buildLaunchPlan({
+      configuration: config({ promptDelivery: 'stdin', argsTemplate: ['run', '{{model}}'] }),
+      workspaceRoot: 'C:/workspace',
+      prompt: 'hello',
+      environment: {},
+    });
+    expect(plan).toMatchObject({ stdinMode: 'prompt', promptDelivery: 'stdin' });
+    expect(plan.args).toEqual(['run', 'acme/model']);
+    expect(JSON.stringify(plan)).not.toContain('hello');
+  });
+
+  it('rejects file delivery and mixed stdin plus prompt argument templates', async () => {
+    const adapter = new CustomCliAdapter();
+    await expect(adapter.buildLaunchPlan({
+      configuration: config({ promptDelivery: 'file' }),
+      workspaceRoot: 'C:/workspace', prompt: 'hello', environment: {},
+    })).rejects.toThrow(/PROMPT_DELIVERY_UNSUPPORTED/);
+    await expect(adapter.buildLaunchPlan({
+      configuration: config({ promptDelivery: 'stdin', argsTemplate: ['run', '{{prompt}}'] }),
+      workspaceRoot: 'C:/workspace', prompt: 'hello', environment: {},
+    })).rejects.toThrow('PROVIDER_CONFIG_INVALID');
   });
 
   it('maps PROMPT_DELIVERY_UNSUPPORTED launch failures to capability errors', () => {

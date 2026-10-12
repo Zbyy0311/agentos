@@ -2,7 +2,9 @@ import type {
   GracefulStopResult,
   IdentityInspection,
   NativeProcessHandle,
+  NativeProcessStdin,
   NativeProcessStreams,
+  ProcessControlResult,
   PlatformProcessDriver,
   SurvivorClassification,
   SurvivorVerification,
@@ -114,10 +116,11 @@ export class MockNativeProcessHandle implements NativeProcessHandle {
   readonly stdout = new MockByteStream();
   readonly stderr = new MockByteStream();
   readonly streams: NativeProcessStreams;
+  readonly stdin: NativeProcessStdin | null;
   readonly #exit = deferred<ExitEvidence>();
   #exitEmitted = false;
 
-  constructor(pid: number, executablePath: string) {
+  constructor(pid: number, executablePath: string, stdin: NativeProcessStdin | null = null) {
     this.pid = pid;
     this.identity = Object.freeze({
       pid,
@@ -125,6 +128,7 @@ export class MockNativeProcessHandle implements NativeProcessHandle {
       executablePath,
     });
     this.streams = { stdout: this.stdout, stderr: this.stderr };
+    this.stdin = stdin;
   }
 
   get exitEmitted(): boolean {
@@ -163,6 +167,20 @@ export class MockNativeProcessHandle implements NativeProcessHandle {
   }
 }
 
+export class MockNativeProcessStdin implements NativeProcessStdin {
+  readonly writes: Uint8Array[] = [];
+  closed = false;
+
+  async write(chunk: Uint8Array): Promise<void> {
+    if (this.closed) throw new Error('PROCESS_STDIN_CLOSED');
+    this.writes.push(Uint8Array.from(chunk));
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
 /**
  * Deterministic in-memory Driver. Every native interaction is scriptable and
  * gated by counting barriers, so race tests schedule exact interleavings
@@ -182,6 +200,10 @@ export class MockProcessDriver implements PlatformProcessDriver {
   verifyClassification: SurvivorClassification = 'complete';
   verifyProofMode: 'valid' | 'bare' = 'valid';
   verifyError: unknown = null;
+  suspendResult: ProcessControlResult = { status: 'completed' };
+  resumeResult: ProcessControlResult = { status: 'completed' };
+  suspendCalls = 0;
+  resumeCalls = 0;
 
   readonly #spawnEntered = new Signal();
   readonly #gracefulEntered = new Signal();
@@ -279,6 +301,16 @@ export class MockProcessDriver implements PlatformProcessDriver {
     return Promise.resolve({ delivered: true, detail: 'mock graceful stop pid ' + handle.pid });
   }
 
+  async suspend(_handle: NativeProcessHandle): Promise<ProcessControlResult> {
+    this.suspendCalls += 1;
+    return this.suspendResult;
+  }
+
+  async resume(_handle: NativeProcessHandle): Promise<ProcessControlResult> {
+    this.resumeCalls += 1;
+    return this.resumeResult;
+  }
+
   terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult> {
     this.#terminateEntered.fire();
     if (this.terminateError !== null) return Promise.reject(this.terminateError);
@@ -318,7 +350,8 @@ export class MockProcessDriver implements PlatformProcessDriver {
 
   #newHandle(): MockNativeProcessHandle {
     const launch = this.spawnCalls[this.spawnCalls.length - 1];
-    const handle = new MockNativeProcessHandle(this.#nextPid, launch?.executable ?? 'mock');
+    const stdin: NativeProcessStdin | null = launch?.stdinMode === 'pipe' ? new MockNativeProcessStdin() : null;
+    const handle = new MockNativeProcessHandle(this.#nextPid, launch?.executable ?? 'mock', stdin);
     this.#nextPid += 1;
     this.handles.push(handle);
     return handle;

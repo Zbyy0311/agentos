@@ -276,11 +276,21 @@ export class CustomCliAdapter implements RuntimeProviderAdapter {
         retryable: false,
       });
     }
-    if (configuration.promptDelivery !== undefined && configuration.promptDelivery !== 'argument') {
+    if (configuration.promptDelivery !== undefined
+      && configuration.promptDelivery !== 'argument'
+      && configuration.promptDelivery !== 'stdin') {
       errors.push({
         code: 'PROVIDER_CAPABILITY_UNAVAILABLE',
         phase: 'configuration',
-        message: `Custom CLI promptDelivery '${configuration.promptDelivery}' is not supported; only 'argument' is available`,
+        message: `Custom CLI promptDelivery '${configuration.promptDelivery}' is not supported; use 'argument' or 'stdin'`,
+        retryable: false,
+      });
+    }
+    if (configuration.promptDelivery === 'stdin' && (configuration.argsTemplate ?? []).some(arg => arg.includes('{{prompt}}'))) {
+      errors.push({
+        code: 'PROVIDER_CONFIG_INVALID',
+        phase: 'configuration',
+        message: "Custom CLI stdin promptDelivery cannot also expand '{{prompt}}' in argsTemplate",
         retryable: false,
       });
     }
@@ -433,10 +443,8 @@ export class CustomCliAdapter implements RuntimeProviderAdapter {
     }
 
     const promptDelivery = configuration.promptDelivery ?? 'argument';
-    if (promptDelivery !== 'argument') {
-      // process-runtime stdio currently ignores stdin and no temp-file prompt
-      // contract exists, so anything but argument delivery fails at plan time.
-      throw new Error(`PROMPT_DELIVERY_UNSUPPORTED: Custom CLI supports promptDelivery 'argument' only, got '${promptDelivery}'`);
+    if (promptDelivery !== 'argument' && promptDelivery !== 'stdin') {
+      throw new Error(`PROMPT_DELIVERY_UNSUPPORTED: Custom CLI supports promptDelivery 'argument' or 'stdin', got '${promptDelivery}'`);
     }
 
     const prompt = input.prompt;
@@ -453,7 +461,14 @@ export class CustomCliAdapter implements RuntimeProviderAdapter {
 
     const cwd = resolveWorkingDirectory(configuration, input.workspaceRoot, input.worktreePath);
     assertSafeArgsTemplate(configuration.argsTemplate ?? []);
-    const args = expandArgsTemplate(configuration.argsTemplate ?? [], { prompt, model, workingDirectory: cwd });
+    if (promptDelivery === 'stdin' && (configuration.argsTemplate ?? []).some(arg => arg.includes('{{prompt}}'))) {
+      throw new Error('PROVIDER_CONFIG_INVALID');
+    }
+    const args = expandArgsTemplate(
+      configuration.argsTemplate ?? [],
+      { prompt, model, workingDirectory: cwd },
+      promptDelivery !== 'stdin',
+    );
     const successExitCodes = configuration.successExitCodes ?? [0];
     this.lastSuccessExitCodes = [...successExitCodes];
 
@@ -480,8 +495,8 @@ export class CustomCliAdapter implements RuntimeProviderAdapter {
       environment: safeEnvironment,
       redactedEnvironmentKeys: [...new Set(redactedEnvironmentKeys)].sort(),
       secretRefs,
-      stdinMode: 'none',
-      promptDelivery: 'argument',
+      stdinMode: promptDelivery === 'stdin' ? 'prompt' : 'none',
+      promptDelivery,
       structuredOutput: 'text',
       cleanupFiles: [],
       shell: false,
@@ -657,6 +672,7 @@ function validationResult(options: ValidationResultOptions): ProviderValidationR
 export function expandArgsTemplate(
   template: readonly string[],
   values: { readonly prompt: string; readonly model?: string; readonly workingDirectory: string },
+  appendPrompt = true,
 ): string[] {
   let sawPrompt = false;
   const args = template.map(arg => arg.replace(KNOWN_TEMPLATE_VARIABLES, (_match, name: string) => {
@@ -667,7 +683,7 @@ export function expandArgsTemplate(
     if (name === 'model') return values.model ?? '{{model}}';
     return values.workingDirectory;
   }));
-  if (!sawPrompt) args.push(values.prompt);
+  if (!sawPrompt && appendPrompt) args.push(values.prompt);
   return args;
 }
 

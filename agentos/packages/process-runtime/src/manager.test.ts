@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { SystemClock } from './clock.js';
 import { MockNativeProcessHandle } from './testing/mock-driver.js';
+import { MockNativeProcessStdin } from './testing/mock-driver.js';
 import {
   completeStopPipeline,
   createManagerFixture,
@@ -491,6 +492,145 @@ describe('ProcessManager deadlines', () => {
     const final = await fx.manager.waitForTerminal(id);
     expect(final.terminal?.outcome).toBe('timeout');
     expect(final.terminal?.terminationReason).toBe('PROCESS_TOTAL_TIMEOUT');
+  });
+
+  it('pauses the idle deadline while process-level suspension is waiting', async () => {
+    const fx = createManagerFixture();
+    const { id, claim } = await startRunning(fx, {
+      timeouts: { startupMs: 1000, idleMs: 200, totalMs: undefined, graceMs: 50 },
+    });
+    await fx.manager.markReady(id);
+    fx.clock.advance(150);
+    await expect(fx.manager.suspend(id, claim)).resolves.toMatchObject({
+      status: 'completed',
+      snapshot: { state: 'waiting' },
+    });
+    await expect(fx.manager.exitWaiting(id)).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+    fx.clock.advance(10_000);
+    expect(fx.manager.getSnapshot(id)?.state).toBe('waiting');
+    await expect(fx.manager.resume(id, claim)).resolves.toMatchObject({
+      status: 'completed',
+      snapshot: { state: 'running' },
+    });
+    fx.clock.advance(199);
+    expect(fx.manager.getSnapshot(id)?.state).toBe('running');
+    fx.clock.advance(1);
+    await completeStopPipeline(fx);
+    await expect(fx.manager.waitForTerminal(id)).resolves.toMatchObject({
+      terminal: { terminationReason: 'PROCESS_IDLE_TIMEOUT' },
+    });
+  });
+
+  it('keeps the startup deadline active while suspended before readiness', async () => {
+    const fx = createManagerFixture();
+    const { id, claim } = await startRunning(fx, {
+      timeouts: { startupMs: 100, idleMs: undefined, totalMs: undefined, graceMs: 50 },
+    });
+    await fx.manager.suspend(id, claim);
+    fx.clock.advance(100);
+    await completeStopPipeline(fx);
+    await expect(fx.manager.waitForTerminal(id)).resolves.toMatchObject({
+      terminal: { terminationReason: 'PROCESS_STARTUP_TIMEOUT' },
+    });
+  });
+
+  it('keeps total timeout active while the owned process is suspended', async () => {
+    const fx = createManagerFixture();
+    const { id, claim } = await startRunning(fx, {
+      timeouts: { startupMs: undefined, idleMs: undefined, totalMs: 500, graceMs: 50 },
+    });
+    await fx.manager.suspend(id, claim);
+    fx.clock.advance(500);
+    await completeStopPipeline(fx);
+    await expect(fx.manager.waitForTerminal(id)).resolves.toMatchObject({
+      terminal: { terminationReason: 'PROCESS_TOTAL_TIMEOUT' },
+    });
+  });
+
+  it('does not change process state when process control is unsupported', async () => {
+    const fx = createManagerFixture();
+    fx.driver.suspendResult = { status: 'unsupported', reason: 'platform-process-control-unavailable' };
+    const { id, claim } = await startRunning(fx);
+    await expect(fx.manager.suspend(id, claim)).resolves.toMatchObject({
+      status: 'unsupported',
+      snapshot: { state: 'running' },
+    });
+    await expect(fx.manager.resume(id, claim)).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+  });
+
+  it('mutually excludes concurrent suspend/resume native calls', async () => {
+    const fx = createManagerFixture();
+    const { id, claim } = await startRunning(fx);
+    let releaseNativeSuspend!: () => void;
+    let markNativeSuspendEntered!: () => void;
+    const nativeSuspendEntered = new Promise<void>(resolve => { markNativeSuspendEntered = resolve; });
+    const nativeSuspendGate = new Promise<void>(resolve => { releaseNativeSuspend = resolve; });
+    fx.driver.suspend = async () => {
+      fx.driver.suspendCalls += 1;
+      if (fx.driver.suspendCalls === 1) {
+        markNativeSuspendEntered();
+        await nativeSuspendGate;
+      }
+      return { status: 'completed' };
+    };
+
+    const first = fx.manager.suspend(id, claim);
+    await nativeSuspendEntered;
+    const second = fx.manager.suspend(id, claim);
+    const secondRejected = expect(second).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+    await Promise.resolve();
+    expect(fx.driver.suspendCalls).toBe(1);
+
+    releaseNativeSuspend();
+    await expect(first).resolves.toMatchObject({ status: 'completed', snapshot: { state: 'waiting' } });
+    await secondRejected;
+    expect(fx.driver.suspendCalls).toBe(1);
+
+    let releaseNativeResume!: () => void;
+    let markNativeResumeEntered!: () => void;
+    const nativeResumeEntered = new Promise<void>(resolve => { markNativeResumeEntered = resolve; });
+    const nativeResumeGate = new Promise<void>(resolve => { releaseNativeResume = resolve; });
+    fx.driver.resume = async () => {
+      fx.driver.resumeCalls += 1;
+      if (fx.driver.resumeCalls === 1) {
+        markNativeResumeEntered();
+        await nativeResumeGate;
+      }
+      return { status: 'completed' };
+    };
+    const firstResume = fx.manager.resume(id, claim);
+    await nativeResumeEntered;
+    const secondResume = fx.manager.resume(id, claim);
+    const secondResumeRejected = expect(secondResume).rejects.toMatchObject({ code: 'PROCESS_REQUEST_INVALID' });
+    await Promise.resolve();
+    expect(fx.driver.resumeCalls).toBe(1);
+    releaseNativeResume();
+    await expect(firstResume).resolves.toMatchObject({ status: 'completed', snapshot: { state: 'running' } });
+    await secondResumeRejected;
+    expect(fx.driver.resumeCalls).toBe(1);
+  });
+});
+
+describe('ProcessManager stdin', () => {
+  it('opens stdin only for an explicit pipe launch, writes bytes, and closes EOF', async () => {
+    const fx = createManagerFixture();
+    const { id, claim } = await startRunning(fx, { launch: { ...fx.launch, stdinMode: 'pipe' } });
+    const handle = fx.driver.handles[0]!;
+    const stdin = handle.stdin as MockNativeProcessStdin;
+    const first = new Uint8Array([0, 65, 255]);
+    const second = new Uint8Array([66, 0]);
+    await fx.manager.writeStdin(id, claim, first);
+    await fx.manager.writeStdin(id, claim, second);
+    await fx.manager.closeStdin(id, claim);
+    expect(stdin.writes.map(bytes => [...bytes])).toEqual([[0, 65, 255], [66, 0]]);
+    expect(stdin.closed).toBe(true);
+    await expect(fx.manager.writeStdin(id, claim, first)).rejects.toMatchObject({ code: 'PROCESS_STDIN_WRITE_FAILED' });
+
+    const defaultLaunch = createManagerFixture();
+    const defaultRun = await startRunning(defaultLaunch);
+    expect(defaultRun.handle.stdin).toBeNull();
+    await expect(defaultLaunch.manager.writeStdin(defaultRun.id, defaultRun.claim, first))
+      .rejects.toMatchObject({ code: 'PROCESS_STDIN_CLOSED' });
   });
 });
 
