@@ -226,6 +226,12 @@ export class RuntimeArtifactService {
     return bytes;
   }
 
+  /** Read-only listing channel for the worktree control API (diff/bundle/inspect views). */
+  listForRun(workspaceId: string, runId: string): RuntimeArtifact[] {
+    if (!runId) return [];
+    return this.store.listRuntimeArtifacts(workspaceId, runId);
+  }
+
   async cleanupConversation(workspaceId: string, conversationId: string): Promise<void> {
     const runs = this.store.listRuns(workspaceId, conversationId, 1_000_000);
     for (const run of runs) {
