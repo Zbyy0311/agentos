@@ -202,6 +202,17 @@ test('reservation persistence fails before Git creates a branch or checkout', as
   } finally { fx.close(); }
 });
 
+test('empty execution identity is rejected before reserving a lease or creating Git content', async () => {
+  const fx = await fixture();
+  try {
+    await assert.rejects(fx.manager.createLease({ workspaceId: fx.workspace.id, workspaceRoot: fx.workspace.rootPath,
+      runId: fx.run.id, executionId: 'execution', agentId: '',
+    }), error => (error as { code?: string }).code === 'invalid_identity');
+    assert.deepEqual(fx.store.worktreeRepository().list(), []);
+    assert.equal(git(fx.workspace.rootPath, ['for-each-ref', '--format=%(refname)', 'refs/heads/agentos/']), '');
+  } finally { fx.close(); }
+});
+
 test('startup event failure restores creating status in both database and manager cache', async () => {
   const fx = await fixture();
   try {

@@ -113,6 +113,10 @@ export class WorktreeManager {
   }
 
   async createLease(input: CreateInput): Promise<WorktreeLease> {
+    if (!input || [input.workspaceId, input.runId, input.executionId, input.agentId]
+      .some(value => typeof value !== 'string' || value.trim().length === 0)) {
+      throw new WorktreeError('invalid_identity', 'workspaceId, runId, executionId and agentId are required');
+    }
     const baseCommit = await this.assertClean(input.workspaceRoot, input);
     if (input.expectedBaseCommit !== undefined && baseCommit !== input.expectedBaseCommit) {
       throw new WorktreeError('workspace_changed', 'workspace_changed: clean source baseline differs from the expected commit');

@@ -172,74 +172,74 @@ export class WorktreeMergeService {
     // workspace, so the worktree cannot check them out; detached + update-ref
     // is the §40 "dedicated merge context" within the existing checkout.
     try {
-    await git(checkout, ['checkout', '-q', '--detach', previousTargetCommit]);
+      await git(checkout, ['checkout', '-q', '--detach', previousTargetCommit]);
 
-    let conflictedPaths: string[] = [];
-    try {
-      if (request.strategy === 'ff') {
-        await git(checkout, ['merge', '--ff-only', headCommit]);
-      } else if (request.strategy === 'merge-commit') {
-        await git(checkout, ['merge', '--no-ff', '-m', `Merge branch '${lease.branchName}' into ${request.targetBranch}`, headCommit]);
-      } else {
-        await git(checkout, ['merge', '--squash', headCommit]);
-        await git(checkout, ['commit', '-m', `Squash merge branch '${lease.branchName}' into ${request.targetBranch}`]);
-      }
-    } catch (error) {
-      conflictedPaths = (await git(checkout, ['diff', '--name-only', '--diff-filter=U']).catch(() => ''))
-        .split('\n').map(line => line.trim()).filter(Boolean);
-      const inMerge = await gitSucceeds(checkout, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
-      if (inMerge) await git(checkout, ['merge', '--abort']).catch(() => undefined);
-      const summary: WorktreeMergeConflictSummary = { conflictedPaths };
-      const record = buildRecord({
-        result: 'conflicted',
-        conflictSummary: summary,
-        completedAt: new Date().toISOString(),
-      });
-      this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.conflicted', {
-        mergeRecordId: record.id, operation: 'merge', conflictedFiles: conflictedPaths,
-        sourceBranch: lease.branchName, targetBranch: request.targetBranch,
-      }));
-      throw new WorktreeMergeError(
-        'WORKTREE_MERGE_CONFLICTED',
-        `merge of '${lease.branchName}' into '${request.targetBranch}' conflicted (${conflictedPaths.join(', ') || 'unmerged paths'})`,
-        record,
-      );
-    }
-
-    let resultingTargetCommit: string;
-    try {
-      resultingTargetCommit = (await git(checkout, ['rev-parse', 'HEAD'])).trim();
-      // Atomic compare-and-swap: refuse to move the target branch if it
-      // advanced underneath us (out-of-process writers).
-      if (!(await gitSucceeds(checkout, ['update-ref', `refs/heads/${request.targetBranch}`, resultingTargetCommit, previousTargetCommit]))) {
-        const record = buildRecord({ result: 'aborted', completedAt: new Date().toISOString() });
-        this.repository.createInTransaction(record);
+      let conflictedPaths: string[] = [];
+      try {
+        if (request.strategy === 'ff') {
+          await git(checkout, ['merge', '--ff-only', headCommit]);
+        } else if (request.strategy === 'merge-commit') {
+          await git(checkout, ['merge', '--no-ff', '-m', `Merge branch '${lease.branchName}' into ${request.targetBranch}`, headCommit]);
+        } else {
+          await git(checkout, ['merge', '--squash', headCommit]);
+          await git(checkout, ['commit', '-m', `Squash merge branch '${lease.branchName}' into ${request.targetBranch}`]);
+        }
+      } catch (error) {
+        conflictedPaths = (await git(checkout, ['diff', '--name-only', '--diff-filter=U']).catch(() => ''))
+          .split('\n').map(line => line.trim()).filter(Boolean);
+        const inMerge = await gitSucceeds(checkout, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
+        if (inMerge) await git(checkout, ['merge', '--abort']).catch(() => undefined);
+        const summary: WorktreeMergeConflictSummary = { conflictedPaths };
+        const record = buildRecord({
+          result: 'conflicted',
+          conflictSummary: summary,
+          completedAt: new Date().toISOString(),
+        });
+        this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.conflicted', {
+          mergeRecordId: record.id, operation: 'merge', conflictedFiles: conflictedPaths,
+          sourceBranch: lease.branchName, targetBranch: request.targetBranch,
+        }));
         throw new WorktreeMergeError(
-          'WORKTREE_MERGE_HEAD_MISMATCH',
-          `target branch '${request.targetBranch}' advanced during merge; aborted`,
+          'WORKTREE_MERGE_CONFLICTED',
+          `merge of '${lease.branchName}' into '${request.targetBranch}' conflicted (${conflictedPaths.join(', ') || 'unmerged paths'})`,
           record,
         );
       }
-    } catch (error) {
-      // Unexpected git failure after the merge step: record and surface as failed.
-      if (error instanceof WorktreeMergeError) throw error;
-      const record = buildRecord({ result: 'failed', completedAt: new Date().toISOString() });
-      this.repository.createInTransaction(record);
-      throw new WorktreeMergeError('WORKTREE_MERGE_FAILED', error instanceof Error ? error.message : String(error), record);
-    }
 
-    const record = buildRecord({
-      result: 'merged',
-      resultingTargetCommit,
-      mergeCommit: request.strategy === 'merge-commit' ? resultingTargetCommit : null,
-      completedAt: new Date().toISOString(),
-    });
-    this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.merged', {
-      mergeRecordId: record.id, sourceBranch: lease.branchName, targetBranch: request.targetBranch,
-      strategy: request.strategy, resultingTargetCommit,
-      ...(record.mergeCommit === null ? {} : { mergeCommit: record.mergeCommit }),
-    }));
-    return record;
+      let resultingTargetCommit: string;
+      try {
+        resultingTargetCommit = (await git(checkout, ['rev-parse', 'HEAD'])).trim();
+        // Atomic compare-and-swap: refuse to move the target branch if it
+        // advanced underneath us (out-of-process writers).
+        if (!(await gitSucceeds(checkout, ['update-ref', `refs/heads/${request.targetBranch}`, resultingTargetCommit, previousTargetCommit]))) {
+          const record = buildRecord({ result: 'aborted', completedAt: new Date().toISOString() });
+          this.repository.createInTransaction(record);
+          throw new WorktreeMergeError(
+            'WORKTREE_MERGE_HEAD_MISMATCH',
+            `target branch '${request.targetBranch}' advanced during merge; aborted`,
+            record,
+          );
+        }
+      } catch (error) {
+        // Unexpected git failure after the merge step: record and surface as failed.
+        if (error instanceof WorktreeMergeError) throw error;
+        const record = buildRecord({ result: 'failed', completedAt: new Date().toISOString() });
+        this.repository.createInTransaction(record);
+        throw new WorktreeMergeError('WORKTREE_MERGE_FAILED', error instanceof Error ? error.message : String(error), record);
+      }
+
+      const record = buildRecord({
+        result: 'merged',
+        resultingTargetCommit,
+        mergeCommit: request.strategy === 'merge-commit' ? resultingTargetCommit : null,
+        completedAt: new Date().toISOString(),
+      });
+      this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.merged', {
+        mergeRecordId: record.id, sourceBranch: lease.branchName, targetBranch: request.targetBranch,
+        strategy: request.strategy, resultingTargetCommit,
+        ...(record.mergeCommit === null ? {} : { mergeCommit: record.mergeCommit }),
+      }));
+      return record;
     } finally {
       try {
         await git(checkout, ['checkout', '-q', lease.branchName]);
