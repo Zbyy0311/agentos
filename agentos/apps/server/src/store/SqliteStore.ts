@@ -88,6 +88,7 @@ import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.j
 import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
 import { ConversationRepository } from './ConversationRepository.js';
 import { WorktreeRepository } from './WorktreeRepository.js';
+import { WorktreeMergeRepository } from './WorktreeMergeRepository.js';
 import { AgentTurnRepository } from './AgentTurnRepository.js';
 import { MessageProjectionRepository } from './MessageProjectionRepository.js';
 import { GroupInteractionRepository } from './GroupInteractionRepository.js';
@@ -495,6 +496,7 @@ export class SqliteStore implements Store {
   private readonly turnContextSnapshotRepo: TurnContextSnapshotRepository;
   private readonly workspaceAdmissionRepo: WorkspaceAdmissionRepository;
   private readonly worktreeRepo: WorktreeRepository;
+  private readonly worktreeMergeRepo: WorktreeMergeRepository;
   private readonly workspaceEventRepo: WorkspaceEventRepository;
   private readonly workspaceEventWriterRepo: WorkspaceEventWriter;
   private readonly legacy: JsonFileStore;
@@ -579,6 +581,7 @@ export class SqliteStore implements Store {
       this.turnContextSnapshotRepo = new TurnContextSnapshotRepository(this.database as any);
       this.workspaceAdmissionRepo = new WorkspaceAdmissionRepository(this.database as any);
       this.worktreeRepo = new WorktreeRepository(this.database as any);
+      this.worktreeMergeRepo = new WorktreeMergeRepository(this.database as any);
       this.runMigrations(dataDir);
       // Keep a defensive additive guard for databases whose agent_runs table
       // was rebuilt by an older recovery path after migration 032 was recorded.
@@ -743,6 +746,11 @@ export class SqliteStore implements Store {
   /** PR-3A Worktree lease repository (shares this store's SQLite handle). */
   worktreeRepository(): WorktreeRepository {
     return this.worktreeRepo;
+  }
+
+  /** PR-3B Worktree merge result repository (shares this store's SQLite handle). */
+  worktreeMergeRepository(): WorktreeMergeRepository {
+    return this.worktreeMergeRepo;
   }
 
   /** CR-3 durable Conversation streaming seam. */
