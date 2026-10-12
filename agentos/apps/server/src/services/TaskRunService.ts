@@ -412,11 +412,13 @@ export class TaskRunService {
   /**
    * P4 Run-level Resume (logical marker only). Records paused -> running in the
    * same atomic Lifecycle Transaction as the run.resumed Event and Outbox row.
-   * No provider process is restarted or re-dispatched here — that is the
-   * follow-up PR. Resume is idempotent: a Run already running is returned
-   * unchanged with 200; any non-paused/non-running state fails with
-   * RUN_NOT_RESUMABLE (409). resumeMode defaults to 'process-restart' because
-   * no adapter currently supports native-session resume.
+   * The dispatch-side re-drive lands in P4B: the resume routes trigger one
+   * background RunEngineProviderDispatcher drive after a genuine
+   * paused -> running transition. Resume is idempotent: a Run already running
+   * is returned unchanged with 200 (and never re-dispatched); any
+   * non-paused/non-running state fails with RUN_NOT_RESUMABLE (409).
+   * resumeMode defaults to 'process-restart' because no adapter currently
+   * supports native-session resume.
    */
   resumeRunForV2(
     workspaceId: string,

@@ -4,6 +4,7 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
 import { TaskNotFoundError } from '../store/TaskRepository.js';
+import type { RunLifecycleDispatchOptions } from './runLifecycle.js';
 import { buildV2RunDetailResponse, parseV2RunInclude } from './v2RunApi.js';
 import { parseOptionalExpectedVersion, respondV2, V2ValidationError } from './v2Tasks.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
@@ -71,12 +72,29 @@ function parseOptionalRequestedBy(value: unknown): string | undefined {
   return value;
 }
 
-export function createCanonicalRunRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
+export interface CanonicalRunRouteOptions {
+  /**
+   * P4B resume re-drive seam. When present and enabled, a resume that
+   * actually transitioned the Run paused -> running (not an idempotent
+   * already-running 200, not an idempotency replay) triggers exactly one
+   * background dispatch through the same RunEngineProviderDispatcher channel
+   * as the canonical start route. Fire-and-forget: the drive contains its
+   * own failures.
+   */
+  readonly resumeDispatch?: RunLifecycleDispatchOptions;
+}
+
+export function createCanonicalRunRoutes(
+  store: TaskRunServiceDeps,
+  workspaceManager: WorkspaceManager,
+  options: CanonicalRunRouteOptions = {},
+): Router {
   const router = Router();
   const idempotencyService = createOptionalIdempotencyService(store);
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
   });
+  const resumeDispatch = options.resumeDispatch;
 
   /**
    * Canonical task locator: resolves the owning workspace of an opaque
@@ -202,6 +220,7 @@ export function createCanonicalRunRoutes(store: TaskRunServiceDeps, workspaceMan
     const resumeMode = parseResumeMode(body.resumeMode);
     const requestedBy = parseOptionalRequestedBy(body.requestedBy);
     try {
+      const before = store.runRepository().findById(workspaceId, runId);
       const result = service.resumeRunForV2(
         workspaceId,
         runId,
@@ -210,6 +229,15 @@ export function createCanonicalRunRoutes(store: TaskRunServiceDeps, workspaceMan
         { ...(resumeMode === undefined ? {} : { resumeMode }), ...(requestedBy === undefined ? {} : { requestedBy }) },
       );
       if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      // P4B: only a genuine paused -> running transition re-drives. The
+      // idempotent already-running 200 and idempotency replays converge on
+      // durable evidence and must never re-dispatch.
+      if (resumeDispatch?.enabled === true && !result.replayed && before?.status === 'paused') {
+        void resumeDispatch.drive(workspaceId, runId).catch(() => {
+          // Containment backstop: drive implementations contain their own
+          // failures; this only guarantees no unhandled rejection escapes.
+        });
+      }
       return { status: result.httpStatus, body: result.body };
     } catch (error) {
       if (precondition.fromHeader && isVersionConflictError(error)) {
