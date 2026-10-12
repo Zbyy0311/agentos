@@ -392,6 +392,64 @@ export class WorktreeManager {
   }
 
   /**
+   * Prove that an active durable lease still owns the checkout at its path.
+   * A clean directory at the same commit is insufficient: it may have been
+   * replaced with another repository or detached from the lease branch.
+   */
+  async assertLeaseOwnership(id: string): Promise<void> {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    if (record.status !== 'active') throw new WorktreeError('lease_ownership_mismatch', 'lease is not active');
+    try {
+      const expectedBranch = `agentos/run-${segment(record.runId)}-exec-${segment(record.executionId)}`;
+      const expectedPath = resolve(this.worktreeRoot, segment(record.workspaceId), segment(record.runId), segment(record.executionId));
+      if (record.branchName !== expectedBranch || normalizeManagedPath(record.absolutePath) !== normalizeManagedPath(expectedPath)) {
+        throw new Error('durable lease path or branch differs from its stable identity');
+      }
+      await this.assertManagedCheckout(record.absolutePath);
+      const actualPath = await realpath(record.absolutePath);
+      const topLevel = await git(actualPath, ['rev-parse', '--show-toplevel'], true);
+      if (normalizeManagedPath(await realpath(topLevel.trim())) !== normalizeManagedPath(actualPath)) {
+        throw new Error('checkout top-level differs from the leased path');
+      }
+
+      const commonDirectory = async (root: string): Promise<string> => {
+        const reported = (await git(root, ['rev-parse', '--git-common-dir'], true)).trim();
+        if (!reported) throw new Error('git common directory is unavailable');
+        return realpath(isAbsolute(reported) ? reported : resolve(root, reported));
+      };
+      const [expectedCommon, actualCommon] = await Promise.all([
+        commonDirectory(record.workspaceRoot),
+        commonDirectory(actualPath),
+      ]);
+      if (normalizeManagedPath(expectedCommon) !== normalizeManagedPath(actualCommon)) {
+        throw new Error('checkout Git common directory differs from the lease source');
+      }
+
+      const branch = (await git(actualPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'], true)).trim();
+      if (branch !== record.branchName) throw new Error('checkout is not attached to the leased branch');
+
+      const entries = await listGitWorktrees(record.workspaceRoot, true);
+      const registered = await Promise.all(entries.map(async entry => ({
+        ...entry,
+        normalizedPath: normalizeManagedPath(await realpath(entry.path).catch(() => resolve(entry.path))),
+      })));
+      const matchingPath = registered.filter(entry => entry.normalizedPath === normalizeManagedPath(actualPath));
+      const matchingBranch = registered.filter(entry => entry.branch === record.branchName);
+      if (
+        matchingPath.length !== 1
+        || matchingPath[0]!.branch !== record.branchName
+        || matchingBranch.length !== 1
+        || matchingBranch[0]!.normalizedPath !== normalizeManagedPath(actualPath)
+      ) {
+        throw new Error('checkout registration differs from the durable lease');
+      }
+    } catch {
+      throw new WorktreeError('lease_ownership_mismatch', 'checkout ownership does not match the durable lease');
+    }
+  }
+
+  /**
    * Startup recovery reconciliation (§52-57).
    *
    * Beyond the legacy directory/.git check, this now reconciles against
@@ -739,6 +797,14 @@ export function parseGitWorktreeListPorcelain(output: string): GitWorktreeListEn
     }
   }
   return entries;
+}
+
+async function listGitWorktrees(workspaceRoot: string, controlled = false): Promise<GitWorktreeListEntry[]> {
+  try {
+    return parseGitWorktreeListPorcelain(await git(workspaceRoot, ['worktree', 'list', '--porcelain'], controlled));
+  } catch {
+    return []; // Unreachable git root: directory checks above still apply.
+  }
 }
 
 function normalizeManagedPath(path: string): string {

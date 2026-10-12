@@ -124,8 +124,9 @@ function mapRow(row: RunRow): Run {
   };
 }
 
-// M2.4 §25 Run state machine. queued → failed is deliberately absent:
-// Bridge claim compensation must go through failQueuedBridgeClaim.
+// M2.4 §25 generic Run state machine. queued → failed stays absent here:
+// canonical pre-dispatch failures must use LifecycleTransactionService, while
+// the bridge-specific compensation helpers remain restricted to legacy Runs.
 const RUN_ALLOWED_TRANSITIONS: Record<V2RunStatus, V2RunStatus[]> = {
   queued: ['running', 'cancelled'],
   starting: [],

@@ -89,10 +89,11 @@ export function createCanonicalRunRoutes(
 ): Router {
   const router = Router();
   const idempotencyService = createOptionalIdempotencyService(store);
+  const resumeDispatch = options.resumeDispatch;
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
+    resumeFallbackWorktreePreparationAvailable: resumeDispatch?.prepareResumeFallbackChild !== undefined,
   });
-  const resumeDispatch = options.resumeDispatch;
 
   /**
    * Canonical task locator: resolves the owning workspace of an opaque

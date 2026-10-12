@@ -22,6 +22,8 @@ export interface RunLifecycleDispatchOptions {
    * never crashes the route or strands a running execution.
    */
   readonly drive: (workspaceId: string, runId: string) => Promise<unknown>;
+  /** Post-commit isolation preparation for explicit fallback Children. */
+  readonly prepareResumeFallbackChild?: (workspaceId: string, runId: string) => Promise<void>;
 }
 
 export interface RunLifecycleRouteOptions {

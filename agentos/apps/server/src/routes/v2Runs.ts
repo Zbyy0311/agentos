@@ -48,10 +48,11 @@ export function createV2RunRoutes(
 ): Router {
   const router = Router({ mergeParams: true });
   const idempotencyService = createOptionalIdempotencyService(store);
+  const resumeDispatch = options.resumeDispatch;
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
+    resumeFallbackWorktreePreparationAvailable: resumeDispatch?.prepareResumeFallbackChild !== undefined,
   });
-  const resumeDispatch = options.resumeDispatch;
 
   router.get('/runs/:runId', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);

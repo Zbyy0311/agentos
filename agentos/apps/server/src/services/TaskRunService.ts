@@ -112,6 +112,8 @@ export interface TaskRunServiceOptions {
   snapshotService?: SnapshotService;
   clock?: () => string;
   idempotencyService?: IdempotencyService;
+  /** Route wiring proves an async post-commit preparer exists for required Child worktrees. */
+  resumeFallbackWorktreePreparationAvailable?: boolean;
 }
 
 export type RunResumeMode = RunResumedPayload['resumeMode'] | 'child-run';
@@ -254,6 +256,7 @@ const LEGACY_RESTART_EXECUTION_MESSAGE = 'Server restarted during Legacy canonic
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
   private readonly idempotencyService?: IdempotencyService;
+  private readonly resumeFallbackWorktreePreparationAvailable: boolean;
 
   constructor(
     private readonly deps: TaskRunServiceDeps,
@@ -271,6 +274,7 @@ export class TaskRunService {
       throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
     }
     this.idempotencyService = options.idempotencyService;
+    this.resumeFallbackWorktreePreparationAvailable = options.resumeFallbackWorktreePreparationAvailable === true;
     if (options.snapshotService) {
       this.snapshotService = options.snapshotService;
       return;
@@ -1495,7 +1499,8 @@ export class TaskRunService {
       }
       throw error;
     }
-    if (preparedClone.payload.workflow.worktreeMode === 'required') {
+    if (preparedClone.payload.workflow.worktreeMode === 'required'
+      && !this.resumeFallbackWorktreePreparationAvailable) {
       throw domainError('RUN_RESUME_WORKTREE_UNAVAILABLE', 'A dedicated Child worktree cannot be established for resume fallback');
     }
 

@@ -87,6 +87,18 @@ interface RunTransitionBase extends LifecycleInputBase {
 export type RunTransitionInput =
   | (RunTransitionBase & { readonly expectedFrom: 'queued'; readonly to: 'starting' })
   | (RunTransitionBase & {
+      readonly expectedFrom: 'queued';
+      readonly to: 'failed';
+      readonly errorCode: string;
+      readonly message: string;
+      readonly phase: string;
+      readonly retryable: boolean;
+      readonly stageId?: string;
+      readonly providerType?: ProviderTypeV1;
+      readonly suggestedAction?: string;
+      readonly debugArtifactId?: string;
+    })
+  | (RunTransitionBase & {
       readonly expectedFrom: 'starting' | 'running' | 'paused';
       readonly to: 'failed';
       readonly errorCode: string;
@@ -399,6 +411,7 @@ export interface RecordRecoveryOutcomeWithinTransactionInput extends CompositeLi
 
 const RUN_SINGLE_TRANSITIONS = new Set([
   'queued->starting',
+  'queued->failed',
   'starting->failed',
   'running->paused',
   'running->failed',

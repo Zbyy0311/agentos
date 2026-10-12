@@ -81,6 +81,7 @@ import { MaintenanceDiagnosticsService, inspectMaintenanceActivity } from './ser
 import { MaintenanceService } from './services/MaintenanceService.js';
 import { closeLocalShutdownControl, startLocalShutdownControl } from './services/LocalShutdownControl.js';
 import { WorkspaceGitRootRegistry } from './services/WorkspaceGitRootRegistry.js';
+import { ResumeFallbackWorktreePreparer } from './services/ResumeFallbackWorktreePreparer.js';
 import { createDiagnosticLogger } from './services/DiagnosticLogger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -304,6 +305,14 @@ async function bootstrap(): Promise<void> {
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
     const taskRunService = new TaskRunService(store);
     const collaborationWorktreePaths = new Map<string, string>();
+    const resumeFallbackWorktreePreparer = new ResumeFallbackWorktreePreparer({
+      store,
+      worktrees: worktreeManager,
+      workspaceGitRootFor: workspaceId => workspaceGitRoots.rootPathFor(workspaceId),
+      registerWorktreePath: (_workspaceId, runId, path) => collaborationWorktreePaths.set(runId, path),
+    });
+    const prepareResumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
+      resumeFallbackWorktreePreparer.prepare(workspaceId, runId);
     let collaborationService!: CollaborationWorkflowService;
     const providerExecutionChain = createProviderExecutionChain({
       store,
@@ -315,6 +324,7 @@ async function bootstrap(): Promise<void> {
         return workspaceGitRoots.rootPathFor(workspaceId) ?? workspace.rootPath;
       },
       worktreePathFor: (_workspaceId, runId) => collaborationWorktreePaths.get(runId),
+      prepareResumeFallbackChild,
       continueOwnedRun: (workspaceId, runId) => collaborationService.resumeRun(workspaceId, runId),
       collaborationStageHooks: {
         canDispatch: (workspaceId, runId) => collaborationService.canDispatch(workspaceId, runId),
@@ -569,13 +579,12 @@ async function bootstrap(): Promise<void> {
     // terminal parent's Admission so it cannot hold the workspace queue.
     const resumeDispatch = {
       enabled: runtimeDispatchEnabled,
+      prepareResumeFallbackChild,
       drive: async (workspaceId: string, runId: string) => {
         const run = store!.runRepository().findById(workspaceId, runId);
         if (run?.reason === 'resume-fallback' && run.parentRunId !== undefined) {
-          await providerExecutionChain.admissionAuthority.releaseCanonicalRun({
-            workspaceId,
-            runId: run.parentRunId,
-          });
+          await providerExecutionChain.resumeFallbackChild(workspaceId, runId);
+          return;
         }
         const admitted = await providerExecutionChain.admissionAuthority.requestCanonicalRun({ workspaceId, runId });
         if (!admitted) return;

@@ -42,6 +42,7 @@ function freezeEventSequence(events: readonly M3RuntimeEventType[]): readonly M3
 export const M3_RUN_TRANSITION_EVENT_CONTRACTS = freezeTransitionContracts([
   { aggregate: 'run', from: null, to: 'queued', primaryEvent: 'run.created', terminal: false },
   { aggregate: 'run', from: 'queued', to: 'starting', primaryEvent: 'run.dequeued', terminal: false },
+  { aggregate: 'run', from: 'queued', to: 'failed', primaryEvent: 'run.failed', terminal: true },
   { aggregate: 'run', from: 'queued', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
   { aggregate: 'run', from: 'starting', to: 'running', primaryEvent: 'run.started', terminal: false },
   { aggregate: 'run', from: 'starting', to: 'failed', primaryEvent: 'run.failed', terminal: true },
