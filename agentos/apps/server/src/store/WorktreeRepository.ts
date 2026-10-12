@@ -81,6 +81,15 @@ function toRecord(row: Row): WorktreeLeaseRecord {
 export class WorktreeRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
+  /**
+   * Exposes the bound transaction DB so the manager can commit a lease row
+   * and its Runtime Event through ONE SQLite connection. Precedent: the
+   * RuntimeEvent/Outbox repositories expose the same identity assertion.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
+
   create(record: WorktreeLeaseRecord): void {
     this.db.prepare(`
       INSERT INTO worktrees (

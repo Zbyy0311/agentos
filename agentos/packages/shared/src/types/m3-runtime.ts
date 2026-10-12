@@ -65,6 +65,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'artifact',
   'memory',
   'policy',
+  'worktree',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];

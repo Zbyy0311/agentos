@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { realpath } from 'node:fs/promises';
 import type {
   WorktreeMergeConflictSummary,
   WorktreeMergeRecord,
@@ -7,6 +8,7 @@ import type {
 } from '../store/WorktreeMergeRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import { WorktreeManager } from './WorktreeManager.js';
+import { WorktreeBranchLockError, withWorktreeBranchLock } from './WorktreeBranchLock.js';
 
 /**
  * PR-3B Worktree Merge Runtime (06-Worktree-Runtime §38-43).
@@ -18,11 +20,10 @@ import { WorktreeManager } from './WorktreeManager.js';
  * an atomic compare-and-swap `git update-ref <ref> <new> <expected>`, so a
  * concurrent target advance is detected instead of overwritten.
  *
- * Target-branch mutual exclusion is an in-process per-(workspace, branch)
- * promise chain. A cross-process lock (runtime_locks / branch_locks table,
- * 10-Data-Model §45) is deliberately deferred: the CAS update-ref plus the
- * optimistic expectedHeadCommit check already prevent lost updates; the lock
- * only serializes writers inside this process.
+ * Target-branch mutual exclusion uses a per-process promise chain and an
+ * exclusive lock in the repository's Git common directory. The lock covers
+ * validation, Git execution, ref CAS and durable result recording across
+ * processes; unknown or stale locks are preserved for explicit recovery.
  */
 
 export class WorktreeMergeError extends Error {
@@ -44,7 +45,7 @@ export interface WorktreeMergeRequest {
 
 const MERGEABLE_STATUSES = new Set(['active', 'completed']);
 
-// One merge operation per target branch at a time, in-process only.
+// Queue same-process callers before acquiring the cross-process branch lock.
 const targetLocks = new Map<string, Promise<unknown>>();
 
 export class WorktreeMergeService {
@@ -66,12 +67,37 @@ export class WorktreeMergeService {
     }
     const key = `${lease.workspaceId}:${request.targetBranch}`;
     const previous = targetLocks.get(key) ?? Promise.resolve();
-    const current = previous.then(() => this.mergeLocked(lease, request), () => this.mergeLocked(lease, request));
+    const execute = () => this.mergeWithBranchLock(lease, request);
+    const current = previous.then(execute, execute);
     targetLocks.set(key, current);
     try {
       return await current;
     } finally {
       if (targetLocks.get(key) === current) targetLocks.delete(key);
+    }
+  }
+
+  private async mergeWithBranchLock(
+    lease: NonNullable<ReturnType<WorktreeManager['getRecord']>>,
+    request: WorktreeMergeRequest,
+  ): Promise<WorktreeMergeRecord> {
+    if (request.targetBranch === lease.branchName) {
+      throw new WorktreeMergeError('WORKTREE_MERGE_INVALID_REQUEST', 'Target branch must differ from the worktree source branch');
+    }
+    await this.manager.assertManagedCheckout(lease.absolutePath);
+    const sourceCommon = await realpath((await git(lease.workspaceRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
+    const checkoutCommon = await realpath((await git(lease.absolutePath, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
+    if (sourceCommon !== checkoutCommon) {
+      throw new WorktreeMergeError('WORKTREE_MERGE_IDENTITY_MISMATCH', 'Worktree is not registered to its workspace repository');
+    }
+    try {
+      // Source controls (commit/rebase/cleanup) share this second lock. Holding
+      // only the target lock would still let them mutate our merge checkout.
+      return await withWorktreeBranchLock(lease.absolutePath, request.targetBranch, () =>
+        withWorktreeBranchLock(lease.absolutePath, lease.branchName, () => this.mergeLocked(lease, request)));
+    } catch (error) {
+      if (error instanceof WorktreeBranchLockError) throw new WorktreeMergeError(error.code, error.message);
+      throw error;
     }
   }
 
@@ -84,6 +110,16 @@ export class WorktreeMergeService {
     // configured worktree root so a rewritten lease path can never redirect
     // git into the user's main workspace.
     await this.manager.assertManagedCheckout(checkout);
+    if (!MERGEABLE_STATUSES.has(lease.status)) {
+      throw new WorktreeMergeError('WORKTREE_MERGE_INVALID_STATUS', 'Worktree is no longer mergeable');
+    }
+    if ((await git(checkout, ['status', '--porcelain=v1', '-z'])).length !== 0) {
+      throw new WorktreeMergeError('WORKTREE_MERGE_DIRTY', 'Commit or preserve worktree changes before merging');
+    }
+    const attachedBranch = (await git(checkout, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => '')).trim();
+    if (attachedBranch && attachedBranch !== lease.branchName) {
+      throw new WorktreeMergeError('WORKTREE_MERGE_IDENTITY_MISMATCH', 'Worktree is checked out on another branch');
+    }
 
     // §39.1 optimistic check: the target branch must still be where the
     // caller last observed it before we do any work.
@@ -107,6 +143,10 @@ export class WorktreeMergeService {
       throw new WorktreeMergeError('WORKTREE_SOURCE_BRANCH_NOT_FOUND', `worktree branch '${lease.branchName}' does not exist`);
     }
     const baseCommit = (await git(checkout, ['merge-base', headCommit, previousTargetCommit])).trim();
+    this.manager.recordRuntimeFact(lease.id, 'worktree.merge_requested', {
+      sourceBranch: lease.branchName, targetBranch: request.targetBranch, sourceHeadCommit: headCommit,
+      expectedTargetCommit: request.expectedHeadCommit, strategy: request.strategy, requestedBy: request.requestedBy,
+    });
     const createdAt = new Date().toISOString();
     const buildRecord = (overrides: Partial<WorktreeMergeRecord>): WorktreeMergeRecord => ({
       id: this.createId(),
@@ -131,6 +171,7 @@ export class WorktreeMergeService {
     // worktree checkout. Target branches are commonly checked out in the main
     // workspace, so the worktree cannot check them out; detached + update-ref
     // is the §40 "dedicated merge context" within the existing checkout.
+    try {
     await git(checkout, ['checkout', '-q', '--detach', previousTargetCommit]);
 
     let conflictedPaths: string[] = [];
@@ -154,7 +195,10 @@ export class WorktreeMergeService {
         conflictSummary: summary,
         completedAt: new Date().toISOString(),
       });
-      this.repository.createInTransaction(record);
+      this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.conflicted', {
+        mergeRecordId: record.id, operation: 'merge', conflictedFiles: conflictedPaths,
+        sourceBranch: lease.branchName, targetBranch: request.targetBranch,
+      }));
       throw new WorktreeMergeError(
         'WORKTREE_MERGE_CONFLICTED',
         `merge of '${lease.branchName}' into '${request.targetBranch}' conflicted (${conflictedPaths.join(', ') || 'unmerged paths'})`,
@@ -190,8 +234,20 @@ export class WorktreeMergeService {
       mergeCommit: request.strategy === 'merge-commit' ? resultingTargetCommit : null,
       completedAt: new Date().toISOString(),
     });
-    this.repository.createInTransaction(record);
+    this.repository.createInTransaction(record, () => this.manager.recordRuntimeFact(lease.id, 'worktree.merged', {
+      mergeRecordId: record.id, sourceBranch: lease.branchName, targetBranch: request.targetBranch,
+      strategy: request.strategy, resultingTargetCommit,
+      ...(record.mergeCommit === null ? {} : { mergeCommit: record.mergeCommit }),
+    }));
     return record;
+    } finally {
+      try {
+        await git(checkout, ['checkout', '-q', lease.branchName]);
+      } catch {
+        throw new WorktreeMergeError('WORKTREE_MERGE_CHECKOUT_RESTORE_FAILED',
+          'Managed checkout could not be restored; inspect the persisted merge result before retrying');
+      }
+    }
   }
 
   private assertValidRequest(request: WorktreeMergeRequest): void {

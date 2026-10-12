@@ -6,6 +6,7 @@ import type { WorktreeMergeStrategy } from '../store/WorktreeMergeRepository.js'
 import { WorktreeError, WorktreeManager } from '../services/WorktreeManager.js';
 import { WorktreeArtifactService } from '../services/WorktreeArtifactService.js';
 import type { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
+import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 type RunLookup = { getRun(workspaceId: string, runId: string): { status: string } | undefined };
@@ -19,6 +20,10 @@ const MERGE_ERROR_STATUS: Record<string, number> = {
   WORKTREE_MERGE_HEAD_MISMATCH: 409,
   WORKTREE_MERGE_CONFLICTED: 409,
   WORKTREE_MERGE_FAILED: 500,
+  WORKTREE_MERGE_DIRTY: 409,
+  WORKTREE_MERGE_IDENTITY_MISMATCH: 409,
+  WORKTREE_BRANCH_LOCK_HELD: 409,
+  WORKTREE_BRANCH_LOCK_INVALID_REF: 400,
 };
 function errorStatus(error: unknown): number {
   if (error instanceof WorktreeError) {
@@ -35,6 +40,7 @@ export function createWorktreeRoutes(
   runLookup?: RunLookup,
   workspaceRootFor: (workspaceId: string) => string | undefined = workspaceId => workspaceManager.get(workspaceId)?.rootPath,
   mergeService?: WorktreeMergeService,
+  eventRepository?: RuntimeEventRepository,
 ): Router {
   const router = Router({ mergeParams: true });
   if (mergeService) {
@@ -57,12 +63,12 @@ export function createWorktreeRoutes(
           sendProblem(req, res, {
             status: MERGE_ERROR_STATUS[error.code] ?? 500,
             code: error.code,
-            detail: error.message,
+            detail: (MERGE_ERROR_STATUS[error.code] ?? 500) >= 500 ? 'Worktree merge failed' : error.message,
             context: { worktreeId: req.params.worktreeId },
           });
           return;
         }
-        sendProblem(req, res, { status: 500, code: 'WORKTREE_MERGE_FAILED', detail: error instanceof Error ? error.message : String(error) });
+        sendProblem(req, res, { status: 500, code: 'WORKTREE_MERGE_FAILED', detail: 'Worktree merge failed' });
       }
     }));
   }
@@ -190,8 +196,17 @@ export function createWorktreeRoutes(
       sendProblem(req, res, { status: 404, code: 'WORKTREE_NOT_FOUND', detail: 'Worktree not found' });
       return;
     }
-    // No worktree event model exists yet (deferred to a later PR); expose the
-    // minimal status timeline derivable from the lease record itself.
+    if (eventRepository) {
+      const afterSequence = Number(req.query.afterSequence ?? 0);
+      if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+        sendProblem(req, res, { status: 400, code: 'INVALID_SEQUENCE', detail: 'afterSequence must be a non-negative integer' });
+        return;
+      }
+      const events = eventRepository.listByWorktree(workspace.id, lease.id, afterSequence)
+        .filter(result => result.kind === 'known').map(result => result.event);
+      return res.json({ events, eventModel: 'runtime_events', nextSequence: events.at(-1)?.sequence ?? afterSequence });
+    }
+    // Legacy embedded callers without an Event Store retain their minimal timeline.
     const events = [{ at: lease.createdAt, type: 'created', status: lease.status }, { at: lease.updatedAt, type: 'updated', status: lease.status }];
     return res.json({ events, eventModel: 'lease_timeline_minimal' });
   });

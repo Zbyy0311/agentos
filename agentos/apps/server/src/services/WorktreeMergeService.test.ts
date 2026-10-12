@@ -14,6 +14,7 @@ import type { TransactionDatabase } from '../store/Transaction.js';
 import { WorktreeMergeRepository } from '../store/WorktreeMergeRepository.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeMergeError, WorktreeMergeService } from './WorktreeMergeService.js';
+import { withWorktreeBranchLock } from './WorktreeBranchLock.js';
 
 interface SqliteDb {
   exec(sql: string): void;
@@ -77,7 +78,13 @@ async function fixture() {
   return {
     directory, root, checkout, branch, manager, service, repository, db,
     baseCommit, sourceGit, worktreeGit, commitInWorktree, commitInMain,
-    close: () => { try { db.close(); } finally { rmSync(directory, { recursive: true, force: true }); } },
+    close: () => { try { db.close(); } finally {
+      try { rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+      catch (error) {
+        if (process.platform !== 'win32' || !['ENOTEMPTY', 'EBUSY', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+        process.emitWarning(`Fixture cleanup incomplete; retained ${directory}: ${(error as NodeJS.ErrnoException).code}`);
+      }
+    } },
   };
 }
 
@@ -97,6 +104,7 @@ test('merge ff strategy fast-forwards the target branch inside the worktree chec
     // working tree is never written by merge execution.
     assert.equal(existsSync(join(fx.root, 'feature.txt')), false, 'main worktree files untouched');
     assert.equal(readFileSync(join(fx.checkout, 'feature.txt'), 'utf8'), 'feature\n');
+    assert.equal(fx.worktreeGit(['symbolic-ref', '--short', 'HEAD']).trim(), fx.branch, 'managed source branch restored for later controls');
   } finally {
     fx.close();
   }
@@ -177,6 +185,7 @@ test('merge conflict aborts, records conflicted result and leaves the worktree c
     assert.deepEqual(error.record.conflictSummary, { conflictedPaths: ['README.md'] });
     assert.equal(fx.sourceGit(['rev-parse', 'main']).trim(), targetHead, 'target branch untouched after conflict');
     assert.equal(fx.worktreeGit(['status', '--porcelain']), '', 'worktree checkout clean after merge --abort');
+    assert.equal(fx.worktreeGit(['symbolic-ref', '--short', 'HEAD']).trim(), fx.branch);
     const stored = fx.repository.getById(error.record.id);
     assert.ok(stored);
     assert.equal(stored.result, 'conflicted');
@@ -218,4 +227,38 @@ test('merge rejects invalid requests and unmergeable lease statuses', async () =
   } finally {
     fx.close();
   }
+});
+
+test('merge refuses existing target or source locks and retries after release', async () => {
+  const fx = await fixture();
+  try {
+    const head = fx.commitInWorktree('feature.txt', 'feature\n', 'feature work');
+    const leaseId = fx.manager.listLeases()[0].id;
+    const request = { strategy: 'ff' as const, targetBranch: 'main', expectedHeadCommit: fx.baseCommit, requestedBy: 'tester' };
+    for (const branch of ['main', fx.branch]) {
+      await withWorktreeBranchLock(fx.checkout, branch, async () => {
+        await assert.rejects(fx.service.merge(leaseId, request), (error: unknown) =>
+          error instanceof WorktreeMergeError && error.code === 'WORKTREE_BRANCH_LOCK_HELD');
+        assert.equal(fx.sourceGit(['rev-parse', 'main']).trim(), fx.baseCommit);
+        assert.equal(fx.worktreeGit(['symbolic-ref', '--short', 'HEAD']).trim(), fx.branch);
+        assert.equal(fx.repository.list().length, 0);
+      });
+    }
+    const record = await fx.service.merge(leaseId, request);
+    assert.equal(record.resultingTargetCommit, head);
+  } finally { fx.close(); }
+});
+
+test('merge refuses dirty worktrees without moving refs or overwriting files', async () => {
+  const fx = await fixture();
+  try {
+    writeFileSync(join(fx.checkout, 'uncommitted.txt'), 'preserve me\n');
+    await assert.rejects(fx.service.merge(fx.manager.listLeases()[0].id, {
+      strategy: 'merge-commit', targetBranch: 'main', expectedHeadCommit: fx.baseCommit, requestedBy: 'tester',
+    }), (error: unknown) => error instanceof WorktreeMergeError && error.code === 'WORKTREE_MERGE_DIRTY');
+    assert.equal(readFileSync(join(fx.checkout, 'uncommitted.txt'), 'utf8'), 'preserve me\n');
+    assert.equal(fx.worktreeGit(['symbolic-ref', '--short', 'HEAD']).trim(), fx.branch);
+    assert.equal(fx.sourceGit(['rev-parse', 'main']).trim(), fx.baseCommit);
+    assert.equal(fx.repository.list().length, 0);
+  } finally { fx.close(); }
 });

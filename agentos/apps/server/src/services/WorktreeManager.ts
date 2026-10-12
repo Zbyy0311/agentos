@@ -6,6 +6,9 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WorktreeLease, WorktreeRecoveryBundle } from '@agentos/shared';
 import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
+import type { WorktreeEventSink, WorktreeLeaseEventType, WorktreeOrphanObservation } from './WorktreeRuntimeEvents.js';
+import { NOOP_WORKTREE_EVENT_SINK } from './WorktreeRuntimeEvents.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
 import type { WorktreeLeaseRecord } from '../store/WorktreeRepository.js';
 import { WorktreeRepository } from '../store/WorktreeRepository.js';
 
@@ -49,6 +52,18 @@ export interface WorktreeInspectReport {
 
 export class WorktreeError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
+/** §53.3/§56: a git-registered worktree with no database record, preserved as-is. */
+export interface WorktreeReconcileReport {
+  readonly activated: string[];
+  readonly failed: string[];
+  /** Creating checkouts whose registered branch or clean content does not verify. */
+  readonly incompleteCreations: string[];
+  /** Tracked leases whose directory still exists but is absent from `git worktree list` (no status change). */
+  readonly missingGitRegistration: string[];
+  /** Untracked-by-database worktrees preserved (never deleted, never auto-adopted). */
+  readonly orphaned: WorktreeOrphanObservation[];
+}
+
 export class WorktreeManager {
   private readonly leases = new Map<string, LeaseRecord>();
   private readonly leaseFile: string;
@@ -58,8 +73,16 @@ export class WorktreeManager {
    * as the runtime authority; every mutation is written through to the
    * repository. Without a repository the legacy JSON behavior is preserved
    * (embedded/test call sites that predate the store).
+   *
+   * PR-3D: an optional WorktreeEventSink emits the §71-76 lifecycle events
+   * through the merged Runtime Event + Outbox seam. Durable row changes and
+   * their events share one transaction; without a sink the manager is silent.
    */
-  constructor(private readonly worktreeRoot: string, private readonly repository?: WorktreeRepository) {
+  constructor(
+    private readonly worktreeRoot: string,
+    private readonly repository?: WorktreeRepository,
+    private readonly events: WorktreeEventSink = NOOP_WORKTREE_EVENT_SINK,
+  ) {
     this.leaseFile = join(worktreeRoot, 'leases.json');
     if (repository) {
       for (const record of repository.list()) this.leases.set(record.id, record);
@@ -103,32 +126,42 @@ export class WorktreeManager {
     await mkdir(resolve(this.worktreeRoot, segment(input.workspaceId), segment(input.runId)), { recursive: true });
     const id = randomUUID(); const now = new Date().toISOString();
     const controlled = input.controlledGitContent === true;
-    const context = controlled ? await CollaborationSnapshotGitContext.create(input.workspaceRoot) : undefined;
+    const { controlledGitContent: _controlled, expectedBaseCommit: _expectedBaseCommit, ...identity } = input;
+    const record: LeaseRecord = { id, ...identity, branchName, pathLabel: `worktree/${segment(input.workspaceId)}/${segment(input.runId)}/${segment(input.executionId)}`, baseCommit, status: 'creating', createdAt: now, updatedAt: now, absolutePath, workspaceRoot: input.workspaceRoot };
+    // Reserve durable identity before Git can create a branch or checkout.
+    // Startup reconciliation can then classify any interrupted creation.
+    this.leases.set(id, record);
+    this.persistRecordWithEvent(record, 'worktree.reserved');
+    let context: CollaborationSnapshotGitContext | undefined;
     try {
+      context = controlled ? await CollaborationSnapshotGitContext.create(input.workspaceRoot) : undefined;
       if (context) {
         const paths = (await context.sourceMetadata(['ls-tree', '-r', '--name-only', '-z', baseCommit])).toString('utf8').split('\0').filter(Boolean);
         await context.run(['read-tree', baseCommit]);
         await context.freezeCheckoutAttributes(paths);
       }
       await git(input.workspaceRoot, ['worktree', 'add', ...(controlled ? ['--no-checkout'] : []), '-b', branchName, absolutePath, baseCommit], controlled);
-      const { controlledGitContent: _controlled, expectedBaseCommit: _expectedBaseCommit, ...identity } = input;
-      const record: LeaseRecord = { id, ...identity, branchName, pathLabel: `worktree/${segment(input.workspaceId)}/${segment(input.runId)}/${segment(input.executionId)}`, baseCommit, status:controlled ? 'creating' : 'active', createdAt:now, updatedAt:now, absolutePath, workspaceRoot:input.workspaceRoot };
-      this.leases.set(id, record); this.persist();
-      try {
-        if (context) {
-          // Checkout never inherits source filters/hooks. Only the newly owned
-          // lease index is populated; the user's index remains untouched.
-          await context.run(['checkout-index', '--all', `--prefix=${absolutePath.replaceAll('\\', '/')}/`]);
-          await git(absolutePath, ['read-tree', baseCommit], true);
-          await context.assertSourceContextUnchanged();
-          await this.assertClean(absolutePath, { controlledGitContent: true });
-          record.status = 'active'; record.updatedAt = new Date().toISOString(); this.persist();
-        }
-        return publicLease(record);
-      } catch (error) {
-        record.status = 'failed'; record.updatedAt = new Date().toISOString(); this.persist();
-        throw error; // Preserve the owned lease/branch and recovery evidence.
+      record.status = controlled ? 'creating' : 'active';
+      record.updatedAt = new Date().toISOString();
+      this.persistRecordWithEvent(record, 'worktree.created', { controlledGitContent: controlled });
+      if (context) {
+        // Checkout never inherits source filters/hooks. Only the newly owned
+        // lease index is populated; the user's index remains untouched.
+        await context.run(['checkout-index', '--all', `--prefix=${absolutePath.replaceAll('\\', '/')}/`]);
+        await git(absolutePath, ['read-tree', baseCommit], true);
+        await context.assertSourceContextUnchanged();
+        await this.assertClean(absolutePath, { controlledGitContent: true });
+        record.status = 'active'; record.updatedAt = new Date().toISOString();
+        this.persistRecordWithEvent(record, 'worktree.activated');
       }
+      return publicLease(record);
+    } catch (error) {
+      const preserved = this.leases.get(id);
+      if (preserved) {
+        preserved.status = 'failed'; preserved.updatedAt = new Date().toISOString();
+        this.persist();
+      }
+      throw error;
     } finally { await context?.dispose(); }
   }
 
@@ -252,7 +285,7 @@ export class WorktreeManager {
     }
     record.status = 'failed';
     record.updatedAt = new Date().toISOString();
-    this.persist();
+    this.persistRecordWithEvent(record, 'worktree.abandoned');
     return publicLease(record);
   }
 
@@ -303,12 +336,17 @@ export class WorktreeManager {
       absolutePath: actualPath,
       workspaceRoot,
     };
-    this.leases.set(id, record); this.persist();
+    this.leases.set(id, record); this.persistRecordWithEvent(record, 'worktree.activated');
     return publicLease(record);
   }
 
   getLease(id: string): WorktreeLease | undefined { const record = this.leases.get(id); return record && publicLease(record); }
   getRecord(id: string): LeaseRecord | undefined { return this.leases.get(id); }
+  recordRuntimeFact(id: string, type: string, payload: Record<string, unknown>): void {
+    const record = this.leases.get(id);
+    if (!record) throw new WorktreeError('not_found', 'lease not found');
+    this.events.emitFact(type, record, payload);
+  }
   async preflight(workspaceRoot: string, options: PreflightOptions = {}): Promise<string> { return this.assertClean(workspaceRoot, options); }
   markRecoveryBundleVerified(id: string, bundle?: WorktreeRecoveryBundle): void {
     const record = this.leases.get(id);
@@ -341,24 +379,167 @@ export class WorktreeManager {
     const actualPath = await realpath(absolutePath);
     if (!isWithin(realRoot, actualPath)) throw new WorktreeError('path_escapes_root', 'worktree path escapes configured root');
   }
-  async reconcile(): Promise<void> {    const configuredRoot = resolve(this.worktreeRoot);
+
+  /**
+   * Startup recovery reconciliation (§52-57).
+   *
+   * Beyond the legacy directory/.git check, this now reconciles against
+   * `git worktree list --porcelain`:
+   *  - creating → active when the checkout verifies (emits worktree.activated);
+   *  - missing directory → failed (unchanged);
+   *  - tracked lease absent from the git registration → reported, no status
+   *    change (conservative, §53.2/§53.3 identity is preserved);
+   *  - git-registered worktrees inside the managed root with no database
+   *    record → `untracked-by-database`, classified orphaned and PRESERVED:
+   *    the directory is never deleted and never auto-adopted (§55.1 adopt is
+   *    an explicit API), and a worktree.orphaned Event / audit line is
+   *    emitted per observation.
+   *
+   * §57: one worktree.recovery_started Event is emitted per distinct
+   * persisted Run scope being scanned.
+   */
+  async reconcile(workspaceRoots: readonly string[] = []): Promise<WorktreeReconcileReport> {
+    const configuredRoot = resolve(this.worktreeRoot);
     let realRoot: string;
     try { realRoot = await realpath(configuredRoot); } catch { realRoot = configuredRoot; }
-    for (const record of this.leases.values()) {
-      if (record.status !== 'creating' && record.status !== 'active' && record.status !== 'cleanup_pending') continue;
+    const report: WorktreeReconcileReport = { activated: [], failed: [], incompleteCreations: [], missingGitRegistration: [], orphaned: [] };
+    const tracked = [...this.leases.values()].filter(record =>
+      record.status === 'creating' || record.status === 'active' || record.status === 'cleanup_pending');
+
+    // §57 recovery_started per distinct (workspace, run) scope, before any scan.
+    const scopes = new Map<string, { workspaceId: string; runId: string; scannedCount: number }>();
+    for (const record of tracked) {
+      const key = `${record.workspaceId}:${record.runId}`;
+      const scope = scopes.get(key) ?? { workspaceId: record.workspaceId, runId: record.runId, scannedCount: 0 };
+      scope.scannedCount += 1;
+      scopes.set(key, scope);
+    }
+
+    const activatedRecords: LeaseRecord[] = [];
+    const failedIds = new Set<string>();
+    for (const record of tracked) {
       try {
         const actualPath = await realpath(record.absolutePath);
         if (!isWithin(realRoot, actualPath)) throw new Error('worktree path escapes configured root');
         await access(join(actualPath, '.git'));
-        if (record.status === 'creating') record.status = 'active';
       } catch {
         record.status = 'failed';
+        report.failed.push(record.id);
+        failedIds.add(record.id);
       }
       record.updatedAt = new Date().toISOString();
     }
-    this.persist();
+
+    // git worktree list --porcelain reconciliation (§52/§53.3).
+    const gitEntries = new Map<string, GitWorktreeListEntry[]>();
+    for (const workspaceRoot of new Set([...workspaceRoots, ...[...this.leases.values()].map(record => record.workspaceRoot)])) {
+      gitEntries.set(workspaceRoot, await listGitWorktrees(workspaceRoot));
+    }
+    const canonicalPaths = new Map<string, string>();
+    const observedPaths = [...this.leases.values()].map(record => record.absolutePath)
+      .concat([...gitEntries.values()].flatMap(entries => entries.map(entry => entry.path)));
+    for (const path of observedPaths) {
+      canonicalPaths.set(path, await realpath(path).catch(() => resolve(path)));
+    }
+    const normalizePath = (path: string): string => normalizeManagedPath(canonicalPaths.get(path) ?? path);
+    for (const record of tracked) {
+      if (failedIds.has(record.id)) continue;
+      const entries = gitEntries.get(record.workspaceRoot) ?? [];
+      const entry = entries.find(entry => normalizePath(entry.path) === normalizePath(record.absolutePath));
+      if (!entry) {
+        report.missingGitRegistration.push(record.id);
+      } else if (record.status === 'creating') {
+        try {
+          if (entry.branch !== record.branchName) throw new Error('registered branch differs from durable lease');
+          await this.assertClean(record.absolutePath, { controlledGitContent: true });
+          record.status = 'active';
+          report.activated.push(record.id);
+          activatedRecords.push(record);
+        } catch {
+          record.status = 'failed';
+          report.failed.push(record.id);
+          report.incompleteCreations.push(record.id);
+        }
+      }
+    }
+    const trackedPaths = new Set([...this.leases.values()].map(record => normalizePath(record.absolutePath)));
+    for (const [workspaceRoot, entries] of gitEntries) {
+      for (const entry of entries) {
+        const entryPath = canonicalPaths.get(entry.path) ?? resolve(entry.path);
+        // Only worktrees inside the managed root are ours to classify; the
+        // main workspace checkout and external worktrees stay untouched.
+        if (!isWithin(realRoot, entryPath)) continue;
+        if (trackedPaths.has(normalizePath(entry.path))) continue;
+        const orphan: WorktreeOrphanObservation = {
+          path: entry.path,
+          branch: entry.branch,
+          headCommit: entry.headCommit,
+          workspaceRoot,
+          classification: 'untracked-by-database',
+          action: 'preserve',
+        };
+        report.orphaned.push(orphan);
+        this.events.emitOrphan(orphan);
+      }
+    }
+
+    // Status write-back + lifecycle events in one transaction when a store
+    // connection is available (SQLite mode).
+    const emitPending = (): void => {
+      this.persist();
+      for (const scope of scopes.values()) {
+        this.events.emitRecoveryStarted(scope);
+      }
+      for (const record of activatedRecords) {
+        this.events.emitLeaseEvent('worktree.activated', record);
+      }
+    };
+    const db = this.transactionDatabase;
+    try {
+      if (db && !isTransactionActive(db)) inTransaction(db, emitPending); else emitPending();
+    } catch (error) {
+      if (this.repository) {
+        for (const record of tracked) {
+          const persisted = this.repository.getById(record.id);
+          if (persisted) this.leases.set(record.id, persisted);
+        }
+      }
+      throw error;
+    }
+    return report;
   }
-  async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> { const record=this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required','recovery bundle confirmation is required'); if (!record.recoveryBundle) throw new WorktreeError('bundle_required','verified recovery bundle is required'); await git(record.workspaceRoot,['worktree','remove','--force',record.absolutePath]); record.status='cleaned'; record.updatedAt=new Date().toISOString(); this.persist(); return publicLease(record); }
+
+  async removeLease(id: string, confirmRecoveryBundle: boolean): Promise<WorktreeLease> { const record=this.leases.get(id); if (!record) throw new WorktreeError('not_found','lease not found'); if (!confirmRecoveryBundle) throw new WorktreeError('confirmation_required','recovery bundle confirmation is required'); if (!record.recoveryBundle) throw new WorktreeError('bundle_required','verified recovery bundle is required'); await this.assertManagedCheckout(record.absolutePath); await git(record.workspaceRoot,['worktree','remove','--force',record.absolutePath], true); record.status='cleaned'; record.updatedAt=new Date().toISOString(); this.persistRecordWithEvent(record, 'worktree.deleted'); return publicLease(record); }
+
+  private get transactionDatabase(): TransactionDatabase | undefined {
+    return this.repository?.transactionDatabase;
+  }
+
+  /**
+   * Persist one lease row and emit its lifecycle Event through ONE SQLite
+   * transaction (Event + Outbox handoff stay atomic with the row write).
+   * Legacy JSON mode keeps the original write-then-emit ordering.
+   */
+  private persistRecordWithEvent(record: LeaseRecord, type: WorktreeLeaseEventType, details?: { readonly reason?: string; readonly controlledGitContent?: boolean }): void {
+    const db = this.transactionDatabase;
+    if (!this.repository || !db) {
+      this.persist();
+      this.events.emitLeaseEvent(type, record, details);
+      return;
+    }
+    const run = (): void => {
+      this.repository!.save(record);
+      this.events.emitLeaseEvent(type, record, details);
+    };
+    try {
+      if (isTransactionActive(db)) run(); else inTransaction(db, run);
+    } catch (error) {
+      const persisted = this.repository.getById(record.id);
+      if (persisted) this.leases.set(record.id, persisted); else this.leases.delete(record.id);
+      throw error;
+    }
+  }
+
   private persist(): void {
     if (this.repository) {
       for (const record of this.leases.values()) this.repository.save(record);
@@ -407,6 +588,43 @@ export class WorktreeManager {
     if (finalHead !== initialHead) throw new WorktreeError('workspace_changed', 'workspace_changed: HEAD moved during preflight');
     return initialHead;
   }
+}
+
+interface GitWorktreeListEntry {
+  readonly path: string;
+  readonly headCommit: string | null;
+  readonly branch: string | null;
+}
+
+/** Parse `git worktree list --porcelain` blocks separated by blank lines. */
+export function parseGitWorktreeListPorcelain(output: string): GitWorktreeListEntry[] {
+  const entries: GitWorktreeListEntry[] = [];
+  let current: { path: string; headCommit: string | null; branch: string | null } | undefined;
+  for (const line of output.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      current = { path: line.slice('worktree '.length).trim(), headCommit: null, branch: null };
+      entries.push(current);
+    } else if (current && line.startsWith('HEAD ')) {
+      current.headCommit = line.slice('HEAD '.length).trim() || null;
+    } else if (current && line.startsWith('branch ')) {
+      const ref = line.slice('branch '.length).trim();
+      current.branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref;
+    }
+  }
+  return entries;
+}
+
+async function listGitWorktrees(workspaceRoot: string): Promise<GitWorktreeListEntry[]> {
+  try {
+    return parseGitWorktreeListPorcelain(await git(workspaceRoot, ['worktree', 'list', '--porcelain']));
+  } catch {
+    return []; // Unreachable git root: directory checks above still apply.
+  }
+}
+
+function normalizeManagedPath(path: string): string {
+  const resolved = resolve(path);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function segment(value: string): string { return createHash('sha256').update(value).digest('hex').slice(0,8); }

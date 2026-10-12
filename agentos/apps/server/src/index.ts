@@ -53,6 +53,7 @@ import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
 import { WorktreeMergeService } from './services/WorktreeMergeService.js';
+import { WorktreeRuntimeEventEmitter } from './services/WorktreeRuntimeEvents.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
 import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
@@ -291,7 +292,8 @@ async function bootstrap(): Promise<void> {
 
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository());
+    const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
+    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
     const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
     const workspaceManager = new WorkspaceManager(store);
     const workspaceGitRoots = new WorkspaceGitRootRegistry(DATA_ROOT, store, workspaceManager, worktreeManager);
@@ -536,7 +538,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store,
-      workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService));
+      workspaceId => workspaceGitRoots.rootPathFor(workspaceId), worktreeMergeService, store.runtimeEventRepository()));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, DATA_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
@@ -611,7 +613,8 @@ async function bootstrap(): Promise<void> {
       }
       if (!worktreeReconcileStarted) {
         worktreeReconcileStarted = true;
-        worktreeReconcile = worktreeManager.reconcile()
+        worktreeReconcile = worktreeManager.reconcile(workspaceManager.list().map(workspace => workspace.rootPath))
+          .then(report => { diagLog(`WORKTREE_RECONCILE activated=${report.activated.length} failed=${report.failed.length} orphaned=${report.orphaned.length} missingRegistration=${report.missingGitRegistration.length}`); })
           .catch(error => { diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`); })
           .finally(() => { worktreeReconcile = undefined; });
       }
