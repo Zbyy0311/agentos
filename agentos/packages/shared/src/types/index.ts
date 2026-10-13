@@ -389,8 +389,9 @@ export interface PendingRunDecision {
 
 export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest' | 'review' | 'test';
 
-export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; }
-export interface WorktreeRecoveryBundle { trackedPatchArtifactId: string; untrackedArchiveArtifactId: string; manifestArtifactId: string; entryCount: number; }
+export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; kind?: 'file' | 'symlink'; target?: string; }
+export interface WorktreeRecoveryManifestV2 { formatVersion: 2; baseCommit: string; headCommit: string; entries: UntrackedManifestEntry[]; }
+export interface WorktreeRecoveryBundle { trackedPatchArtifactId: string; untrackedArchiveArtifactId: string; manifestArtifactId: string; entryCount: number; formatVersion?: 2; }
 
 export interface WorktreeArtifactProvenance {
   leaseId: string;

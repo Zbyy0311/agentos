@@ -8,7 +8,7 @@ import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
 import type { WorktreeEventSink, WorktreeLeaseEventType, WorktreeOrphanObservation } from './WorktreeRuntimeEvents.js';
 import { NOOP_WORKTREE_EVENT_SINK } from './WorktreeRuntimeEvents.js';
-import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, isTransactionActive, registerAfterCommit, type TransactionDatabase } from '../store/Transaction.js';
 import type { WorktreeLeaseRecord } from '../store/WorktreeRepository.js';
 import { WorktreeLeaseIdentityConflictError, WorktreeRepository } from '../store/WorktreeRepository.js';
 
@@ -422,11 +422,22 @@ export class WorktreeManager {
   async preflight(workspaceRoot: string, options: PreflightOptions = {}): Promise<string> { return this.assertClean(workspaceRoot, options); }
   markRecoveryBundleVerified(id: string, bundle?: WorktreeRecoveryBundle): void {
     const record = this.leases.get(id);
-    if (!record || !bundle) return;
-    record.recoveryBundle = bundle;
-    record.status = 'completed';
-    record.updatedAt = new Date().toISOString();
-    this.persist();
+    if (!record || !bundle) throw new WorktreeError('not_found', 'lease not found');
+    const updated: LeaseRecord = { ...record, recoveryBundle: bundle, status: 'completed', updatedAt: new Date().toISOString() };
+    if (this.repository) {
+      const db = this.repository.transactionDatabase;
+      const persist = () => {
+        if (!this.repository!.updateRecoveryBundle(id, bundle, updated.updatedAt)) {
+          throw new WorktreeError('not_found', 'lease not found');
+        }
+        registerAfterCommit(db, () => this.leases.set(id, updated));
+      };
+      if (isTransactionActive(db)) persist(); else inTransaction(db, persist);
+    } else {
+      const records = [...this.leases.values()].map(item => item.id === id ? updated : item);
+      writeFileSync(this.leaseFile, JSON.stringify(records, null, 2));
+      this.leases.set(id, updated);
+    }
   }
   listLeases(): WorktreeLease[] { return [...this.leases.values()].map(publicLease); }
   markCleanupPending(id: string): void {

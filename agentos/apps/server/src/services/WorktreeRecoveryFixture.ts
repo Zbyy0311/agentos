@@ -11,6 +11,7 @@ import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeControlService } from './WorktreeControlService.js';
 import { WorktreeArtifactService } from './WorktreeArtifactService.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import { linksInRemovalOrder } from './WorktreeRecoveryBundleService.js';
 
 const execute = promisify(execFile);
 export async function recoveryGit(cwd: string, args: string[]): Promise<string> {
@@ -53,6 +54,13 @@ export async function worktreeRecoveryFixture(options: { trackedLink?: boolean }
   const removeCheckout = async (path: string) => {
     const boundary = relative(root, resolve(path));
     if (!boundary || boundary.startsWith(`..${sep}`) || boundary === '..') throw new Error('Fixture checkout boundary invalid');
+    const bundle = manager.getRecord(lease.id)?.recoveryBundle;
+    if (bundle?.formatVersion === 2 && existsSync(join(path, 'target.txt'))) {
+      const manifest = JSON.parse((await readFile(join(artifacts.artifactRoot, 'worktree-evidence', bundle.manifestArtifactId, 'content'))).toString());
+      for (const item of linksInRemovalOrder(manifest.entries)) {
+        try { await unlink(join(path, item.path)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      }
+    }
     const unlinkLinks = async (directory: string): Promise<void> => {
       for (const info of await readdir(directory, { withFileTypes: true })) {
         const child = join(directory, info.name);

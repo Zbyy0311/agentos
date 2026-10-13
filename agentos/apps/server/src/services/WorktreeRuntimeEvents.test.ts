@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
+import type { WorktreeRecoveryManifestV2 } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService } from './TaskRunService.js';
@@ -28,7 +29,7 @@ async function fixture() {
   const store = new SqliteStore(directory);
   const workspaces = new WorkspaceManager(store);
   const workspace = await workspaces.create('Worktree events', join(directory, 'source'), { git: false, memory: false, readme: false, docs: false });
-  git(workspace.rootPath, ['init', '-q', '-b', 'main']);
+  git(workspace.rootPath, ['-c', 'core.symlinks=false', 'init', '-q', '-b', 'main']);
   git(workspace.rootPath, ['config', 'user.name', 'Events fixture']);
   git(workspace.rootPath, ['config', 'user.email', 'events@agentos.invalid']);
   git(workspace.rootPath, ['config', 'core.autocrlf', 'false']);
@@ -168,9 +169,12 @@ test('canonical worktree controls commit, review, merge and clean up with durabl
     assert.equal(persistedArtifacts.length, 3);
     assert.ok(persistedArtifacts.every(artifact => 'canonicalRunId' in artifact && artifact.canonicalRunId === fx.run.id));
     assert.deepEqual(artifacts.listForRun('another-workspace', fx.run.id), []);
-    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, bundle.manifestArtifactId)).toString('utf8'));
-    assert.equal(manifest[0].path, '.agentos-untracked.tar');
-    assert.equal(manifest[0].sizeBytes, userArchive.byteLength);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, bundle.manifestArtifactId)).toString('utf8')) as WorktreeRecoveryManifestV2;
+    assert.equal(manifest.formatVersion, 2);
+    assert.equal(manifest.entries.length, 1);
+    assert.equal(manifest.entries[0]!.kind, 'file');
+    assert.equal(manifest.entries[0]!.path, '.agentos-untracked.tar');
+    assert.equal(manifest.entries[0]!.sizeBytes, userArchive.byteLength);
     const events = fx.events(lease.id);
     assert.deepEqual(events.map(event => event.type), ['worktree.reserved', 'worktree.created',
       'worktree.commit_created', 'worktree.ready_for_review', 'worktree.merge_requested', 'worktree.merged', 'worktree.deleted']);
@@ -212,9 +216,12 @@ test('legacy DELETE rebuilds recovery evidence for work written after its earlie
     assert.equal(existsSync(checkout), false);
     const current = fx.manager.getRecord(lease.id)!.recoveryBundle!;
     assert.notEqual(current.manifestArtifactId, prior.manifestArtifactId);
-    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, current.manifestArtifactId)).toString('utf8'));
-    assert.equal(manifest[0].path, 'late-receipt.bin');
-    assert.equal(manifest[0].sizeBytes, receipt.byteLength);
+    const manifest = JSON.parse((await artifacts.readContentBytes(fx.workspace.id, current.manifestArtifactId)).toString('utf8')) as WorktreeRecoveryManifestV2;
+    assert.equal(manifest.formatVersion, 2);
+    assert.equal(manifest.entries.length, 1);
+    assert.equal(manifest.entries[0]!.kind, 'file');
+    assert.equal(manifest.entries[0]!.path, 'late-receipt.bin');
+    assert.equal(manifest.entries[0]!.sizeBytes, receipt.byteLength);
     await bundleService.verifyRecoveryBundle(current, fx.workspace.id);
     assert.equal((await request({ confirmRecoveryBundle: true })).status, 200);
     assert.equal(fx.events(lease.id).filter(event => event.type === 'worktree.deleted').length, 1);

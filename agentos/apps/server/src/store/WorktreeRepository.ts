@@ -1,6 +1,6 @@
 import type { WorktreeLeaseStatus, WorktreeRecoveryBundle } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
-import { inTransaction } from './Transaction.js';
+import { inTransaction, isTransactionActive } from './Transaction.js';
 
 /**
  * PR-3A Worktree lease persistence primitive.
@@ -255,12 +255,13 @@ export class WorktreeRepository {
 
   /** Transactional bundle + status update (recovery bundle verified). */
   updateRecoveryBundle(id: string, bundle: WorktreeRecoveryBundle, updatedAt: string): boolean {
-    return inTransaction(this.db, () => {
+    const update = () => {
       const result = this.db.prepare(
         "UPDATE worktrees SET recovery_bundle_json = ?, status = 'completed', updated_at = ? WHERE id = ?",
       ).run(JSON.stringify(bundle), updatedAt, id) as { changes?: number };
       return (result.changes ?? 0) === 1;
-    });
+    };
+    return isTransactionActive(this.db) ? update() : inTransaction(this.db, update);
   }
 
   delete(id: string): boolean {
