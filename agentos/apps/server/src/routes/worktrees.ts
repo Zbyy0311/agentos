@@ -108,7 +108,9 @@ export function createWorktreeRoutes(
       const bundle = await new WorktreeArtifactService(artifactService, manager).createBundle(lease.id, { workspaceId: workspace.id, runId: lease.runId, executionId: lease.executionId, agentId: lease.agentId });
       return res.status(201).json({ bundle });
     } catch (error) {
-      sendProblem(req, res, { status: 400, code: 'WORKTREE_BUNDLE_FAILED', detail: error instanceof Error ? error.message : String(error) });
+      const code = error instanceof Error && 'code' in error && typeof error.code === 'string'
+        && /^WORKTREE_[A-Z_]+$/.test(error.code) ? error.code : 'WORKTREE_BUNDLE_FAILED';
+      sendProblem(req, res, { status: 409, code, detail: 'Recovery bundle could not be verified; checkout has been preserved' });
     }
   }));
   const registerControlRoute = (
@@ -286,7 +288,7 @@ export function createWorktreeRoutes(
     }
     const bundle = record.recoveryBundle;
     const bundleArtifactIds = bundle ? [bundle.trackedPatchArtifactId, bundle.untrackedArchiveArtifactId, bundle.manifestArtifactId] : [];
-    const artifacts = artifactService.listForRun(workspace.id, record.runId)
+    const artifacts = artifactService.listForWorktree(record.id)
       .map(artifact => ({ ...artifact, recoveryBundleMember: bundleArtifactIds.includes(artifact.id) }));
     return res.json({ artifacts, recoveryBundle: bundle ?? null });
   });

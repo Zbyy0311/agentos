@@ -42,7 +42,7 @@ test('creates a byte-verifiable bundle for tracked and untracked files', async (
       return item.bytes;
     },
   };
-  const lease = { id: 'lease-1', absolutePath: root, baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim(), runId: 'run-1', executionId: 'exec-1', agentId: 'agent-1' };
+  const lease = { id: 'lease-1', absolutePath: root, branchName: (await exec('git', ['-C', root, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim(), baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim(), runId: 'run-1', executionId: 'exec-1', agentId: 'agent-1' };
   let verified = false;
   const fakeWorktrees = {
     getRecord: (id: string) => id === lease.id ? lease : undefined,
@@ -98,7 +98,7 @@ test('rejects a symlink that escapes the worktree', async () => {
   await exec('git', ['-C', root, 'commit', '-qm', 'base']);
   await writeFile(join(outside, 'secret.txt'), 'secret');
   await exec('cmd', ['/c', 'mklink', join(root, 'escape.txt'), join(outside, 'secret.txt')]);
-  const lease = { id: 'lease-2', absolutePath: root, baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim() };
+  const lease = { id: 'lease-2', absolutePath: root, branchName: (await exec('git', ['-C', root, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim(), baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim() };
   const fake = { create: async () => ({ id: 'unused' }) };
   const manager = { getRecord: () => lease, markRecoveryBundleVerified: () => undefined };
   await assert.rejects(

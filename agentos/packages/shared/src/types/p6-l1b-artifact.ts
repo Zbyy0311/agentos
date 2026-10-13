@@ -31,6 +31,7 @@ export interface CanonicalArtifactProvenance {
  * legacy RuntimeArtifact contract.
  */
 export interface CanonicalRuntimeArtifactRecord {
+  readonly worktreeProvenance?: import('./index.js').WorktreeArtifactProvenance;
   readonly provenanceKind: 'CANONICAL';
   readonly id: string;
   readonly workspaceId: string;

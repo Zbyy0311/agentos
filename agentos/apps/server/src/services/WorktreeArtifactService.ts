@@ -1,3 +1,4 @@
+import { withWorktreeBranchLock } from './WorktreeBranchLock.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
@@ -13,7 +14,13 @@ const execFileAsync = promisify(execFile);
 export class WorktreeArtifactService {
   constructor(private readonly artifacts: RuntimeArtifactService, private readonly worktrees: WorktreeManager) {}
 
-  async createBundle(
+  async createBundle(leaseId: string, input: { workspaceId: string; runId: string; executionId: string; agentId: string }): Promise<WorktreeRecoveryBundle> {
+    const lease = this.worktrees.getRecord(leaseId);
+    if (!lease) throw new Error('Worktree lease not found');
+    return withWorktreeBranchLock(lease.absolutePath, lease.branchName, () => this.createBundleWithinBranchLock(leaseId, input));
+  }
+
+  async createBundleWithinBranchLock(
     leaseId: string,
     input: { workspaceId: string; runId: string; executionId: string; agentId: string },
   ): Promise<WorktreeRecoveryBundle> {
@@ -36,8 +43,8 @@ export class WorktreeArtifactService {
       agentId: input.agentId,
     };
     const create = (input: Parameters<RuntimeArtifactService['create']>[0]) =>
-      typeof this.artifacts.createWorktreeArtifact === 'function'
-        ? this.artifacts.createWorktreeArtifact(leaseId, input)
+      typeof this.artifacts.createWorktreeArtifactWithinBranchLock === 'function'
+        ? this.artifacts.createWorktreeArtifactWithinBranchLock(leaseId, input)
         : this.artifacts.create(input);
     try {
       if (paths.length) await tar(lease.absolutePath, tempArchive, paths);

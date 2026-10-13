@@ -116,12 +116,17 @@ test('events endpoint returns the minimal lease-derived timeline', async () => {
   } finally { await fx.close(); }
 });
 
-test('artifacts endpoint lists run artifacts and recovery bundle members', async () => {
+test('artifacts endpoint lists only the requested worktree artifacts and marks recovery bundle members', async () => {
+  let requestedWorktreeId: string | undefined;
   const fx = await fixture(undefined, {
-    listForRun: () => [
-      { id: 'patch-1', type: 'diff', title: 'Worktree tracked patch' },
-      { id: 'other-1', type: 'log', title: 'unrelated' },
-    ],
+    listForRun: () => { throw new Error('The endpoint must not expose artifacts from other worktrees in the same Run'); },
+    listForWorktree: (worktreeId: string) => {
+      requestedWorktreeId = worktreeId;
+      return [
+        { id: 'patch-1', type: 'diff', title: 'Worktree tracked patch' },
+        { id: 'other-1', type: 'log', title: 'Worktree diagnostic log' },
+      ];
+    },
   });
   try {
     const lease = await fx.manager.createLease({ workspaceId: 'workspace-a', workspaceRoot: fx.root, runId: 'run-d', executionId: 'exec-d', agentId: 'agent-d' });
@@ -130,6 +135,7 @@ test('artifacts endpoint lists run artifacts and recovery bundle members', async
     record.recoveryBundle = { trackedPatchArtifactId: 'patch-1', untrackedArchiveArtifactId: 'arch-1', manifestArtifactId: 'man-1', entryCount: 0 };
     const response = await fetch(`${fx.base}/worktrees/${lease.id}/artifacts`);
     assert.equal(response.status, 200);
+    assert.equal(requestedWorktreeId, lease.id);
     const body = await response.json() as { artifacts: { id: string; recoveryBundleMember: boolean }[]; recoveryBundle: { trackedPatchArtifactId: string } | null };
     assert.equal(body.artifacts.length, 2);
     assert.equal(body.artifacts.find(a => a.id === 'patch-1')?.recoveryBundleMember, true);
