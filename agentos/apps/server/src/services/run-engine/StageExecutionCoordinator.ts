@@ -154,11 +154,12 @@ export interface StageExecutionCoordinatorOptions {
   readonly approvalGate?: StageExecutionApprovalGate;
   /** Synchronous durable Run/Stage/control fence, re-read at native launch. */
   readonly canLaunch?: (input: StageLaunchIdentity) => boolean;
-  /**
-   * Observes each successfully built launch plan (before the approval gate)
-   * so the composition root can register redacted secret values for the
-   * Workspace's Event persistence redaction pipeline.
-   */
+  /** Internal memory-only registration before validation can emit any output. */
+  readonly onEnvironmentReady?: (input: {
+    workspaceId: string;
+    environment: Readonly<Record<string, string | undefined>>;
+  }) => void;
+  /** Observes a successfully built public launch plan before the approval gate. */
   readonly onLaunchPlan?: (input: { workspaceId: string; plan: ProviderLaunchPlan }) => void;
 }
 
@@ -242,7 +243,11 @@ export class StageExecutionCoordinator {
   private readonly approvalGate: StageExecutionApprovalGate | undefined;
   private readonly canLaunch: ((input: StageLaunchIdentity) => boolean) | undefined;
   private readonly onLaunchPlan: ((input: { workspaceId: string; plan: ProviderLaunchPlan }) => void) | undefined;
-  private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
+  private readonly onEnvironmentReady: StageExecutionCoordinatorOptions['onEnvironmentReady'];
+  private readonly inFlightValidation = new Map<string, {
+    environment: Readonly<Record<string, string | undefined>>;
+    promise: Promise<ProviderValidationResult>;
+  }>();
   private readonly liveAttempts = new Map<string, LiveAttemptRendezvous>();
 
   constructor(options: StageExecutionCoordinatorOptions) {
@@ -261,10 +266,18 @@ export class StageExecutionCoordinator {
     this.approvalGate = options.approvalGate;
     this.canLaunch = options.canLaunch;
     this.onLaunchPlan = options.onLaunchPlan;
+    this.onEnvironmentReady = options.onEnvironmentReady;
   }
 
   async execute(input: StageExecutionInput): Promise<StageExecutionOutcome> {
     if (!this.launchAuthorized(input)) return this.launchFenced(input);
+    const environment = Object.freeze({ ...(this.environment ?? process.env) });
+    try {
+      this.onEnvironmentReady?.({ workspaceId: input.workspaceId, environment });
+    } catch {
+      return this.failed('ENVIRONMENT_SECRET_REGISTRATION_FAILED',
+        'Environment secret registration failed', 'validation', input, false);
+    }
     const configuration = configurationFromSnapshot(input.providerSnapshot);
     const frozen = resolveFrozenProviderIdentity(configuration);
     if (frozen === undefined) {
@@ -276,7 +289,7 @@ export class StageExecutionCoordinator {
     } catch (error) {
       return this.failedFromError(error, 'validation', input);
     }
-    const validation = await this.validateInFlight(input, adapter, configuration);
+    const validation = await this.validateInFlight(input, adapter, configuration, environment);
     if (!this.launchAuthorized(input)) return this.launchFenced(input);
     if (!validation.valid) {
       const first = validation.errors[0];
@@ -289,7 +302,7 @@ export class StageExecutionCoordinator {
         workspaceRoot: input.workspaceRoot,
         worktreePath: input.worktreePath,
         prompt: input.prompt,
-        environment: this.environment,
+        environment,
       });
     } catch (error) {
       return this.failedFromError(error, 'startup', input);
@@ -675,6 +688,7 @@ export class StageExecutionCoordinator {
     input: StageExecutionInput,
     adapter: RuntimeProviderAdapter,
     configuration: ProviderConfigurationInput,
+    environment: Readonly<Record<string, string | undefined>>,
   ): Promise<ProviderValidationResult> {
     const key = [
       input.workspaceId,
@@ -687,15 +701,16 @@ export class StageExecutionCoordinator {
       adapter.manifest.version,
     ].join('|');
     const existing = this.inFlightValidation.get(key);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined && Object.keys(environment).length === Object.keys(existing.environment).length
+      && Object.entries(environment).every(([name, value]) => existing.environment[name] === value)) return existing.promise;
     const promise = adapter.validate({
       configuration,
       probe: this.probe,
-      environment: this.environment,
+      environment,
     }).finally(() => {
-      this.inFlightValidation.delete(key);
+      if (this.inFlightValidation.get(key)?.promise === promise) this.inFlightValidation.delete(key);
     });
-    this.inFlightValidation.set(key, promise);
+    this.inFlightValidation.set(key, { environment, promise });
     return promise;
   }
 

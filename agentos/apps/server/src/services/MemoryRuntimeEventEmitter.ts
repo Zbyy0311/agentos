@@ -1,3 +1,5 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
+import { MemorySecretDetectedError } from './MemorySecretGuard.js';
 import type {
   AuthorizedRuntimeEventContextV1,
   RuntimeEventContextAuthoritySourceV1,
@@ -120,8 +122,8 @@ export class MemoryRuntimeEventEmitter {
     }
     this.writer = dependencies.factWriter;
     this.authority = dependencies.eventAuthority;
-    this.entries = dependencies.entries ?? new MemoryEntryRepository(db);
-    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(db);
+    this.entries = dependencies.entries ?? new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
+    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
     this.snapshots = dependencies.snapshots ?? new MemoryContextSnapshotRepository(db);
     this.now = dependencies.now ?? (() => new Date());
   }
@@ -163,7 +165,7 @@ export class MemoryRuntimeEventEmitter {
         return result;
       });
     } catch (error) {
-      if (error instanceof MemoryRuntimeEventEmissionError) throw error;
+      if (error instanceof MemoryRuntimeEventEmissionError || error instanceof MemorySecretDetectedError) throw error;
       throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     }
   }
@@ -330,7 +332,7 @@ export class MemoryRuntimeEventEmitter {
         return { candidates: records, deduplicatedEntries, eventIds };
       });
     } catch (error) {
-      if (error instanceof MemoryRuntimeEventEmissionError) throw error;
+      if (error instanceof MemoryRuntimeEventEmissionError || error instanceof MemorySecretDetectedError) throw error;
       throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     }
   }
@@ -568,7 +570,7 @@ export class MemoryRuntimeEventEmitter {
         return { record, eventId: event.id, outboxId: outbox.id, additionalEvents };
       });
     } catch (error) {
-      if (error instanceof MemoryRuntimeEventEmissionError) throw error;
+      if (error instanceof MemoryRuntimeEventEmissionError || error instanceof MemorySecretDetectedError) throw error;
       throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     }
   }

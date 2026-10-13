@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -160,7 +161,7 @@ test('fixed bilingual corpus evaluates real MF-3 SQLite retrieval and its produc
 
   const db = createDb();
   try {
-    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
     corpus.entries.forEach((item, index) => insertCorpusEntry(repository, item, index));
     const retrieval = new MemoryRetrievalService(repository, () => Date.parse(EVAL_NOW));
     const semantic = new MemorySemanticRetrieval(

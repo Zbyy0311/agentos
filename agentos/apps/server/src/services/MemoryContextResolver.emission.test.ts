@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -125,7 +126,7 @@ function fixture() {
     eventAuthority: new DurableMemoryRuntimeEventContextAuthority(tx),
     now: () => new Date(NOW),
   });
-  const entries = new MemoryEntryRepository(tx);
+  const entries = new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx));
   const snapshots = new MemoryContextSnapshotRepository(tx);
   const selector = new MemoryContextBudgetSelector(new MemoryRetrievalService(entries), snapshots);
   const resolver = new MemoryContextResolver({

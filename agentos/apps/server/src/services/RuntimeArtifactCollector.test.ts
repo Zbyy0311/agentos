@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -69,7 +70,7 @@ test('LITE-07-104: actual collector finalizes test Artifact through Candidate/Ev
     const completion = new ArtifactCompletionRepository(store.getDatabase()).findByArtifact('workspace-a', artifact.id)!;
     assert.equal(completion.conclusion, 'pass');
     assert.equal(completion.runId, null); // real legacy Run is not a canonical Run
-    const candidates = new MemoryCandidateRepository(store.getDatabase());
+    const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const candidate = candidates.findCandidateById('workspace-a', completion.candidateId)!;
     assert.equal(candidate.outcome, 'review-required');
     assert.equal(candidate.authority, 'agent-derived');
@@ -80,7 +81,7 @@ test('LITE-07-104: actual collector finalizes test Artifact through Candidate/Ev
     assert.equal(JSON.parse(created[0].payload_json).candidateId, candidate.id);
     const accepted = candidates.reviewCandidate({ workspaceId: 'workspace-a', candidateId: candidate.id,
       expectedVersion: 1, outcome: 'accept', reviewedAt: new Date().toISOString() }, { writer: store.workspaceEventWriter() });
-    const entry = new MemoryEntryRepository(store.getDatabase()).findById('workspace-a', accepted.mergedIntoEntryId!)!;
+    const entry = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById('workspace-a', accepted.mergedIntoEntryId!)!;
     assert.deepEqual(entry.sources, [{ kind: 'artifact', id: artifact.id }]);
     assert.ok((await service.readContentBytes('workspace-a', artifact.id)).toString('utf8').includes('Status: passed'));
     const replay = new RuntimeArtifactCollector(service);

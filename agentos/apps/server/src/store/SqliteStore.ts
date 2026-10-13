@@ -66,7 +66,7 @@ import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { createFileBackupProvider } from '../migrations/backup.js';
-import { inTransaction } from './Transaction.js';
+import { inTransaction, isTransactionActive } from './Transaction.js';
 import { assertVersionedMutation } from './Repository.js';
 import { createEntityId } from './Identity.js';
 import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigurationRepository.js';
@@ -82,7 +82,8 @@ import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 import { OperationService } from '../services/OperationService.js';
 import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
-import { EventRedactionService } from '../services/EventRedactionService.js';
+import { EventRedactionService, eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
+import { assertNoMemorySecrets } from '../services/MemorySecretGuard.js';
 import { RunStreamService } from '../services/RunStreamService.js';
 import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
 import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
@@ -525,7 +526,7 @@ export class SqliteStore implements Store {
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
       this.runtimeEventNotifier = new RuntimeEventNotifier();
-      this.eventRedactionServiceRepo = new EventRedactionService();
+      this.eventRedactionServiceRepo = eventRedactionServiceForDatabase(this.database);
       this.runtimeEventRepo = new RuntimeEventRepository(
         this.database as any,
         runtimeEventRegistry,
@@ -2136,22 +2137,31 @@ export class SqliteStore implements Store {
     this.database.prepare('DELETE FROM runtime_artifacts WHERE workspace_id = ? AND id = ?').run(workspaceId, artifactId);
   }
 
+  private memoryWriteTransaction<T>(fn: () => T): T {
+    return isTransactionActive(this.database) ? fn() : inTransaction(this.database, fn);
+  }
+
   createMemory(memory: MemoryRecord, content: string): MemoryRecord {
-    this.assertWorkspaceExists(memory.workspaceId);
-    assertLegacyMemoryTextSafety(memory, content);
-    this.database.prepare(`
-      INSERT INTO memories (
-        id, workspace_id, memory_type, status, title, summary, content_path, tags_json,
-        related_files_json, importance, confidence, created_at, updated_at, last_accessed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      memory.id, memory.workspaceId, memory.type, memory.status, memory.title, memory.summary, memory.contentPath,
-      JSON.stringify(memory.tags), JSON.stringify(memory.relatedFiles), memory.importance, memory.confidence,
-      memory.createdAt, memory.updatedAt, memory.lastAccessedAt ?? null,
-    );
-    this.replaceMemorySources(memory);
-    this.replaceMemoryFts(memory, content);
-    return memory;
+    return this.memoryWriteTransaction(() => {
+      this.assertWorkspaceExists(memory.workspaceId);
+      assertNoMemorySecrets(this.eventRedactionServiceRepo, memory.workspaceId, {
+        title: memory.title, summary: memory.summary, content, tags: memory.tags,
+      });
+      assertLegacyMemoryTextSafety(memory, content);
+      this.database.prepare(`
+        INSERT INTO memories (
+          id, workspace_id, memory_type, status, title, summary, content_path, tags_json,
+          related_files_json, importance, confidence, created_at, updated_at, last_accessed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        memory.id, memory.workspaceId, memory.type, memory.status, memory.title, memory.summary, memory.contentPath,
+        JSON.stringify(memory.tags), JSON.stringify(memory.relatedFiles), memory.importance, memory.confidence,
+        memory.createdAt, memory.updatedAt, memory.lastAccessedAt ?? null,
+      );
+      this.replaceMemorySources(memory);
+      this.replaceMemoryFts(memory, content);
+      return memory;
+    });
   }
 
   deleteMemory(workspaceId: string, memoryId: string): void {
@@ -2160,23 +2170,29 @@ export class SqliteStore implements Store {
   }
 
   updateMemory(workspaceId: string, memoryId: string, update: Partial<Pick<MemoryRecord, 'type' | 'status' | 'title' | 'summary' | 'contentPath' | 'tags' | 'relatedFiles' | 'sourceRunIds' | 'importance' | 'confidence' | 'lastAccessedAt'>>, content?: string): MemoryRecord {
-    const current = this.getMemory(workspaceId, memoryId);
-    if (!current) throw new Error('Memory not found');
-    const next = { ...current, ...update, updatedAt: new Date().toISOString() };
-    const currentFts = this.database.prepare('SELECT content FROM memory_fts WHERE memory_id = ?').get(memoryId) as { content?: string } | undefined;
-    assertLegacyMemoryTextSafety(next, content ?? currentFts?.content ?? '');
-    this.database.prepare(`
-      UPDATE memories
-      SET memory_type = ?, status = ?, title = ?, summary = ?, content_path = ?, tags_json = ?,
-        related_files_json = ?, importance = ?, confidence = ?, updated_at = ?, last_accessed_at = ?
-      WHERE workspace_id = ? AND id = ?
-    `).run(
-      next.type, next.status, next.title, next.summary, next.contentPath, JSON.stringify(next.tags), JSON.stringify(next.relatedFiles),
-      next.importance, next.confidence, next.updatedAt, next.lastAccessedAt ?? null, workspaceId, memoryId,
-    );
-    this.replaceMemorySources(next);
-    if (content !== undefined) this.replaceMemoryFts(next, content);
-    return next;
+    return this.memoryWriteTransaction(() => {
+      const current = this.getMemory(workspaceId, memoryId);
+      if (!current) throw new Error('Memory not found');
+      const next = { ...current, ...update, updatedAt: new Date().toISOString() };
+      const currentFts = this.database.prepare('SELECT content FROM memory_fts WHERE memory_id = ?').get(memoryId) as { content?: string } | undefined;
+      const finalContent = content ?? currentFts?.content ?? '';
+      assertNoMemorySecrets(this.eventRedactionServiceRepo, workspaceId, {
+        title: next.title, summary: next.summary, content: finalContent, tags: next.tags,
+      });
+      assertLegacyMemoryTextSafety(next, finalContent);
+      this.database.prepare(`
+        UPDATE memories
+        SET memory_type = ?, status = ?, title = ?, summary = ?, content_path = ?, tags_json = ?,
+          related_files_json = ?, importance = ?, confidence = ?, updated_at = ?, last_accessed_at = ?
+        WHERE workspace_id = ? AND id = ?
+      `).run(
+        next.type, next.status, next.title, next.summary, next.contentPath, JSON.stringify(next.tags), JSON.stringify(next.relatedFiles),
+        next.importance, next.confidence, next.updatedAt, next.lastAccessedAt ?? null, workspaceId, memoryId,
+      );
+      this.replaceMemorySources(next);
+      if (content !== undefined) this.replaceMemoryFts(next, content);
+      return next;
+    });
   }
 
   getMemory(workspaceId: string, memoryId: string): MemoryRecord | undefined {
@@ -2491,19 +2507,26 @@ export class SqliteStore implements Store {
   }
 
   createMemoryCandidate(candidate: MemoryCandidate): MemoryCandidate {
-    const run = this.getRun(candidate.workspaceId, candidate.runId);
-    if (!run) throw new Error('Run not found for memory candidate');
-    this.database.prepare(`
-      INSERT INTO memory_candidates (
-        id, workspace_id, run_id, memory_type, title, summary, content, confidence,
-        operation, conflicting_memory_ids_json, status, created_at, reviewed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      candidate.id, candidate.workspaceId, candidate.runId, candidate.type, candidate.title, candidate.summary,
-      candidate.content, candidate.confidence, candidate.operation, JSON.stringify(candidate.conflictingMemoryIds),
-      candidate.status, candidate.createdAt, candidate.reviewedAt ?? null,
-    );
-    return candidate;
+    return this.memoryWriteTransaction(() => {
+      assertNoMemorySecrets(this.eventRedactionServiceRepo, candidate.workspaceId, {
+        title: candidate.title,
+        summary: candidate.summary,
+        content: candidate.content,
+      });
+      const run = this.getRun(candidate.workspaceId, candidate.runId);
+      if (!run) throw new Error('Run not found for memory candidate');
+      this.database.prepare(`
+        INSERT INTO memory_candidates (
+          id, workspace_id, run_id, memory_type, title, summary, content, confidence,
+          operation, conflicting_memory_ids_json, status, created_at, reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        candidate.id, candidate.workspaceId, candidate.runId, candidate.type, candidate.title, candidate.summary,
+        candidate.content, candidate.confidence, candidate.operation, JSON.stringify(candidate.conflictingMemoryIds),
+        candidate.status, candidate.createdAt, candidate.reviewedAt ?? null,
+      );
+      return candidate;
+    });
   }
 
   getMemoryCandidate(workspaceId: string, candidateId: string): MemoryCandidate | undefined {
@@ -2529,7 +2552,7 @@ export class SqliteStore implements Store {
       ORDER BY created_at DESC
       LIMIT ?
     `).all(...params) as MemoryCandidateRow[];
-    return rows.map(row => this.toMemoryCandidate(row));
+    return rows.map(row => this.redactMemoryCandidateForRead(this.toMemoryCandidate(row)));
   }
 
   pruneReviewedMemoryCandidates(cutoffAt: string, minimumPerWorkspace: number): number {
@@ -3520,6 +3543,16 @@ export class SqliteStore implements Store {
       createdAt: row.created_at,
       ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
     };
+  }
+
+  /** Redact legacy candidate text in the returned projection without changing history. */
+  private redactMemoryCandidateForRead(candidate: MemoryCandidate): MemoryCandidate {
+    const redacted = this.eventRedactionServiceRepo.redactPayload(candidate.workspaceId, {
+      title: candidate.title,
+      summary: candidate.summary,
+      content: candidate.content,
+    }).value as Pick<MemoryCandidate, 'title' | 'summary' | 'content'>;
+    return { ...candidate, ...redacted };
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {

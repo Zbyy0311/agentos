@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
 import { MemoryCandidateRepository, type CreateMemoryCandidateInput, type MemoryCandidateRecord } from '../store/MemoryCandidateRepository.js';
@@ -114,7 +115,7 @@ export class VerifiedMemoryFactService {
     private readonly db: TransactionDatabase,
     private readonly emitter?: MemoryRuntimeEventEmitter,
   ) {
-    this.candidates = new MemoryCandidateRepository(db);
+    this.candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
   }
 
   policy(workspaceId: string): VerifiedMemoryAutoAcceptPolicy {

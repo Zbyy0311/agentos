@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
@@ -93,7 +94,7 @@ export class TerminalMemoryCandidateReconciler {
   constructor(options: TerminalMemoryCandidateReconcilerOptions) {
     this.db = options.store.getDatabase();
     this.generator = options.generator;
-    this.candidates = options.candidates ?? new MemoryCandidateRepository(this.db);
+    this.candidates = options.candidates ?? new MemoryCandidateRepository(this.db, eventRedactionServiceForDatabase(this.db));
     this.now = options.now ?? (() => new Date().toISOString());
     this.limitPerWorkspace = options.limitPerWorkspace ?? DEFAULT_LIMIT_PER_WORKSPACE;
     this.onProblem = options.onProblem ?? (() => undefined);

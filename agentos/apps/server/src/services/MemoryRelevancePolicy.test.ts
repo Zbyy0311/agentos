@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -19,7 +20,7 @@ function fixture() {
   db.exec('PRAGMA foreign_keys=ON');
   for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({db: db as unknown as MinimalDatabaseSync});
   for (const id of ['ws-relevance','ws-other']) db.prepare('INSERT INTO workspaces(id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(id,id,'C:/tmp/'+id,'C:/tmp/'+id,NOW,NOW,NOW);
-  const entries = new MemoryEntryRepository(db);
+  const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
   let seq=0;
   const add = (overrides: Record<string,unknown>={}) => entries.createEntry({id:`memory-relevance-${++seq}`,workspaceId:'ws-relevance',scope:'workspace',category:'knowledge',authority:'user-explicit',confidence:1,importance:1,title:'数据库迁移',summary:'SQLite',content:'迁移数据库以增量调整表结构。',sources:[],status:'active',createdAt:NOW,...overrides} as never);
   const retrieval = new MemoryRetrievalService(entries,()=>Date.parse(NOW));

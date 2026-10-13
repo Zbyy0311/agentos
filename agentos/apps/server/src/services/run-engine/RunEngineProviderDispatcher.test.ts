@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../EventRedactionService.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -596,7 +597,7 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi', memoryGat
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   });
-  const entries = new MemoryEntryRepository(db);
+  const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
   const snapshots = new MemoryContextSnapshotRepository(db);
   if (memoryGate) entries.createEntry({id:'m1-real-checkpoint',workspaceId:WS,scope:'workspace',category:'knowledge',status:'active',authority:'user-explicit',
     confidence:1,importance:1,title:'M1 memory checkpoint',content:'Checkpoint value: AGENTOS_MEMORY_GATE_OK',sources:[],createdAt:NOW});

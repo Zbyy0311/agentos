@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../EventRedactionService.js';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -237,7 +238,7 @@ function eventContextFor(fx: ChainFixture): RuntimeEventContextAuthoritySourceV1
 }
 
 function addActiveEntry(fx: ChainFixture): string {
-  const entries = new MemoryEntryRepository(fx.store.getDatabase());
+  const entries = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
   const entryId = createEntityId('memory');
   entries.createEntry({
     id: entryId,

@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   MemoryContextOwnerKind,
@@ -331,7 +332,7 @@ export class MemoryFeedbackService {
         throw new Error('MEMORY_FEEDBACK_CONTEXT_INVALID');
       }
 
-      const entries = new MemoryEntryRepository(this.db);
+      const entries = new MemoryEntryRepository(this.db, eventRedactionServiceForDatabase(this.db));
       const entry = entries.findById(workspaceId, input.memoryId)
         ?? entries.listConfirmedGlobalPreferences(workspaceId).find(item => item.id === input.memoryId);
       if (!entry) throw new Error('MEMORY_ENTRY_NOT_FOUND');
@@ -411,7 +412,7 @@ export class MemoryFeedbackService {
     if (input.resolution === 'corrected') {
       return inTransaction(this.db, () => {
         const row = this.requirePendingAction(workspaceId, actionId, input.expectedActionVersion);
-        const entries = new MemoryEntryRepository(this.db);
+        const entries = new MemoryEntryRepository(this.db, eventRedactionServiceForDatabase(this.db));
         const current = this.findEntryForWorkspace(entries, workspaceId, row.entry_id);
         if (!current) throw new Error('MEMORY_FEEDBACK_ENTRY_NOT_FOUND');
         if (current.scope === 'global' && current.workspaceId !== workspaceId) {
@@ -440,7 +441,7 @@ export class MemoryFeedbackService {
     if (preview.status !== 'pending' || preview.version !== input.expectedActionVersion) {
       throw new Error('MEMORY_FEEDBACK_VERSION_CONFLICT');
     }
-    const entries = new MemoryEntryRepository(this.db);
+    const entries = new MemoryEntryRepository(this.db, eventRedactionServiceForDatabase(this.db));
     const visibleEntry = this.findEntryForWorkspace(entries, workspaceId, preview.entry_id);
     if (!visibleEntry) throw new Error('MEMORY_FEEDBACK_ENTRY_NOT_FOUND');
     if (visibleEntry.scope === 'global' && visibleEntry.workspaceId !== workspaceId) {

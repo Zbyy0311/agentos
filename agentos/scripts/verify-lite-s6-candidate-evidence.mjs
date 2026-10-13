@@ -117,7 +117,7 @@ const agent = {
 };
 const provider = summarizationIdentityFor(agent);
 const compactions = new CompactionRepository(db);
-const candidates = new MemoryCandidateRepository(db);
+const candidates = new MemoryCandidateRepository(db, store.eventRedactionService());
 const messages = Array.from({ length: 12 }, (_value, index) => ({
   id: 'msg_' + String(index).padStart(3, '0'),
   senderType: index % 2 === 0 ? 'user' : 'agent',

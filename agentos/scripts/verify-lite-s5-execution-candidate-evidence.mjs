@@ -72,7 +72,7 @@ const SOURCE = 'msg_' + 'u'.repeat(26);
 db.prepare('INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
   .run(WS, WS, workspaceRoot, workspaceRoot, NOW, NOW, NOW);
 
-const entries = new MemoryEntryRepository(db);
+const entries = new MemoryEntryRepository(db, store.eventRedactionService());
 let seq = 0;
 const addEntry = overrides => {
   seq += 1;

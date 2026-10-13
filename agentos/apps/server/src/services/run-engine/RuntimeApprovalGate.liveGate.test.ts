@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -252,7 +253,7 @@ test('LITE-08-005/006/007 + LITE-07-103 a real Provider runs only after a persis
       assert.ok(accepted.candidateId, 'an accepted decision produces its memory fact');
       assert.equal(approvalById(request.id).status, 'approved');
 
-      const decisionCandidate = new MemoryCandidateRepository(db).findCandidateById(WS_APPROVED, accepted.candidateId!);
+      const decisionCandidate = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db)).findCandidateById(WS_APPROVED, accepted.candidateId!);
       assert.ok(decisionCandidate !== undefined);
       assert.equal(decisionCandidate.authority, 'user-explicit', 'an approval fact carries user authority');
       assert.equal(decisionCandidate.category, 'decision');

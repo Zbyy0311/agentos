@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -130,7 +131,7 @@ test('production direct streaming captures two consecutive task Turns with only 
         assert.equal(reply.status, 'final');
         return { source, reply };
       });
-      const candidates = new MemoryCandidateRepository(store.getDatabase()).listCandidates('workspace-a');
+      const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).listCandidates('workspace-a');
 
       for (const { source, reply } of replies) {
         const captured = candidates.filter(candidate => candidate.sources.some(
@@ -430,7 +431,7 @@ test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the r
   process.env.AGENTOS_FORCE_MOCK = 'true';
   try {
     await withServer(async (baseUrl, store) => {
-      const entries = new MemoryEntryRepository(store.getDatabase() as never);
+      const entries = new MemoryEntryRepository(store.getDatabase() as never, eventRedactionServiceForDatabase(store.getDatabase() as never));
       const entryId = 'mem_' + 'd'.repeat(26);
       entries.createEntry({
         id: entryId, workspaceId: 'workspace-a', scope: 'workspace', category: 'constraint',
@@ -473,7 +474,7 @@ test('disabled workspace memory freezes empty selections on direct and new group
   process.env.AGENTOS_FORCE_MOCK = 'true';
   try {
     await withServer(async (baseUrl, store) => {
-      new MemoryEntryRepository(store.getDatabase() as never).createEntry({
+      new MemoryEntryRepository(store.getDatabase() as never, eventRedactionServiceForDatabase(store.getDatabase() as never)).createEntry({
         id: 'mem_disabled_stream', workspaceId: 'workspace-a', scope: 'workspace', category: 'knowledge',
         authority: 'user-explicit', status: 'active', confidence: 1, importance: 1,
         title: 'Never inject while disabled', content: 'DISABLED_MEMORY_BODY',

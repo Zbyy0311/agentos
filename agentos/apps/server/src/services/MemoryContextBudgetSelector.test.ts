@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -71,7 +72,7 @@ function fixture() {
   db.prepare(
     'INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
   ).run(RUN, WS, TASK, RUN, 'queued', 'initial', 'test', NOW, NOW);
-  const entries = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+  const entries = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
   const retrieval = new MemoryRetrievalService(entries);
   const snapshots = new MemoryContextSnapshotRepository(db as unknown as TransactionDatabase);
   const selector = new MemoryContextBudgetSelector(retrieval, snapshots);

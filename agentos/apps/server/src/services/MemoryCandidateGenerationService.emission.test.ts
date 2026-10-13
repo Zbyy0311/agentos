@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -150,7 +151,7 @@ function fixture(extractor?: Pick<MemoryExtractor, 'extract'>): Fixture {
   const events = new RuntimeEventRepository(tx, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(tx, events);
   const writer = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(tx), outbox, tx);
-  const candidates = new MemoryCandidateRepository(tx);
+  const candidates = new MemoryCandidateRepository(tx, eventRedactionServiceForDatabase(tx));
   const emitter = new MemoryRuntimeEventEmitter({
     store: { getDatabase: () => tx },
     factWriter: writer,
@@ -239,7 +240,7 @@ function exactEntry(fx: Fixture) {
     '',
     `结果：Run ${RUN} 完成（origin v2_api，reason initial）。\nStage 结果：implement: completed (attempt 1, duration 60000ms)`,
   ].join('\n');
-  return new MemoryEntryRepository(fx.tx).createEntry({
+  return new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).createEntry({
     id: 'mem_' + 'd'.repeat(26), workspaceId: WS, scope: 'task', ownerTaskId: TASK,
     category: 'knowledge', authority: 'system-verified', confidence: 0.9, importance: 0.5,
     title: 'accepted evidence', content, exactContentHash: hashMemoryText(content),
@@ -252,7 +253,7 @@ test('LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay 
   try {
     const entry = exactEntry(fx);
     assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
-    const stored = new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!;
+    const stored = new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id)!;
     assert.equal(stored.version, 2);
     assert.deepEqual(stored.sources, [
       { kind: 'run', id: RUN }, { kind: 'stage', id: 'stage_mf5c' }, { kind: 'task', id: TASK },
@@ -271,7 +272,7 @@ test('LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay 
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), 1);
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 1);
     assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_candidate_entries'), 0);
-    assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), stored);
+    assert.deepEqual(new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id), stored);
   } finally { fx.close(); }
 });
 
@@ -283,13 +284,13 @@ for (const table of ['memory_entry_sources', 'runtime_events', 'outbox_messages'
       fx.db.prepare(`CREATE TRIGGER fail_dedup BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'injected dedup failure'); END`).run();
       assert.throws(() => fx.service.generateForRunTerminal(terminalInput()),
         (error: unknown) => assertGenerationError(error, 'GENERATION_FAILED'));
-      assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), entry);
+      assert.deepEqual(new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id), entry);
       assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), 0);
       assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 0);
       assert.equal(nextEventSequence(fx.db, RUN), 1);
       fx.db.prepare('DROP TRIGGER fail_dedup').run();
       assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
-      assert.equal(new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!.version, 2);
+      assert.equal(new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id)!.version, 2);
     } finally { fx.close(); }
   });
 }
@@ -300,7 +301,7 @@ test('LITE-07-107 archived exact match between lookup and transaction falls thro
     const entry = exactEntry(fx);
     const merge = fx.emitter.emitTerminalMemoryGeneration.bind(fx.emitter);
     fx.emitter.emitTerminalMemoryGeneration = input => {
-      new MemoryEntryRepository(fx.tx).updateStatus({ workspaceId: WS, entryId: entry.id,
+      new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).updateStatus({ workspaceId: WS, entryId: entry.id,
         expectedVersion: 1, status: 'archived', updatedAt: NOW });
       return merge(input);
     };
@@ -308,7 +309,7 @@ test('LITE-07-107 archived exact match between lookup and transaction falls thro
     assert.equal(result.outcome, 'created');
     assert.equal(result.duplicateOfEntryId, undefined);
     assert.equal(result.candidate!.outcome, 'review-required');
-    const stored = new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!;
+    const stored = new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id)!;
     assert.equal(stored.status, 'archived');
     assert.equal(stored.version, 2);
     assert.deepEqual(stored.sources, entry.sources);
@@ -324,7 +325,7 @@ test('LITE-07-107 exact dedup rejects cross-Run authority without merging source
     const entry = exactEntry(fx);
     assert.throws(() => fx.service.generateForRunTerminal(terminalInput({ eventContext: eventContext(OTHER_OP, OTHER_OP_CORRELATION) })),
       (error: unknown) => assertGenerationError(error, 'GENERATION_FAILED'));
-    assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), entry);
+    assert.deepEqual(new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findById(WS, entry.id), entry);
     assert.equal(nextEventSequence(fx.db, RUN), 1);
   } finally { fx.close(); }
 });

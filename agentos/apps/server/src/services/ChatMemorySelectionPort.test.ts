@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -59,7 +60,7 @@ function fixture() {
     db.prepare('INSERT INTO agent_profiles (id, workspace_id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)')
       .run(workspaceId === WS ? AGENT : OTHER_AGENT, workspaceId, 'Chat', 'worker', 'Worker', '', '[]', 'agent', '[]', NOW, NOW);
   }
-  const entries = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+  const entries = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
   const retrieval = new MemoryRetrievalService(entries);
   const problems: string[] = [];
   const port = createChatMemorySelectionPort({ retrieval, onProblem: detail => problems.push(detail) });

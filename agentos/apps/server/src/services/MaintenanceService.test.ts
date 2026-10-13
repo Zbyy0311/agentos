@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -724,7 +725,7 @@ function seedMemoryFeedbackProof(fx: Fixture): { readonly id: string; readonly a
   const now = new Date().toISOString();
   const memoryId = 'backup-feedback-memory-entry';
   const frozenContext = 'Frozen context used to prove the reviewed memory version.';
-  new MemoryEntryRepository(fx.store.getDatabase()).createEntry({
+  new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase())).createEntry({
     id: memoryId, workspaceId: fx.workspace.id, scope: 'workspace', category: 'knowledge',
     authority: 'user-explicit', confidence: 1, importance: 1, status: 'active',
     title: 'Feedback proof memory', content: 'The exact version selected for this turn.', sources: [], createdAt: now,

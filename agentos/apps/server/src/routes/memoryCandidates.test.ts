@@ -8,6 +8,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createMemoryCandidateRoutes } from './memoryCandidates.js';
 import { createMemoryRoutes } from './memories.js';
+import type { MemoryCandidate } from '@agentos/shared';
 
 test('generates, accepts, rejects, and isolates memory candidates through the API', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-candidate-routes-'));
@@ -82,6 +83,72 @@ test('returns an explicit none outcome when a completed run has no valuable publ
     const response = await fetch(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runs/run-a/memory-candidates/generate`, { method: 'POST' });
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), { candidates: [], outcome: 'none', reason: 'no_valuable_public_evidence' });
+  } finally {
+    server.close();
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('historical known-secret candidate stays unchanged while list and reject responses are redacted', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-candidate-secret-projection-'));
+  mkdirSync(join(root, 'workspace'), { recursive: true });
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [
+    { id: 'workspace-a', name: 'A', rootPath: root, gitEnabled: true, memoryEnabled: true, agents: [], lastOpenedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z' },
+  ] }), 'utf8');
+  const store = new SqliteStore(root);
+  store.createConversation({ id: 'conversation-secret', workspaceId: 'workspace-a', type: 'direct', title: 'A', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+  store.createMessage({ id: 'message-secret', workspaceId: 'workspace-a', conversationId: 'conversation-secret', senderType: 'user', content: 'legacy candidate', createdAt: '2026-07-12T01:00:01.000Z' });
+  store.createRun({ id: 'run-secret', workspaceId: 'workspace-a', conversationId: 'conversation-secret', sourceMessageId: 'message-secret', objective: 'legacy candidate', status: 'completed', resultSummary: 'done', createdAt: '2026-07-12T01:00:01.000Z', updatedAt: '2026-07-12T01:00:02.000Z', completedAt: '2026-07-12T01:00:02.000Z' });
+  const secret = 'mosaicHarbor~cedarField~709348';
+  const historicalContent = `pre-registration value: ${secret}`;
+  const historical: MemoryCandidate = {
+    id: 'candidate-historical-secret', workspaceId: 'workspace-a', runId: 'run-secret', type: 'decision',
+    title: 'Historical candidate', summary: 'Saved before registration', content: historicalContent,
+    confidence: 90, operation: 'create', conflictingMemoryIds: [], status: 'pending', createdAt: '2026-07-12T01:00:03.000Z',
+  };
+  store.createMemoryCandidate(historical);
+  store.eventRedactionService().registerSecrets('workspace-a', [secret]);
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, new WorkspaceManager(store)));
+  const server = app.listen(0);
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('bind failed');
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/memory-candidates`;
+
+    const acceptResponse = await fetch(`${base}/${historical.id}/accept`, { method: 'POST' });
+    const acceptBody = await acceptResponse.text();
+    assert.equal(acceptResponse.status, 400);
+    const acceptProblem = JSON.parse(acceptBody) as { code: string; detail: string };
+    assert.equal(acceptProblem.code, 'MEMORY_SECRET_DETECTED');
+    assert.equal(acceptProblem.detail, 'content 疑似包含密钥');
+    assert.ok(!JSON.stringify(acceptProblem).includes(secret));
+    assert.equal(store.getMemoryCandidate('workspace-a', historical.id)?.status, 'pending');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memories').get() as { n: number }).n, 0);
+
+    const listResponse = await fetch(`${base}?status=all`);
+    const listBody = await listResponse.text();
+    assert.equal(listResponse.status, 200);
+    assert.ok(!listBody.includes(secret));
+    const listed = JSON.parse(listBody) as { candidates: MemoryCandidate[] };
+    assert.equal(listed.candidates[0]?.content.includes(secret), false);
+
+    const rejectResponse = await fetch(`${base}/${historical.id}/reject`, { method: 'POST' });
+    const rejectBody = await rejectResponse.text();
+    assert.equal(rejectResponse.status, 200);
+    assert.ok(!rejectBody.includes(secret));
+    const rejected = JSON.parse(rejectBody) as { candidate: MemoryCandidate };
+    assert.equal(rejected.candidate.status, 'rejected');
+    assert.equal(rejected.candidate.content.includes(secret), false);
+
+    const persisted = store.getDatabase().prepare(
+      'SELECT content, status FROM memory_candidates WHERE workspace_id = ? AND id = ?',
+    ).get('workspace-a', historical.id) as { content: string; status: string };
+    assert.deepEqual({ ...persisted }, { content: historicalContent, status: 'rejected' }, 'responses redact a projection without rewriting history');
   } finally {
     server.close();
     store.close();

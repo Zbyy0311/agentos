@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { inTransaction, isTransactionActive } from '../store/Transaction.js';
 import { createEntityId } from '../store/Identity.js';
@@ -31,7 +32,7 @@ export class ArtifactCompletionService {
   constructor(private readonly store: SqliteStore) {
     const db = store.getDatabase();
     this.completions = new ArtifactCompletionRepository(db);
-    this.candidates = new MemoryCandidateRepository(db);
+    this.candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
     this.emitter = new MemoryRuntimeEventEmitter({ store, factWriter: store.runtimeEventOutboxWriter(),
       eventAuthority: new DurableMemoryRuntimeEventContextAuthority(db) });
   }

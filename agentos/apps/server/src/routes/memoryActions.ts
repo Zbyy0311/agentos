@@ -11,7 +11,7 @@ function failure(req: Request, res: Response, error: unknown): void {
   const code = error instanceof Error ? error.message : 'MEMORY_ACTION_FAILED';
   const status = /NOT_FOUND/.test(code) ? 404
     : /CONFLICT|UNSUPPORTED|UNAVAILABLE|RESOLUTION_REQUIRED|OWNER_REQUIRED|NOT_UPDATABLE|UNCHANGED/.test(code) ? 409
-      : /INVALID/.test(code) ? 400 : 500;
+      : /INVALID|MEMORY_SECRET_DETECTED/.test(code) ? 400 : 500;
   if (status === 500) {
     sendProblem(req, res, { status: 500, code: 'MEMORY_ACTION_FAILED', detail: 'Memory action failed' });
     return;

@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -435,7 +436,7 @@ test('prepared retrieval warms every post-eligibility candidate before limiting;
   db.prepare('INSERT INTO workspaces (id) VALUES (?)').run('ws-semantic');
   const port = new LocalTestEmbeddingPort();
   try {
-    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
     const first = record('limited-first', { title: 'A release checklist', content: 'A rollback route for canary deploys.' });
     const second = record('limited-second', { title: 'B release checklist', content: 'Stage a safe rollout then verify.' });
     const createRepoEntry = (entry: MemoryEntryRecord) => repository.createEntry({
@@ -485,7 +486,7 @@ test('new selection rechecks archive, expiry and updated versions after a slow e
   db.prepare('INSERT INTO workspaces VALUES (?)').run('ws-semantic');
   let now = Date.parse(NOW);
   try {
-    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+    const repository = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
     for (const id of ['archived-during-await', 'expired-during-await', 'edited-during-await']) repository.createEntry({
       id, workspaceId: 'ws-semantic', scope: 'workspace', category: 'knowledge', authority: 'user-explicit',
       confidence: 1, importance: 1, title: id, content: 'old rollout text', status: 'active', createdAt: NOW,

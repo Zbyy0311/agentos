@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
@@ -65,7 +66,7 @@ function fixture() {
       'INSERT INTO memory_entries (id, workspace_id, scope, owner_task_id, category, authority, confidence, importance, title, summary, content, tags_json, exact_content_hash, status, pinned, token_estimate, sensitivity, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?, ?)',
     ).run(id, WS, 'task', TASK, 'decision', 'system-verified', 0.9, 0.5, 'e', 's', 'c', '[]', id === MEM_A ? 'dup-hash' : null, 'active', 10, 'ordinary', NOW, NOW);
   }
-  const repo = new MemoryCandidateRepository(db as unknown as TransactionDatabase);
+  const repo = new MemoryCandidateRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
   return { db, repo, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
 
@@ -167,7 +168,7 @@ test('MF2R-01 create persists candidate and decision', () => {
     assert.equal(candidate.mergedIntoEntryId, CAND);
     assert.equal(candidate.reviewedAt, NOW);
     assert.deepEqual(candidate.sources, [{ kind: 'run', id: RUN }]);
-    const entry = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase).findById(WS, CAND);
+    const entry = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase)).findById(WS, CAND);
     assert.equal(entry?.status, 'active');
     assert.equal(entry?.scope, 'task');
     assert.equal(entry?.ownerTaskId, TASK);
@@ -352,7 +353,7 @@ test('MF2R-14 accept promotes an active retrieval Entry and preserves provenance
     assert.equal(reviewed.mergedIntoEntryId, candidateId);
     assert.equal(reviewed.version, 2);
 
-    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase));
     const entry = entries.findById(WS, candidateId);
     assert.equal(entry?.status, 'active');
     assert.equal(entry?.scope, 'task');
@@ -400,7 +401,7 @@ test('MF2R-15 edit-and-accept updates fields and recomputes derived values', () 
     assert.equal(reviewed.normalizedTextHash, normalized);
     assert.equal(reviewed.tokenEstimate, Math.max(1, Math.ceil(content.length / 4)));
 
-    const entry = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase).findById(WS, candidateId);
+    const entry = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase)).findById(WS, candidateId);
     assert.equal(entry?.title, 'edited title');
     assert.equal(entry?.summary, 'edited summary');
     assert.equal(entry?.content, content);
@@ -479,14 +480,14 @@ test('MF2R-18 historical auto-accepted rows without review metadata remain revie
     assert.equal(before?.outcome, 'accept');
     assert.equal(before?.reviewedAt, null);
     assert.equal(before?.mergedIntoEntryId, null);
-    assert.equal(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase).findById(WS, candidateId), undefined);
+    assert.equal(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase)).findById(WS, candidateId), undefined);
 
     const reviewed = fx.repo.reviewCandidate({
       workspaceId: WS, candidateId, expectedVersion: 1, outcome: 'accept', reviewedAt: NOW2,
     });
     assert.equal(reviewed.version, 2);
     assert.equal(reviewed.mergedIntoEntryId, candidateId);
-    assert.ok(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase).findById(WS, candidateId));
+    assert.ok(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase)).findById(WS, candidateId));
   } finally { fx.close(); }
 });
 
@@ -513,7 +514,7 @@ test('MF2R-19 malformed edits fail closed without changing the reviewable candid
     const unchanged = fx.repo.findCandidateById(WS, candidateId);
     assert.equal(unchanged?.outcome, 'review-required');
     assert.equal(unchanged?.version, 1);
-    assert.equal(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase).findById(WS, candidateId), undefined);
+    assert.equal(new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase)).findById(WS, candidateId), undefined);
   } finally { fx.close(); }
 });
 
@@ -572,7 +573,7 @@ test('MF2R-10 conflict input validation', () => {
 test('MF2R-20 conflict open reports the entry effects it persisted', () => {
   const fx = fixture();
   try {
-    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase));
     entries.updateStatus({ workspaceId: WS, entryId: MEM_B, expectedVersion: 1, status: 'archived', updatedAt: NOW });
     const result = openPair(fx);
     assert.deepEqual(result.effects, [
@@ -649,7 +650,7 @@ test('MF2R-23 reject-both rejects both sides', () => {
 test('MF2R-24 conflict mutations respect other open conflicts and deleted entries', () => {
   const fx = fixture();
   try {
-    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase));
     const third = 'mem_' + 'c'.repeat(26);
     entries.createEntry({
       id: third, workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'decision',
@@ -697,7 +698,7 @@ test('MF2R-11 record exposes no secret value field', () => {
 test('MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)', () => {
   const fx = fixture();
   try {
-    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(fx.db as unknown as TransactionDatabase));
     const entryId = 'mem_' + 'z'.repeat(26);
     entries.createEntry({
       id: entryId,

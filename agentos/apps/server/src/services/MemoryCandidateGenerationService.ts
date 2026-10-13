@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 
 import { isRunCompletedPayload, type RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
@@ -163,17 +164,17 @@ export class MemoryCandidateGenerationService {
   private readonly tasks: MemoryCandidateGenerationServiceDependencies['tasks'];
   private readonly emitter: MemoryRuntimeEventEmitter | undefined;
   private readonly extractor: Pick<MemoryExtractor, 'extract'>;
-  private readonly secretDetector: SecretTextDetector | undefined;
+  private readonly secretDetector: SecretTextDetector;
 
   constructor(dependencies: MemoryCandidateGenerationServiceDependencies) {
     this.db = dependencies.store.getDatabase();
-    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(this.db);
+    this.secretDetector = dependencies.secretDetector ?? eventRedactionServiceForDatabase(this.db);
+    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(this.db, this.secretDetector);
     this.runs = dependencies.runs;
     this.stages = dependencies.stages;
     this.tasks = dependencies.tasks;
     this.emitter = dependencies.emitter;
     this.extractor = dependencies.extractor ?? new MemoryExtractor();
-    this.secretDetector = dependencies.secretDetector;
   }
 
   generateForRunTerminal(input: GenerateForRunTerminalInput): TerminalGenerationResult {
@@ -244,7 +245,6 @@ export class MemoryCandidateGenerationService {
       && nonBlank(draft.title) && nonBlank(draft.summary) && nonBlank(draft.content)
       && areMemoryTextFieldsSafe([draft.title, draft.summary, draft.content]))
       .filter(draft => {
-        if (this.secretDetector === undefined) return true;
         const violations = detectMemorySecretViolations(this.secretDetector, input.workspaceId,
           { title: draft.title, summary: draft.summary, content: draft.content });
         if (violations.length === 0) return true;
@@ -345,7 +345,7 @@ export class MemoryCandidateGenerationService {
           ...(duplicateOfEntryId ? { duplicateOfEntryId } : {}) };
       }
       const saved = inTransaction(this.db, () => {
-        const repository = new MemoryEntryRepository(this.db);
+        const repository = new MemoryEntryRepository(this.db, this.secretDetector);
         const created: MemoryCandidateRecord[] = [];
         const mergedEntryIds: string[] = [];
         for (const plan of plans) {

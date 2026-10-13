@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 /**
  * MF-5 Workspace Event stream — writer, allocator, authority, repository, and
  * the sanctioned Workspace delete path.
@@ -94,14 +95,14 @@ function fixture(): Fixture {
   // Workspace that HAS Events, and MF-1 forbids ever deleting an Entry
   // (`memory_entries_no_delete`), which a Workspace delete cascades into; the
   // tests that need Entries in the subject Workspace seed them explicitly.
-  new MemoryEntryRepository(tx).createEntry({
+  new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx)).createEntry({
     id: MEM_OTHER, workspaceId: OTHER_WS, scope: 'workspace', category: 'decision',
     authority: 'system-verified', confidence: 0.9, importance: 0.5,
     title: 'title ' + MEM_OTHER, summary: 'summary ' + MEM_OTHER,
     content: 'CONTENT-MARKER-OTHER', tags: ['secret-tag'], status: 'active', tokenEstimate: 8,
     sources: [{ kind: 'run' as const, id: RUN }], createdAt: NOW,
   } as never);
-  const repo = new MemoryCandidateRepository(tx);
+  const repo = new MemoryCandidateRepository(tx, eventRedactionServiceForDatabase(tx));
   const events = new WorkspaceEventRepository(tx, createM3RuntimeEventRegistry());
   const allocator = new WorkspaceSequenceAllocator(tx);
   const writer = new WorkspaceEventWriter(
@@ -111,7 +112,7 @@ function fixture(): Fixture {
 }
 
 function seedWorkspaceEntries(fx: Fixture): void {
-  const entries = new MemoryEntryRepository(fx.tx);
+  const entries = new MemoryEntryRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx));
   for (const [id, content] of [[MEM_A, 'CONTENT-MARKER-A'], [MEM_B, 'CONTENT-MARKER-B']] as const) {
     entries.createEntry({
       id, workspaceId: WS, scope: 'workspace', category: 'decision', authority: 'system-verified',

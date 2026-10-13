@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
@@ -73,7 +74,7 @@ function fixture(authority: 'user-explicit' | 'system-verified' = 'user-explicit
   ) VALUES (?,?,?,?,'queued','initial','test',?,?,1)`).run(RUN, WS, TASK, RUN, NOW, NOW);
 
   const tx = db as unknown as TransactionDatabase;
-  const entries = new MemoryEntryRepository(tx);
+  const entries = new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx));
   entries.createEntry({
     id: ENTRY, workspaceId: WS, scope: 'workspace', category: 'knowledge', authority,
     confidence: 1, importance: 1, title: 'Feedback test memory', content: BODY_V1, status: 'active',

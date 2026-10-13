@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MemoryRecord } from '@agentos/shared';
@@ -61,7 +62,7 @@ function fixture() {
     createdAt: NOW, updatedAt: NOW, lastOpenedAt: NOW,
   })) }));
   const store = new SqliteStore(root);
-  const entries = new MemoryEntryRepository(store.getDatabase());
+  const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   const retrieval = new MemoryRetrievalService(entries, () => Date.parse(NOW));
   const legacy = new LegacyMemoryRetriever(store);
   const builder = new RunContextBuilder(legacy, retrieval);

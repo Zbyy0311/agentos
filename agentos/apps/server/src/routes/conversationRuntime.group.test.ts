@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -615,7 +616,7 @@ test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', 
   process.env.AGENTOS_FORCE_MOCK = 'true';
   try {
     await withServer(async (baseUrl, store) => {
-      const entries = new MemoryEntryRepository(store.getDatabase() as never);
+      const entries = new MemoryEntryRepository(store.getDatabase() as never, eventRedactionServiceForDatabase(store.getDatabase() as never));
       const codexOnly = 'mem_' + 'a'.repeat(26);
       const kimiOnly = 'mem_' + 'b'.repeat(26);
       const shared = 'mem_' + 'c'.repeat(26);

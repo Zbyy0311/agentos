@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import type { PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
 import { MemoryEntryRepository, type MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
 import { createEntityId } from '../store/Identity.js';
@@ -115,7 +116,7 @@ export class PreferenceConfirmationService {
 
   constructor(private readonly store: SqliteStore, private readonly now: () => string = () => new Date().toISOString()) {
     this.db = store.getDatabase();
-    this.entries = new MemoryEntryRepository(this.db);
+    this.entries = new MemoryEntryRepository(this.db, eventRedactionServiceForDatabase(this.db));
   }
 
   private memorySources(evidenceJson: string): Array<{ kind: 'user' | 'run' | 'conversation' | 'message'; id: string }> {

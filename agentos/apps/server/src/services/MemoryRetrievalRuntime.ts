@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from './MemoryRetrievalService.js';
@@ -41,7 +42,7 @@ export function createMemoryRetrievalRuntime(
   db: TransactionDatabase,
   config: MemoryRetrievalRuntimeConfig = {},
 ): MemoryRetrievalRuntime {
-  const entries = new MemoryEntryRepository(db);
+  const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
   const mode = config.mode ?? 'off';
   if (mode === 'off') return { retrieval: new MemoryRetrievalService(entries), mode: 'off' };
 

@@ -3,6 +3,7 @@ import type { MemoryCandidateStatus } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
 import { MemoryCandidateService } from '../services/MemoryCandidateService.js';
+import { formatMemorySecretDetail, MemorySecretDetectedError } from '../services/MemorySecretGuard.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { MemorySourceAccumulationService, MemorySourceAccumulationError } from '../services/MemorySourceAccumulationService.js';
@@ -98,6 +99,14 @@ export function createMemoryCandidateRoutes(store: SqliteStore, workspaceManager
       });
       res.json({ candidate });
     } catch (error) {
+      if (error instanceof MemorySecretDetectedError) {
+        sendProblem(req, res, {
+          status: 400,
+          code: error.code,
+          detail: formatMemorySecretDetail(error.violations),
+        });
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       const status = message === 'Memory candidate not found' ? 404 : message.includes('already been reviewed') ? 409 : 400;
       sendProblem(req, res, {

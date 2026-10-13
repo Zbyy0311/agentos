@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -70,7 +71,7 @@ test('pending projection has no reply influence; explicit confirm binds the auth
     });
     assert.equal(pendingReply.text, '');
     assert.deepEqual(pendingReply.applications, []);
-    assert.deepEqual(new MemoryRetrievalService(new MemoryEntryRepository(fx.store.getDatabase())).retrieve({
+    assert.deepEqual(new MemoryRetrievalService(new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()))).retrieve({
       context: { workspaceId: 'workspace-a' }, categoryFilter: ['preference'],
     }), []);
 
@@ -88,7 +89,7 @@ test('pending projection has no reply influence; explicit confirm binds the auth
       { kind: 'run', id: 'run-a' },
       { kind: 'user', id: 'default' },
     ]);
-    const retrieved = new MemoryRetrievalService(new MemoryEntryRepository(fx.store.getDatabase())).retrieve({
+    const retrieved = new MemoryRetrievalService(new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()))).retrieve({
       context: { workspaceId: 'workspace-a' }, query: 'implement coding task', categoryFilter: ['preference'],
     });
     assert.deepEqual(retrieved.map(row => row.entry.id), [confirmed.entry?.id]);
@@ -148,7 +149,7 @@ test('reject and revoke are audited, versioned, and revocation archives only the
 test('revocation retires stale bindings without re-archiving deleted Entries or archiving an edited preference', () => {
   const fx = setup();
   try {
-    const entries = new MemoryEntryRepository(fx.store.getDatabase());
+    const entries = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
     const archivedProjection = seedProjection(fx.store, { id: 'projection-archived', dimension: 'execution_style', preferredValue: 'direct_execution' });
     fx.service.synchronizeProjection(archivedProjection);
     const archivedConfirmation = fx.service.confirm({ projectionId: archivedProjection.id, workspaceId: 'workspace-a', expectedVersion: 1 });
@@ -233,7 +234,7 @@ test('replacement and revocation leave frozen historical memory snapshots unchan
 test('replacement preserves an edited formerly bound Entry while binding the explicitly confirmed value', () => {
   const fx = setup();
   try {
-    const entries = new MemoryEntryRepository(fx.store.getDatabase());
+    const entries = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
     const first = fx.service.confirm({ projectionId: 'projection-a', workspaceId: 'workspace-a', expectedVersion: 1 });
     const edited = entries.updateEntryWithinTransaction({ workspaceId: 'workspace-a', entryId: first.entry!.id,
       expectedVersion: first.entry!.version, updatedAt: '2026-10-01T00:01:00.000Z',
@@ -266,7 +267,7 @@ test('workspace and global confirmations coexist; contradictory scopes remain bo
     const global = fx.service.confirm({ projectionId: globalProjection.id, workspaceId: 'workspace-a',
       expectedVersion: 1, confirmGlobal: true });
 
-    const entries = new MemoryEntryRepository(fx.store.getDatabase());
+    const entries = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
     assert.equal(entries.findById('workspace-a', local.entry!.id)?.status, 'active');
     assert.equal(entries.findById('workspace-a', global.entry!.id)?.status, 'active');
     const bindings = fx.service.listSuggestions('workspace-a').filter(item => item.status === 'confirmed');
@@ -326,7 +327,7 @@ test('later contradictory projection stays pending without mutating its bound En
   const fx = setup();
   try {
     const first = fx.service.confirm({ projectionId: 'projection-a', workspaceId: 'workspace-a', expectedVersion: 1 });
-    const entries = new MemoryEntryRepository(fx.store.getDatabase());
+    const entries = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
     const originalEntry = entries.findById('workspace-a', first.entry!.id)!;
     const contradictory = { ...fx.projection, preferredValue: 'detailed', confidence: 91, evidenceCount: 5, updatedAt: '2026-10-01T00:01:00.000Z' };
     seedProjection(fx.store, contradictory);

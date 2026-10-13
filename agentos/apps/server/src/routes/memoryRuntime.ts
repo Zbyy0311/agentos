@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import { Router, type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -23,7 +24,7 @@ import { listMemoryContexts, MEMORY_CONTEXT_KINDS, type MemoryContextKind } from
 import { MemoryLifecycleService, type MemoryLifecycleInput } from '../services/MemoryLifecycleService.js';
 import { MemoryWorkspaceKnowledgePromotionError, MemoryWorkspaceKnowledgePromotionService } from '../services/MemoryWorkspaceKnowledgePromotionService.js';
 import { sendProblem } from '../problemDetails.js';
-import { MEMORY_SECRET_DETECTED_CODE, detectMemorySecretViolations, formatMemorySecretDetail } from '../services/MemorySecretGuard.js';
+import { MEMORY_SECRET_DETECTED_CODE, MemorySecretDetectedError, detectMemorySecretViolations, formatMemorySecretDetail } from '../services/MemorySecretGuard.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -70,6 +71,11 @@ function mapError(error: unknown): ErrorMapping {
 }
 
 function fail(req: Request, res: Response, error: unknown): void {
+  if (error instanceof MemorySecretDetectedError) {
+    sendProblem(req, res, { status: 400, code: MEMORY_SECRET_DETECTED_CODE,
+      detail: formatMemorySecretDetail(error.violations) });
+    return;
+  }
   const mapped = mapError(error);
   if (mapped.status === 500) {
     // Internal failure details stay server-side; the client gets the frozen envelope.
@@ -167,9 +173,10 @@ function parseReviewEdits(value: unknown): MemoryCandidateEdits | undefined {
 export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager, semanticConfig?: MemoryRetrievalRuntimeConfig): Router {
   const router = Router({ mergeParams: true });
 
-  const entries = new MemoryEntryRepository(store.getDatabase());
+  const secretDetector = eventRedactionServiceForDatabase(store.getDatabase());
+  const entries = new MemoryEntryRepository(store.getDatabase(), secretDetector);
   const workspacePromotion = new MemoryWorkspaceKnowledgePromotionService(store, { entries });
-  const candidates = new MemoryCandidateRepository(store.getDatabase());
+  const candidates = new MemoryCandidateRepository(store.getDatabase(), secretDetector);
   const snapshots = new MemoryContextSnapshotRepository(store.getDatabase());
   const runtime = createMemoryRetrievalRuntime(store.getDatabase(), semanticConfig ?? memoryRetrievalRuntimeConfigFromEnvironment());
   const retrieval = runtime.retrieval;
@@ -569,7 +576,8 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       }
       outcome = outcomeParam;
     }
-    res.json({ candidates: candidates.listCandidates(workspace.id, outcome) });
+    res.json({ candidates: candidates.listCandidates(workspace.id, outcome).map(candidate =>
+      secretDetector.redactPayload(workspace.id, candidate).value) });
   });
 
   router.post('/memory/candidates/:candidateId/review', (req: Request, res: Response) => {
@@ -590,7 +598,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         ...(body.edits === undefined ? {} : { edits: body.edits }),
         reviewedAt: new Date().toISOString(),
       }, { writer: store.workspaceEventWriter() });
-      res.json({ candidate });
+      res.json({ candidate: secretDetector.redactPayload(workspace.id, candidate).value });
     } catch (error) {
       fail(req, res, error);
     }

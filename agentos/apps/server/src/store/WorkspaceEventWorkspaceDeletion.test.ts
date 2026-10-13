@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 /**
  * MF-5 Workspace Event stream -- the sanctioned PRODUCTION Workspace delete
  * seam (`SqliteStore.deleteWorkspace`, reached from `WorkspaceManager.remove`).
@@ -64,7 +65,7 @@ function createProjectRoot(): string {
  * Workspace holds an Event stream but nothing MF-1 forbids deleting.
  */
 function emitRejectedReview(store: SqliteStore, workspaceId: string): void {
-  const candidates = new MemoryCandidateRepository(store.getDatabase());
+  const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   const candidateId = 'mcand_' + (workspaceId === WS_A ? 'a' : 'b').repeat(26);
   candidates.createCandidate({
     id: candidateId,
