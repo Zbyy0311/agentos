@@ -107,6 +107,7 @@ test('rules: CRUD, enabled-only lookup, cascade delete with the profile', () => 
     assert.equal(disabled.enabled, false);
 
     assert.deepEqual(fx.repo.findRulesByProfile(profile.id).map(rule => rule.id), [enabled.id]);
+    assert.deepEqual(fx.repo.findAllRulesByProfile(profile.id).map(rule => rule.id), [enabled.id, disabled.id]);
     assert.equal(fx.repo.findRuleById(disabled.id)?.enabled, false);
 
     const reenabled = fx.repo.setRuleEnabled(disabled.id, true);
