@@ -298,6 +298,9 @@ async function bootstrap(): Promise<void> {
     store = new SqliteStore(DATA_ROOT);
     const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
+    for (const issue of worktreeManager.getLegacyImportReport()) {
+      console.warn('[AgentOS Worktree] legacy lease import unresolved: ' + JSON.stringify(issue));
+    }
     const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
     const refRecovery = await recoverWorktreeRefUpdates(worktreeManager, store.worktreeMergeRepository());
     diagLog(`WORKTREE_REF_RECOVERY completed=${refRecovery.completed} preserved=${refRecovery.preserved}`);
