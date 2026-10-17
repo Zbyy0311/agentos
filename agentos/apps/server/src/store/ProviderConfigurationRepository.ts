@@ -66,6 +66,45 @@ export type ApprovalMode = 'agentos' | 'native' | 'hybrid' | 'disabled';
 export type OutputMode = 'structured' | 'parsed-text' | 'raw-stream';
 export type PromptDelivery = 'argument' | 'stdin' | 'file';
 
+/** P5D §42: automatic Provider Fallback policy attached to a configuration. */
+export interface ProviderFallbackPolicy {
+  enabled: boolean;
+  fallbackProviderConfigIds: string[];
+  triggerErrorCodes: string[];
+  maxFallbacks: number;
+  requireUserApproval: boolean;
+}
+
+export function normalizeProviderFallbackPolicy(value: unknown): ProviderFallbackPolicy | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('fallbackPolicy must be an object');
+  }
+  const policy = value as Record<string, unknown>;
+  if (typeof policy.enabled !== 'boolean') throw new Error('fallbackPolicy.enabled must be a boolean');
+  if (!Array.isArray(policy.fallbackProviderConfigIds)
+    || !policy.fallbackProviderConfigIds.every(item => typeof item === 'string' && item.trim().length > 0)) {
+    throw new Error('fallbackPolicy.fallbackProviderConfigIds must be an array of non-empty strings');
+  }
+  if (!Array.isArray(policy.triggerErrorCodes)
+    || !policy.triggerErrorCodes.every(item => typeof item === 'string' && item.trim().length > 0)) {
+    throw new Error('fallbackPolicy.triggerErrorCodes must be an array of non-empty strings');
+  }
+  if (!Number.isSafeInteger(policy.maxFallbacks) || (policy.maxFallbacks as number) < 0) {
+    throw new Error('fallbackPolicy.maxFallbacks must be a non-negative integer');
+  }
+  if (typeof policy.requireUserApproval !== 'boolean') {
+    throw new Error('fallbackPolicy.requireUserApproval must be a boolean');
+  }
+  return {
+    enabled: policy.enabled,
+    fallbackProviderConfigIds: [...policy.fallbackProviderConfigIds] as string[],
+    triggerErrorCodes: [...policy.triggerErrorCodes] as string[],
+    maxFallbacks: policy.maxFallbacks as number,
+    requireUserApproval: policy.requireUserApproval,
+  };
+}
+
 export interface ProviderConfiguration {
   id: string;
   workspaceId?: string;
@@ -76,6 +115,7 @@ export interface ProviderConfiguration {
   executable?: string;
   argsTemplate?: string[];
   promptDelivery?: PromptDelivery;
+  fallbackPolicy?: ProviderFallbackPolicy;
   model?: string;
   environmentProfileId?: string;
   secretProfileId?: string;
@@ -102,6 +142,7 @@ interface ProviderConfigurationRow {
   executable: string | null;
   args_template_json: string;
   prompt_delivery: PromptDelivery | null;
+  fallback_policy_json: string | null;
   model: string | null;
   environment_profile_id: string | null;
   secret_profile_id: string | null;
@@ -155,16 +196,17 @@ export class ProviderConfigurationRepository {
     this.db.prepare(`
       INSERT INTO provider_configurations (
         id, workspace_id, name, provider_type, adapter_id, runtime_mode,
-        executable, args_template_json, prompt_delivery, model, environment_profile_id, secret_profile_id,
+        executable, args_template_json, prompt_delivery, fallback_policy_json, model, environment_profile_id, secret_profile_id,
         working_directory_mode, custom_working_directory, capabilities_json,
         timeout_policy_json, approval_mode, output_mode, enabled, version,
         created_at, updated_at, archived_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       config.id, config.workspaceId ?? null, config.name, config.providerType,
       config.adapterId, config.runtimeMode,
       config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
       config.promptDelivery ?? null,
+      config.fallbackPolicy === undefined ? null : JSON.stringify(config.fallbackPolicy),
       config.model ?? null, config.environmentProfileId ?? null,
       config.secretProfileId ?? null,
       config.workingDirectoryMode, config.customWorkingDirectory ?? null,
@@ -185,7 +227,7 @@ export class ProviderConfigurationRepository {
       const result = this.db.prepare(`
         UPDATE provider_configurations SET
           name = ?, provider_type = ?, adapter_id = ?, runtime_mode = ?,
-          executable = ?, args_template_json = ?, prompt_delivery = ?, model = ?, environment_profile_id = ?,
+          executable = ?, args_template_json = ?, prompt_delivery = ?, fallback_policy_json = ?, model = ?, environment_profile_id = ?,
           secret_profile_id = ?, working_directory_mode = ?, custom_working_directory = ?,
           capabilities_json = ?, timeout_policy_json = ?, approval_mode = ?, output_mode = ?,
           enabled = ?, updated_at = ?, archived_at = ?, version = version + 1
@@ -194,6 +236,7 @@ export class ProviderConfigurationRepository {
         config.name, config.providerType, config.adapterId, config.runtimeMode,
         config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
         config.promptDelivery ?? null,
+        config.fallbackPolicy === undefined ? null : JSON.stringify(config.fallbackPolicy),
         config.model ?? null, config.environmentProfileId ?? null,
         config.secretProfileId ?? null, config.workingDirectoryMode,
         config.customWorkingDirectory ?? null,
@@ -234,6 +277,9 @@ export class ProviderConfigurationRepository {
         ? { argsTemplate: JSON.parse(row.args_template_json) as string[] }
         : {}),
       ...(row.prompt_delivery === null ? {} : { promptDelivery: row.prompt_delivery }),
+      ...(row.fallback_policy_json === null || row.fallback_policy_json === undefined
+        ? {}
+        : { fallbackPolicy: JSON.parse(row.fallback_policy_json) as ProviderFallbackPolicy }),
       ...(row.model ? { model: row.model } : {}),
       ...(row.environment_profile_id ? { environmentProfileId: row.environment_profile_id } : {}),
       ...(row.secret_profile_id ? { secretProfileId: row.secret_profile_id } : {}),

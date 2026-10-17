@@ -218,6 +218,27 @@ function validateTimeoutPolicy(value: unknown, path: string): void {
   }
 }
 
+function validateFallbackPolicy(value: unknown, path: string): void {
+  const policy = assertExactObject(value, path, [
+    'enabled',
+    'fallbackProviderConfigIds',
+    'triggerErrorCodes',
+    'maxFallbacks',
+    'requireUserApproval',
+  ]);
+  assertBoolean(policy.enabled, `${path}.enabled`);
+  const candidateIds = assertDenseArray(policy.fallbackProviderConfigIds, `${path}.fallbackProviderConfigIds`);
+  for (const [index, id] of candidateIds.entries()) {
+    assertString(id, `${path}.fallbackProviderConfigIds[${index}]`, true);
+  }
+  const triggerCodes = assertDenseArray(policy.triggerErrorCodes, `${path}.triggerErrorCodes`);
+  for (const [index, code] of triggerCodes.entries()) {
+    assertString(code, `${path}.triggerErrorCodes[${index}]`, true);
+  }
+  assertNonNegativeInteger(policy.maxFallbacks, `${path}.maxFallbacks`);
+  assertBoolean(policy.requireUserApproval, `${path}.requireUserApproval`);
+}
+
 function validateWorkspaceRelativePath(value: unknown, path: string): void {
   const directory = assertNullableString(value, path, true);
   if (directory === null) return;
@@ -266,6 +287,7 @@ function validateProvider(value: unknown, path: string): void {
     'executable',
     'argsTemplate',
     'promptDelivery',
+    'fallbackPolicy',
     'model',
     'environmentProfileId',
     'secretProfileId',
@@ -277,7 +299,7 @@ function validateProvider(value: unknown, path: string): void {
     'outputMode',
     'enabled',
     'version',
-  ], ['promptDelivery']);
+  ], ['promptDelivery', 'fallbackPolicy']);
   assertString(provider.providerConfigId, `${path}.providerConfigId`, true);
   assertString(provider.name, `${path}.name`, true);
   assertEnum(provider.providerType, `${path}.providerType`, [
@@ -290,6 +312,9 @@ function validateProvider(value: unknown, path: string): void {
   for (const [index, argument] of argsTemplate.entries()) assertString(argument, `${path}.argsTemplate[${index}]`);
   if (provider.promptDelivery !== undefined) {
     assertEnum(provider.promptDelivery, `${path}.promptDelivery`, ['argument', 'stdin', 'file'] as const);
+  }
+  if (provider.fallbackPolicy !== undefined && provider.fallbackPolicy !== null) {
+    validateFallbackPolicy(provider.fallbackPolicy, `${path}.fallbackPolicy`);
   }
   assertNullableString(provider.model, `${path}.model`);
   assertNullableString(provider.environmentProfileId, `${path}.environmentProfileId`);

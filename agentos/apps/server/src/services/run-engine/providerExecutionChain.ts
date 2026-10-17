@@ -41,6 +41,7 @@ import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEvent
 import { CanonicalArtifactResultService } from '../CanonicalArtifactResultService.js';
 import { RuntimeArtifactService } from '../RuntimeArtifactService.js';
 import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
+import { ProviderSwitchApprovalGate, emitProviderSwitchEvent } from './providerFallback.js';
 import type { CollaborationStageHooks } from '../CollaborationStageHooks.js';
 import { dirname } from 'node:path';
 
@@ -260,6 +261,17 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
     collaborationStageHooks: options.collaborationStageHooks,
+    // P5D §42 Provider Fallback: candidate resolution from the live
+    // configuration table, durable switch approvals, the public
+    // provider.switch Event, and the snapshot fallback-chain projection.
+    providerConfigurations: store.providerConfigurationRepository(),
+    providerSwitchApproval: new ProviderSwitchApprovalGate({ store }),
+    emitProviderSwitch: input => emitProviderSwitchEvent(store, input),
+    recordProviderFallbackChainEntry: (workspaceId, runId, runSnapshotId, entry) => {
+      store.providerFallbackChainRepository().append(workspaceId, runId, runSnapshotId, entry);
+    },
+    listProviderFallbackChain: (workspaceId, runId) =>
+      store.providerFallbackChainRepository().listByRun(workspaceId, runId),
     onRunTerminal: async ({ workspaceId, runId }) => {
       await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
       await resumeGrantedResumeFallbackChildren(workspaceId);
