@@ -29,6 +29,10 @@ import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
 import { MF5_MEMORY_EVENT_DEFINITIONS } from './mf5-memory-events.js';
 import { WORKTREE_EVENT_DEFINITIONS } from './worktree-events.js';
 import {
+  EVENT_OPS_EVENT_DEFINITIONS,
+  isRuntimeEventPayloadOffloadSummary,
+} from './m3-event-ops.js';
+import {
   WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS,
   isWorkspaceEventStreamType,
   type WorkspaceEventDraft,
@@ -437,6 +441,28 @@ export class CentralRuntimeEventRegistry {
         'INVALID_EVENT_ENVELOPE',
         'Runtime Event source does not match its definition: ' + draft.type,
       );
+    }
+
+    // §47 payload offload: a persisted Event whose payload exceeded the 64KB
+    // durable limit keeps only a summary plus the canonical Artifact id. The
+    // summary is a fixed, self-describing shape that replaces the type-specific
+    // payload for BOTH publish (the writer re-attaches the original payload, so
+    // this only matters on consume) and consume; the type-specific keys/guard
+    // checks below are intentionally skipped for it.
+    if (isRuntimeEventPayloadOffloadSummary(draft.payload)) {
+      const payload = cloneAndFreeze(draft.payload);
+      const metadata = draft.metadata === undefined
+        ? undefined
+        : cloneAndFreeze(draft.metadata);
+      return Object.freeze({
+        ...draft,
+        source: draft.source ?? definition.source,
+        severity: draft.severity ?? definition.defaultSeverity,
+        visibility: draft.visibility ?? definition.defaultVisibility,
+        durability: draft.durability ?? definition.defaultDurability,
+        payload,
+        ...(metadata === undefined ? {} : { metadata }),
+      });
     }
 
     if (!isRecord(draft.payload) || !keysAreKnown(draft.payload, definition.payloadSchema)) {
@@ -2778,6 +2804,9 @@ export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
     registry.registerCore(definition);
   }
   for (const definition of WORKTREE_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of EVENT_OPS_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   return registry;

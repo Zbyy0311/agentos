@@ -479,8 +479,18 @@ test('runtime Events are append-only and preserve Run correlation constraints', 
     insertLegacyRows(db);
     insertRuntimeEvent(db);
     assert.throws(() => db.prepare("UPDATE runtime_events SET type = 'run.changed' WHERE id = 'evt_p2a'").run());
-    assert.throws(() => db.prepare("DELETE FROM runtime_events WHERE id = 'evt_p2a'").run());
+    // 060 (03-Event-Model §58/§59) replaces the blanket delete ban with the
+    // retention gate: non-permanent durable Events become cleanup-eligible,
+    // permanent facts stay delete-protected.
     assert.throws(() => insertRuntimeEvent(db, 'evt_p2a_2'));
+    assert.doesNotThrow(() => db.prepare("DELETE FROM runtime_events WHERE id = 'evt_p2a'").run());
+    db.prepare(`
+      INSERT INTO runtime_events (
+        id, schema_version, type, workspace_id, task_id, run_id, sequence, timestamp,
+        source, correlation_id, severity, visibility, durability, payload_json, created_at
+      ) VALUES ('evt_p2a_perm', 1, 'run.completed', 'ws_p2a', 'task_p2a', 'run_p2a', 99, ?, 'run-engine', 'run_p2a', 'info', 'internal', 'durable', '{}', ?)
+    `).run(NOW, NOW);
+    assert.throws(() => db.prepare("DELETE FROM runtime_events WHERE id = 'evt_p2a_perm'").run());
   } finally {
     db.close();
   }

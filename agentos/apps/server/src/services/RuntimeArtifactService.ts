@@ -55,6 +55,7 @@ const MAX_BYTES: Record<RuntimeArtifactType, number> = {
   manifest: 1024 * 1024,
   review: 1024 * 1024,
   test: 1024 * 1024,
+  'event-payload': 100 * 1024 * 1024,
 };
 
 export class RuntimeArtifactService {
