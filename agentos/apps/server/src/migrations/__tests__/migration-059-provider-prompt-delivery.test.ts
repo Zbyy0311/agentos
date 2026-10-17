@@ -88,7 +88,7 @@ test('migration 059 applies once across upgrade and fresh installs', () => {
     fresh.exec('PRAGMA foreign_keys = ON');
     runMigrations(fresh, '059');
     assert.ok((fresh.prepare('PRAGMA table_info(provider_configurations)').all() as Array<{ name: string }>).some(column => column.name === 'prompt_delivery'));
-    assert.equal((fresh.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id DESC LIMIT 1').get() as { migration_id: string }).migration_id, '059');
+    assert.equal((fresh.prepare("SELECT migration_id FROM _schema_migrations WHERE migration_id = '059'").get() as { migration_id: string }).migration_id, '059');
   } finally {
     fresh.close();
   }

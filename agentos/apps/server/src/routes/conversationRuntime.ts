@@ -42,6 +42,10 @@ import type { ConversationStatus } from '@agentos/shared';
 import { createProductionRecoveredProcessVerifier, isValidNativeBirthIdentity } from '@agentos/process-runtime';
 import { sendProblem } from '../problemDetails.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import {
+  ConversationSearchReadStateError,
+  ConversationSearchReadStateService,
+} from '../services/ConversationSearchReadStateService.js';
 
 /**
  * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
@@ -379,6 +383,106 @@ export function createConversationRuntimeRoutes(
       return;
     }
     res.json({ conversations: conversations().listConversations(workspace.id, status as ConversationStatus | undefined) });
+  });
+
+  // ---- Message Search (§68/§70/§116) + Read State (§71/§115) ----------------
+  // Registered BEFORE /conversations/:conversationId so the literal segments
+  // win over the path parameter.
+  const searchReadState = new ConversationSearchReadStateService(store.getDatabase());
+  const readStateUserId = (req: Request): string => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    return typeof body.userId === 'string' && body.userId.trim().length > 0
+      ? body.userId.trim()
+      : typeof req.query.userId === 'string' && req.query.userId.trim().length > 0
+        ? req.query.userId.trim()
+        : store.getDefaultUserProfile().id;
+  };
+
+  router.get('/conversations/search', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const q = req.query;
+    try {
+      const results = searchReadState.search(workspace.id, {
+        query: typeof q.query === 'string' ? q.query : '',
+        ...(typeof q.sender === 'string' ? { sender: q.sender as 'user' | 'agent' | 'system' } : {}),
+        ...(typeof q.agentId === 'string' ? { agentId: q.agentId } : {}),
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...(typeof q.type === 'string' ? { type: q.type } : {}),
+        ...(typeof q.limit === 'string' ? { limit: Number(q.limit) } : {}),
+      });
+      res.json({ results });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSearchReadStateError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.get('/conversations/read-state', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    res.json({ readStates: searchReadState.listReadStates(workspace.id, readStateUserId(req), new Date().toISOString()) });
+  });
+
+  router.get('/conversations/:conversationId/search', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const q = req.query;
+    try {
+      const results = searchReadState.search(workspace.id, {
+        query: typeof q.query === 'string' ? q.query : '',
+        conversationId: req.params.conversationId,
+        ...(typeof q.sender === 'string' ? { sender: q.sender as 'user' | 'agent' | 'system' } : {}),
+        ...(typeof q.agentId === 'string' ? { agentId: q.agentId } : {}),
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...(typeof q.type === 'string' ? { type: q.type } : {}),
+        ...(typeof q.limit === 'string' ? { limit: Number(q.limit) } : {}),
+      });
+      res.json({ results });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSearchReadStateError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.post('/conversations/:conversationId/read', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const readState = searchReadState.markRead({
+        workspaceId: workspace.id,
+        conversationId: req.params.conversationId,
+        userId: readStateUserId(req),
+        ...(body.latest === true ? { latest: true } : {}),
+        ...(typeof body.lastReadMessageSequence === 'number'
+          ? { lastReadMessageSequence: body.lastReadMessageSequence }
+          : {}),
+        now: new Date().toISOString(),
+      });
+      res.json({ readState });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSearchReadStateError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.get('/conversations/:conversationId/read-state', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const readState = searchReadState.readState(
+      workspace.id, req.params.conversationId, readStateUserId(req), new Date().toISOString(),
+    );
+    if (readState === null) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
+    res.json({ readState });
   });
 
   router.get('/conversations/:conversationId', (req: Request, res: Response) => {
