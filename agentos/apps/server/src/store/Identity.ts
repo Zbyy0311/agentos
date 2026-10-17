@@ -6,6 +6,7 @@ export const ENTITY_ID_PREFIXES = {
   agent: 'agent',
   provider: 'provider',
   providerSession: 'psess',
+  providerFallback: 'pfallback',
   workflow: 'workflow',
   workflowStage: 'wstage',
   task: 'task',

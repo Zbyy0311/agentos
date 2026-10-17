@@ -73,6 +73,13 @@ export interface StageExecutionInput {
   readonly runId: string;
   readonly stageId: string;
   readonly stageAttempt: number;
+  /**
+   * P5D §42: durable Session/Process claim attempt. Defaults to stageAttempt.
+   * A provider fallback attempt passes stageAttempt + k so the replacement
+   * provider never joins (never overwrites) the failed attempt's Session
+   * claim key; the Run/Stage lifecycle fences still key on stageAttempt.
+   */
+  readonly providerClaimAttempt?: number;
   readonly workflowStageKey: string;
   readonly agentSnapshot: AgentSnapshotV1;
   readonly providerSnapshot: ProviderConfigurationSnapshotV1;
@@ -339,6 +346,10 @@ export class StageExecutionCoordinator {
       correlationId: input.operationId,
       causationId: input.operationId,
     };
+    const claimAttempt = input.providerClaimAttempt ?? input.stageAttempt;
+    if (!Number.isSafeInteger(claimAttempt) || claimAttempt < input.stageAttempt) {
+      return this.failed('PROVIDER_CONFIG_INVALID', 'providerClaimAttempt must be a safe integer >= stageAttempt', 'configuration', input, false);
+    }
     const claimLeaseExpiresAt = new Date(Date.parse(this.now()) + this.claimLeaseMs).toISOString();
     const established = await this.durableCoordinator.establishClaimAndReservation({
       session: {
@@ -346,7 +357,7 @@ export class StageExecutionCoordinator {
         taskId: input.taskId,
         runId: input.runId,
         stageId: input.stageId,
-        stageAttempt: input.stageAttempt,
+        stageAttempt: claimAttempt,
         authorityRole: 'primary-provider',
         agentId: input.agentSnapshot.agentId,
         providerConfigId: input.providerSnapshot.providerConfigId,
@@ -367,7 +378,7 @@ export class StageExecutionCoordinator {
         taskId: input.taskId,
         runId: input.runId,
         stageId: input.stageId,
-        stageAttempt: input.stageAttempt,
+        stageAttempt: claimAttempt,
         authorityRole: 'primary-provider',
         claimEpoch: 1,
         claimOwnerId: this.claimOwner,
@@ -606,18 +617,30 @@ export class StageExecutionCoordinator {
   }
 
   async cancelAttempt(input: StageAttemptCancelInput): Promise<StageAttemptCancelOutcome> {
+    // P5D §42: a provider fallback attempt claims its Session/Process under
+    // stageAttempt + k. Route the cancel at the live rendezvous' claim
+    // attempt when one exists so a fallback attempt is cancellable exactly
+    // like the primary attempt.
+    let claimAttempt = input.stageAttempt;
+    for (const entry of this.liveAttempts.values()) {
+      if (entry.input.workspaceId === input.workspaceId
+        && entry.input.runId === input.runId
+        && entry.input.stageId === input.stageId) {
+        claimAttempt = Math.max(claimAttempt, entry.input.providerClaimAttempt ?? entry.input.stageAttempt);
+      }
+    }
     const session = await this.sessionRepository.getSessionByClaimKey(
       input.workspaceId,
       input.runId,
       input.stageId,
-      input.stageAttempt,
+      claimAttempt,
       'primary-provider',
     );
     const process = await this.durableCoordinator.getRootProcessByClaim(
       input.workspaceId,
       input.runId,
       input.stageId,
-      input.stageAttempt,
+      claimAttempt,
       'primary-provider',
     );
     if (session === null && process === null && this.canLaunch !== undefined) {
@@ -632,24 +655,34 @@ export class StageExecutionCoordinator {
       || session.workspaceId !== input.workspaceId
       || session.runId !== input.runId
       || session.stageId !== input.stageId
-      || session.stageAttempt !== input.stageAttempt
+      || session.stageAttempt !== claimAttempt
       || process.workspaceId !== input.workspaceId
       || process.runId !== input.runId
       || process.stageId !== input.stageId
-      || process.stageAttempt !== input.stageAttempt
+      || process.stageAttempt !== claimAttempt
       || process.authorityRole !== 'primary-provider'
     ) {
       throw new Error('LIVE_EXECUTION_UNAVAILABLE: exact Stage-attempt claim is unavailable');
     }
 
-    const entry = this.liveAttempts.get(inputKey(input));
+    const entry = this.liveAttempts.get(attemptKey({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      stageId: input.stageId,
+      stageAttempt: claimAttempt,
+    }));
     const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
       workspaceId: process.workspaceId,
       processId: process.processId,
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       reason: 'cancel',
-      idempotencyKey: 'attempt-cancel:' + inputKey(input),
+      idempotencyKey: 'attempt-cancel:' + attemptKey({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        stageId: input.stageId,
+        stageAttempt: claimAttempt,
+      }),
       timestamp: this.now(),
       eventContext: { correlationId: input.correlationId, causationId: input.causationId },
       stopOrigin: 'EXPLICIT_CANCEL',
@@ -1536,10 +1569,6 @@ function attemptKey(input: Pick<StageExecutionInput, 'workspaceId' | 'runId' | '
   return [input.workspaceId, input.runId, input.stageId, String(input.stageAttempt)].join('|');
 }
 
-function inputKey(input: StageAttemptCancelInput): string {
-  return attemptKey(input);
-}
-
 function sameSessionClaim(left: DurableSessionView, right: DurableSessionView): boolean {
   return left.sessionId === right.sessionId
     && left.workspaceId === right.workspaceId
@@ -1604,6 +1633,7 @@ function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): P
     ...(snapshot.executable === null ? {} : { executable: snapshot.executable }),
     argsTemplate: [...snapshot.argsTemplate],
     ...(snapshot.promptDelivery === undefined ? {} : { promptDelivery: snapshot.promptDelivery }),
+    ...(snapshot.fallbackPolicy === undefined ? {} : { fallbackPolicy: snapshot.fallbackPolicy }),
     ...(snapshot.model === null ? {} : { model: snapshot.model }),
     ...(snapshot.environmentProfileId === null ? {} : { environmentProfileId: snapshot.environmentProfileId }),
     ...(snapshot.secretProfileId === null ? {} : { secretProfileId: snapshot.secretProfileId }),

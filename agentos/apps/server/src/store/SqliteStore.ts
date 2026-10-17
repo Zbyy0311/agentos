@@ -58,6 +58,7 @@ import { RunSnapshotRepository } from './RunSnapshotRepository.js';
 import { RunStageRepository } from './RunStageRepository.js';
 import { IdempotencyRepository } from './IdempotencyRepository.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
+import { RunProviderFallbackChainRepository } from './RunProviderFallbackChainRepository.js';
 import { ProviderSessionRepository } from './ProviderSessionRepository.js';
 import { ProcessRepository } from './ProcessRepository.js';
 import { DurableAtomicSeamImpl } from './DurableAtomicSeam.js';
@@ -478,6 +479,7 @@ export class SqliteStore implements Store {
   private readonly runStageRepo: RunStageRepository;
   private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
+  private readonly providerFallbackChainRepo: RunProviderFallbackChainRepository;
   private readonly providerSessionRepo: ProviderSessionRepository;
   private readonly processRepo: ProcessRepository;
   private readonly processOutputReferenceRepo: ProcessOutputReferenceRepository;
@@ -526,6 +528,7 @@ export class SqliteStore implements Store {
       this.runStageRepo = new RunStageRepository(this.database as any);
       this.idempotencyRepo = new IdempotencyRepository(this.database as any);
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
+      this.providerFallbackChainRepo = new RunProviderFallbackChainRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
       this.runtimeEventNotifier = new RuntimeEventNotifier();
       this.eventRedactionServiceRepo = eventRedactionServiceForDatabase(this.database);
@@ -628,6 +631,11 @@ export class SqliteStore implements Store {
 
   providerConfigurationRepository(): ProviderConfigurationRepository {
     return this.providerConfigRepo;
+  }
+
+  /** P5D §42 executed provider fallback chain projection (append-only). */
+  providerFallbackChainRepository(): RunProviderFallbackChainRepository {
+    return this.providerFallbackChainRepo;
   }
 
   /** M4-P2B durable Provider Session repository (shares this store's SQLite handle). */

@@ -11,6 +11,9 @@ import type {
 } from '@agentos/shared';
 import type { ProviderErrorCode as SharedProviderErrorCode } from '@agentos/shared';
 import type { ProcessProbePort } from '@agentos/process-runtime';
+import type {
+  ProviderFallbackPolicyV1,
+} from './fallback.js';
 import type { CliEventParser, NormalizedCliEvent } from '../adapters/types.js';
 
 export type { ProcessProbePort } from '@agentos/process-runtime';
@@ -56,6 +59,8 @@ export interface ProviderConfigurationInput {
   readonly promptDelivery?: 'argument' | 'stdin' | 'file';
   /** Custom CLI only: exit codes treated as success; defaults to [0]. */
   readonly successExitCodes?: readonly number[];
+  /** P5D §42: frozen fallback policy; absent when the row predates migration 062. */
+  readonly fallbackPolicy?: ProviderFallbackPolicyV1 | null;
   readonly model?: string;
   readonly environmentProfileId?: string;
   readonly secretProfileId?: string;

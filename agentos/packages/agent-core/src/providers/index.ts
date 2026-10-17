@@ -7,6 +7,15 @@ export { ProviderRegistry } from './registry.js';
 export { ProviderValidationService } from './validation.js';
 export { ProviderRegistryError, normalizedProviderError, providerErrorStatus } from './errors.js';
 export {
+  fallbackBudgetExhausted,
+  fallbackChainForStage,
+  attemptedProviderConfigIds,
+  isFallbackTriggerCode,
+  normalizeProviderFallbackPolicy,
+  selectFallbackTargetId,
+  MAX_FALLBACK_PROVIDER_CONFIG_IDS,
+} from './fallback.js';
+export {
   KIMICODE_ADAPTER_ID,
   KIMICODE_ADAPTER_VERSION,
   KIMICODE_DEFAULT_EXECUTABLE,
@@ -54,3 +63,8 @@ export type {
   ProviderValidationWarning,
   RuntimeProviderAdapter,
 } from './types.js';
+export type {
+  ProviderFallbackChainEntryV1,
+  ProviderFallbackPolicy,
+  ProviderFallbackPolicyV1,
+} from './fallback.js';

@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
-import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
+import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY, normalizeProviderFallbackPolicy } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 import {
@@ -84,6 +84,13 @@ function validateStructuredFields(body: Record<string, unknown>): string | undef
       if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return `${field} must be an object`;
       }
+    }
+  }
+  if (body.fallbackPolicy !== undefined) {
+    try {
+      normalizeProviderFallbackPolicy(body.fallbackPolicy);
+    } catch (error) {
+      return error instanceof Error ? error.message : 'fallbackPolicy is invalid';
     }
   }
   return undefined;
@@ -224,6 +231,9 @@ console.error('[provider-configs] validate provider configuration failed');
         executable: body.executable as string | undefined,
         argsTemplate: body.argsTemplate as string[] | undefined,
         promptDelivery: body.promptDelivery as ProviderConfiguration['promptDelivery'] | undefined,
+        ...(body.fallbackPolicy === undefined
+          ? {}
+          : { fallbackPolicy: normalizeProviderFallbackPolicy(body.fallbackPolicy) }),
         model: body.model as string | undefined,
         environmentProfileId: body.environmentProfileId as string | undefined,
         secretProfileId: body.secretProfileId as string | undefined,
@@ -299,6 +309,9 @@ console.error('[provider-configs] validate provider configuration failed');
         promptDelivery: body.promptDelivery !== undefined
           ? body.promptDelivery as ProviderConfiguration['promptDelivery'] | undefined
           : existing.promptDelivery,
+        ...(body.fallbackPolicy !== undefined
+          ? { fallbackPolicy: normalizeProviderFallbackPolicy(body.fallbackPolicy) }
+          : {}),
         model: body.model !== undefined ? body.model as string | undefined : existing.model,
         environmentProfileId: body.environmentProfileId !== undefined ? body.environmentProfileId as string | undefined : existing.environmentProfileId,
         secretProfileId: body.secretProfileId !== undefined ? body.secretProfileId as string | undefined : existing.secretProfileId,
