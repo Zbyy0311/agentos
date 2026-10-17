@@ -78,6 +78,7 @@ import { MemoryContextSnapshotRepository } from './MemoryContextSnapshotReposito
 import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
+import { UsageRepository } from './UsageRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 import { OperationService } from '../services/OperationService.js';
@@ -498,6 +499,7 @@ export class SqliteStore implements Store {
   private readonly workspaceAdmissionRepo: WorkspaceAdmissionRepository;
   private readonly worktreeRepo: WorktreeRepository;
   private readonly worktreeMergeRepo: WorktreeMergeRepository;
+  private readonly usageRepo: UsageRepository;
   private readonly workspaceEventRepo: WorkspaceEventRepository;
   private readonly workspaceEventWriterRepo: WorkspaceEventWriter;
   private readonly legacy: JsonFileStore;
@@ -583,6 +585,7 @@ export class SqliteStore implements Store {
       this.workspaceAdmissionRepo = new WorkspaceAdmissionRepository(this.database as any);
       this.worktreeRepo = new WorktreeRepository(this.database as any);
       this.worktreeMergeRepo = new WorktreeMergeRepository(this.database as any);
+      this.usageRepo = new UsageRepository(this.database as any);
       this.runMigrations(dataDir);
       // Keep a defensive additive guard for databases whose agent_runs table
       // was rebuilt by an older recovery path after migration 032 was recorded.
@@ -762,6 +765,11 @@ export class SqliteStore implements Store {
   /** PR-3B Worktree merge result repository (shares this store's SQLite handle). */
   worktreeMergeRepository(): WorktreeMergeRepository {
     return this.worktreeMergeRepo;
+  }
+
+  /** §50 Usage Record ledger (metric-only, idempotent by source_event_id). */
+  usageRepository(): UsageRepository {
+    return this.usageRepo;
   }
 
   /** CR-3 durable Conversation streaming seam. */

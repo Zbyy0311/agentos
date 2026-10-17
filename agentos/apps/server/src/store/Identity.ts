@@ -35,6 +35,7 @@ export const ENTITY_ID_PREFIXES = {
   idempotency: 'idem',
   operation: 'op',
   import: 'imp',
+  usageRecord: 'urec',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
