@@ -20,7 +20,7 @@ type RunLookup = { getRun(workspaceId: string, runId: string): { status: string 
 type FactWriter = {
   recordRuntimeFact(id: string, type: string, payload: Record<string, unknown>): void | Promise<unknown>;
 };
-type ArtifactReader = Pick<RuntimeArtifactService, 'create' | 'listForRun' | 'readContentBytes'>;
+type ArtifactReader = Pick<RuntimeArtifactService, 'create' | 'listForRun' | 'readContentBytes' | 'requireWorktreeProvenance'>;
 type LeaseRecord = NonNullable<ReturnType<WorktreeManager['getRecord']>>;
 type RebaseState = { originalHeadCommit: string; ontoCommit: string };
 type CommitRequester = 'agent' | 'workflow' | 'user' | 'system';
@@ -222,7 +222,7 @@ export class WorktreeControlService {
           untrackedCount: status.untrackedCount,
         });
       }
-      if (request.diffArtifactId) await this.requireArtifact(lease, request.diffArtifactId, 'diff');
+      if (request.diffArtifactId) await this.requireArtifact(lease, request.diffArtifactId, 'diff', request.expectedHeadCommit);
       await this.assertExpectedHead(lease, request.expectedHeadCommit);
       await this.recordFact(lease, 'worktree.ready_for_review', {
         executionId: lease.executionId,
@@ -357,7 +357,7 @@ export class WorktreeControlService {
 
       const artifactService = this.artifacts as RuntimeArtifactService;
       const bundleService = new WorktreeArtifactService(artifactService, this.manager);
-      const bundle = await bundleService.createBundle(lease.id, {
+      const bundle = await bundleService.createBundleWithinBranchLock(lease.id, {
         workspaceId: lease.workspaceId,
         runId: lease.runId,
         executionId: lease.executionId,
@@ -415,8 +415,8 @@ export class WorktreeControlService {
     try {
       const artifactService = this.artifacts as RuntimeArtifactService;
       const create = (input: Parameters<RuntimeArtifactService['create']>[0]) =>
-        typeof artifactService.createWorktreeArtifact === 'function'
-          ? artifactService.createWorktreeArtifact(lease.id, input)
+        typeof artifactService.createWorktreeArtifactWithinBranchLock === 'function'
+          ? artifactService.createWorktreeArtifactWithinBranchLock(lease.id, input)
           : artifactService.create(input);
       const artifact = await create({
         workspaceId: lease.workspaceId,
@@ -487,12 +487,19 @@ export class WorktreeControlService {
     }
   }
 
-  private async requireArtifact(lease: LeaseRecord, artifactId: string, type: RuntimeArtifact['type']): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
+  private async requireArtifact(lease: LeaseRecord, artifactId: string, type: RuntimeArtifact['type'], expectedHeadCommit: string): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
     if (!this.artifacts) throw controlError('ARTIFACT_SERVICE_UNAVAILABLE', 503, 'Artifact service unavailable');
     const artifact = this.artifacts.listForRun(lease.workspaceId, lease.runId)
       .find(item => item.id === artifactId && item.workspaceId === lease.workspaceId
         && ('canonicalRunId' in item ? item.canonicalRunId : item.runId) === lease.runId && item.type === type);
     if (!artifact) throw controlError('WORKTREE_ARTIFACT_NOT_FOUND', 404, 'Artifact was not found for this worktree run');
+    try {
+      this.artifacts.requireWorktreeProvenance(lease.id, artifact.id, expectedHeadCommit);
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error && typeof error.code === 'string'
+        ? error.code : 'WORKTREE_ARTIFACT_PROVENANCE_MISSING';
+      throw controlError(code, 409, 'Regenerate worktree evidence for this lease and HEAD using the bundle endpoint');
+    }
     try {
       await this.artifacts.readContentBytes(lease.workspaceId, artifact.id);
     } catch {

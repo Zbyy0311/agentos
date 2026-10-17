@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -55,7 +56,7 @@ function fixture(): Fx {
       'INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(id, id, `C:/tmp/${id}`, `C:/tmp/${id}`, NOW, NOW, NOW);
   }
-  const repo = new MemoryEntryRepository(db as unknown as TransactionDatabase);
+  const repo = new MemoryEntryRepository(db as unknown as TransactionDatabase, eventRedactionServiceForDatabase(db as unknown as TransactionDatabase));
   return { root, db, repo, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
 

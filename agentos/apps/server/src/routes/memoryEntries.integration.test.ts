@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -65,7 +66,7 @@ test('project knowledge HTTP save -> list/detail -> chat/Run context; edit refre
     const list = await (await fetch(url + '/memory/entries')).json() as { entries: MemoryEntryRecord[] };
     assert.deepEqual(list.entries.map(item => item.id), [entry.id]);
     assert.equal(((await (await fetch(url + '/memory/entries/' + entry.id)).json()) as { entry: MemoryEntryRecord }).entry.content, input.content);
-    const repository = new MemoryEntryRepository(db);
+    const repository = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     const retrieval = new MemoryRetrievalService(repository);
     const chat = createChatMemorySelectionPort({ retrieval });
     assert.equal(chat.select(chatInput).contextText, '### ' + input.title + '\n' + input.content);
@@ -100,7 +101,7 @@ test('project knowledge HTTP save -> list/detail -> chat/Run context; edit refre
 
 test('candidate acceptance appears in project knowledge and the same injected selection', async () => {
   await fixture(async (url, store) => {
-    const candidates = new MemoryCandidateRepository(store.getDatabase());
+    const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const candidate = candidates.createCandidate({ id: 'knowledge-candidate', workspaceId: WS,
       scope: 'workspace', category: 'decision', authority: 'agent-derived', confidence: 0.9, importance: 0.8,
       title: 'Review finding', content: 'Use bounded retry', sources: [{ kind: 'artifact', id: 'review-artifact' }],
@@ -110,7 +111,7 @@ test('candidate acceptance appears in project knowledge and the same injected se
     const list = await (await fetch(url + '/memory/entries')).json() as { entries: MemoryEntryRecord[] };
     assert.equal(list.entries.length, 1);
     assert.deepEqual(list.entries[0].sources, [{ kind: 'artifact', id: 'review-artifact' }]);
-    const chat = createChatMemorySelectionPort({ retrieval: new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())) });
+    const chat = createChatMemorySelectionPort({ retrieval: new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()))) });
     assert.ok(chat.select({...chatInput, retrievalQuery: 'bounded retry'}).contextText?.includes('Use bounded retry'));
   });
 });
@@ -130,7 +131,7 @@ test('optimistic updates reject stale versions, scope/source changes and secret 
       [{ expectedVersion: 1, content: null }, 400],
     ] as const) {
       assert.equal((await write(url + '/memory/entries/' + id, body, 'PATCH')).status, status);
-      assert.deepEqual(new MemoryEntryRepository(store.getDatabase()).findById(WS, id), saved.body.entry);
+      assert.deepEqual(new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById(WS, id), saved.body.entry);
       assert.equal(eventCount(store), before);
     }
     assert.equal((await write(url + '/memory/entries/' + id + '/archive', { expectedVersion: 9 })).status, 409);
@@ -154,7 +155,7 @@ for (const action of ['edit', 'archive'] as const) {
         ? await write(url + '/memory/entries/' + saved.body.entry.id, { expectedVersion: 1, content: 'uncommitted-nebula' }, 'PATCH')
         : await write(url + '/memory/entries/' + saved.body.entry.id + '/archive', { expectedVersion: 1 });
       assert.equal(result.status, 500);
-      assert.deepEqual(new MemoryEntryRepository(db).findById(WS, saved.body.entry.id), saved.body.entry);
+      assert.deepEqual(new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db)).findById(WS, saved.body.entry.id), saved.body.entry);
       assert.deepEqual(db.prepare('SELECT next_event_sequence FROM workspaces WHERE id = ?').get(WS), beforeSequence);
       assert.equal(eventCount(store), 1);
       assert.equal(db.prepare("SELECT memory_entry_id FROM memory_entries_fts WHERE memory_entries_fts MATCH 'uncommitted'").all().length, 0);

@@ -1,6 +1,6 @@
 import type { WorktreeLeaseStatus, WorktreeRecoveryBundle } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
-import { inTransaction } from './Transaction.js';
+import { inTransaction, isTransactionActive } from './Transaction.js';
 
 /**
  * PR-3A Worktree lease persistence primitive.
@@ -25,6 +25,34 @@ export interface WorktreeLeaseRecord {
   absolutePath: string;
   workspaceRoot: string;
   recoveryBundle?: WorktreeRecoveryBundle;
+}
+
+const IMMUTABLE_IDENTITY_FIELDS = [
+  'id',
+  'workspaceId',
+  'runId',
+  'executionId',
+  'agentId',
+  'branchName',
+  'pathLabel',
+  'baseCommit',
+  'createdAt',
+  'absolutePath',
+  'workspaceRoot',
+] as const satisfies readonly (keyof WorktreeLeaseRecord)[];
+
+export function sameWorktreeLeaseIdentity(
+  left: WorktreeLeaseRecord,
+  right: WorktreeLeaseRecord,
+): boolean {
+  return IMMUTABLE_IDENTITY_FIELDS.every(field => left[field] === right[field]);
+}
+
+export class WorktreeLeaseIdentityConflictError extends Error {
+  constructor() {
+    super('Legacy worktree lease conflicts with an existing immutable identity');
+    this.name = 'WorktreeLeaseIdentityConflictError';
+  }
 }
 
 export type { WorktreeLeaseStatus } from '@agentos/shared';
@@ -114,8 +142,8 @@ export class WorktreeRepository {
     );
   }
 
-  /** Idempotent upsert used by the one-shot leases.json legacy import. */
-  importLegacy(record: WorktreeLeaseRecord): void {
+  /** Idempotent insert used by the one-shot leases.json legacy import. */
+  importLegacy(record: WorktreeLeaseRecord): WorktreeLeaseRecord {
     this.db.prepare(`
       INSERT INTO worktrees (
         id, workspace_id, run_id, execution_id, agent_id, branch_name, path_label,
@@ -138,6 +166,13 @@ export class WorktreeRepository {
       record.createdAt,
       record.updatedAt,
     );
+
+    const persisted = this.getById(record.id);
+    if (!persisted) throw new Error('Legacy worktree lease was not persisted');
+    if (!sameWorktreeLeaseIdentity(record, persisted)) {
+      throw new WorktreeLeaseIdentityConflictError();
+    }
+    return persisted;
   }
 
   /** Write-through upsert for the manager's persist path. */
@@ -220,12 +255,13 @@ export class WorktreeRepository {
 
   /** Transactional bundle + status update (recovery bundle verified). */
   updateRecoveryBundle(id: string, bundle: WorktreeRecoveryBundle, updatedAt: string): boolean {
-    return inTransaction(this.db, () => {
+    const update = () => {
       const result = this.db.prepare(
         "UPDATE worktrees SET recovery_bundle_json = ?, status = 'completed', updated_at = ? WHERE id = ?",
       ).run(JSON.stringify(bundle), updatedAt, id) as { changes?: number };
       return (result.changes ?? 0) === 1;
-    });
+    };
+    return isTransactionActive(this.db) ? update() : inTransaction(this.db, update);
   }
 
   delete(id: string): boolean {

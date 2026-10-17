@@ -5,6 +5,7 @@ import { createAgentEvent } from '../events/createAgentEvent.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryService } from './MemoryService.js';
 import { MemoryExtractor, type MemoryExtractionInput } from './MemoryExtractor.js';
+import { MemorySecretDetectedError } from './MemorySecretGuard.js';
 
 export interface GenerateMemoryCandidatesResult {
   candidates: MemoryCandidate[];
@@ -67,7 +68,12 @@ export class MemoryCandidateService {
         operation: draft.operation, conflictingMemoryIds: this.findConflicts(input.workspaceId, draft.type, draft.title, draft.summary),
         status: 'pending', createdAt: now,
       };
-      this.store.createMemoryCandidate(candidate);
+      try {
+        this.store.createMemoryCandidate(candidate);
+      } catch (error) {
+        if (error instanceof MemorySecretDetectedError) continue;
+        throw error;
+      }
       await this.publishEvent(createAgentEvent({
         type: 'memory.candidate.created', workspaceId: input.workspaceId, conversationId: run.conversationId, runId: run.id,
         payload: { candidateId: candidate.id, type: candidate.type, title: candidate.title },
@@ -97,11 +103,20 @@ export class MemoryCandidateService {
       sourceRunIds: [candidate.runId],
     });
     const accepted = this.store.updateMemoryCandidateStatus(workspaceId, candidateId, 'accepted');
-    return accepted;
+    return this.redactCandidateForResponse(accepted);
   }
 
   reject(workspaceId: string, candidateId: string): MemoryCandidate {
-    return this.store.updateMemoryCandidateStatus(workspaceId, candidateId, 'rejected');
+    return this.redactCandidateForResponse(this.store.updateMemoryCandidateStatus(workspaceId, candidateId, 'rejected'));
+  }
+
+  private redactCandidateForResponse(candidate: MemoryCandidate): MemoryCandidate {
+    const redacted = this.store.eventRedactionService().redactPayload(candidate.workspaceId, {
+      title: candidate.title,
+      summary: candidate.summary,
+      content: candidate.content,
+    }).value as Pick<MemoryCandidate, 'title' | 'summary' | 'content'>;
+    return { ...candidate, ...redacted };
   }
 
   private findConflicts(workspaceId: string, type: MemoryType, title: string, summary: string): string[] {

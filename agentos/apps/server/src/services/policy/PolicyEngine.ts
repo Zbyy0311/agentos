@@ -6,6 +6,7 @@ import {
   type PolicyProfileRecord,
   type PolicyRuleRecord,
   type PolicyRuleSelector,
+  type EnsureDefaultPolicyProfileInput,
 } from '../../store/PolicyRepository.js';
 
 export const DEFAULT_POLICY_PROFILE_NAME = 'default';
@@ -28,17 +29,8 @@ export interface PolicyEvaluation {
 }
 
 export interface PolicyEngineStore {
-  findDefaultProfile(workspaceId: string): PolicyProfileRecord | undefined;
+  ensureDefaultProfile(input: EnsureDefaultPolicyProfileInput): PolicyProfileRecord;
   findRulesByProfile(profileId: string): PolicyRuleRecord[];
-  createProfile(input: {
-    id: string; workspaceId: string; name: string; isDefault?: boolean;
-    createdAt: string; updatedAt: string;
-  }): PolicyProfileRecord;
-  createRule(input: {
-    id: string; profileId: string; action: PolicyActionValue; selector: PolicyRuleSelector;
-    decision: PolicyDecisionValue; priority: number; specificity?: number;
-    createdAt: string;
-  }): PolicyRuleRecord;
 }
 
 const DECISION_RANK: Record<PolicyDecisionValue, number> = {
@@ -111,27 +103,22 @@ export class PolicyEngine {
    * allow fallback with an empty selector.
    */
   private ensureDefaultProfile(workspaceId: string, now: string): PolicyProfileRecord {
-    const existing = this.store.findDefaultProfile(workspaceId);
-    if (existing !== undefined) return existing;
-    try {
-      const profile = this.store.createProfile({
+    return this.store.ensureDefaultProfile({
+      profile: {
         id: createEntityId('policyProfile'), workspaceId, name: DEFAULT_POLICY_PROFILE_NAME,
         isDefault: true, createdAt: now, updatedAt: now,
-      });
-      this.store.createRule({
-        id: createEntityId('policyRule'), profileId: profile.id, action: 'provider.launch',
-        selector: { permission: 'write' }, decision: 'require_approval',
-        priority: 100, specificity: 1, createdAt: now,
-      });
-      this.store.createRule({
-        id: createEntityId('policyRule'), profileId: profile.id, action: 'provider.launch',
-        selector: {}, decision: 'allow', priority: 0, specificity: 0, createdAt: now,
-      });
-      return profile;
-    } catch (error) {
-      const raced = this.store.findDefaultProfile(workspaceId);
-      if (raced !== undefined) return raced;
-      throw error;
-    }
+      },
+      rules: [
+        {
+          id: createEntityId('policyRule'), action: 'provider.launch',
+          selector: { permission: 'write' }, decision: 'require_approval',
+          priority: 100, specificity: 1, createdAt: now,
+        },
+        {
+          id: createEntityId('policyRule'), action: 'provider.launch',
+          selector: {}, decision: 'allow', priority: 0, specificity: 0, createdAt: now,
+        },
+      ],
+    });
   }
 }

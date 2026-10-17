@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -15,7 +16,7 @@ function fixture() {
   for(const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({db:db as MinimalDatabaseSync});
   migration045.apply({db:db as MinimalDatabaseSync});
   db.prepare("INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES ('ws','ws','C:/tmp/life','C:/tmp/life',?,?,?)").run(NOW,NOW,NOW);
-  const entries=new MemoryEntryRepository(db);
+  const entries=new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
   entries.createEntry({id:'entry',workspaceId:'ws',scope:'workspace',category:'knowledge',status:'active',authority:'user-explicit',confidence:1,importance:1,title:'knowledge',content:'Original content',sources:[],createdAt:NOW});
   return {db,entries,service:new MemoryLifecycleService(db,()=>NOW),retrieve:new MemoryRetrievalService(entries,()=>Date.parse(NOW))};
 }

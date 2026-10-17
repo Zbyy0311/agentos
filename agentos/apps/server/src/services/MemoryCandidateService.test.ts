@@ -4,11 +4,14 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { MemoryCandidateDraft } from './MemoryExtractor.js';
+import type { MemoryRecord } from '@agentos/shared';
 import { MemoryCandidateService } from './MemoryCandidateService.js';
 import { MemoryService } from './MemoryService.js';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { inTransaction } from '../store/Transaction.js';
 import { MemoryRetriever } from './MemoryRetriever.js';
 import { EventBus } from '../events/EventBus.js';
+import { MemorySecretDetectedError } from './MemorySecretGuard.js';
 
 function createRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-candidate-service-'));
@@ -71,6 +74,95 @@ test('does not generate candidates for a non-completed run', async () => {
     store.updateRun('workspace-a', 'run-a', { status: 'waiting_user' });
     await assert.rejects(service.generate({ workspaceId: 'workspace-a', workspaceRoot: root, runId: 'run-a', memoryEnabled: true }), /must be completed/);
     assert.deepEqual(service.list('workspace-a'), []);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('legacy generation skips known-secret drafts, continues with safe drafts, and store rechecks writes', async () => {
+  const root = createRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    seedCompletedRun(store);
+    const secret = 'mosaicHarbor~cedarField~709348';
+    store.eventRedactionService().registerSecrets('workspace-a', [secret]);
+    let delivered = 0;
+    const eventBus = new EventBus();
+    eventBus.subscribe(() => { delivered += 1; });
+    const service = new MemoryCandidateService(store, new MemoryService(store), {
+      extract: () => ({
+        drafts: [
+          { type: 'decision', title: 'Unsafe title', summary: 'unsafe', content: `contains ${secret}`, confidence: 90, operation: 'create' },
+          { type: 'decision', title: 'Safe candidate', summary: 'Safe summary', content: 'Safe content', confidence: 80, operation: 'create' },
+          { type: 'experience', title: 'Unsafe summary', summary: `contains ${secret}`, content: 'unsafe', confidence: 70, operation: 'create' },
+        ],
+        reason: 'public_evidence',
+      }),
+    }, eventBus);
+
+    const result = await service.generate({ workspaceId: 'workspace-a', workspaceRoot: root, runId: 'run-a', memoryEnabled: true });
+    assert.equal(result.outcome, 'created');
+    assert.deepEqual(result.candidates.map(candidate => candidate.title), ['Safe candidate']);
+    assert.equal(delivered, 1, 'only the safe persisted draft is published');
+    const stored = store.getDatabase().prepare(
+      'SELECT title, summary, content FROM memory_candidates WHERE workspace_id = ?',
+    ).all('workspace-a') as Array<{ title: string; summary: string; content: string }>;
+    assert.deepEqual(stored.map(row => ({ ...row })), [{ title: 'Safe candidate', summary: 'Safe summary', content: 'Safe content' }]);
+
+    const safe = result.candidates[0]!;
+    assert.throws(
+      () => store!.createMemoryCandidate({ ...safe, id: 'direct-unsafe-write', content: `direct ${secret}` }),
+      error => error instanceof MemorySecretDetectedError && error.code === 'MEMORY_SECRET_DETECTED' && !error.message.includes(secret),
+    );
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memory_candidates').get() as { n: number }).n, 1);
+    assert.throws(() => inTransaction(store!.getDatabase(), () => {
+      store!.createMemoryCandidate({ ...safe, id: 'outer-transaction-candidate' });
+      throw new Error('synthetic outer rollback');
+    }), /synthetic outer rollback/);
+    assert.equal(store.getMemoryCandidate('workspace-a', 'outer-transaction-candidate'), undefined);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('legacy memory store final create and update checks share the workspace detector transactionally', () => {
+  const root = createRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const secret = 'mosaicHarbor~cedarField~709348';
+    const historical: MemoryRecord = {
+      id: 'memory-historical-secret', workspaceId: 'workspace-a', type: 'decision', status: 'active',
+      title: 'Historical title', summary: 'Historical summary', contentPath: 'agent-memory/records/decisions/historical.md',
+      tags: ['historical'], relatedFiles: [], sourceRunIds: [], importance: 50, confidence: 90,
+      createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z',
+    };
+    store.createMemory(historical, `Historical content ${secret}`);
+    store.eventRedactionService().registerSecrets('workspace-a', [secret]);
+
+    const assertSecretRejected = (action: () => unknown) => assert.throws(action, error =>
+      error instanceof MemorySecretDetectedError
+        && error.code === 'MEMORY_SECRET_DETECTED'
+        && !error.message.includes(secret));
+    assertSecretRejected(() => store!.createMemory({
+      ...historical, id: 'memory-unsafe-create', title: `Unsafe ${secret}`,
+      contentPath: 'agent-memory/records/decisions/unsafe.md',
+    }, 'Safe content'));
+    assertSecretRejected(() => store!.updateMemory('workspace-a', historical.id, { status: 'archived' }));
+    assertSecretRejected(() => store!.updateMemory('workspace-a', historical.id, { title: 'Updated title' }, `Updated ${secret}`));
+
+    const persisted = store.getDatabase().prepare(`
+      SELECT memories.title, memories.summary, memories.status, memory_fts.content
+      FROM memories JOIN memory_fts ON memory_fts.memory_id = memories.id
+      WHERE memories.workspace_id = ? AND memories.id = ?
+    `).get('workspace-a', historical.id) as { title: string; summary: string; status: string; content: string };
+    assert.deepEqual({ ...persisted }, {
+      title: historical.title, summary: historical.summary, status: 'active', content: `Historical content ${secret}`,
+    }, 'failed known-secret writes preserve the historical row and FTS text');
+    assert.equal((store.getDatabase().prepare('SELECT COUNT(*) AS n FROM memories').get() as { n: number }).n, 1);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });

@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -28,7 +29,7 @@ function fixture(summarizer?: { summarize: (request: never) => Promise<{ summary
     now: () => NOW,
   });
   const compactions = new CompactionRepository(db);
-  const candidates = new MemoryCandidateRepository(db);
+  const candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
   return { root, store, db, service, compactions, candidates, close: () => { store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 

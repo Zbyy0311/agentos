@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -66,7 +67,7 @@ function seedDurableRows(store: SqliteStore): void {
 }
 
 function seedEntries(store: SqliteStore): void {
-  const entries = new MemoryEntryRepository(store.getDatabase());
+  const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   entries.createEntry({
     id: MEM_A,
     workspaceId: WS,
@@ -158,7 +159,7 @@ function seedSnapshots(store: SqliteStore): void {
 }
 
 function seedConflict(store: SqliteStore): void {
-  new MemoryCandidateRepository(store.getDatabase()).openConflict({
+  new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).openConflict({
     id: CONFLICT,
     workspaceId: WS,
     conflictType: 'contradiction',
@@ -169,7 +170,7 @@ function seedConflict(store: SqliteStore): void {
 }
 
 function seedCandidate(store: SqliteStore): void {
-  new MemoryCandidateRepository(store.getDatabase()).createCandidate({
+  new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).createCandidate({
     id: CAND,
     workspaceId: WS,
     scope: 'workspace',
@@ -273,7 +274,7 @@ test('M2 lifecycle HTTP changes future selection with CAS and rolls back on even
     assert.equal((await postJson(endpoint, { expectedVersion: 4, action: 'revalidate', expiresAt: null })).status, 400);
     store.getDatabase().exec("CREATE TRIGGER m2_fail_event BEFORE INSERT ON workspace_events BEGIN SELECT RAISE(ABORT, 'event failed'); END");
     assert.equal((await postJson(endpoint, { expectedVersion: 4, action: 'delete' })).status, 500);
-    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, MEM_A)!;
+    const entry = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById(WS, MEM_A)!;
     assert.equal(entry.version, 4);
     assert.equal(entry.status, 'active');
     assert.equal((store.getDatabase().prepare('SELECT count(*) AS n FROM memory_lifecycle_actions WHERE entry_id = ?').get(MEM_A) as { n: number }).n, 3);
@@ -575,7 +576,7 @@ test('MF-5 candidate review: strict edits promote an Entry and retrieval sees on
     assert.equal(editedCandidate.candidate.mergedIntoEntryId, CAND);
     assert.equal(editedCandidate.candidate.title, 'Edited compact preference');
 
-    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const entry = entries.findById(WS, CAND);
     assert.equal(entry?.status, 'active');
     assert.equal(entry?.scope, 'workspace');
@@ -692,8 +693,48 @@ test('§76 invariant 10: explicit entry save and edit reject suspected secrets w
     const editProblem = await edited.json() as { code: string; detail: string };
     assert.equal(editProblem.code, 'MEMORY_SECRET_DETECTED');
     assert.equal(editProblem.detail, 'content 疑似包含密钥');
-    const entry = new MemoryEntryRepository(db).findById(WS, MEM_A)!;
+    const entry = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db)).findById(WS, MEM_A)!;
     assert.equal(entry.version, 1);
+  });
+});
+
+test('§76 invariant 10: historical candidate list and reject redact known secrets without rewriting the row', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const candidateId = 'mc_' + 'e'.repeat(26);
+    const secret = 'sup3r-s3cret-valu3!';
+    const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
+    candidates.createCandidate({
+      id: candidateId, workspaceId: WS, scope: 'workspace', category: 'preference',
+      authority: 'agent-derived', confidence: 0.7, importance: 0.5,
+      title: 'Historical candidate', content: `saved before registration: ${secret}`, tags: ['old'],
+      inferredPreference: true, sources: [{ kind: 'run', id: RUN }], createdAt: NOW,
+      minConfidence: 0.5, maxTokenEstimate: 1000,
+    });
+    store.eventRedactionService().registerSecrets(WS, [secret]);
+
+    const listResponse = await fetch(`${baseUrl}/memory/candidates`);
+    const listText = await listResponse.text();
+    assert.equal(listResponse.status, 200);
+    assert.ok(!listText.includes(secret));
+    const listed = JSON.parse(listText) as { candidates: Array<{ id: string; content: string }> };
+    assert.equal(listed.candidates.find(candidate => candidate.id === candidateId)?.content.includes(secret), false);
+
+    const rejected = await postJson(`${baseUrl}/memory/candidates/${candidateId}/review`, {
+      expectedVersion: 1, outcome: 'reject',
+    });
+    assert.equal(rejected.status, 200);
+    assert.ok(!JSON.stringify(rejected.json).includes(secret));
+    const responseCandidate = (rejected.json as { candidate: { outcome: string; content: string } }).candidate;
+    assert.equal(responseCandidate.outcome, 'reject');
+    assert.equal(responseCandidate.content.includes(secret), false);
+
+    const persisted = store.getDatabase().prepare(
+      'SELECT content, outcome, version FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
+    ).get(WS, candidateId) as { content: string; outcome: string; version: number };
+    assert.deepEqual({ ...persisted }, {
+      content: `saved before registration: ${secret}`, outcome: 'reject', version: 2,
+    }, 'the historical candidate text is not rewritten by response redaction');
   });
 });
 
@@ -736,7 +777,7 @@ test('LITE-07-003/107: explicit save validates invalid scope, category, sources,
 test('LITE-07-003: explicit save does not converge across category or global/workspace scope', async () => {
   await withServer(async (baseUrl, store) => {
     seedDurableRows(store);
-    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const content = 'This boundary probe must remain distinct by category and scope.';
     const globalEntryId = 'mem_' + 'g'.repeat(26);
     entries.createEntry({
@@ -790,7 +831,7 @@ test('LITE-07-003: an archived hash match does not swallow a legal explicit save
     });
     assert.equal(first.status, 201);
     const firstEntry = first.json as { entry: { id: string; version: number } };
-    new MemoryEntryRepository(store.getDatabase()).updateStatus({
+    new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).updateStatus({
       workspaceId: WS, entryId: firstEntry.entry.id, expectedVersion: 1,
       status: 'archived', updatedAt: NOW2,
     });
@@ -840,7 +881,7 @@ test('LITE-07-003: exact duplicate merges a new source once and emits one Worksp
     assert.equal(replayBody.converged, true);
     assert.equal(replayBody.entry.version, 2);
 
-    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, firstBody.entry.id);
+    const entry = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById(WS, firstBody.entry.id);
     assert.ok(entry);
     assert.equal(entry.version, 2);
     assert.deepEqual(entry.sources.map(source => source.kind + ':' + source.id).sort(), [
@@ -868,7 +909,7 @@ test('LITE-07-003: Workspace Event failure rolls back exact-source merge, versio
     });
     assert.equal(first.status, 201);
     const firstBody = first.json as { entry: { id: string } };
-    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const before = entries.findById(WS, firstBody.entry.id);
     assert.ok(before);
     const sequenceBefore = scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS);
@@ -909,7 +950,7 @@ test('LITE-07-003: source write failure rolls back dedup before any Event is pub
     const first = await postJson(`${baseUrl}/memory/entries`, body);
     assert.equal(first.status, 201);
     const entryId = (first.json as { entry: { id: string } }).entry.id;
-    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const before = entries.findById(WS, entryId);
     const sequenceBefore = scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS);
     store.getDatabase().exec(`
@@ -940,7 +981,7 @@ test('LITE-07-003: simultaneous exact saves converge to one source mutation and 
     const replies = await Promise.all(Array.from({ length: 4 }, () =>
       postJson(`${baseUrl}/memory/entries`, { ...body, sources: [{ kind: 'task', id: TASK }] })));
     assert.deepEqual(replies.map(reply => reply.status), [200, 200, 200, 200]);
-    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, entryId)!;
+    const entry = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById(WS, entryId)!;
     assert.equal(entry.version, 2);
     assert.equal(entry.sources.length, 2);
     assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries'), 1);

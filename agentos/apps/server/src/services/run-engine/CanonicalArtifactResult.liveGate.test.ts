@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -218,7 +219,7 @@ test('LITE-07-104 a real Provider drives the canonical chain from review work to
 
       // 3. Each completion produced a review-required Candidate that references the
       //    actual Artifact as its stable source.
-      const candidates = new MemoryCandidateRepository(db);
+      const candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
       for (const completion of completions) {
         const candidate = candidates.findCandidateById(WS, completion.candidate_id);
         assert.ok(candidate !== undefined, `completion ${completion.id} has no Candidate`);

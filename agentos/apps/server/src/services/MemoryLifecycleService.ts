@@ -1,7 +1,9 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { randomUUID } from 'node:crypto';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { inTransaction } from '../store/Transaction.js';
 import { MemoryEntryRepository, type MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
+import { assertNoMemorySecrets } from './MemorySecretGuard.js';
 export const MEMORY_LIFECYCLE_ACTIONS = ['archive','restore','delete','revalidate','set-validity'] as const;
 export type MemoryLifecycleAction = typeof MEMORY_LIFECYCLE_ACTIONS[number];
 export interface MemoryLifecycleInput {
@@ -18,7 +20,7 @@ function validDate(value:unknown):value is string|null {
 export class MemoryLifecycleService {
   private readonly entries:MemoryEntryRepository;
   constructor(private readonly db:TransactionDatabase,private readonly now:()=>string=()=>new Date().toISOString()) {
-    this.entries=new MemoryEntryRepository(db);
+    this.entries=new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
   }
   apply(input:MemoryLifecycleInput,onChange?:(entry:MemoryEntryRecord,timestamp:string)=>void):MemoryEntryRecord {
     if(!input.workspaceId?.trim()||!input.entryId?.trim()||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<1
@@ -34,6 +36,7 @@ export class MemoryLifecycleService {
       if(input.action==='archive'&&current.status!=='active' || input.action==='restore'&&!['archived','deprecated','deleted'].includes(current.status))
         throw new MemoryLifecycleError('MEMORY_ENTRY_NOT_UPDATABLE');
       const status=input.action==='archive'?'archived':input.action==='delete'?'deleted':input.action==='restore'||input.action==='revalidate'?'active':current.status;
+      assertNoMemorySecrets(eventRedactionServiceForDatabase(this.db), input.workspaceId, current);
       const dates={validFrom:input.validFrom===undefined?current.validFrom:input.validFrom,
         validUntil:input.validUntil===undefined?current.validUntil:input.validUntil,
         expiresAt:input.expiresAt===undefined?current.expiresAt:input.expiresAt};

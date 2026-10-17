@@ -17,6 +17,20 @@ const TERMINAL = 'completed';
 
 interface Fact { id: string; type: string; payload: Record<string, unknown> }
 interface SavedArtifact { artifact: Record<string, unknown>; bytes: Buffer }
+interface ArtifactFixtureService {
+  create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  createWorktreeArtifactWithinBranchLock(leaseId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  listForWorktree(leaseId: string): Record<string, unknown>[];
+}
+interface FixtureProvenance {
+  leaseId: string;
+  workspaceId: string;
+  runId: string;
+  executionId: string;
+  agentId: string;
+  baseCommit: string;
+  headCommit: string;
+}
 
 interface Fixture {
   root: string;
@@ -26,6 +40,8 @@ interface Fixture {
   service: WorktreeControlService;
   events: Fact[];
   artifacts: SavedArtifact[];
+  artifactService: ArtifactFixtureService;
+  publicationBatches: string[][];
   lease: Awaited<ReturnType<WorktreeManager['createLease']>>;
   getRunStatus(): string;
   setRunStatus(status: string): void;
@@ -57,24 +73,33 @@ async function fixture(): Promise<Fixture> {
   const manager = new WorktreeManager(join(root, 'managed-worktrees'));
   const events: Fact[] = [];
   const artifacts: SavedArtifact[] = [];
+  const publicationBatches: string[][] = [];
+  let artifactSequence = 0;
+  const readArtifactSource = async (input: Record<string, unknown>): Promise<Buffer> => {
+    const sourceValue = input.source as { kind: string; content?: string | Uint8Array; absolutePath?: string };
+    if (sourceValue.kind === 'text') return Buffer.from(sourceValue.content as string, 'utf8');
+    if (sourceValue.kind === 'bytes') return Buffer.from(sourceValue.content as Uint8Array);
+    return readFile(sourceValue.absolutePath ?? '');
+  };
+  const makeArtifact = (input: Record<string, unknown>, bytes: Buffer, worktreeProvenance?: FixtureProvenance) => ({
+    id: `artifact-${++artifactSequence}`,
+    workspaceId: input.workspaceId,
+    runId: input.runId,
+    sourceExecutionId: input.sourceExecutionId,
+    agentId: input.agentId,
+    type: input.type,
+    title: input.title,
+    contentAvailable: true,
+    sizeBytes: bytes.byteLength,
+    createdAt: new Date().toISOString(),
+    ...(worktreeProvenance ? { worktreeProvenance } : {}),
+  });
+  const provenanceError = (code: 'WORKTREE_ARTIFACT_PROVENANCE_MISSING' | 'WORKTREE_ARTIFACT_PROVENANCE_MISMATCH' | 'WORKTREE_ARTIFACT_HEAD_MISMATCH') =>
+    Object.assign(new Error(code), { code });
   const artifactService = {
     create: async (input: Record<string, unknown>) => {
-      const sourceValue = input.source as { kind: string; content?: string; absolutePath?: string };
-      const bytes = sourceValue.kind === 'text'
-        ? Buffer.from(sourceValue.content ?? '', 'utf8')
-        : await readFile(sourceValue.absolutePath ?? '');
-      const artifact = {
-        id: `artifact-${artifacts.length + 1}`,
-        workspaceId: input.workspaceId,
-        runId: input.runId,
-        sourceExecutionId: input.sourceExecutionId,
-        agentId: input.agentId,
-        type: input.type,
-        title: input.title,
-        contentAvailable: true,
-        sizeBytes: bytes.byteLength,
-        createdAt: new Date().toISOString(),
-      };
+      const bytes = await readArtifactSource(input);
+      const artifact = makeArtifact(input, bytes);
       artifacts.push({ artifact, bytes });
       return artifact;
     },
@@ -86,6 +111,80 @@ async function fixture(): Promise<Fixture> {
       if (!item) throw new Error('fixture artifact is absent');
       return item.bytes;
     },
+    readWorktreeHead: async (worktreePath: string) => git(worktreePath, ['rev-parse', 'HEAD']),
+    prepareWorktreeArtifact: async (leaseId: string, input: Record<string, unknown>, headCommit: string) => {
+      const lease = manager.getRecord(leaseId);
+      if (!lease || lease.workspaceId !== input.workspaceId || lease.runId !== input.runId
+        || lease.executionId !== input.sourceExecutionId || lease.agentId !== input.agentId
+        || resolve(lease.absolutePath) !== resolve(String(input.workspaceRoot)) || lease.status === 'cleaned') {
+        throw provenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+      }
+      const worktreeProvenance: FixtureProvenance = {
+        leaseId: lease.id, workspaceId: lease.workspaceId, runId: lease.runId,
+        executionId: lease.executionId, agentId: lease.agentId, baseCommit: lease.baseCommit, headCommit,
+      };
+      const bytes = await readArtifactSource(input);
+      const artifact = makeArtifact(input, bytes, worktreeProvenance);
+      let discarded = false;
+      let published = false;
+      return {
+        id: artifact.id,
+        worktreeProvenance,
+        publishWithinTransaction: () => {
+          if (discarded || published) throw new Error('fixture staged artifact cannot be published');
+          artifacts.push({ artifact, bytes });
+          published = true;
+          return artifact;
+        },
+        discard: async () => { if (!published) discarded = true; },
+      };
+    },
+    publishPreparedWorktreeArtifacts: (staged: Array<{
+      id: string;
+      publishWithinTransaction(): Record<string, unknown>;
+    }>, afterPersist?: () => void) => {
+      const previousCount = artifacts.length;
+      try {
+        const published = staged.map(item => item.publishWithinTransaction());
+        afterPersist?.();
+        publicationBatches.push(staged.map(item => item.id));
+        return published;
+      } catch (error) {
+        artifacts.splice(previousCount);
+        throw error;
+      }
+    },
+    requireWorktreeProvenance: (leaseId: string, artifactId: string, expectedHeadCommit?: string) => {
+      const lease = manager.getRecord(leaseId);
+      if (!lease) throw provenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+      const artifact = artifacts.find(item => item.artifact.workspaceId === lease.workspaceId && item.artifact.id === artifactId)?.artifact;
+      const binding = artifact?.worktreeProvenance as FixtureProvenance | undefined;
+      if (!binding) throw provenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISSING');
+      if (binding.leaseId !== lease.id || binding.workspaceId !== lease.workspaceId || binding.runId !== lease.runId
+        || binding.executionId !== lease.executionId || binding.agentId !== lease.agentId || binding.baseCommit !== lease.baseCommit) {
+        throw provenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+      }
+      if (expectedHeadCommit !== undefined && binding.headCommit !== expectedHeadCommit) {
+        throw provenanceError('WORKTREE_ARTIFACT_HEAD_MISMATCH');
+      }
+      return binding;
+    },
+    listForWorktree: (leaseId: string) => {
+      const lease = manager.getRecord(leaseId);
+      if (!lease) return [];
+      return artifactService.listForRun(lease.workspaceId, lease.runId).filter(item => {
+        try { artifactService.requireWorktreeProvenance(leaseId, String(item.id)); return true; }
+        catch { return false; }
+      });
+    },
+    publishOne: async (leaseId: string, input: Record<string, unknown>) => {
+      const headCommit = await git(String(input.workspaceRoot), ['rev-parse', 'HEAD']);
+      const staged = await artifactService.prepareWorktreeArtifact(leaseId, input, headCommit);
+      try { return artifactService.publishPreparedWorktreeArtifacts([staged])[0]!; }
+      catch (error) { await staged.discard(); throw error; }
+    },
+    createWorktreeArtifactWithinBranchLock: async (leaseId: string, input: Record<string, unknown>) =>
+      artifactService.publishOne(leaseId, input),
   };
 
   let runStatus = TERMINAL;
@@ -122,7 +221,8 @@ async function fixture(): Promise<Fixture> {
   if (!address || typeof address === 'string') throw new Error('test server did not bind');
 
   return {
-    root, source, baseCommit, manager, service, events, artifacts, lease,
+    root, source, baseCommit, manager, service, events, artifacts,
+    artifactService: artifactService as ArtifactFixtureService, publicationBatches, lease,
     getRunStatus: () => runStatus,
     setRunStatus: status => { runStatus = status; },
     baseUrl: `http://127.0.0.1:${address.port}/api/workspaces`,
@@ -271,6 +371,42 @@ test('POST review persists the ready event payload without changing lease status
   } finally { await fx.close(); }
 });
 
+test('review rejects an artifact without a persisted lease and HEAD provenance binding', async () => {
+  const fx = await fixture();
+  try {
+    const artifactInput = {
+      workspaceId: 'workspace-a', workspaceRoot: fx.source, runId: 'run-a',
+      sourceExecutionId: 'exec-a', agentId: 'agent-a', type: 'diff', title: 'Worktree diff',
+      source: { kind: 'text', content: 'diff --git a/README.md b/README.md\n' },
+    };
+    const unbound = await fx.artifactService.create(artifactInput);
+    const rejected = await postJson(`${fx.baseUrl}/workspace-a/worktrees/${fx.lease.id}/review`, {
+      expectedHeadCommit: fx.baseCommit, diffArtifactId: unbound.id,
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal((await rejected.json()).code, 'WORKTREE_ARTIFACT_PROVENANCE_MISSING');
+    assert.equal(fx.events.some(item => item.type === 'worktree.ready_for_review'), false);
+
+    const bound = await fx.artifactService.createWorktreeArtifactWithinBranchLock(fx.lease.id, {
+      ...artifactInput,
+      workspaceRoot: fx.manager.getRecord(fx.lease.id)!.absolutePath,
+    });
+    const binding = bound.worktreeProvenance as FixtureProvenance;
+    assert.deepEqual(binding, {
+      leaseId: fx.lease.id, workspaceId: 'workspace-a', runId: 'run-a', executionId: 'exec-a',
+      agentId: 'agent-a', baseCommit: fx.baseCommit, headCommit: fx.baseCommit,
+    });
+    const accepted = await postJson(`${fx.baseUrl}/workspace-a/worktrees/${fx.lease.id}/review`, {
+      expectedHeadCommit: fx.baseCommit, diffArtifactId: bound.id,
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal((await accepted.json() as { review: { diffArtifactId: string } }).review.diffArtifactId, bound.id);
+    assert.equal(fx.publicationBatches.length, 1);
+    assert.deepEqual(fx.publicationBatches[0], [bound.id]);
+    assert.equal(fx.events.filter(item => item.type === 'worktree.ready_for_review').length, 1);
+  } finally { await fx.close(); }
+});
+
 test('review rejects dirty content and records only the strict dirty payload', async () => {
   const fx = await fixture();
   try {
@@ -397,6 +533,10 @@ test('cleanup requires confirmation and a terminal run, then verifies a bundle b
     assert.equal(result.lease.status, 'cleaned');
     assert.equal(existsSync(record.absolutePath), false);
     assert.ok(fx.manager.getRecord(fx.lease.id)?.recoveryBundle);
+    assert.deepEqual(fx.artifacts.map(item => item.artifact.type), ['diff', 'manifest', 'archive']);
+    assert.equal(fx.publicationBatches.length, 1);
+    assert.deepEqual(fx.publicationBatches[0], fx.artifacts.map(item => String(item.artifact.id)));
+    assert.equal(fx.artifactService.listForWorktree(fx.lease.id).length, 3);
     assert.equal(await git(fx.source, ['show-ref', '--verify', `refs/heads/${fx.lease.branchName}`]).then(() => true), true);
     assert.deepEqual(await fx.primarySnapshot(), primary);
   } finally { await fx.close(); }

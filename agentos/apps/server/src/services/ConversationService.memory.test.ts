@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -52,7 +53,7 @@ function fixture(waitingAgentId?: string) {
     objective: '请继续群聊请求', status: 'waiting_user', waitingQuestion: '请提供补充信息',
     ...(waitingAgentId === undefined ? {} : { waitingAgentId }), createdAt: NOW, updatedAt: NOW,
   });
-  const entries = new MemoryEntryRepository(store.getDatabase());
+  const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   const common = {
     workspaceId: WORKSPACE, category: 'decision' as const, authority: 'user-explicit' as const,
     status: 'active' as const, confidence: 1, importance: 1, pinned: true, sources: [], createdAt: NOW,

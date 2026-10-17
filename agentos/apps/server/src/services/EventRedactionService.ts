@@ -1,6 +1,7 @@
 import { REDACTION_MARKER } from '@agentos/process-runtime';
 
 const MIN_KNOWN_SECRET_LENGTH = 8;
+const SECRET_ENVIRONMENT_KEY = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|COOKIE|AUTH)/i;
 
 /**
  * High-confidence generic secret shapes used as a fallback when no known
@@ -50,17 +51,27 @@ export function isEventPayloadRedactor(value: unknown): value is EventPayloadRed
  * Workspace-scoped secret registry + JSON-level redactor for Runtime Event
  * persistence. Spec 03-Event-Model §57/§79 invariant 12: Secrets must be
  * redacted before an Event is persisted. Known secret values (registered at
- * launch time from the Provider launch plan's redactedEnvironmentKeys) are
+ * execution time from the actual environment snapshot) are
  * replaced exactly; the generic patterns below catch common shapes otherwise.
  */
 export class EventRedactionService implements EventPayloadRedactor {
   readonly #secretsByWorkspace = new Map<string, Set<string>>();
 
+  registerEnvironmentSecrets(workspaceId: string, environment: Readonly<Record<string, string | undefined>>): void {
+    this.registerValues(workspaceId, Object.entries(environment)
+      .filter(([key, value]) => SECRET_ENVIRONMENT_KEY.test(key) && typeof value === 'string')
+      .map(([, value]) => value as string), 1);
+  }
+
   registerSecrets(workspaceId: string, values: readonly string[]): void {
+    this.registerValues(workspaceId, values, MIN_KNOWN_SECRET_LENGTH);
+  }
+
+  private registerValues(workspaceId: string, values: readonly string[], minimumLength: number): void {
     if (workspaceId.trim().length === 0) return;
     let secrets = this.#secretsByWorkspace.get(workspaceId);
     for (const value of values) {
-      if (typeof value !== 'string' || value.length < MIN_KNOWN_SECRET_LENGTH) continue;
+      if (typeof value !== 'string' || value.length < minimumLength) continue;
       if (secrets === undefined) {
         secrets = new Set();
         this.#secretsByWorkspace.set(workspaceId, secrets);
@@ -132,3 +143,15 @@ export class EventRedactionService implements EventPayloadRedactor {
 }
 
 export const eventRedactionService = new EventRedactionService();
+
+// One registry per database connection. Composition roots and repositories
+// explicitly inject this same detector; the registry never stores values in SQL.
+const databaseRedactors = new WeakMap<object, EventRedactionService>();
+export function eventRedactionServiceForDatabase(database: object): EventRedactionService {
+  let service = databaseRedactors.get(database);
+  if (service === undefined) {
+    service = new EventRedactionService();
+    databaseRedactors.set(database, service);
+  }
+  return service;
+}

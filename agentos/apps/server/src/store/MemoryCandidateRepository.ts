@@ -23,6 +23,8 @@ import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
 import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import type { MemoryEntryDedupScope } from './MemoryEntryRepository.js';
+import type { SecretTextDetector } from '../services/EventRedactionService.js';
+import { assertNoMemorySecrets, MemorySecretDetectedError } from '../services/MemorySecretGuard.js';
 import type {
   WorkspaceEventContextV1,
   WorkspaceEventOriginV1,
@@ -293,8 +295,8 @@ export interface ResolveMemoryConflictInput {
 export class MemoryCandidateRepository {
   private readonly entries: MemoryEntryRepository;
 
-  constructor(private readonly db: TransactionDatabase) {
-    this.entries = new MemoryEntryRepository(db);
+  constructor(private readonly db: TransactionDatabase, private readonly secretDetector: SecretTextDetector) {
+    this.entries = new MemoryEntryRepository(db, secretDetector);
   }
 
   /**
@@ -317,6 +319,7 @@ export class MemoryCandidateRepository {
    */
   createCandidateWithinTransaction(input: CreateMemoryCandidateInput): MemoryCandidateRecord {
     this.validateCandidateInput(input);
+    assertNoMemorySecrets(this.secretDetector, input.workspaceId, input);
     const decision = decideMemoryPromotion({
       scope: input.scope,
       category: input.category,
@@ -452,7 +455,7 @@ export class MemoryCandidateRepository {
       'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
     ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
     if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
-    if (!isSafeCandidateRow(current)) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    if (input.outcome !== 'reject' && !isSafeCandidateRow(current)) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     if (isTerminalCandidate(current)) {
       throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     }
@@ -469,6 +472,16 @@ export class MemoryCandidateRepository {
       readonly normalizedTextHash: string | null;
       readonly tokenEstimate: number;
     } | undefined;
+
+    if (input.outcome !== 'reject') {
+      const edits = input.outcome === 'edit-and-accept' ? input.edits : undefined;
+      assertNoMemorySecrets(this.secretDetector, input.workspaceId, {
+        title: edits?.title ?? current.title,
+        summary: edits?.summary ?? current.summary,
+        content: edits?.content ?? current.content,
+        tags: edits?.tags ?? this.parseCandidateTags(current.tags_json),
+      });
+    }
 
     if (input.outcome === 'accept' || input.outcome === 'edit-and-accept') {
       const edits = input.outcome === 'edit-and-accept' ? input.edits : undefined;
@@ -494,6 +507,9 @@ export class MemoryCandidateRepository {
         || !sameOwners(target, current)) {
         throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
       }
+      const targetContent = this.entries.findById(input.workspaceId, target.id);
+      if (targetContent === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+      assertNoMemorySecrets(this.secretDetector, input.workspaceId, targetContent);
       const sources = this.readCandidateSources(current.id);
       let addedSources = 0;
       for (const source of sources) {
@@ -529,6 +545,11 @@ export class MemoryCandidateRepository {
         );
     if (Number((update as { changes?: number | bigint }).changes ?? 0) !== 1) {
       throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
+    if (input.outcome === 'reject') {
+      const row = this.db.prepare('SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?')
+        .get(input.workspaceId, input.candidateId) as CandidateRow;
+      return this.toCandidateRecord(row);
     }
     return this.requireCandidate(input.workspaceId, input.candidateId);
   }
@@ -1061,8 +1082,8 @@ export class MemoryCandidateRepository {
     return entry;
   }
 
-  private publicError(error: unknown): MemoryCandidateRepositoryError {
-    if (error instanceof MemoryCandidateRepositoryError) return error;
+  private publicError(error: unknown): MemoryCandidateRepositoryError | MemorySecretDetectedError {
+    if (error instanceof MemoryCandidateRepositoryError || error instanceof MemorySecretDetectedError) return error;
     return new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
   }
 }

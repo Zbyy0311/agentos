@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -73,7 +74,7 @@ function fixture(clock?: () => number) {
   ).run(RUN, WS, TASK, RUN, 'queued', 'initial', 'test', NOW, NOW);
 
   const tx = db as unknown as TransactionDatabase;
-  const entries = new MemoryEntryRepository(tx);
+  const entries = new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx));
   const snapshots = new MemoryContextSnapshotRepository(tx);
   const retrieval = new MemoryRetrievalService(entries, clock);
   const selector = new MemoryContextBudgetSelector(retrieval, snapshots);

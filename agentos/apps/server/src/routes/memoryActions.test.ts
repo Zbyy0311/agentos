@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -42,7 +43,7 @@ test('HTTP feedback requires evidence, commits Entry/event/action atomically, an
   };
   try {
     const db = store.getDatabase();
-    const entries = new MemoryEntryRepository(db);
+    const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     entries.createEntry({ id: 'entry', workspaceId: 'ws', scope: 'workspace', category: 'knowledge',
       authority: 'user-explicit', confidence: 1, importance: 1, status: 'active', title: 'original', content: 'frozen body', sources: [], createdAt: now });
     new ConversationRepository(db).createConversation({ id: 'conv', workspaceId: 'ws', kind: 'direct', title: 'test', createdAt: now });
@@ -147,7 +148,7 @@ test('global Entry owner lists consumer reports and is the only workspace record
     return { status: response.status, body: await response.json() as any };
   };
   try {
-    const entries = new MemoryEntryRepository(db);
+    const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     entries.createEntry({ id: 'shared-global', workspaceId: 'owner', scope: 'global', category: 'preference',
       authority: 'user-explicit', confidence: 1, importance: 1, status: 'active', title: 'Shared preference',
       content: 'Original shared instruction', pinned: true, sources: [], createdAt: now });

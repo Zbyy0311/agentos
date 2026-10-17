@@ -14,6 +14,8 @@ import {
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import { createHash } from 'node:crypto';
+import type { SecretTextDetector } from '../services/EventRedactionService.js';
+import { assertNoMemorySecrets, MemorySecretDetectedError } from '../services/MemorySecretGuard.js';
 
 /**
  * MF-1 Memory Entry persistence primitive.
@@ -282,7 +284,7 @@ function toRecord(row: EntryRow, sources: readonly MemoryEntrySourceInput[]): Me
 }
 
 export class MemoryEntryRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(private readonly db: TransactionDatabase, private readonly secretDetector: SecretTextDetector) {}
 
   /** @internal Read-only database seam for the MF-3 retrieval service. */
   getDatabase(): TransactionDatabase {
@@ -309,6 +311,7 @@ export class MemoryEntryRepository {
    */
   createEntryWithinTransaction(input: CreateMemoryEntryInput): MemoryEntryRecord {
     const validated = this.validateCreateInput(input);
+    assertNoMemorySecrets(this.secretDetector, validated.workspaceId, validated);
     this.assertWorkspaceExists(validated.workspaceId);
     this.db.prepare(
       'INSERT INTO memory_entries ('
@@ -390,6 +393,7 @@ export class MemoryEntryRepository {
       || !areMemoryTextFieldsSafe([next.title, next.summary, next.content, ...next.tags])) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
     }
+    assertNoMemorySecrets(this.secretDetector, input.workspaceId, next);
     const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
     const result = this.db.prepare(
       'UPDATE memory_entries SET authority = ?, title = ?, summary = ?, content = ?, tags_json = ?, category = ?, confidence = ?, importance = ?, pinned = ?, '
@@ -436,6 +440,10 @@ export class MemoryEntryRepository {
     if (current.version !== input.expectedVersion) {
       throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
     }
+    assertNoMemorySecrets(this.secretDetector, input.workspaceId, {
+      title: current.title, summary: current.summary, content: current.content,
+      tags: JSON.parse(current.tags_json) as string[],
+    });
     this.db.prepare(
       'UPDATE memory_entries SET status = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
     ).run(input.status, input.updatedAt, input.workspaceId, input.entryId, input.expectedVersion);
@@ -465,6 +473,7 @@ export class MemoryEntryRepository {
       // continue generating the review Candidate. Persistence failures still throw.
       return undefined;
     }
+    assertNoMemorySecrets(this.secretDetector, input.workspaceId, current);
     let added = 0;
     for (const source of input.sources) {
       const result = this.db.prepare(
@@ -619,8 +628,8 @@ export class MemoryEntryRepository {
   }
 
   /** Collapse internal errors to the stable, data-free public boundary. */
-  private publicError(error: unknown): MemoryEntryRepositoryError {
-    if (error instanceof MemoryEntryRepositoryError) return error;
+  private publicError(error: unknown): MemoryEntryRepositoryError | MemorySecretDetectedError {
+    if (error instanceof MemoryEntryRepositoryError || error instanceof MemorySecretDetectedError) return error;
     return new MemoryEntryRepositoryError('PERSISTENCE_FAILED');
   }
 }

@@ -1,4 +1,4 @@
-import type { TransactionDatabase } from './Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
 
 /**
  * Persistence for the Policy Runtime core (migration 055; Runtime
@@ -8,8 +8,17 @@ import type { TransactionDatabase } from './Transaction.js';
  */
 export class PolicyRepositoryError extends Error {
   constructor(readonly code: 'INPUT_INVALID' | 'PERSISTENCE_FAILED' | 'READ_FAILED' | 'NOT_FOUND', message: string) {
-    super(code + ': ' + message);
+    super(code === 'READ_FAILED' || code === 'PERSISTENCE_FAILED' ? code : code + ': ' + message);
     this.name = 'PolicyRepositoryError';
+  }
+}
+
+export class PolicyProfileIncompleteError extends Error {
+  readonly code = 'POLICY_PROFILE_INCOMPLETE';
+
+  constructor() {
+    super('POLICY_PROFILE_INCOMPLETE');
+    this.name = 'POLICY_PROFILE_INCOMPLETE';
   }
 }
 
@@ -81,6 +90,11 @@ export interface CreatePolicyRuleInput {
   readonly specificity?: number;
   readonly enabled?: boolean;
   readonly createdAt: string;
+}
+
+export interface EnsureDefaultPolicyProfileInput {
+  readonly profile: CreatePolicyProfileInput;
+  readonly rules: readonly Omit<CreatePolicyRuleInput, 'profileId'>[];
 }
 
 export interface InsertPolicyDecisionInput {
@@ -168,8 +182,72 @@ function toDecisionRecord(row: Record<string, unknown>): PolicyDecisionRecord {
   };
 }
 
+function selectorsEqual(left: PolicyRuleSelector, right: PolicyRuleSelector): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && (left as Record<string, unknown>)[key] === (right as Record<string, unknown>)[key]);
+}
+
+function isOriginalDefaultRule(
+  rule: PolicyRuleRecord,
+  definition: Omit<CreatePolicyRuleInput, 'profileId'>,
+  originalCreatedAt: string,
+): boolean {
+  return rule.action === definition.action
+    && selectorsEqual(rule.selector, definition.selector)
+    && rule.decision === definition.decision
+    && rule.priority === definition.priority
+    && rule.specificity === (definition.specificity ?? 0)
+    && rule.enabled === (definition.enabled !== false)
+    && rule.createdAt === originalCreatedAt;
+}
+
 export class PolicyRepository {
   constructor(private readonly db: TransactionDatabase) {}
+
+  /**
+   * Create the workspace default profile and its seed rules atomically. A
+   * narrowly recognizable partial seed from the original non-atomic path is
+   * repaired in the same transaction; customized and disabled rules are
+   * retained as-is.
+   */
+  ensureDefaultProfile(input: EnsureDefaultPolicyProfileInput): PolicyProfileRecord {
+    return this.atomically(() => {
+      const existing = this.findDefaultProfile(input.profile.workspaceId);
+      if (existing === undefined) {
+        const profile = this.createProfile(input.profile);
+        for (const rule of input.rules) {
+          this.createRule({ ...rule, profileId: profile.id });
+        }
+        return profile;
+      }
+
+      const physicalRules = this.findAllRulesByProfile(existing.id);
+      if (physicalRules.length === 0) throw new PolicyProfileIncompleteError();
+
+      const repairableProfile = existing.name === input.profile.name
+        && existing.isDefault
+        && existing.rulesVersion === 1
+        && existing.createdAt === existing.updatedAt;
+      if (!repairableProfile || physicalRules.length >= input.rules.length) return existing;
+
+      const missingRules = [...input.rules];
+      for (const rule of physicalRules) {
+        const matchingIndex = missingRules.findIndex(definition =>
+          isOriginalDefaultRule(rule, definition, existing.createdAt));
+        if (matchingIndex < 0) return existing;
+        missingRules.splice(matchingIndex, 1);
+      }
+      if (missingRules.length === 0) return existing;
+
+      for (const rule of missingRules) {
+        this.createRule({ ...rule, profileId: existing.id, createdAt: existing.createdAt });
+      }
+      return this.touchProfile(input.profile.workspaceId, existing.id, input.profile.updatedAt);
+    });
+  }
 
   createProfile(input: CreatePolicyProfileInput): PolicyProfileRecord {
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.name)
@@ -305,6 +383,19 @@ export class PolicyRepository {
     }
   }
 
+  /** All physical rules for a profile, including disabled rules. */
+  findAllRulesByProfile(profileId: string): PolicyRuleRecord[] {
+    if (!nonBlank(profileId)) return [];
+    try {
+      const rows = this.db.prepare(
+        'SELECT * FROM policy_rules WHERE profile_id = ? ORDER BY specificity DESC, priority DESC, id ASC',
+      ).all(profileId) as Array<Record<string, unknown>>;
+      return rows.map(toRuleRecord);
+    } catch (error) {
+      throw new PolicyRepositoryError('READ_FAILED', error instanceof Error ? error.message : 'read failed');
+    }
+  }
+
   setRuleEnabled(id: string, enabled: boolean): PolicyRuleRecord {
     if (!nonBlank(id)) throw new PolicyRepositoryError('INPUT_INVALID', 'rule id is missing or blank');
     try {
@@ -343,6 +434,10 @@ export class PolicyRepository {
       throw new PolicyRepositoryError('PERSISTENCE_FAILED', 'decision row not readable after write: ' + input.id);
     }
     return record;
+  }
+
+  private atomically<T>(fn: () => T): T {
+    return isTransactionActive(this.db) ? fn() : inTransaction(this.db, fn);
   }
 
   findDecisionById(workspaceId: string, id: string): PolicyDecisionRecord | undefined {

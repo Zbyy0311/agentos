@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
@@ -31,7 +32,7 @@ function fixture() {
     'INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
   ).run(WS, WS, root, root, NOW, NOW, NOW);
   const service = new MemoryImportService(store);
-  const candidates = new MemoryCandidateRepository(store.getDatabase());
+  const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   return {
     root, store, service, candidates,
     rows: () => store.getDatabase().prepare('SELECT * FROM memory_import_records WHERE workspace_id = ?').all(WS) as Array<Record<string, unknown>>,

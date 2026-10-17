@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
@@ -147,7 +148,7 @@ export class ConversationCompactionService {
     const db = options.store.getDatabase();
     this.policies = new CompactionPolicyRepository(db);
     this.compactions = new CompactionRepository(db);
-    this.candidates = new MemoryCandidateRepository(db);
+    this.candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
     // Idempotent seed of the frozen lite-v1 policy; a second call converges on
     // the already-persisted immutable version.
     if (this.policies.findByVersion('lite-v1') === undefined) {
@@ -321,6 +322,9 @@ export class ConversationCompactionService {
     const bounded = summary.trim();
     if (bounded.length === 0 || estimateTokens(bounded) > policy.summaryMaxTokens) {
       return this.failureOutcome(input.workspaceId, running, 'COMPACTION_SUMMARY_INVALID', 'summary was empty or exceeded summaryMaxTokens', policy);
+    }
+    if (eventRedactionServiceForDatabase(this.options.store.getDatabase()).detectSecretInText(input.workspaceId, bounded) !== undefined) {
+      return this.failureOutcome(input.workspaceId, running, 'MEMORY_SECRET_DETECTED', 'Summary contains secret material', policy);
     }
     void summarySource;
     const published = inTransaction(this.options.store.getDatabase(), () => {

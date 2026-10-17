@@ -81,8 +81,8 @@ db.prepare('INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, re
 db.prepare('INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?,?,?,?,?,?,?,?,?,?,1)')
   .run(OP, 'run.start', 'completed', WS, 'run', RUN, RUN, OP, NOW, NOW);
 
-const entries = new MemoryEntryRepository(db);
-const candidates = new MemoryCandidateRepository(db);
+const entries = new MemoryEntryRepository(db, store.eventRedactionService());
+const candidates = new MemoryCandidateRepository(db, store.eventRedactionService());
 const emitter = new MemoryRuntimeEventEmitter({
   store, factWriter: store.runtimeEventOutboxWriter(),
   eventAuthority: new DurableMemoryRuntimeEventContextAuthority(db),

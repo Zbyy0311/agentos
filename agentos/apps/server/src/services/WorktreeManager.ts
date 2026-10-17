@@ -1,16 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, lstat, mkdir, realpath } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WorktreeLease, WorktreeRecoveryBundle } from '@agentos/shared';
 import { isCollaborationWorkspaceClean } from './CollaborationCandidateSnapshot.js';
 import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitContext.js';
 import type { WorktreeEventSink, WorktreeLeaseEventType, WorktreeOrphanObservation } from './WorktreeRuntimeEvents.js';
 import { NOOP_WORKTREE_EVENT_SINK } from './WorktreeRuntimeEvents.js';
-import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, isTransactionActive, registerAfterCommit, type TransactionDatabase } from '../store/Transaction.js';
 import type { WorktreeLeaseRecord } from '../store/WorktreeRepository.js';
-import { WorktreeRepository } from '../store/WorktreeRepository.js';
+import { WorktreeLeaseIdentityConflictError, WorktreeRepository } from '../store/WorktreeRepository.js';
 
 type LeaseRecord = WorktreeLeaseRecord;
 type PreflightOptions = { readonly controlledGitContent?: boolean };
@@ -64,9 +64,24 @@ export interface WorktreeReconcileReport {
   readonly orphaned: WorktreeOrphanObservation[];
 }
 
+export interface LegacyLeaseImportIssue {
+  readonly index: number;
+  readonly id?: string;
+  readonly code: string;
+}
+
+export type LegacyLeaseImportReport = readonly LegacyLeaseImportIssue[];
+
+const LEGACY_LEASE_STATUSES = new Set(['creating', 'active', 'completed', 'cleanup_pending', 'cleaned', 'failed']);
+const LEGACY_LEASE_REQUIRED_STRINGS = [
+  'id', 'workspaceId', 'runId', 'executionId', 'agentId', 'branchName', 'pathLabel',
+  'baseCommit', 'status', 'createdAt', 'updatedAt', 'absolutePath', 'workspaceRoot',
+] as const;
+
 export class WorktreeManager {
   private readonly leases = new Map<string, LeaseRecord>();
   private readonly leaseFile: string;
+  private legacyImportReport: LegacyLeaseImportReport = Object.freeze([]);
   /**
    * PR-3A: when a WorktreeRepository is supplied, lease persistence moves from
    * the whole-JSON leases.json anti-pattern to SQLite. The in-memory Map stays
@@ -92,24 +107,76 @@ export class WorktreeManager {
     }
   }
 
-  /** One-shot, idempotent leases.json import; the file is archived as .migrated. */
+  /** Import each legacy record independently and retain the source on any failure. */
   private importLegacyLeasesFile(): void {
     if (!existsSync(this.leaseFile) || !this.repository) return;
+    let contents: string;
     try {
-      const records = JSON.parse(readFileSync(this.leaseFile, 'utf8')) as LeaseRecord[];
-      if (Array.isArray(records)) {
-        for (const record of records) {
-          if (!record || typeof record.id !== 'string' || this.leases.has(record.id)) continue;
-          this.repository.importLegacy(record);
-          this.leases.set(record.id, record);
-        }
+      contents = readFileSync(this.leaseFile, 'utf8');
+    } catch {
+      this.legacyImportReport = Object.freeze([{ index: 0, code: 'read_failed' }]);
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(contents) as unknown;
+    } catch {
+      this.legacyImportReport = Object.freeze([{ index: 0, code: 'malformed_document' }]);
+      return;
+    }
+    if (!Array.isArray(parsed)) {
+      this.legacyImportReport = Object.freeze([{ index: 0, code: 'malformed_document' }]);
+      return;
+    }
+
+    const issues: LegacyLeaseImportIssue[] = [];
+    for (let index = 0; index < parsed.length; index += 1) {
+      const candidate: unknown = parsed[index];
+      const id = legacyLeaseId(candidate);
+      if (!isLegacyLeaseRecord(candidate)) {
+        issues.push({ index, ...(id === undefined ? {} : { id }), code: 'malformed_record' });
+        continue;
       }
-      const archive = `${this.leaseFile}.migrated`;
+
       try {
-        if (existsSync(archive)) rmSync(archive);
-        renameSync(this.leaseFile, archive);
-      } catch { /* archive is best effort; import itself is idempotent */ }
-    } catch { /* corrupted legacy file is reconciled as empty */ }
+        const persisted = inTransaction(this.repository.transactionDatabase, () => this.repository!.importLegacy(candidate));
+        // importLegacy returns the durable row, so identical duplicates keep
+        // the database's current status, timestamps, and recovery bundle.
+        this.leases.set(persisted.id, persisted);
+      } catch (error) {
+        const code = error instanceof WorktreeLeaseIdentityConflictError
+          ? 'identity_conflict'
+          : isUniqueConstraintError(error) ? 'unique_conflict' : 'database_error';
+        issues.push({ index, id: candidate.id, code });
+      }
+    }
+
+    this.legacyImportReport = Object.freeze(issues.map(issue => Object.freeze(issue)));
+    if (issues.length === 0) this.archiveLegacyLeasesFile();
+  }
+
+  /** Link into a fresh name first so an existing archive can never be replaced. */
+  private archiveLegacyLeasesFile(): void {
+    const archiveBase = `${this.leaseFile}.migrated`;
+    for (let attempt = 0; ; attempt += 1) {
+      const archive = attempt === 0
+        ? archiveBase
+        : attempt < 128 ? `${archiveBase}.${attempt}` : `${archiveBase}.${randomUUID()}`;
+      try {
+        linkSync(this.leaseFile, archive);
+      } catch (error) {
+        if (hasNodeErrorCode(error, 'EEXIST')) continue;
+        return;
+      }
+      try {
+        unlinkSync(this.leaseFile);
+      } catch {
+        // Keeping both names is safe: a restart will see identical DB rows
+        // and can make another non-overwriting archive attempt.
+      }
+      return;
+    }
   }
 
   async createLease(input: CreateInput): Promise<WorktreeLease> {
@@ -346,6 +413,7 @@ export class WorktreeManager {
 
   getLease(id: string): WorktreeLease | undefined { const record = this.leases.get(id); return record && publicLease(record); }
   getRecord(id: string): LeaseRecord | undefined { return this.leases.get(id); }
+  getLegacyImportReport(): LegacyLeaseImportReport { return this.legacyImportReport; }
   recordRuntimeFact(id: string, type: string, payload: Record<string, unknown>): void {
     const record = this.leases.get(id);
     if (!record) throw new WorktreeError('not_found', 'lease not found');
@@ -354,11 +422,22 @@ export class WorktreeManager {
   async preflight(workspaceRoot: string, options: PreflightOptions = {}): Promise<string> { return this.assertClean(workspaceRoot, options); }
   markRecoveryBundleVerified(id: string, bundle?: WorktreeRecoveryBundle): void {
     const record = this.leases.get(id);
-    if (!record || !bundle) return;
-    record.recoveryBundle = bundle;
-    record.status = 'completed';
-    record.updatedAt = new Date().toISOString();
-    this.persist();
+    if (!record || !bundle) throw new WorktreeError('not_found', 'lease not found');
+    const updated: LeaseRecord = { ...record, recoveryBundle: bundle, status: 'completed', updatedAt: new Date().toISOString() };
+    if (this.repository) {
+      const db = this.repository.transactionDatabase;
+      const persist = () => {
+        if (!this.repository!.updateRecoveryBundle(id, bundle, updated.updatedAt)) {
+          throw new WorktreeError('not_found', 'lease not found');
+        }
+        registerAfterCommit(db, () => this.leases.set(id, updated));
+      };
+      if (isTransactionActive(db)) persist(); else inTransaction(db, persist);
+    } else {
+      const records = [...this.leases.values()].map(item => item.id === id ? updated : item);
+      writeFileSync(this.leaseFile, JSON.stringify(records, null, 2));
+      this.leases.set(id, updated);
+    }
   }
   listLeases(): WorktreeLease[] { return [...this.leases.values()].map(publicLease); }
   markCleanupPending(id: string): void {
@@ -807,6 +886,42 @@ interface GitWorktreeListEntry {
   readonly path: string;
   readonly headCommit: string | null;
   readonly branch: string | null;
+}
+
+function legacyLeaseId(value: unknown): string | undefined {
+  return isObjectRecord(value) && typeof value.id === 'string' ? value.id : undefined;
+}
+
+function isLegacyLeaseRecord(value: unknown): value is LeaseRecord {
+  if (!isObjectRecord(value)) return false;
+  for (const field of LEGACY_LEASE_REQUIRED_STRINGS) {
+    const fieldValue = value[field];
+    if (typeof fieldValue !== 'string' || fieldValue.trim().length === 0) return false;
+  }
+  if (!LEGACY_LEASE_STATUSES.has(value.status as string)) return false;
+  if (!isAbsolute(value.absolutePath as string) || !isAbsolute(value.workspaceRoot as string)) return false;
+  return value.recoveryBundle === undefined || isLegacyRecoveryBundle(value.recoveryBundle);
+}
+
+function isLegacyRecoveryBundle(value: unknown): boolean {
+  if (!isObjectRecord(value)) return false;
+  return typeof value.trackedPatchArtifactId === 'string' && value.trackedPatchArtifactId.trim().length > 0
+    && typeof value.untrackedArchiveArtifactId === 'string' && value.untrackedArchiveArtifactId.trim().length > 0
+    && typeof value.manifestArtifactId === 'string' && value.manifestArtifactId.trim().length > 0
+    && Number.isSafeInteger(value.entryCount) && (value.entryCount as number) >= 0;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasNodeErrorCode(error: unknown, code: string): boolean {
+  return isObjectRecord(error) && error.code === code;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (hasNodeErrorCode(error, 'SQLITE_CONSTRAINT_UNIQUE') || hasNodeErrorCode(error, 'SQLITE_CONSTRAINT_PRIMARYKEY')) return true;
+  return isObjectRecord(error) && typeof error.message === 'string' && /UNIQUE constraint failed/i.test(error.message);
 }
 
 /** Parse `git worktree list --porcelain` blocks separated by blank lines. */

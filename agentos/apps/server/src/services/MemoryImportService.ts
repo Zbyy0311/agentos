@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import { createEntityId } from '../store/Identity.js';
@@ -144,7 +145,7 @@ export interface ImportRecordView {
 export class MemoryImportService {
   private readonly candidates: MemoryCandidateRepository;
   constructor(private readonly store: SqliteStore) {
-    this.candidates = new MemoryCandidateRepository(store.getDatabase());
+    this.candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
   }
 
   preview(input: { fileName: string; bytes: Buffer }): ImportPreview {

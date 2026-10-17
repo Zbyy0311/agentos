@@ -69,7 +69,7 @@ const AGENT_IDS = ['agent_lead', 'agent_worker', 'agent_reviewer'];
 db.prepare('INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
   .run(WS, WS, workspaceRoot, workspaceRoot, NOW, NOW, NOW);
 
-const entries = new MemoryEntryRepository(db);
+const entries = new MemoryEntryRepository(db, store.eventRedactionService());
 entries.createEntry({
   id: 'mem_group_shared', workspaceId: WS, scope: 'conversation',
   ownerConversationId: CONV, category: 'knowledge', authority: 'system-verified',

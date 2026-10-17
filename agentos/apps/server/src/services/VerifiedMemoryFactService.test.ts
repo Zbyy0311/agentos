@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -188,7 +189,7 @@ test('failure facts require the whitelisted Run code, its immutable snapshot, an
     addRun(fx.db, { status: 'failed', failureCode: 'PROVIDER_TIMEOUT' });
     const [fact] = fx.service.accumulateTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
     assert.ok(fact);
-    const candidate = new MemoryCandidateRepository(fx.tx).findCandidateById(WS, fact.candidateId)!;
+    const candidate = new MemoryCandidateRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findCandidateById(WS, fact.candidateId)!;
     assert.equal(fact.decision, 'auto-accept');
     assert.equal(candidate.scope, 'task');
     assert.equal(candidate.authority, 'system-verified');
@@ -258,7 +259,7 @@ test('completed runtime environment facts require the same owned process/session
 
     const [fact] = fx.service.accumulateTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
     assert.ok(fact);
-    const candidate = new MemoryCandidateRepository(fx.tx).findCandidateById(WS, fact.candidateId)!;
+    const candidate = new MemoryCandidateRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findCandidateById(WS, fact.candidateId)!;
     assert.equal(candidate.scope, 'task');
     assert.match(candidate.content, /win32/);
     assert.doesNotMatch(candidate.content, /private|codex\.exe|psess/i);
@@ -276,7 +277,7 @@ test('collaboration test facts require a commit-bound immutable runner receipt w
     const fact = fx.service.accumulate({ workspaceId: WS, sourceKind: 'test-result', sourceId: candidateId, createdAt: NOW });
     assert.equal(fact.decision, 'auto-accept');
     assert.ok(fact.entryId);
-    const candidate = new MemoryCandidateRepository(fx.tx).findCandidateById(WS, fact.candidateId)!;
+    const candidate = new MemoryCandidateRepository(fx.tx, eventRedactionServiceForDatabase(fx.tx)).findCandidateById(WS, fact.candidateId)!;
     assert.equal(candidate.scope, 'task');
     assert.equal(candidate.authority, 'system-verified');
     assert.match(candidate.content, /Server-executed collaboration acceptance tests passed; exit code 0/);

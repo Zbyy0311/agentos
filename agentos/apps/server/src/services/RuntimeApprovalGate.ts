@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
 import { hashCanonicalJson } from '../snapshots/canonicalJson.js';
@@ -79,7 +80,7 @@ export class RuntimeApprovalGate {
     const db = store.getDatabase();
     this.requests = new RuntimeApprovalRepository(db);
     this.decisions = new ApprovalDecisionRepository(db);
-    this.candidates = new MemoryCandidateRepository(db);
+    this.candidates = new MemoryCandidateRepository(db, eventRedactionServiceForDatabase(db));
     this.policyDecisions = new PolicyRepository(db);
     this.policyEngineInstance = options.policyEngine
       ?? new PolicyEngine(this.policyDecisions, { now: () => this.now() });

@@ -72,7 +72,7 @@ const engine = new ConversationCompactionService({
   summarizer: new ProviderCompactionSummarizer({ scratchRoot: SCRATCH, profiles: SUMMARIZATION_CLI_PROFILES }),
 });
 const compactions = new CompactionRepository(db);
-const candidates = new MemoryCandidateRepository(db);
+const candidates = new MemoryCandidateRepository(db, store.eventRedactionService());
 
 const startedAt = Date.now();
 const first = await engine.compact({

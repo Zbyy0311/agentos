@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
@@ -260,7 +261,7 @@ export async function evaluateMemorySemanticQuality(
   const db = createFixtureDatabase();
   try {
     const transactionDb = db as unknown as TransactionDatabase;
-    const repository = new MemoryEntryRepository(transactionDb);
+    const repository = new MemoryEntryRepository(transactionDb, eventRedactionServiceForDatabase(transactionDb));
     const now = new Date().toISOString();
     corpus.entries.forEach((entry, index) => insertCorpusEntry(repository, entry, index, now));
 

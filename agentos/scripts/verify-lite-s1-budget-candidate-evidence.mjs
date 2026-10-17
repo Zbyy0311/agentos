@@ -165,7 +165,7 @@ expect('LITE-07-007', 'S1E-TRUNC-01', 'token-budget overflow is truncated explic
 // ------------------------------------------------------------- eligibility phase
 phase = 'eligibility';
 try {
-const entries = new MemoryEntryRepository(db);
+const entries = new MemoryEntryRepository(db, store.eventRedactionService());
 const retrieval = new MemoryRetrievalService(entries, () => NOW_MS);
 let seq = 0;
 const addEntry = (overrides) => {

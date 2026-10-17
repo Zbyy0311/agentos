@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -15,7 +16,7 @@ test('M2 confirmed Entry binding filters scene, duplicates and global overrides 
     for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: db as MinimalDatabaseSync });
     for (const id of ['a','b']) db.prepare(`INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?)`).run(id,id,`C:/tmp/${id}`,`C:/tmp/${id}`,NOW,NOW,NOW);
-    const entries = new MemoryEntryRepository(db);
+    const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     const create = (id: string, workspaceId: string, scope: 'workspace' | 'global', scene: string, value: string,
       bind = true, includeContextTag = true) => {
       entries.createEntry({ id,workspaceId,scope,category:'preference',authority:'user-explicit',status:'active',confidence:1,importance:1,
@@ -50,7 +51,7 @@ test('unbound manual preferences and preserved terminal-binding Entries obey the
     for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: db as MinimalDatabaseSync });
     for (const id of ['a','b']) db.prepare(`INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?)`).run(id,id,`C:/tmp/${id}`,`C:/tmp/${id}`,NOW,NOW,NOW);
-    const entries = new MemoryEntryRepository(db);
+    const entries = new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     const create = (id: string, scene: string, bind: boolean) => {
       entries.createEntry({ id,workspaceId:'b',scope:'workspace',category:'preference',authority:'user-explicit',status:'active',confidence:1,importance:1,
         title:id,content:id,tags:['preference','dimension:response_detail',`context:${scene}`,`value:${id}`],sources:[],createdAt:NOW });

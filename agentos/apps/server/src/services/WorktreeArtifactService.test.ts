@@ -2,89 +2,76 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { recoveryGit, worktreeRecoveryFixture } from './WorktreeRecoveryFixture.js';
+import { readRecoveryArchive } from './WorktreeRecoveryArchive.js';
 import { WorktreeArtifactService } from './WorktreeArtifactService.js';
 
 const exec = promisify(execFile);
 
 test('creates a byte-verifiable bundle for tracked and untracked files', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentos-worktree-bundle-'));
-  await exec('git', ['init', '-q', root]);
-  await exec('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
-  await exec('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
-  await writeFile(join(root, 'tracked.txt'), 'before\n');
-  await exec('git', ['-C', root, 'add', 'tracked.txt']);
-  await exec('git', ['-C', root, 'commit', '-qm', 'base']);
-  await writeFile(join(root, 'tracked.txt'), 'after\n');
-  await mkdir(join(root, 'nested'));
-  const binary = Buffer.from([0, 1, 2, 255, 13, 10]);
-  await writeFile(join(root, 'nested', 'new.bin'), binary);
-  const existingArchive = Buffer.from('user-owned archive content\n');
-  await writeFile(join(root, '.agentos-untracked.tar'), existingArchive);
-  const expectedTracked = await readFile(join(root, 'tracked.txt'));
+  const fx = await worktreeRecoveryFixture();
+  try {
+    const root = fx.record.absolutePath;
+    await writeFile(join(root, 'target.txt'), 'modified tracked content\n');
+    const expectedTracked = await readFile(join(root, 'target.txt'));
+    await mkdir(join(root, 'nested'));
+    const binary = Buffer.from([0, 1, 2, 255, 13, 10]);
+    await writeFile(join(root, 'nested', 'new.bin'), binary);
+    const existingArchive = Buffer.from('user-owned archive content\n');
+    await writeFile(join(root, '.agentos-untracked.tar'), existingArchive);
 
-  const artifacts: Array<{ id: string; type: string; bytes: Buffer }> = [];
-  const fakeArtifacts = {
-    create: async (input: { type: string; source: { kind: string; content?: string; absolutePath?: string } }) => {
-      const bytes = input.source.kind === 'text'
-        ? Buffer.from(input.source.content ?? '', 'utf8')
-        : await readFile(input.source.absolutePath ?? '');
-      const artifact = { id: `${input.type}-${artifacts.length}`, type: input.type };
-      artifacts.push({ id: artifact.id, type: input.type, bytes });
-      return artifact;
-    },
-    readContentBytes: async (_workspaceId: string, id: string) => {
-      const item = artifacts.find(candidate => candidate.id === id);
-      if (!item) throw new Error('missing fake artifact');
-      return item.bytes;
-    },
-  };
-  const lease = { id: 'lease-1', absolutePath: root, baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim(), runId: 'run-1', executionId: 'exec-1', agentId: 'agent-1' };
-  let verified = false;
-  const fakeWorktrees = {
-    getRecord: (id: string) => id === lease.id ? lease : undefined,
-    markRecoveryBundleVerified: () => { verified = true; },
-  };
+    const bundle = await fx.bundles.createBundle(fx.lease.id, fx.input);
+    assert.equal(bundle.entryCount, 2);
+    assert.equal(bundle.formatVersion, 2);
+    assert.equal(fx.manager.getRecord(fx.lease.id)?.recoveryBundle?.manifestArtifactId, bundle.manifestArtifactId);
+    const savedArtifacts = fx.artifacts.listForWorktree(fx.lease.id);
+    assert.deepEqual(savedArtifacts.map(item => item.type), ['diff', 'manifest', 'archive']);
 
-  const bundle = await new WorktreeArtifactService(fakeArtifacts as never, fakeWorktrees as never).createBundle('lease-1', {
-    workspaceId: 'workspace-1', runId: 'run-1', executionId: 'exec-1', agentId: 'agent-1',
-  });
-  assert.equal(bundle.entryCount, 2);
-  assert.equal(verified, true);
-  assert.deepEqual(artifacts.map(item => item.type), ['diff', 'manifest', 'archive']);
-  assert.match(artifacts[0]?.bytes.toString('utf8') ?? '', /tracked\.txt/);
-  assert.deepEqual(JSON.parse(artifacts[1]?.bytes.toString('utf8') ?? ''), [{
-    path: '.agentos-untracked.tar', sizeBytes: existingArchive.byteLength,
-    sha256: createHash('sha256').update(existingArchive).digest('hex'),
-  }, {
-    path: 'nested/new.bin', sizeBytes: binary.byteLength,
-    sha256: 'de6c83f562fd0a7ca52b97d2b8b80ea93bb6363d2db5e0ed014bacd95e794ce7',
-  }]);
-  assert.deepEqual(await readFile(join(root, '.agentos-untracked.tar')), existingArchive);
-  assert.deepEqual((await readdir(root)).filter(path => path.startsWith('.agentos-untracked-')), []);
-  const archivePath = join(root, 'bundle.tar');
-  await writeFile(archivePath, artifacts[2]?.bytes ?? Buffer.alloc(0));
-  assert.match((await exec('tar', ['-tf', archivePath])).stdout, /nested[\\/]new\.bin/);
+    const patch = await fx.artifacts.readContentBytes(fx.workspace.id, bundle.trackedPatchArtifactId);
+    const manifestBytes = await fx.artifacts.readContentBytes(fx.workspace.id, bundle.manifestArtifactId);
+    const archiveBytes = await fx.artifacts.readContentBytes(fx.workspace.id, bundle.untrackedArchiveArtifactId);
+    assert.match(patch.toString('utf8'), /target\.txt/);
+    const manifest = JSON.parse(manifestBytes.toString('utf8')) as {
+      formatVersion: number;
+      baseCommit: string;
+      headCommit: string;
+      entries: Array<{ path: string; sizeBytes: number; sha256: string }>;
+    };
+    assert.equal(manifest.formatVersion, 2);
+    assert.equal(manifest.baseCommit, fx.lease.baseCommit);
+    assert.equal(manifest.headCommit, await recoveryGit(root, ['rev-parse', 'HEAD']));
+    assert.deepEqual(manifest.entries.map(item => item.path).sort(), ['.agentos-untracked.tar', 'nested/new.bin']);
+    const expectedHashes = new Map([
+      ['.agentos-untracked.tar', existingArchive],
+      ['nested/new.bin', binary],
+    ]);
+    for (const entry of manifest.entries) {
+      const bytes = expectedHashes.get(entry.path);
+      assert.ok(bytes);
+      assert.equal(entry.sizeBytes, bytes.byteLength);
+      assert.equal(entry.sha256, createHash('sha256').update(bytes).digest('hex'));
+    }
+    assert.deepEqual(readRecoveryArchive(archiveBytes).map(item => [item.path, item.bytes]), [
+      ['.agentos-untracked.tar', existingArchive],
+      ['nested/new.bin', binary],
+    ]);
+    assert.deepEqual(await readFile(join(root, '.agentos-untracked.tar')), existingArchive);
+    assert.deepEqual((await readdir(root)).filter(path => path.startsWith('.agentos-untracked-')), []);
 
-  const restored = await mkdtemp(join(tmpdir(), 'agentos-worktree-restored-'));
-  await exec('git', ['init', '-q', restored]);
-  await exec('git', ['-C', restored, 'config', 'core.autocrlf', 'false']);
-  await exec('git', ['-C', restored, 'config', 'user.email', 'agentos@example.test']);
-  await exec('git', ['-C', restored, 'config', 'user.name', 'AgentOS Test']);
-  await writeFile(join(restored, 'tracked.txt'), 'before\n');
-  await exec('git', ['-C', restored, 'add', 'tracked.txt']);
-  await exec('git', ['-C', restored, 'commit', '-qm', 'base']);
-  const patchPath = join(restored, 'tracked.patch');
-  await writeFile(patchPath, artifacts[0]?.bytes ?? Buffer.alloc(0));
-  await exec('git', ['-C', restored, 'apply', patchPath]);
-  await writeFile(join(restored, 'untracked.tar'), artifacts[2]?.bytes ?? Buffer.alloc(0));
-  await exec('tar', ['-xf', join(restored, 'untracked.tar'), '-C', restored]);
-  assert.deepEqual(await readFile(join(restored, 'tracked.txt')), expectedTracked);
-  assert.deepEqual(await readFile(join(restored, 'nested', 'new.bin')), binary);
-  assert.deepEqual(await readFile(join(restored, '.agentos-untracked.tar')), existingArchive);
+    await fx.removeCheckout(root);
+    assert.equal(existsSync(root), false);
+    const restored = join(fx.root, 'restored');
+    await mkdir(restored);
+    await fx.bundles.restoreRecoveryBundle(bundle, fx.workspace.id, restored);
+    assert.deepEqual(await readFile(join(restored, 'target.txt')), expectedTracked);
+    assert.deepEqual(await readFile(join(restored, 'nested', 'new.bin')), binary);
+    assert.deepEqual(await readFile(join(restored, '.agentos-untracked.tar')), existingArchive);
+  } finally { await fx.close(); }
 });
 
 test('rejects a symlink that escapes the worktree', async () => {
@@ -98,11 +85,15 @@ test('rejects a symlink that escapes the worktree', async () => {
   await exec('git', ['-C', root, 'commit', '-qm', 'base']);
   await writeFile(join(outside, 'secret.txt'), 'secret');
   await exec('cmd', ['/c', 'mklink', join(root, 'escape.txt'), join(outside, 'secret.txt')]);
-  const lease = { id: 'lease-2', absolutePath: root, baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim() };
+  const lease = {
+    id: 'lease-2', workspaceId: 'w', runId: 'r', executionId: 'e', agentId: 'a',
+    workspaceRoot: root, absolutePath: root, branchName: 'escape-test-lease',
+    baseCommit: (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim(), status: 'active',
+  };
   const fake = { create: async () => ({ id: 'unused' }) };
   const manager = { getRecord: () => lease, markRecoveryBundleVerified: () => undefined };
   await assert.rejects(
     () => new WorktreeArtifactService(fake as never, manager as never).createBundle('lease-2', { workspaceId: 'w', runId: 'r', executionId: 'e', agentId: 'a' }),
-    /escapes worktree/,
+    (error: unknown) => error instanceof Error && error.message === 'WORKTREE_RECOVERY_LINK_ESCAPES_ROOT',
   );
 });

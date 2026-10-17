@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -109,7 +110,7 @@ test('GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring
     const run = store.runRepository().insert({ workspaceId: 'workspace-a', taskId: task.id, origin: 'v2_api', createdBy: 'user' });
     const db = store.getDatabase();
     const entryId = 'mem_' + 'e'.repeat(26);
-    new MemoryEntryRepository(db).createEntry({
+    new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db)).createEntry({
       id: entryId,
       workspaceId: 'workspace-a',
       scope: 'workspace',

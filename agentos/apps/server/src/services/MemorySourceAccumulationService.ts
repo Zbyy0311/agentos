@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import { createHash } from 'node:crypto';
 import type { MemoryCategory, MemoryScope, MemorySourceKind, RunFileChange } from '@agentos/shared';
 import { MemoryCandidateRepository, type MemoryCandidateRecord, type MemoryCandidateSourceInput } from '../store/MemoryCandidateRepository.js';
@@ -6,6 +7,7 @@ import { inTransaction } from '../store/Transaction.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
 import { MemoryExtractor, type MemoryCandidateDraft, type MemoryExtractionInput } from './MemoryExtractor.js';
+import { detectMemorySecretViolations } from './MemorySecretGuard.js';
 
 const MAX_VISIBLE_REPLIES = 32;
 const MAX_REPLY_LENGTH = 4_000;
@@ -106,7 +108,7 @@ export class MemorySourceAccumulationService {
     } = {},
   ) {
     this.db = store.getDatabase();
-    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(this.db);
+    this.candidates = dependencies.candidates ?? new MemoryCandidateRepository(this.db, eventRedactionServiceForDatabase(this.db));
     this.extractor = dependencies.extractor ?? new MemoryExtractor();
   }
 
@@ -272,7 +274,8 @@ export class MemorySourceAccumulationService {
     };
     const extraction = this.extractor.extract(extractionInput);
     const drafts = extraction.drafts.slice(0, 3).filter(draft => draft.operation !== 'ignore'
-      && areMemoryTextFieldsSafe([draft.title, draft.summary, draft.content]));
+      && areMemoryTextFieldsSafe([draft.title, draft.summary, draft.content])
+      && detectMemorySecretViolations(eventRedactionServiceForDatabase(this.db), input.workspaceId, draft).length === 0);
     if (drafts.length === 0) {
       return extraction.reason === 'no_valuable_public_evidence'
         ? { outcome: 'none', candidates: [], reason: 'no_valuable_public_evidence' }

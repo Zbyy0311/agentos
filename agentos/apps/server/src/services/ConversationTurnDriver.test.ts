@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -116,7 +117,7 @@ test('M1 production Turn query freezes actual versions/text/reasons; later edits
   const fx = fixture(undefined, context, (_history, options) => { receivedText=options.memoryContext; });
   try {
     const db=fx.db as unknown as TransactionDatabase;
-    const entries=new MemoryEntryRepository(db);
+    const entries=new MemoryEntryRepository(db, eventRedactionServiceForDatabase(db));
     const entry=entries.createEntry({id:'memory-turn-v1',workspaceId:WS,scope:'workspace',category:'constraint',
       authority:'user-explicit',status:'active',confidence:1,importance:1,title:'nebula',content:'nebula original rule',sources:[],createdAt:NOW});
     Object.assign(context,{ snapshots:createDurableTurnContextSnapshotPort({getDatabase:()=>db}),

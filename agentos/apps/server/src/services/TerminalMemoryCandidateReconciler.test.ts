@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -134,7 +135,7 @@ test('LITE-07-102 restart sweep creates the missing Candidate through the real g
     assert.deepEqual(first, {
       workspaces: 1, terminalRuns: 1, generated: 1, existing: 0, missingAuthority: 0, unresolved: 0,
     });
-    const candidates = new MemoryCandidateRepository(fx.tdb);
+    const candidates = new MemoryCandidateRepository(fx.tdb, eventRedactionServiceForDatabase(fx.tdb));
     const created = candidates.findCandidateById(WS, terminalCandidateId('run_failed'));
     assert.ok(created !== undefined);
     assert.equal(created.category, 'failure');
@@ -195,7 +196,7 @@ test('LITE-07-102 a terminal Run without a terminal Event is reported, never fab
       workspaces: 1, terminalRuns: 1, generated: 0, existing: 0, missingAuthority: 1, unresolved: 0,
     });
     assert.equal(calls.length, 0);
-    assert.equal(new MemoryCandidateRepository(fx.tdb).listCandidates(WS).length, 0);
+    assert.equal(new MemoryCandidateRepository(fx.tdb, eventRedactionServiceForDatabase(fx.tdb)).listCandidates(WS).length, 0);
     assert.deepEqual(problems, ['TERMINAL_CANDIDATE_NO_AUTHORITY run=run_no_event workspace=ws_terminal']);
   } finally { fx.close(); }
 });

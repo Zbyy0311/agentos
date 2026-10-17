@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import { Router, type Request, type Response } from 'express';
 
 import type { SqliteStore } from '../store/SqliteStore.js';
@@ -29,7 +30,7 @@ function truncate(value: string, maxLength: number): string {
 export function createApprovalDecisionRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
   const decisions = new ApprovalDecisionRepository(store.getDatabase());
-  const candidates = new MemoryCandidateRepository(store.getDatabase());
+  const candidates = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
 
   const requireWorkspace = (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -120,7 +121,7 @@ export function createApprovalDecisionRoutes(store: SqliteStore, workspaceManage
       res.status(201).json(result);
     } catch (error) {
       const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
-      const status = /INPUT_INVALID/.test(code) ? 400 : /NOT_FOUND/.test(code) ? 404 : 500;
+      const status = /INPUT_INVALID|MEMORY_SECRET_DETECTED/.test(code) ? 400 : /NOT_FOUND/.test(code) ? 404 : 500;
       if (status === 500) {
         sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
         return;

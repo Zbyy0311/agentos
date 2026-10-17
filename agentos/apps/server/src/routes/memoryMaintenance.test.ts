@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from '../services/EventRedactionService.js';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
@@ -45,7 +46,7 @@ test('GET maintenance is workspace-bound, read-only, and returns safe suggestion
         VALUES (?,?,?,?,?,?,?)`).run(id, id, `C:/tmp/${id}`, `C:/tmp/${id}`, NOW, NOW, NOW);
     }
     const tx = db as unknown as TransactionDatabase;
-    const entries = new MemoryEntryRepository(tx);
+    const entries = new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx));
     const create = (id: string, workspaceId: string, options: Record<string, unknown> = {}) => entries.createEntry({
       id,
       workspaceId,

@@ -1,3 +1,5 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
+import { MemorySecretDetectedError } from './MemorySecretGuard.js';
 import { createHash } from 'node:crypto';
 import { MemoryEntryRepository, type MemoryEntryRecord, type MemoryEntrySourceInput } from '../store/MemoryEntryRepository.js';
 import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
@@ -81,7 +83,7 @@ export class MemoryWorkspaceKnowledgePromotionService {
     dependencies: { readonly entries?: MemoryEntryRepository } = {},
   ) {
     this.db = store.getDatabase();
-    this.entries = dependencies.entries ?? new MemoryEntryRepository(this.db);
+    this.entries = dependencies.entries ?? new MemoryEntryRepository(this.db, eventRedactionServiceForDatabase(this.db));
   }
 
   promote(input: {
@@ -195,7 +197,7 @@ export class MemoryWorkspaceKnowledgePromotionService {
         };
       });
     } catch (error) {
-      if (error instanceof MemoryWorkspaceKnowledgePromotionError) throw error;
+      if (error instanceof MemoryWorkspaceKnowledgePromotionError || error instanceof MemorySecretDetectedError) throw error;
       throw new MemoryWorkspaceKnowledgePromotionError('PROMOTION_FAILED');
     }
   }

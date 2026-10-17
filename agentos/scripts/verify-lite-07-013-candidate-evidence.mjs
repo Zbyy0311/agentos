@@ -71,7 +71,7 @@ db.prepare('INSERT INTO tasks (id, workspace_id, title, status, created_by, crea
 db.prepare('INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, created_by, created_at, updated_at, version) VALUES (?,?,?,?,?,?,?,?,?,1)')
   .run(RUN, WS, TASK, RUN, 'queued', 'initial', 'evidence', NOW, NOW);
 
-const entries = new MemoryEntryRepository(db);
+const entries = new MemoryEntryRepository(db, store.eventRedactionService());
 entries.createEntry({
   id: 'mem_0713_shared', workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'knowledge',
   authority: 'system-verified', confidence: 0.9, importance: 0.6,

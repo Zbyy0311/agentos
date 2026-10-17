@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
@@ -149,14 +150,14 @@ test('LITE-07-104: explicit canonical review result creates real-source Event/Ou
     assert.equal(fx.store.getCanonicalRuntimeArtifactRecord(WS, ids[0])?.canonicalRunId, 'run');
     const completion = new ArtifactCompletionRepository(fx.store.getDatabase()).findByArtifact(WS, ids[0])!;
     assert.equal(completion.runId, 'run');
-    const candidates = new MemoryCandidateRepository(fx.store.getDatabase());
+    const candidates = new MemoryCandidateRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase()));
     const candidate = candidates.findCandidateById(WS, completion.candidateId)!;
     assert.deepEqual(candidate.sources, [{ kind: 'artifact', id: ids[0] }, { kind: 'run', id: 'run' }]);
     assert.equal(count(fx, 'runtime_events'), 1);
     assert.equal(count(fx, 'outbox_messages'), 1);
     assert.equal(count(fx, 'workspace_events'), 0);
     const accepted = candidates.reviewCandidate({ workspaceId: WS, candidateId: candidate.id, expectedVersion: 1, outcome: 'accept', reviewedAt: NOW }, { writer: fx.store.workspaceEventWriter() });
-    assert.deepEqual(new MemoryEntryRepository(fx.store.getDatabase()).findById(WS, accepted.mergedIntoEntryId!)?.sources, candidate.sources);
+    assert.deepEqual(new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase())).findById(WS, accepted.mergedIntoEntryId!)?.sources, candidate.sources);
     assert.equal((await fx.artifacts.readContentBytes(WS, ids[0])).toString(), 'A real review conclusion requiring changes.');
   } finally { fx.close(); }
 });
@@ -281,8 +282,8 @@ test('LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Ent
     assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, artifactType: 'review', conclusion: 'approved' })).status, 400);
     const response = await post(`/memory/candidates/${completion.candidateId}/review`, { expectedVersion: 1, outcome: 'accept' });
     assert.equal(response.status, 200);
-    const candidate = new MemoryCandidateRepository(fx.store.getDatabase()).findCandidateById(WS, completion.candidateId)!;
-    const entry = new MemoryEntryRepository(fx.store.getDatabase()).findById(WS, candidate.mergedIntoEntryId!)!;
+    const candidate = new MemoryCandidateRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase())).findCandidateById(WS, completion.candidateId)!;
+    const entry = new MemoryEntryRepository(fx.store.getDatabase(), eventRedactionServiceForDatabase(fx.store.getDatabase())).findById(WS, candidate.mergedIntoEntryId!)!;
     assert.deepEqual(entry.sources, [{ kind: 'artifact', id: completion.artifactId }]);
     const content = await fetch(`${base}/artifacts/${completion.artifactId}/content`);
     assert.equal(content.status, 200);

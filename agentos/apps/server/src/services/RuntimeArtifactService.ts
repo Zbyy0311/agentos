@@ -1,15 +1,29 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { RuntimeArtifact, RuntimeArtifactType, CanonicalRuntimeArtifactRecord } from '@agentos/shared';
+import type { RuntimeArtifact, RuntimeArtifactType, CanonicalRuntimeArtifactRecord, WorktreeArtifactProvenance } from '@agentos/shared';
 import { SqliteStore, type RuntimeArtifactRecord } from '../store/SqliteStore.js';
 import { inTransaction } from '../store/Transaction.js';
 import { ArtifactCompletionRepository, ArtifactCompletionRepositoryError,
   type ArtifactCompletionConclusion } from '../store/ArtifactCompletionRepository.js';
 import { ArtifactCompletionService } from './ArtifactCompletionService.js';
+import { withWorktreeBranchLock } from './WorktreeBranchLock.js';
+import { WorktreeArtifactBindingRepository, WorktreeArtifactProvenanceError } from '../store/WorktreeArtifactBindingRepository.js';
+
+export interface PreparedWorktreeArtifact {
+  readonly id: string;
+  readonly worktreeProvenance: WorktreeArtifactProvenance;
+  publishWithinTransaction(): RuntimeArtifact | CanonicalRuntimeArtifactRecord;
+  discard(): Promise<void>;
+}
+
+const artifactExecFile = promisify(execFile);
 
 export type ArtifactContentSource =
+  | { kind: 'bytes'; content: Uint8Array }
   | { kind: 'text'; content: string }
   | { kind: 'workspace-file'; absolutePath: string }
   | { kind: 'reference'; originalPath: string };
@@ -143,16 +157,39 @@ export class RuntimeArtifactService {
 
   /** Managed checkout evidence can belong to a canonical Run without a legacy Execution. */
   async createWorktreeArtifact(worktreeId: string, input: CreateRuntimeArtifactInput): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
-    const assertLease = (): void => {
-      const lease = this.store.worktreeRepository().getById(worktreeId);
-      if (!lease || lease.workspaceId !== input.workspaceId || lease.runId !== input.runId
-        || lease.executionId !== input.sourceExecutionId || lease.agentId !== input.agentId
-        || resolve(lease.absolutePath) !== resolve(input.workspaceRoot) || lease.status === 'cleaned') {
-        throw new Error('Worktree artifact provenance is invalid');
+    const lease = this.store.worktreeRepository().getById(worktreeId);
+    if (!lease) throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+    return withWorktreeBranchLock(lease.absolutePath, lease.branchName,
+      () => this.createWorktreeArtifactWithinBranchLock(worktreeId, input));
+  }
+
+  /** @internal Caller already holds the lease branch lock. */
+  async createWorktreeArtifactWithinBranchLock(worktreeId: string, input: CreateRuntimeArtifactInput): Promise<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
+    const headCommit = await this.readWorktreeHead(input.workspaceRoot);
+    const prepared = await this.prepareWorktreeArtifact(worktreeId, input, headCommit);
+    try {
+      if (await this.readWorktreeHead(input.workspaceRoot) !== headCommit) {
+        throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_HEAD_MISMATCH');
       }
-    };
-    assertLease();
-    if (!this.store.runRepository().findById(input.workspaceId, input.runId)) return this.create(input);
+      return this.publishPreparedWorktreeArtifacts([prepared])[0];
+    } catch (error) {
+      await prepared.discard();
+      throw error;
+    }
+  }
+
+  /** @internal Stage bytes without publishing metadata. Caller owns the branch lock. */
+  async prepareWorktreeArtifact(worktreeId: string, input: CreateRuntimeArtifactInput, headCommit: string): Promise<PreparedWorktreeArtifact> {
+    const lease = this.store.worktreeRepository().getById(worktreeId);
+    if (!lease || lease.workspaceId !== input.workspaceId || lease.runId !== input.runId
+      || lease.executionId !== input.sourceExecutionId || lease.agentId !== input.agentId
+      || resolve(lease.absolutePath) !== resolve(input.workspaceRoot) || lease.status === 'cleaned'
+      || !/^[a-f0-9]{40,64}$/.test(headCommit)) {
+      throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+    }
+    const worktreeProvenance: WorktreeArtifactProvenance = { leaseId: lease.id, workspaceId: lease.workspaceId,
+      runId: lease.runId, executionId: lease.executionId, agentId: lease.agentId, baseCommit: lease.baseCommit, headCommit };
+    const canonical = Boolean(this.store.runRepository().findById(input.workspaceId, input.runId));
     if (input.completion) throw new Error('Worktree evidence cannot declare review or test completion');
     const title = input.title.trim();
     if (!title) throw new Error('Runtime artifact title is required');
@@ -161,28 +198,73 @@ export class RuntimeArtifactService {
     if (!bytes || bytes.byteLength > MAX_BYTES[input.type]) throw new Error('Worktree artifact content exceeds its byte limit');
     if (input.type === 'image' && !isSupportedRaster(bytes)) throw new Error('Unsupported image artifact format');
     const id = randomUUID();
-    const storageKey = `canonical-worktrees/${id}/content`;
-    const directory = join(this.artifactRoot, 'canonical-worktrees', id);
+    const storageKey = `worktree-evidence/${id}/content`;
+    const directory = join(this.artifactRoot, 'worktree-evidence', id);
+    const createdAt = new Date().toISOString();
+    const metadata: RuntimeArtifact = { id, workspaceId: input.workspaceId, runId: input.runId,
+      sourceExecutionId: input.sourceExecutionId, agentId: input.agentId, type: input.type, title,
+      summary: input.summary?.trim() || source.summary,
+      originalPath: normalizeOriginalPath(input.originalPath, input.workspaceRoot) ?? source.originalPath,
+      mimeType: input.mimeType ?? inferMimeType(title), sizeBytes: bytes.byteLength,
+      sha256: hash(bytes), contentAvailable: true, createdAt, worktreeProvenance };
     await mkdir(directory, { recursive: true });
     try {
       await writeFile(join(directory, 'content'), bytes, { flag: 'wx' });
-      inTransaction(this.store.getDatabase(), () => {
-        assertLease();
-        if (this.store.listCanonicalRuntimeArtifacts(input.workspaceId, input.runId).length >= MAX_ARTIFACTS_PER_RUN) {
-          throw new Error('Runtime artifact limit reached for run');
-        }
-        this.store.createCanonicalRuntimeArtifact({ id, workspaceId: input.workspaceId, agentId: input.agentId,
-          type: input.type, title, summary: input.summary?.trim() || source.summary,
-          originalPath: normalizeOriginalPath(input.originalPath, input.workspaceRoot) ?? source.originalPath,
-          mimeType: input.mimeType ?? inferMimeType(title), sizeBytes: bytes.byteLength,
-          sha256: hash(bytes), contentAvailable: true, createdAt: new Date().toISOString(),
-        }, { kind: 'CANONICAL', canonicalRunId: input.runId }, storageKey);
-      });
-      return this.store.getCanonicalRuntimeArtifactRecord(input.workspaceId, id)!;
+      return { id, worktreeProvenance, discard: () => rm(directory, { recursive: true, force: true }),
+        publishWithinTransaction: () => {
+          if (this.listForRun(input.workspaceId, input.runId).length >= MAX_ARTIFACTS_PER_RUN) {
+            throw new Error('Runtime artifact limit reached for run');
+          }
+          const current = this.store.worktreeRepository().getById(worktreeId);
+          if (!current || resolve(current.absolutePath) !== resolve(lease.absolutePath)
+            || current.branchName !== lease.branchName || current.status === 'cleaned') {
+            throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+          }
+          if (canonical) this.store.createCanonicalRuntimeArtifact(metadata, { kind: 'CANONICAL', canonicalRunId: input.runId }, storageKey);
+          else this.store.createRuntimeArtifact(metadata, storageKey);
+          new WorktreeArtifactBindingRepository(this.store.getDatabase()).insertWithinTransaction(id, worktreeProvenance, createdAt);
+          return canonical ? { ...this.store.getCanonicalRuntimeArtifactRecord(input.workspaceId, id)!, worktreeProvenance } : metadata;
+        },
+      };
     } catch (error) {
       await rm(directory, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  publishPreparedWorktreeArtifacts(items: readonly PreparedWorktreeArtifact[], afterPersist?: () => void): Array<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
+    return inTransaction(this.store.getDatabase(), () => {
+      const artifacts = items.map(item => item.publishWithinTransaction());
+      afterPersist?.();
+      return artifacts;
+    });
+  }
+
+  async readWorktreeHead(worktreePath: string): Promise<string> {
+    return (await artifactExecFile('git', ['rev-parse', 'HEAD'], { cwd: worktreePath, timeout: 10000, windowsHide: true })).stdout.trim();
+  }
+
+  requireWorktreeProvenance(worktreeId: string, artifactId: string, expectedHeadCommit?: string): WorktreeArtifactProvenance {
+    const lease = this.store.worktreeRepository().getById(worktreeId);
+    if (!lease) throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+    const binding = new WorktreeArtifactBindingRepository(this.store.getDatabase()).find(lease.workspaceId, artifactId);
+    if (!binding) throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISSING');
+    if (binding.leaseId !== lease.id || binding.workspaceId !== lease.workspaceId || binding.runId !== lease.runId
+      || binding.executionId !== lease.executionId || binding.agentId !== lease.agentId || binding.baseCommit !== lease.baseCommit) {
+      throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_PROVENANCE_MISMATCH');
+    }
+    if (expectedHeadCommit !== undefined && binding.headCommit !== expectedHeadCommit) {
+      throw new WorktreeArtifactProvenanceError('WORKTREE_ARTIFACT_HEAD_MISMATCH');
+    }
+    return binding;
+  }
+
+  listForWorktree(worktreeId: string): Array<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
+    const lease = this.store.worktreeRepository().getById(worktreeId);
+    if (!lease) return [];
+    return this.listForRun(lease.workspaceId, lease.runId).filter(artifact => {
+      try { this.requireWorktreeProvenance(worktreeId, artifact.id); return true; } catch { return false; }
+    });
   }
 
   async createCanonicalCompleted(input: {
@@ -273,7 +355,10 @@ export class RuntimeArtifactService {
   /** Read-only listing channel for the worktree control API (diff/bundle/inspect views). */
   listForRun(workspaceId: string, runId: string): Array<RuntimeArtifact | CanonicalRuntimeArtifactRecord> {
     if (!runId) return [];
-    return [...this.store.listRuntimeArtifacts(workspaceId, runId), ...this.store.listCanonicalRuntimeArtifacts(workspaceId, runId)];
+    const bindings = new WorktreeArtifactBindingRepository(this.store.getDatabase());
+    return [...this.store.listRuntimeArtifacts(workspaceId, runId), ...this.store.listCanonicalRuntimeArtifacts(workspaceId, runId)]
+      .map(artifact => { const provenance = bindings.find(workspaceId, artifact.id);
+        return provenance ? { ...artifact, worktreeProvenance: provenance } : artifact; });
   }
 
   async cleanupConversation(workspaceId: string, conversationId: string): Promise<void> {
@@ -308,6 +393,7 @@ export class RuntimeArtifactService {
   }
 
   private async readSource(source: ArtifactContentSource, workspaceRoot: string): Promise<{ bytes?: Buffer; originalPath?: string; sizeBytes?: number; summary?: string }> {
+    if (source.kind === 'bytes') return { bytes: Buffer.from(source.content) };
     if (source.kind === 'text') return { bytes: Buffer.from(source.content, 'utf8') };
     if (source.kind === 'reference') return { originalPath: normalizeOriginalPath(source.originalPath, workspaceRoot) };
     let resolvedPath: string;

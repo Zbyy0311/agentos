@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { hashMemoryText, normalizeMemoryText } from './MemoryCandidateGenerationService.js';
@@ -235,7 +236,7 @@ test('a failed candidate write rolls back every draft from that source bundle', 
   try {
     store = new SqliteStore(root);
     const turn = addDirectTurn(store, 'rollback', '采用受控回滚方案。', '验证每一步提交。');
-    const repository = new MemoryCandidateRepository(store.getDatabase());
+    const repository = new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     let writes = 0;
     const candidates = {
       findCandidateById: repository.findCandidateById.bind(repository),
@@ -274,7 +275,7 @@ test('secret-bearing extractor output is filtered before any Candidate is persis
     });
     const result = service.generateForDirectTurn({ workspaceId: WS, ...turn, createdAt: NOW });
     assert.equal(result.outcome, 'none');
-    assert.equal(new MemoryCandidateRepository(store.getDatabase()).listCandidates(WS).length, 0);
+    assert.equal(new MemoryCandidateRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).listCandidates(WS).length, 0);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -312,7 +313,7 @@ test('the legacy accumulation route feeds the canonical review queue and promoti
       id: 'promotion-route-message', workspaceId: WS, conversationId: 'promotion-route-conversation',
       senderType: 'user', kind: 'text', status: 'final', content: '确认长期发布规范。', createdAt: NOW,
     });
-    const source = new MemoryEntryRepository(store.getDatabase()).createEntry({
+    const source = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).createEntry({
       id: 'promotion-route-source', workspaceId: WS, scope: 'conversation',
       ownerConversationId: 'promotion-route-conversation', category: 'workflow', authority: 'agent-derived',
       confidence: 0.8, importance: 0.5, title: '发布规范', content: '发布前必须完成验证。', status: 'active',
@@ -336,7 +337,7 @@ test('the legacy accumulation route feeds the canonical review queue and promoti
     assert.equal(promoted.sourceBinding.sourceEntryVersion, 1);
     assert.equal(promoted.sourceBinding.promotedEntryId, promoted.entry.id);
     assert.ok(promoted.sourceBinding.promotionEventId);
-    assert.equal(new MemoryEntryRepository(store.getDatabase()).findById(WS, source.id)?.scope, 'conversation');
+    assert.equal(new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase())).findById(WS, source.id)?.scope, 'conversation');
     const stale = await fetch(`${base}/memory/entries/${source.id}/promote-to-workspace-knowledge`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedVersion: 2 }),
     });
@@ -378,7 +379,7 @@ test('workspace promotion creates a separate Entry with validated links, CAS, an
       id: 'promote-source-message', workspaceId: WS, conversationId: 'promote-conversation',
       senderType: 'user', kind: 'text', status: 'final', content: '确认工作区发布策略。', createdAt: NOW,
     });
-    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entries = new MemoryEntryRepository(store.getDatabase(), eventRedactionServiceForDatabase(store.getDatabase()));
     const source = entries.createEntry({
       id: 'memory-conversation-source', workspaceId: WS, scope: 'conversation',
       ownerConversationId: 'promote-conversation', category: 'decision', authority: 'agent-derived',

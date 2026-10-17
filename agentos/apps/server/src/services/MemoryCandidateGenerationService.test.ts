@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -133,8 +134,8 @@ function fixture(
     seedTerminalSummaryArtifact(db, RUN, TASK, 'artifact_mf2rg_test',
       'pass: regression tests verified the requested behavior.', terminalArtifactIds, terminalSummaryArtifactId);
   }
-  const candidates = new MemoryCandidateRepository(tdb);
-  const entries = new MemoryEntryRepository(tdb);
+  const candidates = new MemoryCandidateRepository(tdb, eventRedactionServiceForDatabase(tdb));
+  const entries = new MemoryEntryRepository(tdb, eventRedactionServiceForDatabase(tdb));
   const service = new MemoryCandidateGenerationService({
     store: { getDatabase: () => tdb },
     runs: new RunRepository(tdb as never),

@@ -1,3 +1,4 @@
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
@@ -39,7 +40,7 @@ function fixture(withFeedback = true) {
       VALUES (?,?,?,?,?,?,?)`).run(id, id, `C:/tmp/${id}`, `C:/tmp/${id}`, NOW_ISO, NOW_ISO, NOW_ISO);
   }
   const tx = db as unknown as TransactionDatabase;
-  const entries = new MemoryEntryRepository(tx);
+  const entries = new MemoryEntryRepository(tx, eventRedactionServiceForDatabase(tx));
   const create = (id: string, options: Record<string, unknown> = {}, workspaceId = 'ws-maintenance') => entries.createEntry({
     id,
     workspaceId,

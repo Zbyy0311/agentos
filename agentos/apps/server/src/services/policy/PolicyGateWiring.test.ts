@@ -365,6 +365,28 @@ test('PR-2B fail-closed: an engine failure degrades to require_approval and emit
   } finally { fx.close(); }
 });
 
+test('SQLite policy seed failure remains fail-closed and emits policy.evaluation_failed', async () => {
+  const fx = await createFixture({ permissions: ['read', 'review'] });
+  try {
+    fx.store.getDatabase().exec(`CREATE TRIGGER fail_policy_seed_rule
+      BEFORE INSERT ON policy_rules
+      BEGIN SELECT RAISE(ABORT, 'injected policy rule insertion failure'); END`);
+
+    const result = fx.gate.beforeLaunch(fx.input, fx.plan);
+    assert.equal(result.kind, 'wait', 'a failed policy seed creates a normal approval request');
+    assert.equal(fx.policy.findDefaultProfile(fx.workspaceId), undefined, 'the failed seed rolls back its profile');
+    assert.equal(decisions(fx).length, 1);
+    assert.equal(decisions(fx)[0]!.decision, 'require_approval');
+    assert.equal(decisions(fx)[0]!.profileId, null);
+    assert.equal(policyEvents(fx, 'policy.evaluated').length, 0);
+
+    const failures = policyEvents(fx, 'policy.evaluation_failed');
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0]!.payload.action, 'provider.launch');
+    assert.equal(failures[0]!.payload.errorCode, 'PolicyRepositoryError');
+  } finally { fx.close(); }
+});
+
 test('PR-2B repeat evaluation: every gate check appends its own audit row', async () => {
   const fx = await createFixture({ permissions: ['read', 'review'] });
   try {
