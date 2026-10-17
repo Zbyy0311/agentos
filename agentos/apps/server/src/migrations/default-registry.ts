@@ -59,6 +59,7 @@ import { migration058 } from './migrations/058-worktree-merges.js';
 import { migration059 } from './migrations/059-provider-prompt-delivery.js';
 import { migration060 } from './migrations/060-worktree-artifact-bindings.js';
 import { migration061 } from './migrations/061-usage-records.js';
+import { migration064 } from './migrations/064-p5a-event-operations.js';
 import type { Migration } from './types.js';
 
 /**
@@ -176,4 +177,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration059,
   migration060,
   migration061,
+  migration064,
 ];
