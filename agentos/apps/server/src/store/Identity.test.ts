@@ -45,6 +45,7 @@ const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
   idempotency: 'idem',
   operation: 'op',
   import: 'imp',
+  usageRecord: 'urec',
 };
 
 const MAX_TS = 2 ** 48 - 1; // 281474976710655
@@ -53,7 +54,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 33);
+    assert.equal(kinds.length, 34);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -310,7 +311,7 @@ describe('Identity — M2.6 idempotency kind', () => {
 
   it('all pre-import kinds remain unchanged', () => {
     // 'worktreeMerge' is a PR-3B additive kind, like 'operation'/'import' before it.
-    const priorKinds = kinds.filter((kind) => kind !== 'import' && kind !== 'operation' && kind !== 'worktreeMerge');
+    const priorKinds = kinds.filter((kind) => kind !== 'import' && kind !== 'operation' && kind !== 'worktreeMerge' && kind !== 'usageRecord');
     assert.equal(priorKinds.length, 30);
     assert.ok(priorKinds.includes('idempotency'));
     assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);
