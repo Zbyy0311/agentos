@@ -9,11 +9,13 @@ import type {
   RuntimeEventSource,
   RuntimeEventVisibility,
 } from '@agentos/shared';
+import { MAX_RUNTIME_EVENT_PAYLOAD_BYTES, isPermanentlyRetainedRuntimeEventType } from '@agentos/shared';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { isTransactionActive, registerAfterCommit, type TransactionDatabase } from './Transaction.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import type { EventPayloadRedactor } from '../services/EventRedactionService.js';
+import type { EventPayloadOffloader } from '../services/EventPayloadOffloadService.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import type { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import type { OutboxMessage, OutboxRepository } from './OutboxRepository.js';
@@ -24,6 +26,8 @@ export class RuntimeEventRepositoryError extends Error {
       | 'RUNTIME_EVENT_ID_INVALID'
       | 'RUNTIME_EVENT_TIMESTAMP_INVALID'
       | 'RUNTIME_EVENT_EPHEMERAL_NOT_PERSISTABLE'
+      | 'RUNTIME_EVENT_PAYLOAD_TOO_LARGE'
+      | 'RUNTIME_EVENT_DELETE_NOT_ALLOWED'
       | 'RUNTIME_EVENT_PERSISTENCE_FAILED'
       | 'RUNTIME_EVENT_READ_FAILED',
     message: string,
@@ -522,6 +526,7 @@ export class RuntimeEventRepository {
     private readonly registry: CentralRuntimeEventRegistry,
     private readonly notifier?: RuntimeEventNotifier,
     private readonly redactor?: EventPayloadRedactor,
+    private readonly payloadOffloader?: EventPayloadOffloader,
   ) {}
 
   /**
@@ -578,6 +583,31 @@ export class RuntimeEventRepository {
         'RUNTIME_EVENT_PERSISTENCE_FAILED',
         error instanceof Error ? error.message : 'Runtime Event JSON serialization failed',
       );
+    }
+
+    // §47 payload limit: byte-level check on the persisted canonical JSON. An
+    // oversized payload is offloaded to a canonical Artifact and the row keeps
+    // only the offload summary. Fail-closed: without an offloader, or for an
+    // event type configured as offload-ineligible, the append is rejected —
+    // payloads are never silently truncated.
+    if (Buffer.byteLength(payloadJson, 'utf8') > MAX_RUNTIME_EVENT_PAYLOAD_BYTES) {
+      if (!this.payloadOffloader || !this.payloadOffloader.isOffloadable(event.type)) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PAYLOAD_TOO_LARGE',
+          `Runtime Event payload exceeds the ${MAX_RUNTIME_EVENT_PAYLOAD_BYTES} byte durable limit: ${event.type}`,
+        );
+      }
+      const summary = this.payloadOffloader.offloadWithinTransaction({
+        workspaceId: event.workspaceId,
+        runId: event.runId,
+        ...(event.stageId === undefined ? {} : { stageId: event.stageId }),
+        ...(event.processId === undefined ? {} : { processId: event.processId }),
+        eventId: event.id,
+        eventType: event.type,
+        payloadJson,
+        timestamp: event.timestamp,
+      });
+      payloadJson = canonicalizeJson(summary);
     }
 
     if (this.notifier && !isTransactionActive(this.db)) {
@@ -779,6 +809,52 @@ export class RuntimeEventRepository {
       ORDER BY sequence ASC
     `).all(workspaceId, runId, fromSequence, toSequence) as { sequence: number }[];
     return rows.map(row => row.sequence);
+  }
+
+  /**
+   * §58/§59 cleanup path. Deletes only durable, non-permanent Events. Every
+   * row is re-checked here even though migration 060 installs the same policy
+   * in the BEFORE DELETE trigger: this method must fail loudly on a violation
+   * instead of relying on the trigger as the first line of defense. Outbox
+   * handoffs are never compromised: an Event whose Outbox row is still
+   * undelivered (pending/publishing/retry) is refused, while a completed
+   * handoff (published/dead_letter) is removed together with its Event — the
+   * delivered fact remains reconstructible from the compaction Artifact or is
+   * simply past its retention horizon.
+   */
+  deleteEligibleEventsWithinTransaction(eventIds: readonly string[]): number {
+    const select = this.db.prepare(`
+      SELECT id, durability, type, severity FROM runtime_events WHERE id = ?
+    `);
+    const outbox = this.db.prepare('SELECT status FROM outbox_messages WHERE event_id = ?');
+    const deleteOutbox = this.db.prepare('DELETE FROM outbox_messages WHERE event_id = ?');
+    const del = this.db.prepare('DELETE FROM runtime_events WHERE id = ?');
+    let deleted = 0;
+    for (const id of eventIds) {
+      const row = select.get(id) as { id: string; durability: string; type: string; severity: string } | undefined;
+      if (!row) {
+        throw new RuntimeEventRepositoryError('RUNTIME_EVENT_DELETE_NOT_ALLOWED', `Event is missing: ${id}`);
+      }
+      if (row.durability !== 'durable'
+        || isPermanentlyRetainedRuntimeEventType(row.type)
+        || (row.type === 'error.occurred' && row.severity === 'critical')) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_DELETE_NOT_ALLOWED',
+          `Event is permanently retained and must not be deleted: ${row.type} (${id})`,
+        );
+      }
+      const outboxRow = outbox.get(id) as { status: string } | undefined;
+      if (outboxRow && outboxRow.status !== 'published' && outboxRow.status !== 'dead_letter') {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_DELETE_NOT_ALLOWED',
+          `Event still has an undelivered Outbox handoff and must not be deleted: ${id}`,
+        );
+      }
+      if (outboxRow) deleteOutbox.run(id);
+      del.run(id);
+      deleted += 1;
+    }
+    return deleted;
   }
 
   private consumeRow(row: RuntimeEventRow | undefined): RuntimeEventConsumptionResult | undefined {

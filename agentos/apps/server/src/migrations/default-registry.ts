@@ -60,6 +60,7 @@ import { migration059 } from './migrations/059-provider-prompt-delivery.js';
 import { migration060 } from './migrations/060-worktree-artifact-bindings.js';
 import { migration061 } from './migrations/061-usage-records.js';
 import { migration062 } from './migrations/062-provider-fallback-policy.js';
+import { migration064 } from './migrations/064-p5a-event-operations.js';
 import type { Migration } from './types.js';
 
 /**
@@ -114,7 +115,9 @@ import type { Migration } from './types.js';
  * 058: Worktree merge records (worktree_merges)
  * 059: Optional provider prompt delivery mode (provider_configurations.prompt_delivery)
  * 060: Durable worktree artifact ownership and generating HEAD
+ * 061: Usage records and workspace metrics
  * 062: Provider Fallback policy (provider_configurations.fallback_policy_json)
+ * 064: Event operations delete-protection and retention eligibility
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -179,4 +182,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration060,
   migration061,
   migration062,
+  migration064,
 ];

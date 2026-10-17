@@ -387,7 +387,7 @@ export interface PendingRunDecision {
   resolvedAt?: string;
 }
 
-export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest' | 'review' | 'test';
+export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest' | 'review' | 'test' | 'event-payload';
 
 export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; kind?: 'file' | 'symlink'; target?: string; }
 export interface WorktreeRecoveryManifestV2 { formatVersion: 2; baseCommit: string; headCommit: string; entries: UntrackedManifestEntry[]; }
@@ -1051,6 +1051,7 @@ export interface RunReplayResponse {
 
 export * from './m3-runtime.js';
 export * from './m3-runtime-registry.js';
+export * from './m3-event-ops.js';
 export * from './m3-lifecycle-transition-contracts.js';
 export * from './p6-l1a-admission.js';
 export * from './p6-l1a-start-request.js';
