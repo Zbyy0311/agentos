@@ -32,6 +32,7 @@ import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { ResumeFallbackQueueRecovery } from './ResumeFallbackQueueRecovery.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
+import { RunConcurrencyScheduler, concurrencyLimitsFromEnvironment } from '../RunConcurrencyScheduler.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
 import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
@@ -90,6 +91,8 @@ export interface ProviderExecutionChain {
   readonly resumeFallbackChild: (workspaceId: string, runId: string) => Promise<void>;
   readonly memoryContextResolver: MemoryContextResolver;
   readonly approvalGate: RuntimeApprovalGate;
+  /** §8.4 in-process concurrency gate over durable Run state. */
+  readonly concurrencyScheduler: RunConcurrencyScheduler;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
   readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
   /** Adds verified low-risk facts to the same terminal Run candidate trigger. */
@@ -101,6 +104,10 @@ export interface ProviderExecutionChain {
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
   const store = options.store;
   const admissionAuthority = new WorkspaceAdmissionAuthority({ store });
+  const concurrencyScheduler = new RunConcurrencyScheduler({
+    getDatabase: () => store.getDatabase(),
+    limits: concurrencyLimitsFromEnvironment(options.environment ?? process.env),
+  });
   const driver = new NodeProcessDriver();
   const probe = options.probe ?? new NodeProcessProbePort();
   const seam = store.atomicSeam();
@@ -295,6 +302,10 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     engine,
     coordinator,
     admissionGate: admissionAuthority,
+    concurrencyGate: concurrencyScheduler,
+    onConcurrencyDeferred: report => {
+      console.error(`RUN_DISPATCH_DEFERRED run=${report.runId} workspace=${report.workspaceId} dimension=${report.dimension} current=${report.current} limit=${report.limit} reason=${report.reason}`);
+    },
     memoryContextResolver,
     // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
     // the terminal commit; failures surface on stderr and never affect the Run.
@@ -324,6 +335,12 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     onRunTerminal: async ({ workspaceId, runId }) => {
       await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
       await resumeGrantedResumeFallbackChildren(workspaceId);
+      // §8.4 release/backfill: a terminal Run freed capacity — re-drive the
+      // queued Runs (priority DESC, created_at ASC) that now fit the limits.
+      concurrencyScheduler.pumpQueuedRuns((ws, run) => {
+        const drive = () => dispatcher.driveSafely(ws, run);
+        return options.withDispatchPermit ? options.withDispatchPermit(drive) : drive();
+      }, workspaceId);
     },
   });
   return {
@@ -333,5 +350,6 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     resumeGrantedResumeFallbackChildren,
     resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
+    concurrencyScheduler,
   };
 }

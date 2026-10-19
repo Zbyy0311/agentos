@@ -316,6 +316,67 @@ test('P4B-R12 canonical Create Run same-key different body is 409 IDEMPOTENCY_KE
   }
 });
 
+test('§8.3 canonical Create Run accepts an optional integer priority and persists it (default 0)', async () => {
+  const fx = await createFixture();
+  try {
+    const explicitTask = createAdditionalTask(fx, 'canonical-priority-explicit');
+    const explicit = await api(fx, 'POST', `/tasks/${explicitTask}/runs`, { body: { priority: 7 } });
+    assert.equal(explicit.status, 201);
+    assert.equal((explicit.json?.run as Record<string, unknown>).priority, 7);
+
+    const defaultTask = createAdditionalTask(fx, 'canonical-priority-default');
+    const defaulted = await api(fx, 'POST', `/tasks/${defaultTask}/runs`, { body: {} });
+    assert.equal(defaulted.status, 201);
+    assert.equal(('priority' in (defaulted.json?.run as Record<string, unknown>)), false);
+
+    const negativeTask = createAdditionalTask(fx, 'canonical-priority-negative');
+    const negative = await api(fx, 'POST', `/workspaces/${fx.workspaceId}/v2/tasks/${negativeTask}/runs`, { body: { priority: -3 } });
+    assert.equal(negative.status, 201);
+    assert.equal((negative.json?.run as Record<string, unknown>).priority, -3);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('§8.3 canonical Create Run rejects a non-integer or out-of-range priority with 400 VALIDATION_FAILED', async () => {
+  const fx = await createFixture();
+  try {
+    const cases: unknown[] = [1.5, 'high', 2_000_000, -2_000_000, Number.MAX_SAFE_INTEGER + 1];
+    for (const [index, priority] of cases.entries()) {
+      const taskId = createAdditionalTask(fx, `canonical-priority-invalid-${index}`);
+      const res = await api(fx, 'POST', `/tasks/${taskId}/runs`, { body: { priority } });
+      assert.equal(res.status, 400);
+      assertProblemContentType(res);
+      assertProblem(res.json, 400, 'VALIDATION_FAILED');
+    }
+    // No invalid Run was persisted.
+    assert.equal(runCount(fx), 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('§8.3 canonical Create Run same-key replay with a different priority is 409 IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = createAdditionalTask(fx, 'canonical-priority-mismatch');
+    const first = await api(fx, 'POST', `/tasks/${taskId}/runs`, {
+      body: { priority: 1 },
+      key: 'canonical-priority-mismatch-1',
+    });
+    assert.equal(first.status, 201);
+    const second = await api(fx, 'POST', `/tasks/${taskId}/runs`, {
+      body: { priority: 2 },
+      key: 'canonical-priority-mismatch-1',
+    });
+    assert.equal(second.status, 409);
+    assertProblem(second.json, 409, 'IDEMPOTENCY_KEY_REUSED');
+    assert.equal(runCount(fx), 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('P4B-R03 canonical Get Run returns the version ETag and the run envelope', async () => {
   const fx = await createFixture();
   try {

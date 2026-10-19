@@ -88,6 +88,7 @@ interface RunRow {
   failure_message: string | null;
   cancellation_requested_at: string | null;
   recovery_required?: number | null;
+  priority?: number | null;
   next_event_sequence: number;
   started_at: string | null;
   completed_at: string | null;
@@ -114,8 +115,10 @@ function mapRow(row: RunRow): Run {
     ...(row.recovery_required === undefined || row.recovery_required === null
       ? {}
       : { recoveryRequired: row.recovery_required === 1 }),
-    nextEventSequence: row.next_event_sequence,
-    startedAt: row.started_at ?? undefined,
+    // §8.3 scheduling priority: omitted from the mapped Run when 0 so the
+    // public Run shape stays unchanged for the vast majority of Runs.
+    ...(row.priority ? { priority: row.priority } : {}),
+    nextEventSequence: row.next_event_sequence,    startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -169,13 +172,17 @@ export class RunRepository {
     }
 
     const now = new Date().toISOString();
+    const priority = input.priority ?? 0;
+    if (!Number.isSafeInteger(priority) || priority < -1_000_000 || priority > 1_000_000) {
+      throw new RunValidationError('priority must be an integer between -1000000 and 1000000');
+    }
     try {
       this.db.prepare(`
         INSERT INTO runs (
           id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
           objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
-          started_at, completed_at, created_by, created_at, updated_at, version
-        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1)
+          started_at, completed_at, created_by, created_at, updated_at, version, priority
+        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1, ?)
       `).run(
         id,
         input.workspaceId,
@@ -188,6 +195,7 @@ export class RunRepository {
         input.createdBy,
         now,
         now,
+        priority,
       );
     } catch (err) {
       if (err instanceof Error && err.message.includes('UNIQUE constraint failed: runs.task_id')) {

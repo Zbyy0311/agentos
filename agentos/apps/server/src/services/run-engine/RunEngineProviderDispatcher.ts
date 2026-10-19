@@ -46,6 +46,30 @@ export interface CanonicalRunAdmissionGate {
 }
 
 /**
+ * §8.4 concurrency gate. Checked before the workspace admission gate; on
+ * denial the Run stays queued and drive() returns a noop — nothing is
+ * dropped and the denial is reported through onConcurrencyDeferred.
+ */
+export interface RunConcurrencyGate {
+  authorizeRun(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+  }): Promise<{
+    readonly allowed: boolean;
+    readonly dimension?: string;
+    readonly current?: number;
+    readonly limit?: number;
+    readonly reason?: string;
+  }> | {
+    readonly allowed: boolean;
+    readonly dimension?: string;
+    readonly current?: number;
+    readonly limit?: number;
+    readonly reason?: string;
+  };
+}
+
+/**
  * MF-4 port. Resolves and persists the immutable Context Snapshot for a Run or
  * Stage. `resolve` must persist before returning; `assertInjectable` is the
  * fail-closed gate the dispatcher calls before building the prompt.
@@ -62,6 +86,20 @@ export interface RunEngineProviderDispatcherOptions {
   readonly coordinator: StageExecutionCoordinator;
   /** Required durable gate; it runs before RunEngine.tick or any provider work. */
   readonly admissionGate: CanonicalRunAdmissionGate;
+  /**
+   * §8.4 optional concurrency gate; runs before the admission gate. When
+   * absent (tests, legacy composition) dispatch behavior is unchanged.
+   */
+  readonly concurrencyGate?: RunConcurrencyGate;
+  /** §8.4 observability hook: invoked exactly once per deferred dispatch. */
+  readonly onConcurrencyDeferred?: (report: {
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly dimension: string;
+    readonly current: number;
+    readonly limit: number;
+    readonly reason: string;
+  }) => void;
   readonly runRepository: Pick<RunRepository, 'findById'>;
   readonly runStageRepository: Pick<RunStageRepository, 'listByRun'>;
   readonly runSnapshotRepository: Pick<RunSnapshotRepository, 'findByRunId'>;
@@ -268,6 +306,8 @@ export class RunEngineProviderDispatcher {
   private readonly engine: RunEngine;
   private readonly coordinator: StageExecutionCoordinator;
   private readonly admissionGate: CanonicalRunAdmissionGate;
+  private readonly concurrencyGate: RunConcurrencyGate | undefined;
+  private readonly onConcurrencyDeferred: RunEngineProviderDispatcherOptions['onConcurrencyDeferred'];
   private readonly runRepository: RunEngineProviderDispatcherOptions['runRepository'];
   private readonly runStageRepository: RunEngineProviderDispatcherOptions['runStageRepository'];
   private readonly runSnapshotRepository: RunEngineProviderDispatcherOptions['runSnapshotRepository'];
@@ -295,6 +335,8 @@ export class RunEngineProviderDispatcher {
     this.engine = options.engine;
     this.coordinator = options.coordinator;
     this.admissionGate = options.admissionGate;
+    this.concurrencyGate = options.concurrencyGate;
+    this.onConcurrencyDeferred = options.onConcurrencyDeferred;
     this.runRepository = options.runRepository;
     this.runStageRepository = options.runStageRepository;
     this.runSnapshotRepository = options.runSnapshotRepository;
@@ -319,6 +361,21 @@ export class RunEngineProviderDispatcher {
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
+    if (this.concurrencyGate !== undefined) {
+      const concurrency = await this.concurrencyGate.authorizeRun({ workspaceId, runId });
+      if (!concurrency.allowed) {
+        // §8.4: the Run stays queued; the denial is observable, never silent.
+        this.onConcurrencyDeferred?.({
+          workspaceId,
+          runId,
+          dimension: concurrency.dimension ?? 'unknown',
+          current: concurrency.current ?? -1,
+          limit: concurrency.limit ?? -1,
+          reason: concurrency.reason ?? 'concurrency limit reached',
+        });
+        return { outcome: 'noop', reason: `concurrency-limited:${concurrency.dimension ?? 'unknown'}` };
+      }
+    }
     let authorization: Awaited<ReturnType<CanonicalRunAdmissionGate['authorizeCanonicalRun']>>;
     try {
       authorization = await this.admissionGate.authorizeCanonicalRun({ workspaceId, runId });

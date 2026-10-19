@@ -94,6 +94,8 @@ export interface IdempotencyRunDtoV1 {
   nextEventSequence: number;
   startedAt?: string;
   completedAt?: string;
+  /** §8.3 scheduling priority; present only when explicitly set (non-zero). */
+  priority?: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -461,6 +463,7 @@ export function buildRunResultEnvelopeV1(
   if (run.cancellationRequestedAt !== undefined) dto.cancellationRequestedAt = run.cancellationRequestedAt;
   if (run.startedAt !== undefined) dto.startedAt = run.startedAt;
   if (run.completedAt !== undefined) dto.completedAt = run.completedAt;
+  if (run.priority !== undefined) dto.priority = run.priority;
   return { schemaVersion: 1, operation, body: { run: dto } };
 }
 
@@ -510,6 +513,7 @@ const RUN_DTO_OPTIONAL_KEYS = Object.freeze([
   'cancellationRequestedAt',
   'startedAt',
   'completedAt',
+  'priority',
 ] as const);
 
 const TASK_STATUSES = Object.freeze(['open', 'in_progress', 'blocked', 'done', 'cancelled'] as const);
@@ -724,9 +728,15 @@ function parseRunDto(value: unknown): IdempotencyRunDtoV1 {
     version: assertPositiveSafeInteger(value.version),
   };
   for (const key of RUN_DTO_OPTIONAL_KEYS) {
+    if (key === 'priority') continue;
     if (key in value) {
       (dto as unknown as Record<string, unknown>)[key] = assertString(value[key]);
     }
+  }
+  if ('priority' in value) {
+    const priority = (value as Record<string, unknown>).priority;
+    if (typeof priority !== 'number' || !Number.isSafeInteger(priority)) invalid();
+    dto.priority = priority;
   }
   return dto;
 }

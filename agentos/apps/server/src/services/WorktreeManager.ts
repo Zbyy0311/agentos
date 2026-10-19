@@ -52,6 +52,20 @@ export interface WorktreeInspectReport {
 
 export class WorktreeError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
+/**
+ * §8.4 worktreeCreation concurrency: createLease is a genuine in-process
+ * concurrency point (git worktree add runs concurrently), so the limit is a
+ * fail-fast in-process gate, not a queue: when the cap is reached the caller
+ * receives this typed error and can retry. Callers that must not fail (Run
+ * dispatch) treat it exactly like any other creation-time failure.
+ */
+export class WorktreeConcurrencyLimitedError extends WorktreeError {
+  constructor(limit: number) {
+    super('concurrency_limited', `concurrency_limited: worktree creation concurrency limit reached (${limit})`);
+    this.name = 'WorktreeConcurrencyLimitedError';
+  }
+}
+
 /** §53.3/§56: a git-registered worktree with no database record, preserved as-is. */
 export interface WorktreeReconcileReport {
   readonly activated: string[];
@@ -82,6 +96,9 @@ export class WorktreeManager {
   private readonly leases = new Map<string, LeaseRecord>();
   private readonly leaseFile: string;
   private legacyImportReport: LegacyLeaseImportReport = Object.freeze([]);
+  /** §8.4: in-flight createLease count for the worktreeCreation dimension. */
+  private readonly creationConcurrencyLimit: number | undefined;
+  private inFlightCreations = 0;
   /**
    * PR-3A: when a WorktreeRepository is supplied, lease persistence moves from
    * the whole-JSON leases.json anti-pattern to SQLite. The in-memory Map stays
@@ -97,8 +114,10 @@ export class WorktreeManager {
     private readonly worktreeRoot: string,
     private readonly repository?: WorktreeRepository,
     private readonly events: WorktreeEventSink = NOOP_WORKTREE_EVENT_SINK,
+    options: { readonly creationConcurrencyLimit?: number } = {},
   ) {
     this.leaseFile = join(worktreeRoot, 'leases.json');
+    this.creationConcurrencyLimit = options.creationConcurrencyLimit;
     if (repository) {
       for (const record of repository.list()) this.leases.set(record.id, record);
       this.importLegacyLeasesFile();
@@ -184,6 +203,20 @@ export class WorktreeManager {
       .some(value => typeof value !== 'string' || value.trim().length === 0)) {
       throw new WorktreeError('invalid_identity', 'workspaceId, runId, executionId and agentId are required');
     }
+    // §8.4 worktreeCreation gate: fail fast when the in-process cap is full.
+    if (this.creationConcurrencyLimit !== undefined
+      && this.inFlightCreations >= this.creationConcurrencyLimit) {
+      throw new WorktreeConcurrencyLimitedError(this.creationConcurrencyLimit);
+    }
+    this.inFlightCreations += 1;
+    try {
+      return await this.createLeaseInner(input);
+    } finally {
+      this.inFlightCreations -= 1;
+    }
+  }
+
+  private async createLeaseInner(input: CreateInput): Promise<WorktreeLease> {
     const baseCommit = await this.assertClean(input.workspaceRoot, input);
     if (input.expectedBaseCommit !== undefined && baseCommit !== input.expectedBaseCommit) {
       throw new WorktreeError('workspace_changed', 'workspace_changed: clean source baseline differs from the expected commit');

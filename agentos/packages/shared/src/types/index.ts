@@ -762,6 +762,8 @@ export interface Run {
   failureMessage?: string;
   cancellationRequestedAt?: string;
   recoveryRequired?: boolean;
+  /** §8.3 scheduling priority; higher dispatches first at equal queue age. Defaults to 0. */
+  priority?: number;
   nextEventSequence: number;
   startedAt?: string;
   completedAt?: string;
@@ -785,6 +787,8 @@ export interface CreateV2RunInput {
   reason?: V2RunReason;
   parentRunId?: string;
   objective?: string;
+  /** Optional §8.3 scheduling priority. Integer in [-1000000, 1000000]; defaults to 0. */
+  priority?: number;
   createdBy: string;
 }
 

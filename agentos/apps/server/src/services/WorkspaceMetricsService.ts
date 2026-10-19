@@ -1,5 +1,6 @@
 import type { TransactionDatabase } from '../store/Transaction.js';
 import type { ProviderMetricsService, ProviderMetricSnapshot } from './ProviderMetricsService.js';
+import { DEFAULT_CONCURRENCY_LIMITS, type ConcurrencyLimits } from './RunConcurrencyScheduler.js';
 
 /**
  * 14-Roadmap §181-185 minimal metrics surface. Every value is derived from
@@ -57,6 +58,14 @@ export interface ProviderMetricsEntry {
   readonly averageStartupLatencyMs: number | null;
 }
 
+/** §8.4 observability: why-queued counters plus the active limit configuration. */
+export interface ConcurrencyMetricsSummary {
+  readonly queuedRuns: number;
+  readonly inFlightRunsWorkspace: number;
+  readonly inFlightRunsGlobal: number;
+  readonly limits: ConcurrencyLimits;
+}
+
 export interface WorkspaceMetricsSummary {
   readonly workspaceId: string;
   readonly generatedAt: string;
@@ -65,6 +74,7 @@ export interface WorkspaceMetricsSummary {
   readonly database: DatabaseMetricsSummary;
   readonly events: EventMetricsSummary;
   readonly providers: ProviderMetricsEntry[];
+  readonly concurrency: ConcurrencyMetricsSummary;
 }
 
 interface RunCountRow {
@@ -79,13 +89,20 @@ interface RunCountRow {
 export class WorkspaceMetricsService {
   private readonly now: () => string;
   private readonly providerMetrics?: ProviderMetricsService;
+  private readonly concurrencyLimits: ConcurrencyLimits;
 
   constructor(
     private readonly db: TransactionDatabase,
-    options: { readonly now?: () => string; readonly providerMetrics?: ProviderMetricsService } = {},
+    options: {
+      readonly now?: () => string;
+      readonly providerMetrics?: ProviderMetricsService;
+      /** §8.4 limit configuration surfaced in the summary; defaults apply when omitted. */
+      readonly concurrencyLimits?: ConcurrencyLimits;
+    } = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.providerMetrics = options.providerMetrics;
+    this.concurrencyLimits = options.concurrencyLimits ?? DEFAULT_CONCURRENCY_LIMITS;
   }
 
   get transactionDatabase(): TransactionDatabase {
@@ -229,6 +246,18 @@ export class WorkspaceMetricsService {
         legacyAgentEventsAppended: agentEventCount.count,
       },
       providers,
+      concurrency: {
+        queuedRuns: (this.db.prepare(
+          `SELECT COUNT(*) AS count FROM runs WHERE workspace_id = ? AND status = 'queued'`,
+        ).get(workspaceId) as { count: number }).count,
+        inFlightRunsWorkspace: (this.db.prepare(
+          `SELECT COUNT(*) AS count FROM runs WHERE workspace_id = ? AND status IN ('starting','running','waiting_approval','paused')`,
+        ).get(workspaceId) as { count: number }).count,
+        inFlightRunsGlobal: (this.db.prepare(
+          `SELECT COUNT(*) AS count FROM runs WHERE status IN ('starting','running','waiting_approval','paused')`,
+        ).get() as { count: number }).count,
+        limits: this.concurrencyLimits,
+      },
     };
   }
 }

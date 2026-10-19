@@ -54,6 +54,7 @@ import { createPreferenceRoutes } from './routes/preferences.js';
 import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
+import { concurrencyLimitsFromEnvironment } from './services/RunConcurrencyScheduler.js';
 import { WorktreeMergeService } from './services/WorktreeMergeService.js';
 import { WorktreeRuntimeEventEmitter } from './services/WorktreeRuntimeEvents.js';
 import { recoverWorktreeRefUpdates } from './services/WorktreeRefJournal.js';
@@ -301,7 +302,12 @@ async function bootstrap(): Promise<void> {
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
     const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
+    const worktreeManager = new WorktreeManager(
+      process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'),
+      store.worktreeRepository(),
+      worktreeEvents,
+      { creationConcurrencyLimit: concurrencyLimitsFromEnvironment(process.env).worktreeCreation },
+    );
     for (const issue of worktreeManager.getLegacyImportReport()) {
       console.warn('[AgentOS Worktree] legacy lease import unresolved: ' + JSON.stringify(issue));
     }
