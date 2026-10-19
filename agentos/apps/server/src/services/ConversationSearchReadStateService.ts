@@ -107,7 +107,7 @@ export class ConversationSearchReadStateService {
     }
     // The workspace always converges on cr_messages; workspace scoping on the
     // FTS row alone could leak messages across workspaces with the same text.
-    const conditions: string[] = ['m.workspace_id = ?'];
+    const conditions: string[] = ['m.workspace_id = ?', "m.status <> 'deleted'"];
     const params: unknown[] = [workspaceId];
     if (filters.conversationId !== undefined) {
       conditions.push('m.conversation_id = ?');

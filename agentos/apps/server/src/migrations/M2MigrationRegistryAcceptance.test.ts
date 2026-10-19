@@ -53,6 +53,11 @@ test('P2 recovery 054 follows relevance, owner actor, accumulation, and preview 
   assert.equal(migration054.name, 'p2-interrupted-failure-recovery');
   assert.match(migration054.checksum, /^[0-9a-f]{16}$/);
   assert.deepEqual(FINAL_P2_INTEGRATION_SEQUENCE, ['049', '050', '051', '052', '053', '054', '055', '056', '057', '058']);
+  const ids = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
+  const integrationStart = ids.indexOf(FINAL_P2_INTEGRATION_SEQUENCE[0]);
+  assert.ok(integrationStart >= 0);
+  assert.deepEqual(ids.slice(integrationStart, integrationStart + FINAL_P2_INTEGRATION_SEQUENCE.length), FINAL_P2_INTEGRATION_SEQUENCE);
+  // The FINAL sequence is followed by all six entries from 059 through 064.
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.at(-1)?.id, '064');
   assert.deepEqual(
     DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)

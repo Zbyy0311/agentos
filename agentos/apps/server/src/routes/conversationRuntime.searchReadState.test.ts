@@ -125,6 +125,33 @@ test('message search: multi-filter, snippet, limit cap, and workspace isolation'
   });
 });
 
+test('message search excludes soft-deleted messages in global and conversation queries', async () => {
+  await withServer(async (baseUrl, store) => {
+    const conversationId = await seedConversation(baseUrl, 'workspace-a');
+    await send(baseUrl, 'workspace-a', conversationId, 'alpha retained message');
+    const repository = store.conversationRepository();
+    const draft = repository.appendMessage({
+      id: 'msg_search_deleted', workspaceId: 'workspace-a', conversationId,
+      senderType: 'system', kind: 'text', status: 'draft', content: 'alpha deleted message',
+      createdAt: new Date().toISOString(),
+    });
+    const base = baseUrl('workspace-a');
+    const before = await fetch(`${base}/conversations/search?query=alpha`).then(response => response.json()) as { results: SearchResult[] };
+    assert.equal(before.results.length, 2);
+    const deletedId = draft.id;
+    repository.transitionMessageStatus({
+      workspaceId: 'workspace-a', messageId: deletedId, expectedVersion: draft.version,
+      to: 'deleted', changedAt: new Date().toISOString(),
+    });
+    assert.equal(repository.findMessageById('workspace-a', deletedId)!.content, 'alpha deleted message');
+    for (const path of ['/conversations/search', `/conversations/${conversationId}/search`]) {
+      const result = await fetch(`${base}${path}?query=alpha`).then(response => response.json()) as { results: SearchResult[] };
+      assert.equal(result.results.length, 1);
+      assert.ok(result.results.every(hit => hit.messageId !== deletedId));
+    }
+  });
+});
+
 test('read state: advance, monotone no-regression, unread and mention counts, batch endpoint', async () => {
   await withServer(async (baseUrl) => {
     const a = await seedConversation(baseUrl, 'workspace-a');
