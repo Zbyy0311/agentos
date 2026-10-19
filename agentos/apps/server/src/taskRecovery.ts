@@ -115,6 +115,8 @@ export function recoverInterruptedTaskRuntime(
     uncertaintyMarked: [],
     startupFailed: [],
     processMissingFailed: [],
+    processReattached: [],
+    externallyRunning: [],
     alreadyRecoveryRequired: [],
   };
   for (const workspace of workspaces) {
@@ -124,6 +126,8 @@ export function recoverInterruptedTaskRuntime(
     taskDomainRecovery.uncertaintyMarked.push(...workspaceRecovery.uncertaintyMarked);
     taskDomainRecovery.startupFailed.push(...workspaceRecovery.startupFailed);
     taskDomainRecovery.processMissingFailed.push(...workspaceRecovery.processMissingFailed);
+    taskDomainRecovery.processReattached.push(...workspaceRecovery.processReattached);
+    taskDomainRecovery.externallyRunning.push(...workspaceRecovery.externallyRunning);
     taskDomainRecovery.alreadyRecoveryRequired.push(...workspaceRecovery.alreadyRecoveryRequired);
   }
   return {

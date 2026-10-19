@@ -1196,6 +1196,18 @@ interface WindowsTreeState {
   closedVerification?: SurvivorVerification;
 }
 
+interface WindowsReadOnlyAdoptionState {
+  readonly kind: 'read-only-adoption';
+  readonly nativeBirthIdentity: string;
+}
+
+function isWindowsReadOnlyAdoptionState(value: unknown): value is WindowsReadOnlyAdoptionState {
+  return typeof value === 'object'
+    && value !== null
+    && (value as { kind?: unknown }).kind === 'read-only-adoption'
+    && typeof (value as { nativeBirthIdentity?: unknown }).nativeBirthIdentity === 'string';
+}
+
 export interface WindowsProcessTreeOptions {
   readonly shell?: string;
   readonly trace?: (event: WindowsOwnershipTraceEvent) => void;
@@ -1639,6 +1651,47 @@ export class WindowsProcessTreeController implements ProcessTreeController {
     }
   }
 
+  /**
+   * Reattach without assigning the process to a Job Object. Job assignment is
+   * a native ownership mutation, and this controller's normal Job uses
+   * kill-on-close; either behavior is unsafe for a process that survived a
+   * server restart. A read-only adoption can observe the original process but
+   * cannot claim tree-cleanup proof.
+   */
+  async attachReadOnly(identity: NativeIdentity): Promise<ProcessTreeHandle> {
+    const expected = identity.nativeBirthIdentity;
+    if (
+      typeof expected !== 'string'
+      || !/^win32:filetime:[0-9]+$/.test(expected)
+    ) {
+      return {
+        platform: 'unavailable',
+        rootPid: identity.pid,
+        state: 'windows-readonly-attach-birth-identity-required',
+      };
+    }
+    const observed = await this.probeNativeBirthIdentity(identity.pid);
+    if (observed === null) {
+      return {
+        platform: 'unavailable',
+        rootPid: identity.pid,
+        state: 'windows-readonly-attach-identity-unavailable',
+      };
+    }
+    if (observed !== expected) {
+      return {
+        platform: 'unavailable',
+        rootPid: identity.pid,
+        state: 'windows-readonly-attach-identity-mismatch',
+      };
+    }
+    return {
+      platform: 'windows',
+      rootPid: identity.pid,
+      state: { kind: 'read-only-adoption', nativeBirthIdentity: observed } satisfies WindowsReadOnlyAdoptionState,
+    };
+  }
+
   async attach(identity: NativeIdentity): Promise<ProcessTreeHandle> {
     let session: WindowsJobSession | undefined;
     try {
@@ -1708,6 +1761,13 @@ export class WindowsProcessTreeController implements ProcessTreeController {
 
   async terminateTree(handle: ProcessTreeHandle): Promise<TreeTerminationResult> {
     if (handle.platform !== 'windows') return { classification: 'unknown', attemptedMembers: [], errors: ['windows-handle-mismatch'] };
+    if (isWindowsReadOnlyAdoptionState(handle.state)) {
+      return {
+        classification: 'unknown',
+        attemptedMembers: [handle.rootPid],
+        errors: ['windows-readonly-adoption-has-no-owned-tree'],
+      };
+    }
     const state = handle.state as WindowsTreeState;
     if (state.closedVerification?.classification === 'complete') {
       return { classification: 'complete', attemptedMembers: [], errors: [] };
@@ -1726,6 +1786,15 @@ export class WindowsProcessTreeController implements ProcessTreeController {
 
   async verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification> {
     if (handle.platform !== 'windows') return { classification: 'unknown', knownPids: [] };
+    if (isWindowsReadOnlyAdoptionState(handle.state)) {
+      const observed = await this.probeNativeBirthIdentity(handle.rootPid);
+      if (observed === handle.state.nativeBirthIdentity) {
+        return { classification: 'survivors', knownPids: [handle.rootPid] };
+      }
+      // Missing identity and PID reuse are both insufficient to prove that
+      // the original process tree is gone.
+      return { classification: 'unknown', knownPids: [handle.rootPid] };
+    }
     const state = handle.state as WindowsTreeState;
     if (state.closedVerification !== undefined) return state.closedVerification;
     const deadline = Date.now() + (state.cleanupRequested ? CLEANUP_DEADLINE_MS : 0);
@@ -1753,6 +1822,7 @@ export class WindowsProcessTreeController implements ProcessTreeController {
 
   async dispose(handle: ProcessTreeHandle): Promise<void> {
     if (handle.platform !== 'windows') return;
+    if (isWindowsReadOnlyAdoptionState(handle.state)) return;
     const state = handle.state as WindowsTreeState;
     await state.session.close();
   }

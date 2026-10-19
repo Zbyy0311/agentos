@@ -66,6 +66,12 @@ export interface ProviderExecutionChain {
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
+  /**
+   * P5B Scenario E: adopt an identity-proven ('same') live process after a
+   * server restart. Idempotent per Process; fail-safe outcomes map to
+   * externally running in the recovery layer.
+   */
+  readonly reattachProcess: DurableProcessCoordinator['reattachProcess'];
   /** Replays only granted, durable resume-fallback Child Starts. */
   readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
   /** Prepares, admits, and dispatches one explicitly accepted fallback Child. */
@@ -279,6 +285,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   });
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
+    reattachProcess: input => durableCoordinator.reattachProcess(input),
     resumeGrantedResumeFallbackChildren,
     resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,

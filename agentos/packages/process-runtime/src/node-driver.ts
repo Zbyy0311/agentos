@@ -17,6 +17,7 @@ import type {
   IdentityInspection,
   NativeProcessHandle,
   NativeProcessStdin,
+  NativeReattachInput,
   ProcessControlResult,
   NativeProcessStreams,
   PlatformProcessDriver,
@@ -32,6 +33,7 @@ import {
   type ProcessTreeHandle,
 } from './platform-process-tree.js';
 import { readLinuxProcessBirthIdentity } from './posix-process-tree.js';
+import { WindowsProcessTreeController } from './windows-process-tree.js';
 import { STREAM_CHUNK_LIMIT_BYTES } from './streams.js';
 import { BoundedNativeProcessStdin } from './stdin.js';
 
@@ -159,6 +161,99 @@ export class NodeProcessDriver implements PlatformProcessDriver {
     });
   }
 
+  /**
+   * P5B: adopt an identity-proven live process after a server restart.
+   *
+   * Read-only adoption: the PID liveness is re-proven (ESRCH fails closed),
+   * the platform tree is attached for future cleanup authority, and exit is
+   * observed by polling existence — the process is NEVER signaled, killed or
+   * re-spawned here. Stdio pipes cannot be reacquired (their read endpoints
+   * died with the previous server process), so both streams are empty; exit
+   * code/signal are unknowable post-restart and stay null.
+   */
+  async attach(input: NativeReattachInput): Promise<NativeProcessHandle> {
+    if (!Number.isSafeInteger(input.pid) || input.pid <= 0) {
+      throw new Error('process-reattach-invalid-pid');
+    }
+    try {
+      process.kill(input.pid, 0);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (code === 'ESRCH') throw new Error('process-reattach-target-missing');
+      // EPERM/anything else: existence is not disproven, but adoption without
+      // a positive liveness observation is unsafe. Fail closed.
+      throw new Error('process-reattach-liveness-unproven:' + (code ?? 'unknown'));
+    }
+    // Defense in depth: the classifier is the primary identity gate, but the
+    // Driver independently re-proves the birth identity when the platform
+    // exposes a read-only probe, so a direct attach can never adopt PID
+    // reuse even if the caller skipped classification.
+    const probe = (this.processTree as Partial<WindowsProcessTreeController>).probeNativeBirthIdentity;
+    if (process.platform === 'win32' && input.nativeBirthIdentity == null) {
+      throw new Error('process-reattach-identity-unproven');
+    }
+    if (process.platform === 'win32' && typeof probe !== 'function') {
+      throw new Error('process-reattach-identity-probe-unavailable');
+    }
+    if (typeof probe === 'function' && input.nativeBirthIdentity !== null && input.nativeBirthIdentity !== undefined) {
+      const observed = await probe.call(this.processTree, input.pid);
+      if (observed === null) {
+        throw new Error('process-reattach-identity-unprovable');
+      }
+      if (observed !== input.nativeBirthIdentity) {
+        throw new Error('process-reattach-identity-mismatch');
+      }
+    }
+    const identity: NativeIdentity = {
+      pid: input.pid,
+      startedAtMs: input.startedAtMs ?? this.now(),
+      executablePath: input.executablePath,
+      groupId: undefined,
+      nativeBirthIdentity: input.nativeBirthIdentity ?? null,
+    };
+    let tree: ProcessTreeHandle;
+    if (process.platform === 'win32') {
+      const attachReadOnly = this.processTree.attachReadOnly;
+      if (typeof attachReadOnly !== 'function') {
+        throw new Error('process-reattach-readonly-attach-unavailable');
+      }
+      tree = await attachReadOnly.call(this.processTree, identity);
+    } else {
+      tree = await this.processTree.attach(identity);
+    }
+    if (tree.platform === 'unavailable') {
+      // Cleanup authority could not be established: adopting the process
+      // would leave a cancel with no provable tree pipeline. Fail closed so
+      // the caller marks it externally running instead of half-adopting.
+      throw new Error('process-reattach-tree-unavailable');
+    }
+    const pollIntervalMs = Math.max(25, Math.trunc(input.pollIntervalMs ?? 250));
+    const backend: NodeNativeBackend = {
+      pid: input.pid,
+      executablePath: input.executablePath,
+      nativeBirthIdentity: input.nativeBirthIdentity ?? null,
+      stdout: null,
+      stderr: null,
+      stdin: null,
+      exit: pollNativeExit(input.pid, pollIntervalMs),
+      requestGracefulStop: async signal => {
+        if (process.platform === 'win32' && input.nativeBirthIdentity != null) {
+          if (typeof probe !== 'function') return false;
+          const observed = await probe.call(this.processTree, input.pid);
+          if (observed !== input.nativeBirthIdentity) return false;
+        }
+        return safeSignalPid(input.pid, signal);
+      },
+    };
+    const handle = NodeNativeProcessHandle.fromBackend(
+      backend,
+      identity.startedAtMs,
+      tree => this.processTree.verifySurvivors(tree),
+    );
+    handle.setTree(tree);
+    return handle;
+  }
+
   async gracefulStop(handle: NativeProcessHandle): Promise<GracefulStopResult> {
     const nativeHandle = asNodeHandle(handle);
     if (nativeHandle.hasExited()) {
@@ -238,6 +333,45 @@ function asNodeHandle(handle: NativeProcessHandle): NodeNativeProcessHandle {
   return handle;
 }
 
+/** Signal 0 existence check; true only when the PID provably exists. */
+function pidIsProvablyMissing(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    // Only ESRCH proves exit. EPERM and other probe failures must not turn a
+    // still-running or unobservable process into a false exit fact.
+    return (error as NodeJS.ErrnoException | undefined)?.code === 'ESRCH';
+  }
+}
+
+function safeSignalPid(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    return process.kill(pid, signal);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * P5B exit observation for a reattached process. The native exit code and
+ * signal are unknowable after a server restart (the observing handle died
+ * with the previous server process), so both stay null; only the exit event
+ * and its wall-clock timestamp are reported. Existence is polled: only ESRCH
+ * proves exit; EPERM and other probe failures stay pending fail-closed. The
+ * timer is unref'd so observation never extends process lifetime.
+ */
+function pollNativeExit(pid: number, intervalMs: number): Promise<NativeExitObservation> {
+  return new Promise<NativeExitObservation>(resolve => {
+    const timer = setInterval(() => {
+      if (!pidIsProvablyMissing(pid)) return;
+      clearInterval(timer);
+      resolve({ exitCode: null, signal: null });
+    }, intervalMs);
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+}
+
 class NodeNativeProcessHandle implements NativeProcessHandle {
   readonly pid: number;
   readonly identity: NativeIdentity;
@@ -296,6 +430,20 @@ class NodeNativeProcessHandle implements NativeProcessHandle {
     // Atomic spawn already established ownership; the tree is attached now.
     handle.setTree(owned.tree);
     return handle;
+  }
+
+  /**
+   * P5B: adopt an already-live identity-proven process. Streams are empty by
+   * construction (backend nulls); the Driver attaches the platform tree
+   * before constructing the handle, so ownership for cleanup is established
+   * up front via setTree.
+   */
+  static fromBackend(
+    backend: NodeNativeBackend,
+    startedAtMs: number,
+    observeNaturalExit: (tree: ProcessTreeHandle) => Promise<SurvivorVerification>,
+  ): NodeNativeProcessHandle {
+    return new NodeNativeProcessHandle(backend, startedAtMs, observeNaturalExit);
   }
 
   waitExit(): Promise<ExitEvidence> {

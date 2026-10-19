@@ -28,6 +28,7 @@ import { recoverInterruptedRuns } from './runRecovery.js';
 import {
   preflightProcessRecoveryClassifications,
   createPreflightProcessRecoveryPort,
+  type ProcessReattachmentPort,
 } from './processRecoveryPreflight.js';
 import { createProductionRecoveredProcessVerifier } from '@agentos/process-runtime';
 import { EventBus } from './events/EventBus.js';
@@ -365,21 +366,115 @@ async function bootstrap(): Promise<void> {
     phase = 'recovery';
     let recoveredTaskRuntime: RecoveredTaskRuntime;
     let recoveredRuns: number;
+    let releaseReattachedExitFinalizations: () => void = () => undefined;
     try {
-      // P6-M2b: classify every active running Run's native Process with the
-      // existing M2a classifier + platform verifier ASYNC, BEFORE the SQLite
-      // recovery transaction opens. The precomputed classifications then back
-      // the synchronous port consumed inside the transaction, so no OS/native
-      // verification is ever awaited while the transaction is open.
+      // P6-M2b + P5B: classify every active running Run's native Process with
+      // the existing M2a classifier + platform verifier ASYNC, BEFORE the
+      // SQLite recovery transaction opens. The precomputed verdicts then back
+      // the synchronous port consumed inside the transaction, so no
+      // OS/native work is ever awaited while the transaction is open. For a
+      // classifier-proven 'same' process, the same phase performs the one
+      // permitted reattachment (claim-fenced, idempotent): cancel authority
+      // and exit observation are restored, and when the reattached process
+      // exits the Run finalizes fail-closed (execution outcome is
+      // unverifiable after a restart — never guess success).
+      const queuedReattachedExits = new Map<string, { workspaceId: string; runId: string }>();
+      let recoveryOutcomeRecorded = false;
+      const finalizeRunAfterReattachedExitNow = (workspaceId: string, runId: string): void => {
+        // Capture the store reference: closure narrowing for the mutable
+        // outer binding is not tracked across the transaction boundary.
+        const sqliteStore = store;
+        if (sqliteStore === undefined) return;
+        try {
+          sqliteStore.runInTransaction(() => {
+            const run = sqliteStore.runRepository().findById(workspaceId, runId);
+            if (!run || run.status !== 'running' || run.recoveryRequired === true) return;
+            const start = sqliteStore.operationService()
+              .listByRun(workspaceId, runId)
+              .find(operation => operation.type === 'run.start');
+            const correlationId = start?.correlationId ?? `process-reattach-exit:${runId}`;
+            const message = 'Reattached provider process exited; execution outcome unverifiable after restart';
+            const stages = sqliteStore.runStageRepository().listByRun(workspaceId, runId);
+            const activeStage = stages.find(
+              stage => stage.status === 'running' || stage.status === 'starting',
+            );
+            if (activeStage !== undefined) {
+              sqliteStore.lifecycleTransactionService().transitionStageWithinTransaction({
+                workspaceId,
+                runId,
+                stageId: activeStage.id,
+                expectedVersion: activeStage.version,
+                expectedFrom: activeStage.status === 'starting' ? 'starting' : 'running',
+                to: 'failed',
+                errorCode: 'RUN_RECOVERY_FAILED',
+                message,
+                retryable: true,
+                retryScheduled: false,
+                correlationId,
+              });
+            }
+            const fresh = sqliteStore.runRepository().findById(workspaceId, runId) ?? run;
+            if (fresh.status !== 'running') return;
+            sqliteStore.lifecycleTransactionService().transitionRunWithinTransaction({
+              workspaceId,
+              runId,
+              expectedVersion: fresh.version,
+              expectedFrom: 'running',
+              to: 'failed',
+              errorCode: 'RUN_RECOVERY_FAILED',
+              message,
+              phase: 'process-reattach-exit',
+              retryable: true,
+              correlationId,
+            });
+          });
+        } catch {
+          diagLog(`PROCESS_REATTACH_EXIT_FINALIZE_FAILED run=${runId}`);
+        }
+      };
+      const finalizeRunAfterReattachedExit = (workspaceId: string, runId: string): void => {
+        // Reattachment happens before the synchronous recovery transaction.
+        // Defer an early exit until the recovery outcome has committed.
+        if (!recoveryOutcomeRecorded) {
+          queuedReattachedExits.set(runId, { workspaceId, runId });
+          return;
+        }
+        finalizeRunAfterReattachedExitNow(workspaceId, runId);
+      };
+      releaseReattachedExitFinalizations = () => {
+        recoveryOutcomeRecorded = true;
+        for (const pending of queuedReattachedExits.values()) {
+          finalizeRunAfterReattachedExitNow(pending.workspaceId, pending.runId);
+        }
+        queuedReattachedExits.clear();
+      };
+      const processReattachment: ProcessReattachmentPort = {
+        reattach: async input => {
+          const result = await providerExecutionChain.reattachProcess({
+            workspaceId: input.workspaceId,
+            processId: input.processId,
+            expectedClaimEpoch: input.claimEpoch,
+            expectedClaimOwner: input.claimOwner,
+            eventContext: {
+              correlationId: `process-reattach:${input.runId}`,
+              causationId: `process-reattach:${input.runId}`,
+            },
+            onNaturalExit: () => { finalizeRunAfterReattachedExit(input.workspaceId, input.runId); },
+          });
+          return result.kind;
+        },
+      };
       const processRecoveryClassifications = await preflightProcessRecoveryClassifications(
         store,
         createProductionRecoveredProcessVerifier(),
+        processReattachment,
       );
       recoveredTaskRuntime = recoverInterruptedTaskRuntime(
         store,
         taskRunService,
         createPreflightProcessRecoveryPort(processRecoveryClassifications),
       );
+      releaseReattachedExitFinalizations();
       recoveredRuns = recoverInterruptedRuns(store);
       const interruptedDiscussions = store.groupInteractionRepository().reconcileInterruptedOnStartup(new Date().toISOString());
       diagLog(`GROUP_RECOVERY interrupted=${interruptedDiscussions}`);
@@ -390,6 +485,9 @@ async function bootstrap(): Promise<void> {
         new CompactionRepository(startupDatabase).reconcileInterruptedOnStartupWithinTransaction(new Date().toISOString()));
       if (interruptedCompactions > 0) diagLog(`COMPACTION_RECOVERY interrupted=${interruptedCompactions}`);
     } catch {
+      // The recovery transaction has rolled back (if it failed). Fail closed
+      // for any exits observed before startup recovery completed.
+      releaseReattachedExitFinalizations();
       // The recovery transaction already rolled back; only the stable code escapes.
       throw new StartupFailure('STARTUP_RECOVERY_FAILED');
     }

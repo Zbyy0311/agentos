@@ -1153,10 +1153,13 @@ test('B14 already flagged running zero mutation/no duplicate', () => withFixture
 
 function stubProcessRecovery(
   classification: 'same' | 'missing' | 'mismatch' | 'unknown',
+  reattached?: boolean,
 ): TaskRunRecoveryDependencies['processRecovery'] {
   return {
     classifyRunningProcess() {
-      return classification;
+      return reattached === undefined
+        ? classification
+        : { classification, reattached };
     },
   };
 }
@@ -1189,17 +1192,94 @@ test('P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) re
   assert.equal(run.recoveryRequired, true);
 }));
 
-test('P6M2b running + same process -> no resume, no ownership takeover, stays uncertain', () => withFixture({
+test('P5B running + same + reattached -> run.recovered (process-reattach), Run keeps running', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('same', true));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'process-reattached');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'recovered Run keeps running; no new spawn, no repeated side effect');
+  assert.equal(run.recoveryRequired, false);
+  assert.deepEqual(eventRows(fixture).map(row => row.type), [
+    'run.recovery_attempted',
+    'run.recovered',
+  ]);
+  const recovered = eventRows(fixture).find(row => row.type === 'run.recovered')!;
+  assert.deepEqual(JSON.parse(String(recovered.payload_json)), { recoveryMode: 'process-reattach' });
+  assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'reattach must not respawn or create a second owned process');
+}));
+
+test('P5B running + same without reattachment -> externally running, no state change', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  const before = persistedSnapshot(fixture.db);
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('same', false));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'externally-running');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'externally running Run must not be marked failed');
+  assert.equal(run.recoveryRequired, false, 'externally running Run must not be marked recovered/failed');
+  assertZeroMutation(fixture, before);
+  assert.equal(eventRows(fixture).length, 0);
+  assert.equal(outboxRows(fixture).length, 0);
+}));
+
+test('P5B running + mismatch verdict object -> fail-safe uncertainty, no takeover', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('mismatch', false));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'uncertainty-marked');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'mismatch must not resume, reattach, or terminal-fail');
+  assert.equal(run.recoveryRequired, true);
+}));
+
+test('P5B recoverWorkspace aggregates processReattached and externallyRunning', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  seedAdditionalRun(fixture, {
+    runId: 'run-scan-reattached',
+    taskId: 'task-scan-reattached',
+    stageId: 'stage-scan-reattached',
+    runStatus: 'running',
+    stageStatus: 'running',
+    startStatuses: ['completed'],
+  });
+  const verdicts = new Map<string, { classification: 'same'; reattached: boolean }>([
+    [fixture.runId, { classification: 'same', reattached: true }],
+    ['run-scan-reattached', { classification: 'same', reattached: false }],
+  ]);
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, {
+    classifyRunningProcess(input) {
+      return verdicts.get(input.runId) ?? 'unknown';
+    },
+  });
+  const summary = fixture.recovery.recoverWorkspace(WORKSPACE_ID);
+  assert.deepEqual(summary.processReattached, [fixture.runId]);
+  assert.deepEqual(summary.externallyRunning, ['run-scan-reattached']);
+}));
+
+test('P6M2b running + same process without a reattachment verdict -> externally running', () => withFixture({
   runStatus: 'running',
   stageStatus: 'running',
   startStatuses: ['completed'],
 }, fixture => {
   fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('same'));
   const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
-  assert.equal(disposition, 'uncertainty-marked');
+  assert.equal(disposition, 'externally-running');
   const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
-  assert.equal(run.status, 'running', 'same must not resume execution');
-  assert.equal(run.recoveryRequired, true, 'same stays uncertain pending M2c cleanup');
+  assert.equal(run.status, 'running', 'same without reattachment must not resume or fail');
+  assert.equal(run.recoveryRequired, false, 'same without reattachment is externally running, not recovered/failed');
   assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');
 }));
 
@@ -1659,6 +1739,8 @@ test('workspace scan deterministic/active only', () => withFixture({
     uncertaintyMarked: ['run-scan-uncertain'],
     startupFailed: [],
     processMissingFailed: [],
+    processReattached: [],
+    externallyRunning: [],
     alreadyRecoveryRequired: [],
   });
   assert.deepEqual(

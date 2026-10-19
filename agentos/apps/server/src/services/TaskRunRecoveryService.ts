@@ -46,18 +46,39 @@ export interface TaskRunRecoveryDependencies {
    * proven-dead native process reconciles to a canonical terminal failure
    * instead of mere uncertainty. When absent (or when classification is
    * anything but 'missing'), the historical uncertainty behavior is kept.
-   * Classification only: never resumes, re-adopts, re-attaches, or cleans up.
+   *
+   * P5B (Scenario E) extends the port: a 'same' classification may carry a
+   * completed reattachment (computed async by the preflight before this
+   * transaction). 'same' + reattached records a process-reattach recovery;
+   * 'same' without a reattachment is marked externally running (no state
+   * change, never failed/recovered); 'missing' fails the Run; everything
+   * else keeps the historical fail-safe uncertainty.
    */
   readonly processRecovery?: TaskRunProcessRecoveryPort;
+}
+
+/**
+ * P5B: richer port result. Implementations may return a bare
+ * RecoveryClassification (pre-P5B behavior) or a verdict that additionally
+ * reports whether the 'same' process was actually reattached by this server.
+ */
+export interface TaskRunProcessRecoveryVerdict {
+  readonly classification: RecoveryClassification;
+  /**
+   * True when this server re-adopted the identity-proven live process
+   * (ownership + exit observation restored). Only meaningful for 'same'.
+   */
+  readonly reattached?: boolean;
 }
 
 /**
  * P6-M2b process-recovery read/classify seam. Implementations resolve the
  * running Run's active Stage attempt to its durable root Process and classify
  * the native process identity. The seam is synchronous so the surrounding
- * recovery transaction stays atomic; any async platform verification happens
- * in the caller before recovery begins. Fail-safe by contract: any inability
- * to prove the process is gone must yield something other than 'missing'.
+ * recovery transaction stays atomic; any async platform verification (and any
+ * P5B reattachment) happens in the caller before recovery begins. Fail-safe
+ * by contract: any inability to prove the process is gone must yield
+ * something other than 'missing'.
  */
 export interface TaskRunProcessRecoveryPort {
   classifyRunningProcess(input: {
@@ -65,7 +86,7 @@ export interface TaskRunProcessRecoveryPort {
     readonly runId: string;
     readonly stageId: string;
     readonly stageAttempt: number;
-  }): RecoveryClassification;
+  }): RecoveryClassification | TaskRunProcessRecoveryVerdict;
 }
 
 export interface TaskDomainRecoverySummary {
@@ -74,6 +95,8 @@ export interface TaskDomainRecoverySummary {
   readonly uncertaintyMarked: string[];
   readonly startupFailed: string[];
   readonly processMissingFailed: string[];
+  readonly processReattached: string[];
+  readonly externallyRunning: string[];
   readonly alreadyRecoveryRequired: string[];
 }
 
@@ -85,6 +108,8 @@ export type TaskRunRecoveryDisposition =
   | 'uncertainty-marked'
   | 'startup-failed'
   | 'process-missing-failed'
+  | 'process-reattached'
+  | 'externally-running'
   | 'already-recovery-required';
 
 interface PersistedEvidence {
@@ -125,6 +150,8 @@ function emptySummary(): TaskDomainRecoverySummary {
     uncertaintyMarked: [],
     startupFailed: [],
     processMissingFailed: [],
+    processReattached: [],
+    externallyRunning: [],
     alreadyRecoveryRequired: [],
   };
 }
@@ -143,6 +170,8 @@ export class TaskRunRecoveryService {
       if (disposition === 'uncertainty-marked') summary.uncertaintyMarked.push(run.id);
       if (disposition === 'startup-failed') summary.startupFailed.push(run.id);
       if (disposition === 'process-missing-failed') summary.processMissingFailed.push(run.id);
+      if (disposition === 'process-reattached') summary.processReattached.push(run.id);
+      if (disposition === 'externally-running') summary.externallyRunning.push(run.id);
       if (disposition === 'already-recovery-required') summary.alreadyRecoveryRequired.push(run.id);
     }
     return summary;
@@ -255,21 +284,25 @@ export class TaskRunRecoveryService {
     const stages = this.readStages(run);
     const evidence = this.readPersistedEvidence(run);
 
-    // P6-M2b: when a process-recovery port is available, classify the active
-    // Stage attempt's native process before deciding. Only a proven-'missing'
-    // process reconciles to a canonical terminal failure; every other outcome
-    // (same / mismatch / unknown / no process / classifier error) keeps the
-    // historical fail-safe uncertainty and never resumes, re-adopts,
-    // re-attaches, or takes over ownership.
+    // P6-M2b + P5B: when a process-recovery port is available, classify the
+    // active Stage attempt's native process before deciding.
+    //   missing                     -> canonical terminal failure (M2b);
+    //   same + reattached           -> run.recovered with recoveryMode
+    //                                    'process-reattach' (Scenario E);
+    //   same without reattachment   -> externally running: no state change,
+    //                                    never failed/recovered, human review;
+    //   mismatch / unknown / error  -> historical fail-safe uncertainty.
+    // Classification never resumes by itself and never acts on the PID
+    // alone: reattach only happens for a classifier-proven 'same' identity.
     const port = this.dependencies.processRecovery;
     if (port !== undefined) {
       const activeStage = stages.find(
         stage => stage.status === 'running' || stage.status === 'starting',
       );
-      let classification: RecoveryClassification | undefined;
+      let verdict: RecoveryClassification | TaskRunProcessRecoveryVerdict | undefined;
       if (activeStage !== undefined) {
         try {
-          classification = port.classifyRunningProcess({
+          verdict = port.classifyRunningProcess({
             workspaceId: run.workspaceId,
             runId: run.id,
             stageId: activeStage.id,
@@ -277,16 +310,52 @@ export class TaskRunRecoveryService {
           });
         } catch {
           // A classifier error is indistinguishable from 'unknown': fail-safe.
-          classification = 'unknown';
+          verdict = 'unknown';
         }
       }
+      const classification = typeof verdict === 'string' ? verdict : verdict?.classification;
+      const reattached = typeof verdict === 'string' ? false : verdict?.reattached === true;
       if (classification === 'missing' && activeStage !== undefined) {
         return this.failRunForMissingProcess(run, operation, activeStage, evidence);
+      }
+      if (classification === 'same') {
+        if (reattached) {
+          return this.recordProcessReattached(run, operation, evidence);
+        }
+        // Identity-proven live process this server could not (or must not)
+        // adopt: externally running. The Run keeps its persisted status; it
+        // is neither marked failed nor recovered.
+        return 'externally-running';
       }
     }
 
     this.recordUncertainty(run, operation, evidence, RECOVERY_FAILURE_MESSAGES.running);
     return 'uncertainty-marked';
+  }
+
+  /**
+   * P5B Scenario E: a running Run whose native process the classifier proved
+   * 'same' and this server reattached recovers through the existing recovery
+   * outcome composite: run.recovery_attempted + run.recovered with
+   * recoveryMode 'process-reattach'. The Run keeps running; no new process is
+   * started and no side effect repeats — the pre-restart spawn right was
+   * consumed by the previous server generation.
+   */
+  private recordProcessReattached(
+    run: Run,
+    operation: ApiOperation,
+    evidence: PersistedEvidence,
+  ): TaskRunRecoveryDisposition {
+    this.dependencies.lifecycleTransactionService.recordRecoveryOutcomeWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      expectedRunVersion: run.version,
+      expectedStatus: 'running',
+      correlationId: operation.correlationId,
+      ...this.evidenceFlags(evidence),
+      outcome: { kind: 'recovered', recoveryMode: 'process-reattach' },
+    });
+    return 'process-reattached';
   }
 
   /**

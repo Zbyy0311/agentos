@@ -13,6 +13,8 @@ import { recoverInterruptedRunningTasks, recoverInterruptedTaskRuntime } from '.
 import {
   preflightProcessRecoveryClassifications,
   createPreflightProcessRecoveryPort,
+  type ProcessReattachmentPort,
+  type ProcessReattachOutcome,
 } from './processRecoveryPreflight.js';
 import { spawn } from 'node:child_process';
 import { createPlatformRecoveredProcessVerifier, type RecoveredProcessVerifier } from '@agentos/process-runtime';
@@ -520,6 +522,7 @@ function seedRunningRunWithProcess(
   store: SqliteStore,
   workspaceId: string,
   pid: number,
+  nativeBirthIdentity?: string,
 ): RunningProcessSeed & { runId: string } {
   // Seed a genuine v2_api running Run (NOT the legacy bridge, whose origin the
   // task-domain recovery path intentionally ignores) with a running Stage, a
@@ -620,6 +623,7 @@ function seedRunningRunWithProcess(
     nativePid: pid,
     nativeStartedAt: now,
     recoveryToken: 'p6m2b-composition-recovery-token-' + pid,
+    ...(nativeBirthIdentity === undefined ? {} : { nativeBirthIdentity }),
     eventContext: { correlationId: opId, causationId: runId },
   });
   assert.equal(bound.kind, 'applied');
@@ -747,6 +751,168 @@ test('LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery 
     recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
     assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');
     assert.equal(insideTransactionCalls, 0, 'OS probing must stay outside the SQLite write transaction');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+// --- P5B Scenario E composition: classification + reattachment through the real seam ---
+
+const SEED_BIRTH_IDENTITY = 'win32:filetime:13579246801234567';
+
+function aliveVerifier(nativeBirthIdentity: string): RecoveredProcessVerifier {
+  return {
+    async verify(pid) {
+      return { kind: 'alive', identity: { pid, startedAtMs: null, nativeBirthIdentity } };
+    },
+  };
+}
+
+function recordingReattachment(
+  outcome: ProcessReattachOutcome,
+  calls: Array<Record<string, unknown>>,
+): ProcessReattachmentPort {
+  return {
+    async reattach(input) {
+      calls.push({ ...input });
+      return outcome;
+    },
+  };
+}
+
+/** D. same + reattached -> run.recovered (process-reattach), Run keeps running, no respawn. */
+test('P5B-composition D: same + reattached recovers the Run without a second process', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 454545, SEED_BIRTH_IDENTITY);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const reattachCalls: Array<Record<string, unknown>> = [];
+    const verdicts = await preflightProcessRecoveryClassifications(
+      store2,
+      aliveVerifier(SEED_BIRTH_IDENTITY),
+      recordingReattachment('reattached', reattachCalls),
+    );
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(verdicts));
+    assert.deepEqual(result.taskDomainRecovery.processReattached, [runId]);
+    assert.deepEqual(result.taskDomainRecovery.externallyRunning, []);
+    assert.equal(reattachCalls.length, 1, 'reattach attempted exactly once for the same process');
+    assert.equal(reattachCalls[0]!.runId, runId);
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'running', 'recovered Run keeps running; no repeated side effect');
+    assert.equal(run.recoveryRequired, false);
+    const recoveryEvents = store2.runtimeEventRepository().queryByRun({
+      workspaceId: 'ws-a',
+      runId,
+      afterSequence: 0,
+      limit: 50,
+    }).results
+      .filter(record => record.kind === 'known')
+      .map(record => record.event)
+      .filter(event => event.type.startsWith('run.recover'));
+    assert.deepEqual(recoveryEvents.map(event => event.type), [
+      'run.recovery_attempted',
+      'run.recovered',
+    ]);
+    const recovered = recoveryEvents.find(event => event.type === 'run.recovered')!;
+    assert.deepEqual(recovered.payload, { recoveryMode: 'process-reattach' });
+    const processes = store2.processRepository().listByRun('ws-a', runId);
+    assert.equal(processes.filter(candidate => candidate.authorityRole === 'primary-provider').length, 1, 'no second process may be created');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** E. same + reattach unsupported -> externally running: Run untouched, no recovery events. */
+test('P5B-composition E: same without reattachment is externally running, never failed/recovered', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 474747, SEED_BIRTH_IDENTITY);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const before = store2.runRepository().findById('ws-a', runId)!;
+    const reattachCalls: Array<Record<string, unknown>> = [];
+    const verdicts = await preflightProcessRecoveryClassifications(
+      store2,
+      aliveVerifier(SEED_BIRTH_IDENTITY),
+      recordingReattachment('unsupported', reattachCalls),
+    );
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(verdicts));
+    assert.deepEqual(result.taskDomainRecovery.externallyRunning, [runId]);
+    assert.deepEqual(result.taskDomainRecovery.processReattached, []);
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'running', 'externally running Run must not be failed');
+    assert.equal(run.recoveryRequired, false, 'externally running Run must not be marked recovered');
+    assert.equal(run.version, before.version, 'externally running Run is byte-for-byte untouched');
+    const recoveryEvents = store2.runtimeEventRepository().queryByRun({
+      workspaceId: 'ws-a',
+      runId,
+      afterSequence: 0,
+      limit: 50,
+    }).results.filter(record => record.event.type.startsWith('run.recover'));
+    assert.equal(recoveryEvents.length, 0, 'externally running records no recovery outcome events');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** F. mismatch (positive identity difference) never reaches the reattach port. */
+test('P5B-composition F: mismatch keeps fail-safe uncertainty and never reattaches', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 484848, SEED_BIRTH_IDENTITY);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const reattachCalls: Array<Record<string, unknown>> = [];
+    const verdicts = await preflightProcessRecoveryClassifications(
+      store2,
+      aliveVerifier('win32:filetime:99999999999999999'),
+      recordingReattachment('reattached', reattachCalls),
+    );
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(verdicts));
+    assert.equal(reattachCalls.length, 0, 'mismatch must never be offered to the reattach port');
+    assert.deepEqual(result.taskDomainRecovery.processReattached, []);
+    assert.equal(result.taskDomainRecovery.uncertaintyMarked.length, 1);
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'running');
+    assert.equal(run.recoveryRequired, true, 'mismatch keeps the uncertainty flag');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** G. an already-adopted process ('already') still recovers the Run exactly once. */
+test('P5B-composition G: already-adopted same process recovers without double adoption', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 494949, SEED_BIRTH_IDENTITY);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const reattachCalls: Array<Record<string, unknown>> = [];
+    const verdicts = await preflightProcessRecoveryClassifications(
+      store2,
+      aliveVerifier(SEED_BIRTH_IDENTITY),
+      recordingReattachment('already', reattachCalls),
+    );
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(verdicts));
+    assert.deepEqual(result.taskDomainRecovery.processReattached, [runId]);
+    assert.equal(reattachCalls.length, 1, 'idempotent recovery does not re-adopt');
   } finally {
     store2?.close();
     await rmRootWithRetry(env.root);
@@ -976,6 +1142,8 @@ test('R25 startup composition preserves Legacy recovery and then restores canoni
       uncertaintyMarked: [],
       startupFailed: [],
       processMissingFailed: [],
+      processReattached: [],
+      externallyRunning: [],
       alreadyRecoveryRequired: [],
     });
     assert.equal(recoveredCanonical.status, 'queued');
