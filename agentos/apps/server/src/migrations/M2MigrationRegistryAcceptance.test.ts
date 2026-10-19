@@ -19,7 +19,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052', '053', '054', '055', '056', '057', '058', '059', '060', '061', '062'] as const;
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052', '053', '054', '055', '056', '057', '058', '059', '060', '061', '062', '064'] as const;
 const FINAL_P2_INTEGRATION_SEQUENCE = ['049', '050', '051', '052', '053', '054', '055', '056', '057', '058'] as const;
 test('P2 Migration Registry contains exactly the registered migrations in contract order', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
@@ -57,9 +57,10 @@ test('P2 recovery 054 follows relevance, owner actor, accumulation, and preview 
   const integrationStart = ids.indexOf(FINAL_P2_INTEGRATION_SEQUENCE[0]);
   assert.ok(integrationStart >= 0);
   assert.deepEqual(ids.slice(integrationStart, integrationStart + FINAL_P2_INTEGRATION_SEQUENCE.length), FINAL_P2_INTEGRATION_SEQUENCE);
-  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.at(-1)?.id, '062');
+  // The FINAL sequence is followed by five entries (059, 060, 061, 062, 064).
+  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.at(-1)?.id, '064');
   assert.deepEqual(
-    DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id).slice(-(FINAL_P2_INTEGRATION_SEQUENCE.length + 4), -4),
+    DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id).slice(-(FINAL_P2_INTEGRATION_SEQUENCE.length + 5), -5),
     FINAL_P2_INTEGRATION_SEQUENCE,
   );
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);

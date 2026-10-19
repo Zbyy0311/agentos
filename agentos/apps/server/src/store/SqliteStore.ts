@@ -74,6 +74,7 @@ import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigur
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 import { createM3RuntimeEventRegistry } from '@agentos/shared';
+import { EventPayloadOffloadService } from '../services/EventPayloadOffloadService.js';
 import { RuntimeEventOutboxWriter, RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { MemoryContextSnapshotRepository } from './MemoryContextSnapshotRepository.js';
 import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
@@ -537,6 +538,7 @@ export class SqliteStore implements Store {
         runtimeEventRegistry,
         this.runtimeEventNotifier,
         this.eventRedactionServiceRepo,
+        new EventPayloadOffloadService(this.database as any, join(dataDir, 'artifacts')),
       );
       this.runStreamServiceRepo = new RunStreamService(this.runtimeEventRepo, this.runtimeEventNotifier);
       this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);

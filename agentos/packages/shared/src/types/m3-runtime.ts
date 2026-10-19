@@ -47,6 +47,7 @@ export const RUNTIME_EVENT_SOURCES = Object.freeze([
   'workspace-admission',
   'usage-aggregator',
   'recovery-manager',
+  'event-store',
   'conversation-service',
   'extension',
   'system',
