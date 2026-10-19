@@ -176,10 +176,11 @@ export class ConversationSearchReadStateService {
         'SELECT id FROM cr_conversations WHERE workspace_id = ? AND id = ?',
       ).get(input.workspaceId, input.conversationId);
       if (conversation === undefined) throw new ConversationSearchReadStateError('CONVERSATION_NOT_FOUND');
-      const target = input.latest === true
-        ? (this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS max FROM cr_messages WHERE workspace_id = ? AND conversation_id = ?')
-          .get(input.workspaceId, input.conversationId) as { max: number }).max
-        : input.lastReadMessageSequence!;
+      const maxSequence = (this.db.prepare(
+        'SELECT COALESCE(MAX(sequence), 0) AS max FROM cr_messages WHERE workspace_id = ? AND conversation_id = ?',
+      ).get(input.workspaceId, input.conversationId) as { max: number }).max;
+      const target = input.latest === true ? maxSequence : input.lastReadMessageSequence!;
+      if (target > maxSequence) throw new ConversationSearchReadStateError('INPUT_INVALID');
       // Atomic monotone advance: only rows whose stored position is behind the
       // target move. A conflicting writer either wins the lock or re-reads.
       this.db.prepare(`

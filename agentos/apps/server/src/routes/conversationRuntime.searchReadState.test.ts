@@ -153,6 +153,15 @@ test('read state: advance, monotone no-regression, unread and mention counts, ba
     assert.equal((regress.json as { readState: { lastReadMessageSequence: number; unreadCount: number } }).readState.lastReadMessageSequence, 1);
     assert.equal((regress.json as { readState: { unreadCount: number } }).readState.unreadCount, 2);
 
+    // A client cannot advance past the server's current sequence and hide future messages.
+    const future = await postJson(`${base}/conversations/${a}/read`, { userId: 'u1', lastReadMessageSequence: 99 });
+    assert.equal(future.status, 400);
+    const unchanged = await fetch(`${base}/conversations/${a}/read-state?userId=u1`).then(r => r.json()) as {
+      readState: { lastReadMessageSequence: number; unreadCount: number };
+    };
+    assert.equal(unchanged.readState.lastReadMessageSequence, 1);
+    assert.equal(unchanged.readState.unreadCount, 2);
+
     // Latest converges on the max sequence.
     const latest = await postJson(`${base}/conversations/${a}/read`, { userId: 'u1', latest: true });
     assert.equal((latest.json as { readState: { unreadCount: number; lastReadMessageSequence: number } }).readState.unreadCount, 0);
