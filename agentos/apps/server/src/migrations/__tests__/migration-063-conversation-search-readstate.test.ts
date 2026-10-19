@@ -3,12 +3,16 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 
+import { MigrationRunner } from '../MigrationRunner.js';
+import { MigrationRegistry } from '../registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
 import {
   migration063,
   migration063Checksum,
   CONVERSATION_SEARCH_READSTATE_063_DDL,
 } from '../migrations/063-conversation-search-readstate.js';
+import { ConversationSearchReadStateService } from '../../services/ConversationSearchReadStateService.js';
+import type { TransactionDatabase } from '../../store/Transaction.js';
 import type { MinimalDatabaseSync } from '../types.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -85,6 +89,82 @@ test('063 backfills existing messages and triggers keep the index in sync across
     // Migration is idempotent (re-apply does not duplicate backfill rows).
     migration063.apply({ db });
     assert.equal((db.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE message_id = 'msg-1'").get() as { n: number }).n, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('063 upgrades a database with 062 and 064 already applied without rerunning 064', () => {
+  const db = new DatabaseSync(':memory:') as Db;
+  try {
+    // This is the actual stacked delivery order: T1 migration 062 and T2
+    // migration 064 are recorded before T3 migration 063 exists in the registry.
+    const beforeT3 = new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(item => item.id !== '063'));
+    new MigrationRunner(db, beforeT3).run();
+    assert.deepEqual(
+      (db.prepare("SELECT migration_id FROM _schema_migrations WHERE migration_id IN ('062', '063', '064') ORDER BY rowid").all() as Array<{ migration_id: string }>)
+        .map(row => row.migration_id),
+      ['062', '064'],
+    );
+
+    seedConversationWithMessage(db);
+    const now = '2026-10-19T00:00:00.000Z';
+    db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at)
+      VALUES ('task-1', 'ws-1', 'task', 'open', 'normal', 'test', ?, ?)`).run(now, now);
+    db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at)
+      VALUES ('run-1', 'ws-1', 'task-1', 'run-1', 'completed', 'initial', 'v2_api', 'test', ?, ?)`).run(now, now);
+    db.prepare(`INSERT INTO runtime_events (
+      id, schema_version, type, workspace_id, task_id, run_id, sequence, timestamp,
+      source, correlation_id, causation_id, severity, visibility, durability,
+      payload_json, created_at
+    ) VALUES ('event-1', 1, 'run.completed', 'ws-1', 'task-1', 'run-1', 1, ?,
+      'test', 'run-1', NULL, 'info', 'internal', 'durable', '{}', ?)`).run(now, now);
+
+    const eventDeleteTrigger = (db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'runtime_events_reject_delete'",
+    ).get() as { sql: string }).sql;
+    const migration064Before = db.prepare(
+      "SELECT checksum, applied_at FROM _schema_migrations WHERE migration_id = '064'",
+    ).get();
+    assert.ok(eventDeleteTrigger.includes("'run.completed'"));
+
+    const completeRegistry = new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS]);
+    const runner = new MigrationRunner(db, completeRegistry);
+    runner.run();
+
+    const appliedOrder = (db.prepare(
+      "SELECT migration_id FROM _schema_migrations WHERE migration_id IN ('062', '063', '064') ORDER BY rowid",
+    ).all() as Array<{ migration_id: string }>).map(row => row.migration_id);
+    assert.deepEqual(appliedOrder, ['062', '064', '063']);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM _schema_migrations WHERE migration_id = '063'").get() as { n: number }).n, 1);
+    assert.deepEqual(
+      db.prepare("SELECT checksum, applied_at FROM _schema_migrations WHERE migration_id = '064'").get(),
+      migration064Before,
+    );
+
+    // The pre-existing message is backfilled, and the new read-state table is
+    // usable through the production service on the same upgraded database.
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE message_id = 'msg-1' AND messages_fts MATCH 'alpha'").get() as { n: number }).n, 1);
+    const readState = new ConversationSearchReadStateService(db as unknown as TransactionDatabase);
+    const marked = readState.markRead({
+      workspaceId: 'ws-1', conversationId: 'conv-1', userId: 'user-1', latest: true, now,
+    });
+    assert.equal(marked.lastReadMessageSequence, 1);
+    assert.equal(marked.unreadCount, 0);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM conversation_read_states WHERE conversation_id = 'conv-1' AND user_id = 'user-1'").get() as { n: number }).n, 1);
+
+    // Migration 063 leaves the 064 delete gate intact and keeps its event row.
+    assert.equal((db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'runtime_events_reject_delete'",
+    ).get() as { sql: string }).sql, eventDeleteTrigger);
+    assert.throws(() => db.prepare("DELETE FROM runtime_events WHERE id = 'event-1'").run(), /RUNTIME_EVENT_DELETE_NOT_ALLOWED/);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM runtime_events WHERE id = 'event-1'").get() as { n: number }).n, 1);
+
+    // Re-running the full registry neither reapplies 063 nor duplicates FTS rows.
+    runner.run();
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM _schema_migrations WHERE migration_id = '063'").get() as { n: number }).n, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE message_id = 'msg-1'").get() as { n: number }).n, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM runtime_events WHERE id = 'event-1'").get() as { n: number }).n, 1);
   } finally {
     db.close();
   }
