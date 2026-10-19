@@ -322,6 +322,37 @@ test('§61: corrections are idempotent for identical input and chain for new fie
   }
 });
 
+test('§61: correction projection and idempotency include corrections beyond the first page', async t => {
+  const db = seededDb();
+  const s = stack(db);
+  try {
+    const original = appendTextDelta(s, 'original');
+    const input = (index: number) => ({
+      workspaceId: WS,
+      originalEventId: original.eventId,
+      reason: `correction ${index}`,
+      correctedFields: { delta: `corrected ${index}` },
+      eventContext: { correlationId: RUN, causationId: original.eventId },
+      timestamp: NOW,
+    });
+    const corrections = inTransaction(db, () => Array.from({ length: 201 }, (_, index) => s.service.correctEvent(input(index))));
+    await t.test('the latest correction applies even when the requested event page has one row', () => {
+      const projected = s.service.listByRunWithCorrections({ workspaceId: WS, runId: RUN, afterSequence: 0, limit: 1 });
+      assert.equal((projected.results[0].event.payload as { delta: string }).delta, 'corrected 200');
+      assert.equal(projected.hasMore, true);
+      assert.equal((s.events.findById(original.eventId)!.event.payload as { delta: string }).delta, 'original');
+    });
+    await t.test('retrying a correction on the second page appends no duplicate', () => {
+      const retried = inTransaction(db, () => s.service.correctEvent(input(200)));
+      assert.equal(retried.event.id, corrections[200].event.id);
+      assert.equal(retried.outbox.eventId, corrections[200].event.id);
+      assert.equal(eventRows(s).filter(row => row.type === 'event.corrected').length, 201);
+    });
+  } finally {
+    close(s, db);
+  }
+});
+
 test('§61 projection: listByRunWithCorrections applies corrections; raw reads stay unchanged', () => {
   const db = seededDb();
   const s = stack(db);

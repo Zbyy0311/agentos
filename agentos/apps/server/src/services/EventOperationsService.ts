@@ -124,14 +124,7 @@ export class EventOperationsService {
       throw new RuntimeEventRepositoryError('RUNTIME_EVENT_PERSISTENCE_FAILED', 'Correction payload is invalid');
     }
     const fingerprint = canonicalizeJson(payload);
-    const existing = this.runtimeEvents.queryByRun({
-      workspaceId: input.workspaceId,
-      runId: target.runId,
-      afterSequence: 0,
-      limit: 200,
-      types: ['event.corrected'],
-    });
-    for (const candidate of existing.results) {
+    for (const candidate of this.iterateRunCorrections(input.workspaceId, target.runId)) {
       if (candidate.kind === 'known'
         && candidate.event.type === 'event.corrected'
         && canonicalizeJson(candidate.event.payload) === fingerprint) {
@@ -160,15 +153,8 @@ export class EventOperationsService {
     hasMore: boolean;
   } {
     const raw = this.runtimeEvents.queryByRun(query);
-    const corrections = this.runtimeEvents.queryByRun({
-      workspaceId: query.workspaceId,
-      runId: query.runId,
-      afterSequence: 0,
-      limit: 200,
-      types: ['event.corrected'],
-    });
     const payloads: EventCorrectedPayload[] = [];
-    for (const item of corrections.results) {
+    for (const item of this.iterateRunCorrections(query.workspaceId, query.runId)) {
       if (item.kind === 'known' && isEventCorrectedPayload(item.event.payload)) {
         payloads.push(item.event.payload);
       }
@@ -185,6 +171,22 @@ export class EventOperationsService {
       }),
       hasMore: raw.hasMore,
     };
+  }
+
+  private *iterateRunCorrections(workspaceId: string, runId: string): Generator<RuntimeEventConsumptionResult> {
+    let afterSequence = 0;
+    for (;;) {
+      const page = this.runtimeEvents.queryByRun({
+        workspaceId,
+        runId,
+        afterSequence,
+        limit: 200,
+        types: ['event.corrected'],
+      });
+      yield* page.results;
+      if (!page.hasMore) return;
+      afterSequence = page.results[page.results.length - 1]!.event.sequence;
+    }
   }
 
   /**
