@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { AgentOSError, createAgentOSClient } from '@agentos/api-client';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -11,30 +12,21 @@ interface ApiOptions {
 
 export function useApi() {
   const request = useCallback(async <T = unknown>(path: string, options: ApiOptions = {}): Promise<T> => {
-    const controller = new AbortController();
-    const timeoutMs = options.timeout ?? 10000;
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
-      const res = await fetch(`${API_BASE}${path}`, {
-        method: options.method || 'GET',
-        headers: {
-          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-          ...(options.headers ?? {}),
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        cache: 'no-store',
-        signal: controller.signal,
+      return await createAgentOSClient({ baseUrl: API_BASE }).request<T>(path, {
+        ...(options.method === undefined ? {} : { method: options.method }),
+        ...(options.body === undefined ? {} : { body: options.body }),
+        ...(options.headers === undefined ? {} : { headers: options.headers }),
+        ...(options.timeout === undefined ? {} : { timeoutMs: options.timeout }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string; detail?: string; title?: string; code?: string };
-        const thrown = new Error(err.detail || err.error || err.title || `HTTP ${res.status}`) as Error & { code?: string };
-        if (err.code) thrown.code = err.code;
-        throw thrown;
+    } catch (error) {
+      // Preserve the legacy `{ code?: string }` shape that callers rely on:
+      // the server-provided machine code shadows the mapped status code.
+      if (error instanceof AgentOSError) {
+        if (error.serverCode !== undefined) (error as unknown as { code?: string }).code = error.serverCode;
+        throw error;
       }
-      return res.json() as Promise<T>;
-    } finally {
-      clearTimeout(timer);
+      throw error;
     }
   }, []);
 

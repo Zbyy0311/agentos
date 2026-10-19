@@ -1,16 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  listRuntimeApprovals,
-  resolveRuntimeApproval,
-  type RuntimeApprovalDecision,
-  type RuntimeApprovalRequest,
-} from '@/lib/runtimeApprovals';
-import { listPolicyDecisions, type PolicyDecision } from '@/lib/policyDecisions';
+import type { AgentOSClient, PolicyDecision, RuntimeApprovalDecision, RuntimeApprovalRequest } from '@agentos/api-client';
 
 interface RuntimeApprovalPanelProps {
-  readonly apiBase: string;
+  readonly client: AgentOSClient;
   readonly workspaceId: string;
   readonly runId: string;
   readonly onResolved?: () => void;
@@ -35,7 +29,7 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
 
   const load = useCallback(async (signal: AbortSignal, disposed: () => boolean) => {
     try {
-      const result = await listRuntimeApprovals(props.apiBase, props.workspaceId, signal);
+      const result = await props.client.listRuntimeApprovals(props.workspaceId, signal);
       if (disposed()) return;
       setRequests(result.requests.filter(request => request.runId === props.runId && request.status === 'pending'));
       setError(undefined);
@@ -49,13 +43,13 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
     // (missing endpoint, no decisions yet, network error) silently degrades
     // to hiding the row rather than disturbing the approval flow.
     try {
-      const page = await listPolicyDecisions(props.apiBase, props.workspaceId, { runId: props.runId, limit: 1 }, signal);
+      const page = await props.client.listPolicyDecisions(props.workspaceId, { runId: props.runId, limit: 1 }, signal);
       if (disposed()) return;
       setPolicyDecision(page.decisions[0]);
     } catch {
       if (!disposed()) setPolicyDecision(undefined);
     }
-  }, [props.apiBase, props.runId, props.workspaceId]);
+  }, [props.client, props.runId, props.workspaceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,7 +69,7 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
     setBusyId(request.id);
     setError(undefined);
     try {
-      await resolveRuntimeApproval(props.apiBase, props.workspaceId, request.id, {
+      await props.client.resolveRuntimeApproval(props.workspaceId, request.id, {
         expectedVersion: request.version,
         decision,
         decidedBy: UI_ACTOR,
