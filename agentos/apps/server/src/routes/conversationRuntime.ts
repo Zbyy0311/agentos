@@ -824,6 +824,86 @@ export function createConversationRuntimeRoutes(
     }
   });
 
+  // ---- Message edit / delete / revisions (§13 / §111) ------------------------
+  // Soft semantics throughout: edits append to the append-only revision ledger,
+  // deletes only move the Message to 'deleted', and no new event type is
+  // introduced — observers re-read through the existing message list/search
+  // projection, and messages_fts stays consistent via the 063 triggers plus
+  // the status <> 'deleted' search filter.
+
+  /** Edit Message content: optimistic (expectedVersion), revision retained. */
+  router.patch('/messages/:messageId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const content = body.content;
+    const expectedVersion = body.expectedVersion;
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'content is required' });
+      return;
+    }
+    if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 1) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedVersion must be a positive integer' });
+      return;
+    }
+    try {
+      const current = conversations().findMessageById(workspace.id, req.params.messageId);
+      if (!current) { sendProblem(req, res, { status: 404, code: 'MESSAGE_NOT_FOUND', detail: 'Message not found' }); return; }
+      if (current.version !== expectedVersion) {
+        sendProblem(req, res, { status: 409, code: 'MESSAGE_VERSION_CONFLICT', detail: 'MESSAGE_VERSION_CONFLICT' });
+        return;
+      }
+      if (current.status === 'deleted') {
+        sendProblem(req, res, { status: 409, code: 'MESSAGE_DELETED', detail: 'Message is deleted' });
+        return;
+      }
+      // Idempotent retry: the same edit converges on the current row.
+      if (current.content === content) { res.json({ message: current }); return; }
+      const message = conversations().editMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        expectedVersion: expectedVersion as number, content,
+        revisionId: createEntityId('operation'), editedAt: new Date().toISOString(),
+      });
+      res.json({ message });
+    } catch (error) {
+      fail(req, res, error);
+    }
+  });
+
+  /** Soft delete: the Message row and its revisions are preserved. */
+  router.delete('/messages/:messageId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const expectedVersion = body.expectedVersion;
+    if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 1) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'expectedVersion must be a positive integer' });
+      return;
+    }
+    try {
+      const message = conversations().deleteMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        expectedVersion: expectedVersion as number, deletedAt: new Date().toISOString(),
+      });
+      res.json({ message });
+    } catch (error) {
+      fail(req, res, error);
+    }
+  });
+
+  /** Append-only edit history for one Message (workspace scoped). */
+  router.get('/messages/:messageId/revisions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const current = conversations().findMessageById(workspace.id, req.params.messageId);
+      if (!current) { sendProblem(req, res, { status: 404, code: 'MESSAGE_NOT_FOUND', detail: 'Message not found' }); return; }
+      res.json({ revisions: conversations().listMessageRevisions(workspace.id, req.params.messageId) });
+    } catch (error) {
+      fail(req, res, error);
+    }
+  });
+
   // ---- Task / Run bridge (CR-4a) -------------------------------------------
 
   router.post('/messages/:messageId/create-task', (req: Request, res: Response) => {
