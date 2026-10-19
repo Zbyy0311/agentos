@@ -180,6 +180,9 @@ function providerSnapshot(
     executable,
     argsTemplate: [...argsTemplate],
     ...(provider.promptDelivery === undefined ? {} : { promptDelivery: provider.promptDelivery }),
+    ...(provider.fallbackPolicy === undefined
+      ? {}
+      : { fallbackPolicy: provider.fallbackPolicy === null ? null : structuredClone(provider.fallbackPolicy) }),
     model: provider.model ?? null,
     environmentProfileId: provider.environmentProfileId ?? null,
     secretProfileId: provider.secretProfileId ?? null,

@@ -23,6 +23,17 @@ import { StageExecutionCoordinator, type StageExecutionInput } from './StageExec
 import type { ResolveRunMemoryContextInput, ResolvedMemoryContext } from '../MemoryContextResolver.js';
 import { ARTIFACT_RESULT_INSTRUCTION, type CanonicalArtifactResultInput } from '../CanonicalArtifactResultService.js';
 import type { CollaborationStageHooks, CollaborationStagePreparation } from '../CollaborationStageHooks.js';
+import {
+  attemptedProviderConfigIds,
+  fallbackBudgetExhausted,
+  isFallbackTriggerCode,
+  normalizeProviderFallbackPolicy,
+  selectFallbackTargetId,
+} from '@agentos/agent-core/providers';
+import type { ProviderFallbackChainEntryV1, ProviderFallbackPolicyV1 } from '@agentos/shared';
+import type { ProviderConfigurationRepository } from '../../store/ProviderConfigurationRepository.js';
+import type { ProviderSwitchApprovalGate, ProviderSwitchDescriptor } from './providerFallback.js';
+import { providerSnapshotFromConfiguration } from './providerFallback.js';
 
 export interface CanonicalRunAdmissionGate {
   authorizeCanonicalRun(input: {
@@ -83,6 +94,37 @@ export interface RunEngineProviderDispatcherOptions {
   readonly collaborationStageHooks?: CollaborationStageHooks;
   /** Release terminal Run Admission and wake durable fallback Children. */
   readonly onRunTerminal?: (input: { readonly workspaceId: string; readonly runId: string }) => Promise<void>;
+  /**
+   * P5D §42 Provider Fallback. All ports are optional: when absent, a provider
+   * failure fails the Stage exactly as before (no fallback, no switch).
+   */
+  readonly providerConfigurations?: Pick<ProviderConfigurationRepository, 'findById'>;
+  readonly providerSwitchApproval?: Pick<ProviderSwitchApprovalGate, 'gateSwitch' | 'findApprovedSwitch' | 'consumeSwitch'>;
+  /** Persists the public `provider.switch` Runtime Event for one switch. */
+  readonly emitProviderSwitch?: (input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly stageId: string;
+    readonly stageAttempt: number;
+    readonly operationId: string;
+    readonly fromProviderConfigId: string;
+    readonly toProviderConfigId: string;
+    readonly triggerErrorCode: string;
+    readonly attempt: number;
+    readonly switchedAt: string;
+    readonly approvalRequestId?: string;
+    readonly eventContext: { readonly correlationId: string; readonly causationId: string };
+  }) => void;
+  /** Appends one committed switch to the Run fallback-chain projection. */
+  readonly recordProviderFallbackChainEntry?: (
+    workspaceId: string,
+    runId: string,
+    runSnapshotId: string,
+    entry: ProviderFallbackChainEntryV1,
+  ) => void;
+  /** Reads the executed fallback chain projection for a Run (commit order). */
+  readonly listProviderFallbackChain?: (workspaceId: string, runId: string) => readonly ProviderFallbackChainEntryV1[];
+  readonly now?: () => string;
 }
 
 export interface MemoryCandidateGenerationPort {
@@ -167,6 +209,20 @@ function collaborationProgressRole(stageKey: string): 'planner' | 'implementer' 
   return 'other';
 }
 
+/** Recovers the switch descriptor fields persisted in the approval snapshot. */
+function parseSwitchSnapshotJson(json: string): { triggerErrorCode: string; fromProviderConfigId: string } | undefined {
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    if (parsed['action'] !== 'provider.switch') return undefined;
+    const triggerErrorCode = parsed['triggerErrorCode'];
+    const fromProviderConfigId = parsed['fromProviderConfigId'];
+    if (typeof triggerErrorCode !== 'string' || typeof fromProviderConfigId !== 'string') return undefined;
+    return { triggerErrorCode, fromProviderConfigId };
+  } catch {
+    return undefined;
+  }
+}
+
 const MAX_STAGE_MEMORY_QUERY_CHARS = 2000;
 
 function normalizeStageMemoryQueryPart(value: string | undefined, maxChars: number): string {
@@ -227,6 +283,12 @@ export class RunEngineProviderDispatcher {
   private readonly artifactResults: RunEngineProviderDispatcherOptions['artifactResults'];
   private readonly collaborationStageHooks: CollaborationStageHooks | undefined;
   private readonly onRunTerminal: RunEngineProviderDispatcherOptions['onRunTerminal'];
+  private readonly providerConfigurations: RunEngineProviderDispatcherOptions['providerConfigurations'];
+  private readonly providerSwitchApproval: RunEngineProviderDispatcherOptions['providerSwitchApproval'];
+  private readonly emitProviderSwitch: RunEngineProviderDispatcherOptions['emitProviderSwitch'];
+  private readonly recordProviderFallbackChainEntry: RunEngineProviderDispatcherOptions['recordProviderFallbackChainEntry'];
+  private readonly listProviderFallbackChain: RunEngineProviderDispatcherOptions['listProviderFallbackChain'];
+  private readonly now: () => string;
   private readonly preparedCollaborationStages = new Map<string, CollaborationStagePreparation>();
 
   constructor(options: RunEngineProviderDispatcherOptions) {
@@ -248,6 +310,12 @@ export class RunEngineProviderDispatcher {
     this.artifactResults = options.artifactResults;
     this.collaborationStageHooks = options.collaborationStageHooks;
     this.onRunTerminal = options.onRunTerminal;
+    this.providerConfigurations = options.providerConfigurations;
+    this.providerSwitchApproval = options.providerSwitchApproval;
+    this.emitProviderSwitch = options.emitProviderSwitch;
+    this.recordProviderFallbackChainEntry = options.recordProviderFallbackChainEntry;
+    this.listProviderFallbackChain = options.listProviderFallbackChain;
+    this.now = options.now ?? (() => new Date().toISOString());
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
@@ -594,10 +662,12 @@ export class RunEngineProviderDispatcher {
     const prompt = memoryContext === null || memoryContext.contextText.length === 0
       ? `${basePrompt}${collaborationPrompt}`
       : `Memory provides historical context; the current user instruction overrides any conflicting historical preference.\n${memoryContext.contextText}\n\n${basePrompt}${collaborationPrompt}`;
-    const executionProviderSnapshot = isCollaborationRun
+    const primaryProviderSnapshot = isCollaborationRun
       ? { ...stageDefinition.provider, workingDirectoryMode: 'worktree' as const, workspaceRelativeWorkingDirectory: null }
       : stageDefinition.provider;
-    const input: StageExecutionInput = {
+    const fallbackPolicy = this.frozenFallbackPolicy(primaryProviderSnapshot.fallbackPolicy);
+    const stageWorkspaceRoot = preparedCollaborationStage?.workspaceRoot ?? this.workspaceRootFor(workspaceId);
+    const baseInput = {
       workspaceId,
       taskId: snapshot.payload.run.taskId,
       runId,
@@ -605,99 +675,283 @@ export class RunEngineProviderDispatcher {
       stageAttempt: stage.attempt,
       workflowStageKey: stage.workflowStageKey,
       agentSnapshot: stageDefinition.agent,
-      providerSnapshot: executionProviderSnapshot,
-      workspaceRoot: preparedCollaborationStage?.workspaceRoot ?? this.workspaceRootFor(workspaceId),
+      workspaceRoot: stageWorkspaceRoot,
       worktreePath,
-      prompt: this.artifactResults && !isCollaborationRun ? prompt + ARTIFACT_RESULT_INSTRUCTION : prompt,
       operationId: operation.id,
     };
-    if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
-    const outcome = await this.coordinator.execute(input);
-    if (outcome.kind === 'stopped') {
-      // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
-      // any later proven cancellation hand-off to canonical Run/Stage state.
-      return 'stopped';
-    }
-    const freshRun = this.requireRun(workspaceId, runId);
-    if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
-    const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
-    if (freshStage === undefined) {
-      throw new Error('RUN_ENGINE_STAGE_NOT_FOUND: provider stage disappeared');
-    }
-    if (outcome.kind === 'active') {
-      // Converged on an existing authority claim; never re-dispatch.
-      return 'active';
-    }
-    if (outcome.kind === 'completed') {
-      if (isCollaborationRun && this.collaborationStageHooks) {
-        await this.collaborationStageHooks.completedStage({
-          workspaceId,
-          runId,
-          stage: freshStage,
-          agentId: stageDefinition.agent.agentId,
-          role: collaborationProgressRole(stage.workflowStageKey),
-          ...(outcome.output === undefined ? {} : { output: outcome.output }),
-        });
+    const buildInput = (providerSnapshot: StageExecutionInput['providerSnapshot'], claimAttemptOffset: number): StageExecutionInput => ({
+      ...baseInput,
+      providerSnapshot,
+      providerClaimAttempt: stage.attempt + claimAttemptOffset,
+      prompt: this.artifactResults && !isCollaborationRun ? prompt + ARTIFACT_RESULT_INSTRUCTION : prompt,
+    });
+
+    // P5D §42: an approved, unconsumed provider-switch approval (Stage went
+    // waiting_approval → approved → drive continued) must not re-execute the
+    // failed primary provider; commit the pre-approved switch directly.
+    let currentProviderSnapshot: StageExecutionInput['providerSnapshot'] = primaryProviderSnapshot;
+    let claimAttemptOffset = 0;
+    if (fallbackPolicy !== undefined && this.providerSwitchApproval !== undefined) {
+      const preApproved = this.providerSwitchApproval.findApprovedSwitch(workspaceId, runId, stage.id);
+      if (preApproved !== undefined) {
+        const chainNow = this.fallbackChain(workspaceId, runId, stage.id);
+        const target = this.resolveFallbackTarget(
+          workspaceId, stage.id, primaryProviderSnapshot.providerConfigId, chainNow, fallbackPolicy,
+          stageWorkspaceRoot, isCollaborationRun,
+        );
+        if (target !== undefined) {
+          const parsed = parseSwitchSnapshotJson(preApproved.requestSnapshotJson);
+          this.commitProviderSwitch({
+            workspaceId, runId, stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+            fromProviderConfigId: primaryProviderSnapshot.providerConfigId,
+            toProviderConfigId: target.providerConfigId,
+            triggerErrorCode: parsed?.triggerErrorCode ?? 'PROVIDER_UNKNOWN_ERROR',
+            attempt: chainNow.length + 1,
+          }, snapshot.id, preApproved.id);
+          currentProviderSnapshot = target;
+          claimAttemptOffset = chainNow.length + 1;
+        }
       }
-      this.preparedCollaborationStages.delete(`${workspaceId}:${runId}:${stage.id}`);
-      const resultArtifacts = this.artifactResults && !isCollaborationRun ? await this.artifactResults.capture({ workspaceId, runId,
-        stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
-        agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
-      const artifactIds = [...outcome.artifactIds, ...resultArtifacts];
-      const othersComplete = stages.every(
-        candidate => candidate.id === stage.id || candidate.status === 'completed' || candidate.status === 'skipped',
-      );
-      if (othersComplete) {
-        await this.lifecycleTransactionService.completeRun({
-          workspaceId,
-          runId,
-          stageId: stage.id,
-          expectedRunVersion: freshRun.version,
-          expectedStageVersion: freshStage.version,
-          correlationId: operation.id,
-          durationMs: outcome.durationMs,
-          artifactIds,
-          outputContractSatisfied: outcome.outputContractSatisfied,
-        });
-        this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
-      } else {
+    }
+
+    for (;;) {
+      const input = buildInput(currentProviderSnapshot, claimAttemptOffset);
+      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
+      const outcome = await this.coordinator.execute(input);
+      if (outcome.kind === 'stopped') {
+        // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
+        // any later proven cancellation hand-off to canonical Run/Stage state.
+        return 'stopped';
+      }
+      const freshRun = this.requireRun(workspaceId, runId);
+      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
+      const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
+      if (freshStage === undefined) {
+        throw new Error('RUN_ENGINE_STAGE_NOT_FOUND: provider stage disappeared');
+      }
+      const failStage = async (code: string, message: string, retryable: boolean): Promise<void> => {
         await this.lifecycleTransactionService.transitionStage({
           workspaceId,
           runId,
           stageId: stage.id,
           expectedVersion: freshStage.version,
           expectedFrom: 'running',
-          to: 'completed',
+          to: 'failed',
+          errorCode: code,
+          message,
+          retryable,
+          retryScheduled: false,
           correlationId: operation.id,
-          durationMs: outcome.durationMs,
-          artifactIds,
-          outputContractSatisfied: outcome.outputContractSatisfied,
         });
+      };
+      if (outcome.kind === 'active') {
+        // Converged on an existing authority claim; never re-dispatch.
+        return 'active';
       }
-    } else if (outcome.kind === 'waiting-approval') {
-      return 'waiting-approval';
-    } else {
-      await this.lifecycleTransactionService.transitionStage({
-        workspaceId,
-        runId,
-        stageId: stage.id,
-        expectedVersion: freshStage.version,
-        expectedFrom: 'running',
-        to: 'failed',
-        errorCode: outcome.problem.code,
-        message: outcome.problem.detail,
-        retryable: outcome.problem.retryable ?? false,
-        retryScheduled: false,
-        correlationId: operation.id,
-      });
+      if (outcome.kind === 'completed') {
+        if (isCollaborationRun && this.collaborationStageHooks) {
+          await this.collaborationStageHooks.completedStage({
+            workspaceId,
+            runId,
+            stage: freshStage,
+            agentId: stageDefinition.agent.agentId,
+            role: collaborationProgressRole(stage.workflowStageKey),
+            ...(outcome.output === undefined ? {} : { output: outcome.output }),
+          });
+        }
+        this.preparedCollaborationStages.delete(`${workspaceId}:${runId}:${stage.id}`);
+        const resultArtifacts = this.artifactResults && !isCollaborationRun ? await this.artifactResults.capture({ workspaceId, runId,
+          stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+          agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
+        const artifactIds = [...outcome.artifactIds, ...resultArtifacts];
+        const othersComplete = stages.every(
+          candidate => candidate.id === stage.id || candidate.status === 'completed' || candidate.status === 'skipped',
+        );
+        if (othersComplete) {
+          await this.lifecycleTransactionService.completeRun({
+            workspaceId,
+            runId,
+            stageId: stage.id,
+            expectedRunVersion: freshRun.version,
+            expectedStageVersion: freshStage.version,
+            correlationId: operation.id,
+            durationMs: outcome.durationMs,
+            artifactIds,
+            outputContractSatisfied: outcome.outputContractSatisfied,
+          });
+          this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
+        } else {
+          await this.lifecycleTransactionService.transitionStage({
+            workspaceId,
+            runId,
+            stageId: stage.id,
+            expectedVersion: freshStage.version,
+            expectedFrom: 'running',
+            to: 'completed',
+            correlationId: operation.id,
+            durationMs: outcome.durationMs,
+            artifactIds,
+            outputContractSatisfied: outcome.outputContractSatisfied,
+          });
+        }
+        return 'progressed';
+      }
+      if (outcome.kind === 'waiting-approval') {
+        return 'waiting-approval';
+      }
+
+      // outcome.kind === 'failed'. P5D §42: fall back only when the frozen
+      // policy lists this normalized error code, the per-stage budget remains,
+      // and a valid same-workspace enabled candidate exists. Otherwise the
+      // Stage fails with the ORIGINAL provider failure (§42.1 保留原 Provider
+      // Failure) — the fallback chain never rewrites the primary error.
+      const triggerCode = outcome.problem.code;
+      const chain = this.fallbackChain(workspaceId, runId, stage.id);
+      const mayFallback = fallbackPolicy !== undefined
+        && this.providerConfigurations !== undefined
+        && isFallbackTriggerCode(fallbackPolicy, triggerCode)
+        && !fallbackBudgetExhausted(fallbackPolicy, chain, stage.id);
+      const target = mayFallback
+        ? this.resolveFallbackTarget(
+          workspaceId, stage.id, primaryProviderSnapshot.providerConfigId, chain, fallbackPolicy!,
+          stageWorkspaceRoot, isCollaborationRun,
+        )
+        : undefined;
+      if (target === undefined) {
+        await failStage(outcome.problem.code, outcome.problem.detail, outcome.problem.retryable ?? false);
+        return 'progressed';
+      }
+      const descriptor = {
+        workspaceId, runId, stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+        fromProviderConfigId: primaryProviderSnapshot.providerConfigId,
+        toProviderConfigId: target.providerConfigId,
+        triggerErrorCode: triggerCode,
+        attempt: chain.length + 1,
+      };
+      if (this.providerSwitchApproval !== undefined && fallbackPolicy!.requireUserApproval) {
+        // No Silent Fallback + approval gate: a high-risk target must hold a
+        // durable approved request before the switch commits; the Stage waits
+        // in waiting_approval exactly like a launch approval.
+        const gate = this.providerSwitchApproval.gateSwitch(descriptor, stageDefinition.agent, target, true);
+        if (gate.kind === 'deny') {
+          await failStage(gate.code, gate.message, false);
+          return 'progressed';
+        }
+        if (gate.kind === 'wait') {
+          return 'waiting-approval';
+        }
+      }
+      const approved = this.providerSwitchApproval?.findApprovedSwitch(workspaceId, runId, stage.id);
+      this.commitProviderSwitch(descriptor, snapshot.id, approved?.id);
+      currentProviderSnapshot = target;
+      claimAttemptOffset += 1;
+      // Loop: execute the fallback provider under a fresh Session/Process
+      // claim attempt; the failed provider Session is never overwritten (§97
+      // invariant 28).
     }
-    return 'progressed';
   }
 
   private requireRun(workspaceId: string, runId: string): Run {
     const run = this.runRepository.findById(workspaceId, runId);
     if (run === undefined) throw new Error('RUN_NOT_FOUND: ' + runId);
     return run;
+  }
+
+  /** Frozen fallback policy from the provider snapshot; absent/invalid → none. */
+  private frozenFallbackPolicy(value: unknown): ProviderFallbackPolicyV1 | undefined {
+    if (value === undefined || value === null) return undefined;
+    try {
+      return normalizeProviderFallbackPolicy(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Executed fallback chain entries for one stage, re-read from the projection. */
+  private fallbackChain(workspaceId: string, runId: string, stageId: string): readonly ProviderFallbackChainEntryV1[] {
+    if (this.listProviderFallbackChain === undefined) return [];
+    return this.listProviderFallbackChain(workspaceId, runId).filter(entry => entry.stageId === stageId);
+  }
+
+  /**
+   * §42 candidate resolution: walk fallbackProviderConfigIds in policy order,
+   * skipping configurations already attempted for this stage and any target
+   * that is missing, archived, cross-workspace, or disabled. Returns the
+   * frozen snapshot of the first valid candidate.
+   */
+  private resolveFallbackTarget(
+    workspaceId: string,
+    stageId: string,
+    primaryProviderConfigId: string,
+    chain: readonly ProviderFallbackChainEntryV1[],
+    policy: ProviderFallbackPolicyV1,
+    workspaceRoot: string,
+    isCollaborationRun: boolean,
+  ): StageExecutionInput['providerSnapshot'] | undefined {
+    const configurations = this.providerConfigurations;
+    if (configurations === undefined) return undefined;
+    const attempted = attemptedProviderConfigIds(chain, stageId, primaryProviderConfigId);
+    for (const candidateId of policy.fallbackProviderConfigIds) {
+      if (attempted.has(candidateId)) continue;
+      const config = configurations.findById(candidateId);
+      // Cross-workspace fallback is forbidden; targets must be live configs.
+      if (!config || config.workspaceId !== workspaceId
+        || config.archivedAt !== undefined || config.enabled !== true) {
+        continue;
+      }
+      let snapshot: StageExecutionInput['providerSnapshot'];
+      try {
+        snapshot = providerSnapshotFromConfiguration(config, workspaceRoot);
+      } catch {
+        continue;
+      }
+      if (isCollaborationRun) {
+        snapshot = { ...snapshot, workingDirectoryMode: 'worktree', workspaceRelativeWorkingDirectory: null };
+      }
+      return snapshot;
+    }
+    return undefined;
+  }
+
+  /**
+   * Commit one provider switch: the public `provider.switch` Event (Invariant
+   * 27 — never silent), the Run Snapshot fallback-chain projection, and
+   * consumption of the switch approval that authorized it, when present.
+   */
+  private commitProviderSwitch(
+    descriptor: Omit<ProviderSwitchDescriptor, 'toProviderConfigId'> & { readonly toProviderConfigId: string },
+    runSnapshotId: string,
+    approvalRequestId: string | undefined,
+  ): void {
+    const switchedAt = this.now();
+    this.emitProviderSwitch?.({
+      workspaceId: descriptor.workspaceId,
+      runId: descriptor.runId,
+      stageId: descriptor.stageId,
+      stageAttempt: descriptor.stageAttempt,
+      operationId: descriptor.operationId,
+      fromProviderConfigId: descriptor.fromProviderConfigId,
+      toProviderConfigId: descriptor.toProviderConfigId,
+      triggerErrorCode: descriptor.triggerErrorCode,
+      attempt: descriptor.attempt,
+      switchedAt,
+      ...(approvalRequestId === undefined ? {} : { approvalRequestId }),
+      eventContext: { correlationId: descriptor.operationId, causationId: descriptor.operationId },
+    });
+    this.recordProviderFallbackChainEntry?.(descriptor.workspaceId, descriptor.runId, runSnapshotId, {
+      sequence: descriptor.attempt,
+      stageId: descriptor.stageId,
+      stageAttempt: descriptor.stageAttempt + descriptor.attempt - 1,
+      fromProviderConfigId: descriptor.fromProviderConfigId,
+      toProviderConfigId: descriptor.toProviderConfigId,
+      triggerErrorCode: descriptor.triggerErrorCode,
+      attempt: descriptor.attempt,
+      switchedAt,
+      ...(approvalRequestId === undefined ? {} : { approvalRequestId }),
+    });
+    if (approvalRequestId !== undefined) {
+      this.providerSwitchApproval?.consumeSwitch(approvalRequestId, descriptor.workspaceId);
+    }
   }
 
   /**

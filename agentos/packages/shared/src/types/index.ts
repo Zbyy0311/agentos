@@ -899,6 +899,43 @@ export interface ProviderTimeoutPolicyV1 {
   approvalTimeoutMs: number | null;
 }
 
+/**
+ * P5D Provider Fallback policy (04-Provider-Specification §42). Frozen into the
+ * Run Snapshot with the Provider Configuration; the dispatcher executes the
+ * chain against this immutable policy only.
+ */
+export interface ProviderFallbackPolicyV1 {
+  enabled: boolean;
+  /** Ordered candidate Provider Configuration ids within the same Workspace. */
+  fallbackProviderConfigIds: string[];
+  /** Normalized Provider error codes that trigger an automatic fallback. */
+  triggerErrorCodes: string[];
+  /** Maximum number of provider switches for one Run. */
+  maxFallbacks: number;
+  /** High-risk switches must receive a durable user approval before switching. */
+  requireUserApproval: boolean;
+}
+
+/**
+ * One committed provider switch of the executed fallback chain. Recorded both
+ * as a `provider.switch` Runtime Event (attributed to the same Run, with
+ * causation) and in the Run Snapshot `providerFallbackChain` projection.
+ */
+export interface ProviderFallbackChainEntryV1 {
+  /** 1-based position in the executed chain for the Run. */
+  sequence: number;
+  stageId: string;
+  stageAttempt: number;
+  fromProviderConfigId: string;
+  toProviderConfigId: string;
+  triggerErrorCode: string;
+  /** 1-based provider attempt that executed after the switch. */
+  attempt: number;
+  switchedAt: string;
+  /** Present when the switch was gated by a user approval. */
+  approvalRequestId?: string;
+}
+
 export interface ProviderConfigurationSnapshotV1 {
   providerConfigId: string;
   name: string;
@@ -909,6 +946,8 @@ export interface ProviderConfigurationSnapshotV1 {
   argsTemplate: string[];
   /** Omitted in historical snapshots; adapters retain their argument default. */
   promptDelivery?: 'argument' | 'stdin' | 'file';
+  /** Omitted when the configuration does not define a fallback policy. */
+  fallbackPolicy?: ProviderFallbackPolicyV1 | null;
   model: string | null;
   environmentProfileId: string | null;
   secretProfileId: string | null;

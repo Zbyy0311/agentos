@@ -58,6 +58,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'run',
   'stage',
   'approval',
+  'provider',
   'stream',
   'process',
   'workspace',

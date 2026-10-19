@@ -2709,6 +2709,74 @@ export function isPolicyEvaluationFailedPayload(value: unknown): value is Policy
   );
 }
 
+// ---------------------------------------------------------------------------
+// P5D Provider Fallback vocabulary (04-Provider-Specification §42).
+//
+// provider.switch is the No-Silent-Fallback contract: every automatic provider
+// switch is a public, Stage-scoped Runtime Event attributed to the same Run
+// (with causation from the run.start Operation chain) BEFORE the replacement
+// provider attempt launches. Invariant 27: a fallback must never be silent.
+// ---------------------------------------------------------------------------
+
+export interface ProviderSwitchPayload {
+  readonly stageAttempt: number;
+  readonly fromProviderConfigId: string;
+  readonly toProviderConfigId: string;
+  readonly triggerErrorCode: string;
+  /** 1-based provider attempt executing after the switch. */
+  readonly attempt: number;
+  readonly switchedAt: string;
+  readonly approvalRequestId?: string;
+}
+
+export function isProviderSwitchPayload(value: unknown): value is ProviderSwitchPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'stageAttempt',
+      'fromProviderConfigId',
+      'toProviderConfigId',
+      'triggerErrorCode',
+      'attempt',
+      'switchedAt',
+      'approvalRequestId',
+    ])
+    && isPositiveSafeInteger(value.stageAttempt)
+    && isNonEmptyString(value.fromProviderConfigId)
+    && isNonEmptyString(value.toProviderConfigId)
+    && isNonEmptyString(value.triggerErrorCode)
+    && isPositiveSafeInteger(value.attempt)
+    && isCanonicalRuntimeTimestamp(value.switchedAt)
+    && (value.approvalRequestId === undefined || isNonEmptyString(value.approvalRequestId))
+  );
+}
+
+export const PROVIDER_FALLBACK_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'provider.switch',
+    domain: 'provider',
+    description: 'A Run Stage switched from a failed Provider Configuration to a fallback candidate.',
+    schemaVersion: 1,
+    source: 'run-engine',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    payloadSchema: {
+      required: [
+        'stageAttempt',
+        'fromProviderConfigId',
+        'toProviderConfigId',
+        'triggerErrorCode',
+        'attempt',
+        'switchedAt',
+      ],
+      optional: ['approvalRequestId'],
+    },
+    validatePayload: isProviderSwitchPayload,
+  },
+];
+
 export const POLICY_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   {
     type: 'policy.evaluated',
@@ -2772,6 +2840,9 @@ export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
     registry.registerCore(definition);
   }
   for (const definition of POLICY_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of PROVIDER_FALLBACK_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   for (const definition of MF5_MEMORY_EVENT_DEFINITIONS) {
