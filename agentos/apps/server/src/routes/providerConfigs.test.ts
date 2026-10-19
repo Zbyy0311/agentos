@@ -4,7 +4,7 @@ import express from 'express';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createProviderConfigRoutes } from './providerConfigs.js';
+import { createDefaultProviderRegistry, createProviderConfigRoutes } from './providerConfigs.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { CustomCliAdapter, KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core/providers';
@@ -387,6 +387,57 @@ test('provider validation route returns stable sanitized Kimi validation evidenc
     assert.match(body.validation.executableFingerprint ?? '', /^sha256:[0-9a-f]{16}$/);
     assert.doesNotMatch(JSON.stringify(body), /C:\\Users\\secret-user|secret-user|\.kimi-code\\bin\\kimi\.exe/);
     assertSanitizedErrorBody(body, 'provider validation response');
+  } finally {
+    server?.close();
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test('P57 §57 default provider registry assembles the builtin.mock adapter', () => {
+  const registry = createDefaultProviderRegistry();
+  const adapter = registry.resolve({ adapterId: 'builtin.mock', adapterVersion: '1.0.0' });
+  assert.equal(adapter.manifest.id, 'builtin.mock');
+  assert.equal(adapter.manifest.builtIn, true);
+  assert.ok(adapter.manifest.providerTypes.includes('mock'));
+  assert.ok(adapter.manifest.runtimeModes.includes('cli'));
+  assert.equal(registry.resolve({ providerType: 'mock', adapterId: 'builtin.mock', adapterVersion: '1.0.0' }), adapter);
+});
+
+test('P57 §57 mock provider type stays out of the persisted provider configuration path', async () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  let server: ReturnType<express.Express['listen']> | undefined;
+  let serverBase = '';
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const workspace = await manager.create('Workspace Mock Guard', join(root, 'mock-guard'), { git: false, memory: false, readme: false, docs: false });
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager));
+    ({ server, base: serverBase } = await listen(app));
+    const base = `${serverBase}/${workspace.id}`;
+
+    // The API rejects mock provider types: the provider_configurations
+    // provider_type CHECK (migration 003) does not admit 'mock' yet, so the
+    // REST API must fail closed instead of surfacing a raw constraint error.
+    const rejected = await fetch(`${base}/provider-configs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Mock Provider', providerType: 'mock', adapterId: 'builtin.mock' }),
+    });
+    assert.equal(rejected.status, 400);
+
+    // Omitting providerType keeps the custom-cli default: mock never enters
+    // the production default path.
+    const created = await fetch(`${base}/provider-configs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Default stays custom-cli', executable: process.execPath }),
+    });
+    assert.equal(created.status, 201);
+    const providerConfig = (await created.json() as { providerConfig: { providerType: string } }).providerConfig;
+    assert.equal(providerConfig.providerType, 'custom-cli');
   } finally {
     server?.close();
     store?.close();

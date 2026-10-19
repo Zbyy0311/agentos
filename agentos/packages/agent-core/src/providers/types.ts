@@ -34,6 +34,10 @@ export const OPENCODE_DEFAULT_EXECUTABLE = 'opencode' as const;
 export const CUSTOM_CLI_PROVIDER_TYPE = 'custom-cli' as const;
 export const CUSTOM_CLI_ADAPTER_ID = 'builtin.custom-cli' as const;
 export const CUSTOM_CLI_ADAPTER_VERSION = '1.0.0' as const;
+/** P57 §57.2: internal mock provider used for Runtime dev, E2E, CI and failure injection. */
+export const MOCK_PROVIDER_TYPE = 'mock' as const;
+export const MOCK_ADAPTER_ID = 'builtin.mock' as const;
+export const MOCK_ADAPTER_VERSION = '1.0.0' as const;
 
 export type ProviderType = ProviderTypeV1 | typeof LEGACY_KIMI_PROVIDER_TYPE;
 export type CanonicalProviderType = ProviderTypeV1;
@@ -105,6 +109,9 @@ export function resolveFrozenProviderIdentity(
   }
   if (type === CUSTOM_CLI_PROVIDER_TYPE && configuration.adapterId === CUSTOM_CLI_ADAPTER_ID) {
     return { adapterId: CUSTOM_CLI_ADAPTER_ID, adapterVersion: CUSTOM_CLI_ADAPTER_VERSION };
+  }
+  if (type === MOCK_PROVIDER_TYPE && configuration.adapterId === MOCK_ADAPTER_ID) {
+    return { adapterId: MOCK_ADAPTER_ID, adapterVersion: MOCK_ADAPTER_VERSION };
   }
   return undefined;
 }

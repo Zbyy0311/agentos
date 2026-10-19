@@ -10,6 +10,7 @@ import {
   CodexProviderAdapter,
   CustomCliAdapter,
   KimiCodeProviderAdapter,
+  MockProviderAdapter,
   OpenCodeProviderAdapter,
   ProviderRegistry,
   ProviderValidationService,
@@ -18,6 +19,12 @@ import { NodeProcessProbePort } from '@agentos/process-runtime';
 import type { ProviderValidationResult } from '@agentos/agent-core/providers';
 import { createHash } from 'node:crypto';
 
+// P57 §57.2: 'mock' deliberately stays out of the API-accepted provider types:
+// the provider_configurations.provider_type CHECK (migration 003) cannot be
+// relaxed without rebuilding the table's foreign-key closure, so mock
+// configurations cannot be persisted through the REST API yet. The mock
+// adapter is still registered in the default registry (below) for Runtime
+// development, E2E and CI, which bind mock providers programmatically.
 const VALID_PROVIDER_TYPES = ['codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote'] as const;
 const VALID_RUNTIME_MODES = ['cli','api','ssh','container'] as const;
 const VALID_WORKING_DIRECTORY_MODES = ['workspace','worktree','custom'] as const;
@@ -129,6 +136,22 @@ export interface ProviderConfigRouteOptions {
   readonly validationService?: ProviderValidationService;
 }
 
+/**
+ * Default provider adapter registry for the provider-config routes. Exported
+ * so tests can assert the exact assembly (P57 §57: builtin.mock is registered
+ * for Runtime development, E2E and CI, and never spawns a real provider
+ * process).
+ */
+export function createDefaultProviderRegistry(): ProviderRegistry {
+  return new ProviderRegistry([
+    new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+    new CodexProviderAdapter({ probe: new NodeProcessProbePort() }),
+    new OpenCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+    new CustomCliAdapter({ probe: new NodeProcessProbePort() }),
+    new MockProviderAdapter(),
+  ]);
+}
+
 export function createProviderConfigRoutes(
   store: SqliteStore,
   workspaceManager: WorkspaceManager,
@@ -137,12 +160,7 @@ export function createProviderConfigRoutes(
   const router = Router({ mergeParams: true });
   const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
   const validationService = options.validationService
-    ?? new ProviderValidationService(new ProviderRegistry([
-      new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
-      new CodexProviderAdapter({ probe: new NodeProcessProbePort() }),
-      new OpenCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
-      new CustomCliAdapter({ probe: new NodeProcessProbePort() }),
-    ]));
+    ?? new ProviderValidationService(createDefaultProviderRegistry());
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);

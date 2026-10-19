@@ -59,7 +59,7 @@ export const DEFAULT_TIMEOUT_POLICY: ProviderTimeoutPolicy = {
   approvalTimeoutMs: null,
 };
 
-export type ProviderType = 'codex' | 'claude-code' | 'kimicode' | 'opencode' | 'gemini-cli' | 'custom-cli' | 'remote';
+export type ProviderType = 'codex' | 'claude-code' | 'kimicode' | 'opencode' | 'gemini-cli' | 'custom-cli' | 'remote' | 'mock';
 export type RuntimeMode = 'cli' | 'api' | 'ssh' | 'container';
 export type WorkingDirectoryMode = 'workspace' | 'worktree' | 'custom';
 export type ApprovalMode = 'agentos' | 'native' | 'hybrid' | 'disabled';

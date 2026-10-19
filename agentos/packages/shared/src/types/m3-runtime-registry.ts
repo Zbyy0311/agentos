@@ -49,6 +49,7 @@ const CANONICAL_PROVIDER_TYPES: readonly ProviderTypeV1[] = Object.freeze([
   'gemini-cli',
   'custom-cli',
   'remote',
+  'mock',
 ]);
 
 export interface RuntimeEventPayloadSchema {

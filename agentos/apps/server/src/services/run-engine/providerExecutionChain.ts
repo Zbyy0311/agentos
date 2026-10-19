@@ -14,6 +14,7 @@ import {
   CodexProviderAdapter,
   CustomCliAdapter,
   KimiCodeProviderAdapter,
+  MockProviderAdapter,
   OpenCodeProviderAdapter,
   ProviderRegistry,
 } from '@agentos/agent-core/providers';
@@ -108,6 +109,9 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     new CodexProviderAdapter({ probe }),
     new OpenCodeProviderAdapter({ probe }),
     new CustomCliAdapter({ probe }),
+    // P57 §57 mock provider: only selected when a run snapshot binds a
+    // configuration with providerType 'mock'; never part of the default path.
+    new MockProviderAdapter(),
   ]);
   let dispatcher!: RunEngineProviderDispatcher;
   const resumeFallbackQueue = new ResumeFallbackQueueRecovery(

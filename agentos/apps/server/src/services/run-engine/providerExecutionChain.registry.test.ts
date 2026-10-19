@@ -19,6 +19,8 @@ test('LITE-04-101: production chain registers the three canonical Provider adapt
       ['builtin.kimicode', '1.0.0', 'kimicode'],
       ['builtin.codex', '1.0.0', 'codex'],
       ['builtin.opencode', '1.0.0', 'opencode'],
+      ['builtin.custom-cli', '1.0.0', 'custom-cli'],
+      ['builtin.mock', '1.0.0', 'mock'],
     ] as const) {
       const adapter = chain.providerRegistry.resolve({ adapterId, adapterVersion: version });
       assert.equal(adapter.manifest.id, adapterId);
