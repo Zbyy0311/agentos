@@ -115,6 +115,8 @@ function baseProcessView(overrides: Partial<DurableProcessView> = {}): DurablePr
 }
 
 class FakeProcessRepository implements DurableProcessRepository {
+  transitionCalls = 0;
+
   constructor(public process: DurableProcessView) {}
 
   async createProcessReservation(_input: ProcessReservationCreate): Promise<never> {
@@ -136,6 +138,7 @@ class FakeProcessRepository implements DurableProcessRepository {
   async casProcessTransition(
     input: Parameters<DurableProcessRepository['casProcessTransition']>[0],
   ): Promise<DurableCasOutcome<DurableProcessView>> {
+    this.transitionCalls += 1;
     if (input.processId !== this.process.processId) return { kind: 'not-found' };
     if (this.process.status === 'exited' || this.process.status === 'failed') {
       return { kind: 'terminal', value: this.process };
@@ -612,5 +615,56 @@ describe('P5B process reattach (Scenario E)', { timeout: 60000 }, () => {
     assert.equal(result.process.claimOwnerId, 'server-b');
     assert.equal(coordinator.retainedHandleCount, 0);
     assert.equal(exitObserverCalls, 0, 'a claim-losing handle must not install an exit observer');
+  });
+
+  it('stale reattach exit observer cannot mutate the winning claim or call natural-exit hooks', async () => {
+    const row = baseProcessView({ nativePid: 424246 });
+    const repository = new FakeProcessRepository(row);
+    const exit = deferred<ExitEvidence>();
+    let naturalExitCalls = 0;
+    const driver: PlatformProcessDriver = {
+      async spawn() { throw new Error('not used'); },
+      async attach() {
+        return {
+          pid: row.nativePid!,
+          waitExit: () => exit.promise,
+        } as NativeProcessHandle;
+      },
+      async gracefulStop() { return { delivered: false, detail: 'not-used' }; },
+      async terminateTree() { return { classification: 'unknown', attemptedMembers: [], errors: [] }; },
+      async verifySurvivors() { return { classification: 'unknown', knownPids: [] }; },
+      async inspectIdentity() { return { kind: 'unknown' }; },
+    };
+    const coordinator = createCoordinator(repository, driver);
+    const adopted = await coordinator.reattachProcess({
+      workspaceId: row.workspaceId,
+      processId: row.processId,
+      expectedClaimEpoch: row.claimEpoch,
+      expectedClaimOwner: row.claimOwnerId,
+      eventContext: EVENT_CONTEXT,
+      onNaturalExit: () => { naturalExitCalls += 1; },
+    });
+    assert.equal(adopted.kind, 'reattached');
+    assert.equal(coordinator.retainedHandleCount, 1);
+
+    repository.process = {
+      ...repository.process,
+      claimEpoch: row.claimEpoch + 1,
+      claimOwnerId: 'server-b',
+      version: row.version + 1,
+    };
+    const winningRow = repository.process;
+    exit.resolve({ exitCode: null, signal: null, exitedAt: Date.parse(NOW) });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    assert.equal(repository.transitionCalls, 0, 'stale observer must not transition the winning row');
+    assert.equal(naturalExitCalls, 0, 'stale observer must not notify the winning owner');
+    assert.equal(repository.process, winningRow);
+    assert.equal(repository.process.status, 'running');
+    assert.equal(repository.process.claimEpoch, row.claimEpoch + 1);
+    assert.equal(repository.process.claimOwnerId, 'server-b');
+    assert.equal(repository.process.version, row.version + 1);
+    assert.equal(coordinator.retainedHandleCount, 0, 'old owner releases its retained native handle');
   });
 });

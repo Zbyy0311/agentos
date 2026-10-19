@@ -398,6 +398,15 @@ export class DurableProcessCoordinator {
         releaseHandle = true;
         return;
       }
+      // This observer belongs to the exact claim that adopted this handle.
+      // A later owner must never inherit the old observer's exit authority.
+      if (
+        current.claimEpoch !== input.expectedClaimEpoch
+        || current.claimOwnerId !== input.expectedClaimOwner
+      ) {
+        releaseHandle = true;
+        return;
+      }
       if (isTerminalState(current.status)) {
         this.#processCancelCoordinator.observeTerminal(current);
         releaseHandle = true;
@@ -421,8 +430,8 @@ export class DurableProcessCoordinator {
         workspaceId: current.workspaceId,
         processId: current.processId,
         expectedVersion: current.version,
-        expectedClaimEpoch: current.claimEpoch,
-        expectedClaimOwner: current.claimOwnerId,
+        expectedClaimEpoch: input.expectedClaimEpoch,
+        expectedClaimOwner: input.expectedClaimOwner,
         expectedFrom: current.status,
         to: 'exited',
         timestamp: this.#now(),
@@ -443,6 +452,12 @@ export class DurableProcessCoordinator {
         } else if (terminal !== null && terminal !== undefined) {
           this.#processCancelCoordinator.observeTerminal(terminal);
         }
+        releaseHandle = true;
+        return;
+      }
+      if (outcome.kind === 'fence-conflict') {
+        // The claim changed after the observer's read; its original fence
+        // still failed closed. Drop only this stale local handle.
         releaseHandle = true;
         return;
       }
