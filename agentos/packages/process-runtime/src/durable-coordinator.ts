@@ -32,8 +32,9 @@ import type {
   SessionClaimCreate,
   SessionClaimTransferInput,
 } from './repository-port.js';
-import type { CleanupResult } from './types.js';
+import type { CleanupResult, ExitEvidence } from './types.js';
 import { isTerminalState } from './types.js';
+import { boundedErrorDetail } from './platform-process-tree.js';
 
 /**
  * M4-P2B durable orchestration seam (schema-light).
@@ -131,6 +132,34 @@ export type SpawnFlowResult =
   | { readonly kind: 'joined'; readonly outcome: DurableCasOutcome<DurableProcessView>; readonly spawned: false }
   | { readonly kind: 'spawned'; readonly outcome: DurableCasOutcome<DurableProcessView>; readonly spawned: true };
 
+/**
+ * P5B Scenario-E reattach outcome. 'reattached'/'already' mean this server
+ * now holds the native handle (cancel authority + exit observation);
+ * 'unsupported'/'failed'/'conflict' are fail-safe and the caller must leave
+ * the Run externally running (never kill, never fake recovery).
+ */
+export type ReattachProcessResult =
+  | { readonly kind: 'reattached'; readonly process: DurableProcessView }
+  | { readonly kind: 'already'; readonly process: DurableProcessView }
+  | { readonly kind: 'unsupported'; readonly reason: string }
+  | { readonly kind: 'conflict'; readonly process: DurableProcessView }
+  | { readonly kind: 'failed'; readonly reason: string };
+
+export interface ReattachProcessInput {
+  readonly workspaceId: string;
+  readonly processId: string;
+  readonly expectedClaimEpoch: number;
+  readonly expectedClaimOwner: string | null;
+  /** Accepted Run context; forwarded to the durable exit fact. */
+  readonly eventContext: RuntimeEventContext;
+  /**
+   * Invoked once when the reattached process is observed exited AND the
+   * durable row reached the 'exited' terminal through this adoption. Never
+   * invoked for stops owned by the ProcessCancelCoordinator pipeline.
+   */
+  readonly onNaturalExit?: (process: DurableProcessView, exit: ExitEvidence) => void | Promise<void>;
+}
+
 export interface TransferClaimPairInput {
   readonly session: SessionClaimTransferInput;
   readonly process: ProcessClaimTransferInput;
@@ -152,6 +181,8 @@ export class DurableProcessCoordinator {
   readonly #now: () => string;
   readonly #processCancelCoordinator: ProcessCancelCoordinator;
   readonly #causalCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
+  /** P5B: one shared adoption result per Process while attach is in flight. */
+  readonly #reattachesInFlight = new Map<string, Promise<ReattachProcessResult>>();
   readonly #stoppingCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
   /** Retained native handles (memory-only) keyed by AgentOS Process id. */
   readonly #handles = new Map<string, NativeProcessHandle>();
@@ -221,6 +252,207 @@ export class DurableProcessCoordinator {
       return null;
     }
     return lookup.call(this.#processRepository, workspaceId, runId, stageId, stageAttempt, authorityRole);
+  }
+
+  /**
+   * P5B Scenario E: adopt a live native process whose identity the recovery
+   * classifier proved 'same' against this durable row after a server restart.
+   *
+   * Ownership safety:
+   * - Idempotent per Process: a second call joins the first adoption
+   *   ('already'), and concurrent calls are serialized, so one restart can
+   *   never create two cleanup owners or two exit observers for the same
+   *   native process.
+   * - The claim fence (epoch/owner) is checked BEFORE and AFTER the native
+   *   attach; a loser sees 'conflict' with the winning row and never retains
+   *   the handle. The process is never killed on a lost race.
+   * - The handle is registered with the ProcessCancelCoordinator, restoring
+   *   cancel/cleanup authority, and one exit observer terminalizes the row as
+   *   'exited' only while it is still running/waiting; a 'stopping' row is
+   *   owned by the cleanup pipeline and is left alone.
+   *
+   * Streams are NOT re-established (the pre-restart pipe endpoints are gone);
+   * retained pre-restart output stays readable through the durable output
+   * references. Timeouts are not re-armed: the pre-restart total budget is
+   * not re-derived, and no new kill path is created here.
+   */
+  async reattachProcess(input: ReattachProcessInput): Promise<ReattachProcessResult> {
+    if (this.#handles.has(input.processId)) {
+      const current = await this.#processRepository.getProcess(input.workspaceId, input.processId);
+      if (current !== null) {
+        if (
+          current.claimEpoch !== input.expectedClaimEpoch
+          || current.claimOwnerId !== input.expectedClaimOwner
+          || (current.status !== 'running' && current.status !== 'waiting')
+        ) {
+          return { kind: 'conflict', process: current };
+        }
+        return { kind: 'already', process: current };
+      }
+      this.#handles.delete(input.processId);
+      this.#processCancelCoordinator.detachHandle(input.processId);
+    }
+    // Concurrent calls join the actual native attach. Do not report 'already'
+    // until that attach succeeded and the expected claim fence still holds.
+    const inFlight = this.#reattachesInFlight.get(input.processId);
+    if (inFlight !== undefined) {
+      const result = await inFlight;
+      const current = await this.#processRepository.getProcess(input.workspaceId, input.processId);
+      if (current === null) return { kind: 'failed', reason: 'process-not-found' };
+      if (
+        current.claimEpoch !== input.expectedClaimEpoch
+        || current.claimOwnerId !== input.expectedClaimOwner
+        || (current.status !== 'running' && current.status !== 'waiting')
+      ) {
+        return { kind: 'conflict', process: current };
+      }
+      return result.kind === 'reattached' || result.kind === 'already'
+        ? { kind: 'already', process: current }
+        : result;
+    }
+    const operation = this.#reattachProcessSerialized(input);
+    this.#reattachesInFlight.set(input.processId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.#reattachesInFlight.get(input.processId) === operation) {
+        this.#reattachesInFlight.delete(input.processId);
+      }
+    }
+  }
+
+  async #reattachProcessSerialized(input: ReattachProcessInput): Promise<ReattachProcessResult> {
+    if (typeof this.#driver.attach !== 'function') {
+      return { kind: 'unsupported', reason: 'driver-attach-unavailable' };
+    }
+    const process = await this.#processRepository.getProcess(input.workspaceId, input.processId);
+    if (process === null) {
+      return { kind: 'failed', reason: 'process-not-found' };
+    }
+    if (
+      process.claimEpoch !== input.expectedClaimEpoch
+      || process.claimOwnerId !== input.expectedClaimOwner
+      || (process.status !== 'running' && process.status !== 'waiting')
+    ) {
+      return { kind: 'conflict', process };
+    }
+    if (process.nativePid === null) {
+      return { kind: 'conflict', process };
+    }
+    let handle: NativeProcessHandle;
+    try {
+      handle = await this.#driver.attach({
+        pid: process.nativePid,
+        startedAtMs: process.nativeStartedAt === null ? null : Date.parse(process.nativeStartedAt),
+        executablePath: process.executableResolved,
+        nativeBirthIdentity: process.nativeBirthIdentity,
+      });
+    } catch (error) {
+      return {
+        kind: 'failed',
+        reason: 'attach-failed:' + boundedErrorDetail(error, 'native-attach-failed'),
+      };
+    }
+    if (handle.pid !== process.nativePid) {
+      return { kind: 'failed', reason: 'attach-pid-mismatch' };
+    }
+    // Re-check the fence after the native adoption: a concurrent claim
+    // transfer wins and this adoption is dropped WITHOUT killing the process.
+    const fresh = await this.#processRepository.getProcess(input.workspaceId, input.processId);
+    if (
+      fresh === null
+      || fresh.claimEpoch !== input.expectedClaimEpoch
+      || fresh.claimOwnerId !== input.expectedClaimOwner
+      || (fresh.status !== 'running' && fresh.status !== 'waiting')
+    ) {
+      return { kind: 'conflict', process: fresh ?? process };
+    }
+    this.#handles.set(input.processId, handle);
+    this.#processCancelCoordinator.attachHandle(input.processId, handle);
+    // A rejected observer is not proof that the process exited. Keep the
+    // running row and retained handle fail-closed; never synthesize an exit.
+    void handle.waitExit().then(
+      exit => this.#onReattachedExit(input, exit),
+      () => undefined,
+    ).catch(() => undefined);
+    return { kind: 'reattached', process: fresh };
+  }
+
+  /**
+   * P5B: the single exit observer for a reattached process. While the row is
+   * running/waiting this adoption owns the natural-exit finalization; a
+   * stopping row belongs to the ProcessCancelCoordinator pipeline, which
+   * consumes the same waitExit through its own cleanup flow.
+   */
+  async #onReattachedExit(
+    input: ReattachProcessInput,
+    exit: ExitEvidence | null,
+  ): Promise<void> {
+    // The handle stays registered for the ProcessCancelCoordinator pipeline
+    // while a stop owns finalization; it is released only when this adoption
+    // itself concluded the row.
+    let releaseHandle = false;
+    try {
+      const current = await this.#processRepository.getProcess(input.workspaceId, input.processId);
+      if (current === null) {
+        releaseHandle = true;
+        return;
+      }
+      if (isTerminalState(current.status)) {
+        this.#processCancelCoordinator.observeTerminal(current);
+        releaseHandle = true;
+        return;
+      }
+      if (current.status === 'stopping') {
+        // The cleanup pipeline owns finalization; it observes the same exit
+        // through its own bounded waits. Nothing to write here, and the
+        // handle stays attached so the pipeline keeps its cleanup authority.
+        return;
+      }
+      if (current.status !== 'running' && current.status !== 'waiting') {
+        return;
+      }
+      const evidence: ExitEvidence = exit ?? {
+        exitCode: null,
+        signal: null,
+        exitedAt: Date.parse(this.#now()),
+      };
+      const outcome = await this.#transitionProcess({
+        workspaceId: current.workspaceId,
+        processId: current.processId,
+        expectedVersion: current.version,
+        expectedClaimEpoch: current.claimEpoch,
+        expectedClaimOwner: current.claimOwnerId,
+        expectedFrom: current.status,
+        to: 'exited',
+        timestamp: this.#now(),
+        exitCode: evidence.exitCode,
+        exitSignal: evidence.signal,
+        terminationReason: null,
+        cleanupResult: null,
+        eventContext: input.eventContext,
+      });
+      if (outcome.kind === 'applied' || outcome.kind === 'terminal') {
+        const terminal = outcome.value ?? await this.#processRepository.getProcess(
+          input.workspaceId,
+          input.processId,
+        );
+        if (terminal !== null && terminal !== undefined && terminal.status === 'exited') {
+          this.#processCancelCoordinator.observeTerminal(terminal);
+          await input.onNaturalExit?.(terminal, evidence);
+        } else if (terminal !== null && terminal !== undefined) {
+          this.#processCancelCoordinator.observeTerminal(terminal);
+        }
+        releaseHandle = true;
+        return;
+      }
+      // A losing CAS (stopping raced in) leaves finalization to the pipeline.
+    } finally {
+      if (releaseHandle) {
+        this.#handles.delete(input.processId);
+        this.#processCancelCoordinator.detachHandle(input.processId);
+      }
+    }
   }
 
   /**

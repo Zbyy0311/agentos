@@ -66,6 +66,24 @@ export type IdentityInspection =
   | { readonly kind: 'unknown' };
 
 /**
+ * P5B reattach input: a native process that was identity-verified 'same'
+ * against its durable row after a server restart. The Driver must re-observe
+ * the SAME native process (never spawn or signal to test it) and return a
+ * handle whose streams are empty (the pre-restart pipe endpoints died with
+ * the previous server process) and whose waitExit resolves when the native
+ * process is observed gone. The birth identity is the caller's identity
+ * proof; the Driver must not treat the PID alone as proof.
+ */
+export interface NativeReattachInput {
+  readonly pid: number;
+  readonly startedAtMs: number | null;
+  readonly executablePath: string;
+  readonly nativeBirthIdentity?: string | null;
+  /** Exit-observation poll cadence (tests may inject a faster cadence). */
+  readonly pollIntervalMs?: number;
+}
+
+/**
  * Injected platform port. Provider-neutral by construction: it knows native
  * processes, trees and identity evidence, never command semantics. Exactly
  * one spawn call is allowed per consumed spawn right; the Manager enforces
@@ -73,6 +91,12 @@ export type IdentityInspection =
  */
 export interface PlatformProcessDriver {
   spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle>;
+  /**
+   * P5B: adopt an identity-proven live process after a server restart.
+   * Optional: drivers without an attach path must omit it so callers stay
+   * fail-safe (mark externally running, never kill or fake adoption).
+   */
+  attach?(input: NativeReattachInput): Promise<NativeProcessHandle>;
   gracefulStop(handle: NativeProcessHandle): Promise<GracefulStopResult>;
   terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: NativeProcessHandle): Promise<SurvivorVerification>;

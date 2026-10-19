@@ -12,6 +12,12 @@ export interface ProcessTreeHandle {
 
 export interface ProcessTreeController {
   attach(identity: NativeIdentity): Promise<ProcessTreeHandle>;
+  /**
+   * Reattach an existing process without changing its native ownership or
+   * process-tree membership. Platforms that cannot provide this guarantee
+   * must omit the method so recovery stays fail-safe.
+   */
+  attachReadOnly?(identity: NativeIdentity): Promise<ProcessTreeHandle>;
   terminateTree(handle: ProcessTreeHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification>;
   dispose(handle: ProcessTreeHandle): Promise<void>;

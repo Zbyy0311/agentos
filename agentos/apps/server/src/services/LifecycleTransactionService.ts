@@ -391,7 +391,7 @@ type P6BRecoveryStatus = Extract<
 type P6BRecoveryOutcome =
   | {
       readonly kind: 'recovered';
-      readonly recoveryMode: 'queue-restore' | 'approval-restore';
+      readonly recoveryMode: 'queue-restore' | 'approval-restore' | 'process-reattach';
     }
   | {
       readonly kind: 'failed';
@@ -2080,11 +2080,16 @@ export class LifecycleTransactionService {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'recovery outcome is required');
     }
     if (input.outcome.kind === 'recovered') {
+      // P5B: a running Run whose native process was identity-proven 'same'
+      // and reattached recovers with 'process-reattach' (shared event
+      // registry value). queued/waiting_approval keep their historical modes.
       const expectedMode = input.expectedStatus === 'queued'
         ? 'queue-restore'
         : input.expectedStatus === 'waiting_approval'
           ? 'approval-restore'
-          : undefined;
+          : input.expectedStatus === 'running'
+            ? 'process-reattach'
+            : undefined;
       if (input.outcome.recoveryMode !== expectedMode) {
         throw new LifecycleTransactionError(
           'LIFECYCLE_VALIDATION_FAILED',
