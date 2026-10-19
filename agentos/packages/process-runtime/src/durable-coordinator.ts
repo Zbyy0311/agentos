@@ -186,6 +186,8 @@ export class DurableProcessCoordinator {
   readonly #stoppingCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
   /** Retained native handles (memory-only) keyed by AgentOS Process id. */
   readonly #handles = new Map<string, NativeProcessHandle>();
+  /** A retained handle and its observer belong to their registration claim. */
+  readonly #handleClaims = new WeakMap<NativeProcessHandle, Pick<DurableProcessView, 'claimEpoch' | 'claimOwnerId'>>();
 
   constructor(options: DurableCoordinatorOptions) {
     this.#sessionRepository = options.sessionRepository;
@@ -277,12 +279,16 @@ export class DurableProcessCoordinator {
    * not re-derived, and no new kill path is created here.
    */
   async reattachProcess(input: ReattachProcessInput): Promise<ReattachProcessResult> {
-    if (this.#handles.has(input.processId)) {
+    const retainedHandle = this.#handles.get(input.processId);
+    if (retainedHandle !== undefined) {
+      const retainedClaim = this.#handleClaims.get(retainedHandle);
       const current = await this.#processRepository.getProcess(input.workspaceId, input.processId);
       if (current !== null) {
         if (
           current.claimEpoch !== input.expectedClaimEpoch
           || current.claimOwnerId !== input.expectedClaimOwner
+          || retainedClaim?.claimEpoch !== input.expectedClaimEpoch
+          || retainedClaim?.claimOwnerId !== input.expectedClaimOwner
           || (current.status !== 'running' && current.status !== 'waiting')
         ) {
           return { kind: 'conflict', process: current };
@@ -306,9 +312,16 @@ export class DurableProcessCoordinator {
       ) {
         return { kind: 'conflict', process: current };
       }
-      return result.kind === 'reattached' || result.kind === 'already'
-        ? { kind: 'already', process: current }
-        : result;
+      if (result.kind === 'reattached' || result.kind === 'already') {
+        if (
+          result.process.claimEpoch !== input.expectedClaimEpoch
+          || result.process.claimOwnerId !== input.expectedClaimOwner
+        ) {
+          return { kind: 'conflict', process: current };
+        }
+        return { kind: 'already', process: current };
+      }
+      return result;
     }
     const operation = this.#reattachProcessSerialized(input);
     this.#reattachesInFlight.set(input.processId, operation);
@@ -367,6 +380,7 @@ export class DurableProcessCoordinator {
     ) {
       return { kind: 'conflict', process: fresh ?? process };
     }
+    this.#handleClaims.set(handle, { claimEpoch: fresh.claimEpoch, claimOwnerId: fresh.claimOwnerId });
     this.#handles.set(input.processId, handle);
     this.#processCancelCoordinator.attachHandle(input.processId, handle);
     // A rejected observer is not proof that the process exited. Keep the
@@ -650,6 +664,7 @@ export class DurableProcessCoordinator {
     if (bound.kind === 'applied') {
       // Cleanup is not runnable until the native identity is durably bound to
       // this exact Process row.
+      this.#handleClaims.set(handle, { claimEpoch: bound.value.claimEpoch, claimOwnerId: bound.value.claimOwnerId });
       this.#handles.set(starting.processId, handle);
       this.#processCancelCoordinator.attachHandle(starting.processId, handle);
       if (bound.value.status === 'stopping') {

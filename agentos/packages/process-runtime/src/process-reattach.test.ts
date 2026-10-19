@@ -300,6 +300,88 @@ describe('P5B process reattach (Scenario E)', { timeout: 60000 }, () => {
     assert.equal(coordinator.retainedHandleCount, 1);
   });
 
+  it.each(['retained', 'in-flight'] as const)(
+    'different claim cannot reuse a %s adoption as already',
+    async boundary => {
+      const row = baseProcessView({ nativePid: 424247 });
+      const repository = new FakeProcessRepository(row);
+      const attachStarted = deferred<void>();
+      const attachResult = deferred<NativeProcessHandle>();
+      const exit = deferred<ExitEvidence>();
+      let attachCalls = 0;
+      let exitObserverCalls = 0;
+      let naturalExitCalls = 0;
+      const handle = {
+        pid: row.nativePid!,
+        waitExit() {
+          exitObserverCalls += 1;
+          return exit.promise;
+        },
+      } as NativeProcessHandle;
+      const driver: PlatformProcessDriver = {
+        async spawn() { throw new Error('not used'); },
+        async attach() {
+          attachCalls += 1;
+          attachStarted.resolve();
+          return attachResult.promise;
+        },
+        async gracefulStop() { return { delivered: false, detail: 'not-used' }; },
+        async terminateTree() { return { classification: 'unknown', attemptedMembers: [], errors: [] }; },
+        async verifySurvivors() { return { classification: 'unknown', knownPids: [] }; },
+        async inspectIdentity() { return { kind: 'unknown' }; },
+      };
+      const coordinator = createCoordinator(repository, driver);
+      const input = {
+        workspaceId: row.workspaceId,
+        processId: row.processId,
+        expectedClaimEpoch: row.claimEpoch,
+        expectedClaimOwner: row.claimOwnerId,
+        eventContext: EVENT_CONTEXT,
+        onNaturalExit: () => { naturalExitCalls += 1; },
+      };
+      const winningRow = { ...row, claimEpoch: row.claimEpoch + 1, claimOwnerId: 'server-b', version: row.version + 1 };
+      const nextInput = { ...input, expectedClaimEpoch: winningRow.claimEpoch, expectedClaimOwner: winningRow.claimOwnerId };
+      const firstPromise = coordinator.reattachProcess(input);
+      await attachStarted.promise;
+      let secondPromise;
+      if (boundary === 'retained') {
+        attachResult.resolve(handle);
+        assert.equal((await firstPromise).kind, 'reattached');
+        assert.equal((await coordinator.reattachProcess(input)).kind, 'already');
+        repository.process = winningRow;
+        secondPromise = coordinator.reattachProcess(nextInput);
+      } else {
+        secondPromise = coordinator.reattachProcess(nextInput);
+        // Transfer just after the first adoption's final fence read. Its
+        // successful result belongs to claim 1; the joiner reads claim 2.
+        const read = repository.getProcess.bind(repository);
+        let transferAfterRead = true;
+        repository.getProcess = async (workspaceId, processId) => {
+          const snapshot = await read(workspaceId, processId);
+          if (transferAfterRead) {
+            transferAfterRead = false;
+            repository.process = winningRow;
+          }
+          return snapshot;
+        };
+        attachResult.resolve(handle);
+        assert.equal((await firstPromise).kind, 'reattached');
+      }
+      const second = await secondPromise;
+      assert.equal(coordinator.retainedHandleCount, 1);
+      exit.resolve({ exitCode: null, signal: null, exitedAt: Date.parse(NOW) });
+      await new Promise<void>(resolve => setImmediate(resolve));
+
+      assert.equal(second.kind, 'conflict', 'a different claim must never borrow the old adoption');
+      assert.equal(attachCalls, 1);
+      assert.equal(exitObserverCalls, 1);
+      assert.equal(repository.transitionCalls, 0);
+      assert.equal(naturalExitCalls, 0);
+      assert.equal(repository.process, winningRow);
+      assert.equal(coordinator.retainedHandleCount, 0, 'the stale observer still releases its handle');
+    },
+  );
+
   it('in-flight attach failure is shared and never reported as already', async () => {
     const row = baseProcessView({ nativePid: 424243 });
     const repository = new FakeProcessRepository(row);
