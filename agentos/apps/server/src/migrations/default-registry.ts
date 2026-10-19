@@ -62,6 +62,7 @@ import { migration061 } from './migrations/061-usage-records.js';
 import { migration062 } from './migrations/062-provider-fallback-policy.js';
 import { migration063 } from './migrations/063-conversation-search-readstate.js';
 import { migration064 } from './migrations/064-p5a-event-operations.js';
+import { migration065 } from './migrations/065-system-domain.js';
 import type { Migration } from './types.js';
 
 /**
@@ -121,6 +122,8 @@ import type { Migration } from './types.js';
  * 063: Conversation message FTS5 index (messages_fts + sync triggers) and
  *      per-user Conversation Read State (conversation_read_states)
  * 064: Event operations delete-protection and retention eligibility
+ * 065: System-domain foundation tables (runtime_locks, scheduler_jobs,
+ *      audit_records, retention_policies)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -187,4 +190,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration062,
   migration063,
   migration064,
+  migration065,
 ];

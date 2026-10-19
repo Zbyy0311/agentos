@@ -7,6 +7,7 @@ import type {
   WorktreeMergeStrategy,
 } from '../store/WorktreeMergeRepository.js';
 import { createEntityId } from '../store/Identity.js';
+import type { RuntimeLockRepository } from '../store/RuntimeLockRepository.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeBranchLockError, withWorktreeBranchLock } from './WorktreeBranchLock.js';
 import { assertNoPendingWorktreeRefUpdate, prepareWorktreeRefUpdate, WorktreeRefRecoveryError } from './WorktreeRefJournal.js';
@@ -54,6 +55,13 @@ export class WorktreeMergeService {
     private readonly manager: WorktreeManager,
     private readonly repository: WorktreeMergeRepository,
     private readonly createId: () => string = () => createEntityId('worktreeMerge'),
+    /**
+     * Optional cross-process DB lock layer (10-Data-Model §81) in front of
+     * the git-file branch lock. When set, acquisition failure surfaces as
+     * WORKTREE_BRANCH_LOCK_HELD (HTTP 409) before any git work starts.
+     */
+    private readonly runtimeLocks?: RuntimeLockRepository,
+    private readonly runtimeLockOwner: string = `pid:${process.pid}`,
   ) {}
 
   async merge(worktreeId: string, request: WorktreeMergeRequest): Promise<WorktreeMergeRecord> {
@@ -85,6 +93,33 @@ export class WorktreeMergeService {
     if (request.targetBranch === lease.branchName) {
       throw new WorktreeMergeError('WORKTREE_MERGE_INVALID_REQUEST', 'Target branch must differ from the worktree source branch');
     }
+    const lockKey = `worktree-merge:${lease.workspaceId}:${request.targetBranch}`;
+    if (this.runtimeLocks) {
+      const acquired = this.runtimeLocks.tryAcquire({
+        id: createEntityId('runtimeLock'),
+        lockKey,
+        ownerId: this.runtimeLockOwner,
+        purpose: 'worktree.merge',
+        now: new Date().toISOString(),
+      });
+      if (acquired === null) {
+        throw new WorktreeMergeError(
+          'WORKTREE_BRANCH_LOCK_HELD',
+          `Target branch '${request.targetBranch}' is locked by another process in the runtime lock table (key '${lockKey}')`,
+        );
+      }
+    }
+    try {
+      return await this.mergeWithBranchLockAcquired(lease, request);
+    } finally {
+      this.runtimeLocks?.release(lockKey, this.runtimeLockOwner, new Date().toISOString());
+    }
+  }
+
+  private async mergeWithBranchLockAcquired(
+    lease: NonNullable<ReturnType<WorktreeManager['getRecord']>>,
+    request: WorktreeMergeRequest,
+  ): Promise<WorktreeMergeRecord> {
     await this.manager.assertManagedCheckout(lease.absolutePath);
     const sourceCommon = await realpath((await git(lease.workspaceRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
     const checkoutCommon = await realpath((await git(lease.absolutePath, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());

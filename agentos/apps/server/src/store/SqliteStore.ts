@@ -81,6 +81,10 @@ import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { UsageRepository } from './UsageRepository.js';
+import { RuntimeLockRepository } from './RuntimeLockRepository.js';
+import { SchedulerJobRepository } from './SchedulerJobRepository.js';
+import { AuditRecordRepository } from './AuditRecordRepository.js';
+import { RetentionPolicyRepository } from './RetentionPolicyRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 import { OperationService } from '../services/OperationService.js';
@@ -503,6 +507,10 @@ export class SqliteStore implements Store {
   private readonly worktreeRepo: WorktreeRepository;
   private readonly worktreeMergeRepo: WorktreeMergeRepository;
   private readonly usageRepo: UsageRepository;
+  private readonly runtimeLockRepo: RuntimeLockRepository;
+  private readonly schedulerJobRepo: SchedulerJobRepository;
+  private readonly auditRecordRepo: AuditRecordRepository;
+  private readonly retentionPolicyRepo: RetentionPolicyRepository;
   private readonly workspaceEventRepo: WorkspaceEventRepository;
   private readonly workspaceEventWriterRepo: WorkspaceEventWriter;
   private readonly legacy: JsonFileStore;
@@ -591,6 +599,10 @@ export class SqliteStore implements Store {
       this.worktreeRepo = new WorktreeRepository(this.database as any);
       this.worktreeMergeRepo = new WorktreeMergeRepository(this.database as any);
       this.usageRepo = new UsageRepository(this.database as any);
+      this.runtimeLockRepo = new RuntimeLockRepository(this.database as any);
+      this.schedulerJobRepo = new SchedulerJobRepository(this.database as any);
+      this.auditRecordRepo = new AuditRecordRepository(this.database as any);
+      this.retentionPolicyRepo = new RetentionPolicyRepository(this.database as any);
       this.runMigrations(dataDir);
       // Keep a defensive additive guard for databases whose agent_runs table
       // was rebuilt by an older recovery path after migration 032 was recorded.
@@ -780,6 +792,26 @@ export class SqliteStore implements Store {
   /** §50 Usage Record ledger (metric-only, idempotent by source_event_id). */
   usageRepository(): UsageRepository {
     return this.usageRepo;
+  }
+
+  /** §81 cross-process runtime lock persistence. */
+  runtimeLockRepository(): RuntimeLockRepository {
+    return this.runtimeLockRepo;
+  }
+
+  /** §82 durable background-job queue persistence (no execution loop here). */
+  schedulerJobRepository(): SchedulerJobRepository {
+    return this.schedulerJobRepo;
+  }
+
+  /** §83 append-only operational audit trail. */
+  auditRecordRepository(): AuditRecordRepository {
+    return this.auditRecordRepo;
+  }
+
+  /** §116 retention policy configuration per domain. */
+  retentionPolicyRepository(): RetentionPolicyRepository {
+    return this.retentionPolicyRepo;
   }
 
   /** CR-3 durable Conversation streaming seam. */

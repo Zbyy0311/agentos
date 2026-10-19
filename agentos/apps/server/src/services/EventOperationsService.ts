@@ -16,6 +16,7 @@ import {
   type DurableRuntimeFactResult,
 } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import type { RetentionPolicyRepository } from '../store/RetentionPolicyRepository.js';
 import type { EventPayloadOffloadService } from './EventPayloadOffloadService.js';
 import type { OutboxMessage, OutboxRepository } from '../store/OutboxRepository.js';
 
@@ -80,6 +81,11 @@ export class EventOperationsService {
     private readonly writer: RuntimeEventOutboxWriter,
     private readonly artifacts: EventPayloadOffloadService,
     private readonly outbox: OutboxRepository,
+    /**
+     * Optional §116 retention policy source: an enabled 'runtime_events'
+     * policy row overrides the built-in default per field.
+     */
+    private readonly retentionPolicies?: RetentionPolicyRepository,
   ) {
     if (runtimeEvents.transactionDatabase !== db || writer.transactionDatabase !== db) {
       throw new RuntimeEventRepositoryError(
@@ -337,9 +343,10 @@ export class EventOperationsService {
    */
   enforceRetention(
     workspaceId: string,
-    policy: EventRetentionPolicy = DEFAULT_EVENT_RETENTION_POLICY,
+    policy?: EventRetentionPolicy,
     now: Date = new Date(),
   ): EventRetentionResult {
+    const effective = policy ?? this.resolveRetentionPolicy(workspaceId);
     const nowMs = now.getTime();
     const cutoff = (days: number): string => new Date(nowMs - days * DAY_MS).toISOString();
     const deletedByCategory: EventRetentionResult['deletedByCategory'] = {
@@ -352,7 +359,7 @@ export class EventOperationsService {
 
     const compactibleList = (COMPACTABLE_RUNTIME_EVENT_TYPES as readonly string[])
       .map(type => `'${type}'`).join(', ');
-    const durableCutoff = policy.durableRetentionDays === null ? null : cutoff(policy.durableRetentionDays);
+    const durableCutoff = effective.durableRetentionDays === null ? null : cutoff(effective.durableRetentionDays);
 
     // Categories are evaluated newest-first; each statement only selects rows
     // older than its own horizon and not already claimed by a stricter one.
@@ -381,13 +388,39 @@ export class EventOperationsService {
       deletedEvents += removed;
     };
 
-    clean('rawStream', [`e.type IN (${compactibleList})`, 'e.timestamp < ?'], [cutoff(policy.rawStreamRetentionDays)]);
-    clean('debug', ["e.severity = 'debug'", 'e.timestamp < ?', `e.type NOT IN (${compactibleList})`], [cutoff(policy.debugEventRetentionDays)]);
-    clean('restricted', ["e.visibility = 'restricted'", 'e.timestamp < ?', `e.type NOT IN (${compactibleList})`, "e.severity <> 'debug'"], [cutoff(policy.restrictedRetentionDays)]);
+    clean('rawStream', [`e.type IN (${compactibleList})`, 'e.timestamp < ?'], [cutoff(effective.rawStreamRetentionDays)]);
+    clean('debug', ["e.severity = 'debug'", 'e.timestamp < ?', `e.type NOT IN (${compactibleList})`], [cutoff(effective.debugEventRetentionDays)]);
+    clean('restricted', ["e.visibility = 'restricted'", 'e.timestamp < ?', `e.type NOT IN (${compactibleList})`, "e.severity <> 'debug'"], [cutoff(effective.restrictedRetentionDays)]);
     if (durableCutoff !== null) {
       clean('durable', ['e.timestamp < ?', `e.type NOT IN (${compactibleList})`, "e.severity <> 'debug'", "e.visibility <> 'restricted'"], [durableCutoff]);
     }
     return { deletedEvents, deletedByCategory };
+  }
+
+  /**
+   * §116: an enabled 'runtime_events' policy row (workspace-specific first,
+   * then global) overrides the built-in default per field. Unknown or
+   * malformed fields fall back to the default so a bad policy row can never
+   * disable cleanup or widen it silently.
+   */
+  private resolveRetentionPolicy(workspaceId: string): EventRetentionPolicy {
+    const fallback = DEFAULT_EVENT_RETENTION_POLICY;
+    const configured = this.retentionPolicies?.getEffective(workspaceId, 'runtime_events');
+    if (!configured) return fallback;
+    const readDays = (value: unknown): number | null | undefined => {
+      if (value === null) return null;
+      if (value === undefined) return undefined;
+      if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+      return undefined;
+    };
+    const override: Record<string, unknown> = configured.policy;
+    const durableRetentionDays = readDays(override.durableRetentionDays) ?? fallback.durableRetentionDays;
+    return {
+      durableRetentionDays,
+      rawStreamRetentionDays: readDays(override.rawStreamRetentionDays) ?? fallback.rawStreamRetentionDays,
+      debugEventRetentionDays: readDays(override.debugEventRetentionDays) ?? fallback.debugEventRetentionDays,
+      restrictedRetentionDays: readDays(override.restrictedRetentionDays) ?? fallback.restrictedRetentionDays,
+    };
   }
 }
 

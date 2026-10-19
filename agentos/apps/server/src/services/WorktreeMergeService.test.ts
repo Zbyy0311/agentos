@@ -12,6 +12,7 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { WorktreeMergeRepository } from '../store/WorktreeMergeRepository.js';
+import { RuntimeLockRepository } from '../store/RuntimeLockRepository.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorktreeMergeError, WorktreeMergeService } from './WorktreeMergeService.js';
 import { withWorktreeBranchLock } from './WorktreeBranchLock.js';
@@ -262,5 +263,59 @@ test('merge refuses dirty worktrees without moving refs or overwriting files', a
     assert.equal(fx.worktreeGit(['symbolic-ref', '--short', 'HEAD']).trim(), fx.branch);
     assert.equal(fx.sourceGit(['rev-parse', 'main']).trim(), fx.baseCommit);
     assert.equal(fx.repository.list().length, 0);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// §81 runtime_locks DB layer
+// ---------------------------------------------------------------------------
+
+test('merge refuses with WORKTREE_BRANCH_LOCK_HELD (409) when runtime_locks row is held by another owner', async () => {
+  const fx = await fixture();
+  try {
+    const runtimeLocks = new RuntimeLockRepository(fx.db as unknown as TransactionDatabase);
+    const service = new WorktreeMergeService(fx.manager, fx.repository, undefined, runtimeLocks, 'pid:other-process');
+    const lease = fx.manager.getRecord(fx.manager.listLeases()[0].id)!;
+    const held = runtimeLocks.tryAcquire({
+      id: 'rlock_preheld', lockKey: `worktree-merge:${lease.workspaceId}:main`,
+      ownerId: 'pid:another', purpose: 'worktree.merge', now: new Date().toISOString(),
+    });
+    assert.ok(held, 'precondition: another process holds the lock');
+
+    await assert.rejects(service.merge(lease.id, {
+      strategy: 'ff', targetBranch: 'main', expectedHeadCommit: fx.baseCommit, requestedBy: 'tester',
+    }), (error: unknown) => error instanceof WorktreeMergeError && error.code === 'WORKTREE_BRANCH_LOCK_HELD');
+
+    // The contender's failed attempt must not have released the other owner's lock.
+    assert.equal(runtimeLocks.findByKey(`worktree-merge:${lease.workspaceId}:main`)!.ownerId, 'pid:another');
+    assert.equal(fx.repository.list().length, 0, 'no merge record is written when the DB lock is refused');
+  } finally { fx.close(); }
+});
+
+test('merge acquires and releases the runtime_locks row around the git lock layer', async () => {
+  const fx = await fixture();
+  try {
+    const runtimeLocks = new RuntimeLockRepository(fx.db as unknown as TransactionDatabase);
+    const service = new WorktreeMergeService(fx.manager, fx.repository, undefined, runtimeLocks, 'pid:this-process');
+    const head = fx.commitInWorktree('feature.txt', 'feature\n', 'feature work');
+    const leaseId = fx.manager.listLeases()[0].id;
+    const lease = fx.manager.getRecord(leaseId)!;
+
+    const record = await service.merge(leaseId, {
+      strategy: 'ff', targetBranch: 'main', expectedHeadCommit: fx.baseCommit, requestedBy: 'tester',
+    });
+    assert.equal(record.result, 'merged');
+
+    const lock = runtimeLocks.findByKey(`worktree-merge:${lease.workspaceId}:main`)!;
+    assert.equal(lock.ownerId, 'pid:this-process');
+    assert.ok(lock.releasedAt !== null, 'runtime lock is released in the finally path');
+    assert.deepEqual(runtimeLocks.listActive(new Date().toISOString()), []);
+
+    // After release a subsequent merge (fresh expected head) succeeds again.
+    const secondHead = fx.commitInWorktree('more.txt', 'more\n', 'more work');
+    const second = await service.merge(leaseId, {
+      strategy: 'ff', targetBranch: 'main', expectedHeadCommit: head, requestedBy: 'tester',
+    });
+    assert.equal(second.resultingTargetCommit, secondHead);
   } finally { fx.close(); }
 });
