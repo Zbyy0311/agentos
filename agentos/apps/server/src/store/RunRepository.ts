@@ -146,7 +146,7 @@ export class RunRepository {
 
   constructor(private readonly db: TransactionDatabase) {}
 
-  // Legacy schemas predating migration 065 have no runs.priority column;
+  // Legacy schemas predating migration 068 have no runs.priority column;
   // probing once per repository instance keeps those databases writable
   // (the value is dropped only there, mirroring the provider-config pattern).
   #hasPriority(): boolean {
