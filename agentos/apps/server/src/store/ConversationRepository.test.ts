@@ -267,7 +267,7 @@ test('CR1R-11 stale edit version fails closed', () => {
     const original = fx.repo.appendMessage(messageInput());
     assert.throws(
       () => fx.repo.editMessage({ workspaceId: WS, messageId: original.id, expectedVersion: 9, content: 'x', revisionId: 'rev_1', editedAt: NOW2 }),
-      (e: unknown) => expectCode(e, 'PERSISTENCE_FAILED'),
+      (e: unknown) => expectCode(e, 'MESSAGE_VERSION_CONFLICT'),
     );
   } finally { fx.close(); }
 });
@@ -369,5 +369,52 @@ test('LITE-GROUP-032 group member runtime settings are versioned and atomic', ()
         { memberId: 'agent_032_b' },
       ],
     }), (error: unknown) => expectCode(error, 'INPUT_INVALID'));
+  } finally { fx.close(); }
+});
+
+// CR1R-16 — soft delete keeps the row, bumps the version, converges on retry.
+test('CR1R-16 delete message is soft and idempotent', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createConversation({ id: CONV, workspaceId: WS, kind: 'direct', title: 'D', createdAt: NOW });
+    const message = fx.repo.appendMessage(messageInput());
+    const deleted = fx.repo.deleteMessage({ workspaceId: WS, messageId: message.id, expectedVersion: message.version, deletedAt: NOW2 });
+    assert.equal(deleted.status, 'deleted');
+    assert.equal(deleted.version, message.version + 1);
+    assert.equal(deleted.content, message.content);
+    assert.equal(deleted.sequence, message.sequence);
+    // Retry with the bumped version converges instead of conflicting.
+    const retry = fx.repo.deleteMessage({ workspaceId: WS, messageId: message.id, expectedVersion: deleted.version, deletedAt: NOW2 });
+    assert.equal(retry.version, deleted.version);
+    assert.throws(
+      () => fx.repo.deleteMessage({ workspaceId: WS, messageId: message.id, expectedVersion: 1, deletedAt: NOW2 }),
+      (e: unknown) => expectCode(e, 'MESSAGE_VERSION_CONFLICT'),
+    );
+    assert.throws(
+      () => fx.repo.deleteMessage({ workspaceId: WS, messageId: 'msg_missing', expectedVersion: 1, deletedAt: NOW2 }),
+      (e: unknown) => expectCode(e, 'MESSAGE_NOT_FOUND'),
+    );
+    assert.throws(
+      () => fx.repo.deleteMessage({ workspaceId: WS, messageId: message.id, expectedVersion: 0, deletedAt: NOW2 }),
+      (e: unknown) => expectCode(e, 'INPUT_INVALID'),
+    );
+  } finally { fx.close(); }
+});
+
+// CR1R-17 — revision history is append-only and workspace scoped.
+test('CR1R-17 list message revisions', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createConversation({ id: CONV, workspaceId: WS, kind: 'direct', title: 'D', createdAt: NOW });
+    const message = fx.repo.appendMessage(messageInput({ content: 'first' }));
+    fx.repo.editMessage({ workspaceId: WS, messageId: message.id, expectedVersion: 1, content: 'second', revisionId: 'rev_1', editedAt: NOW2 });
+    fx.repo.editMessage({ workspaceId: WS, messageId: message.id, expectedVersion: 2, content: 'third', revisionId: 'rev_2', editedAt: NOW2 });
+    const revisions = fx.repo.listMessageRevisions(WS, message.id);
+    assert.deepEqual(revisions.map(revision => revision.revision), [1, 2]);
+    assert.deepEqual(revisions.map(revision => revision.content), ['second', 'third']);
+    assert.ok(revisions.every(revision => revision.messageId === message.id));
+    // Workspace isolation and unknown messages.
+    assert.deepEqual(fx.repo.listMessageRevisions('ws_other', message.id), []);
+    assert.deepEqual(fx.repo.listMessageRevisions(WS, 'msg_missing'), []);
   } finally { fx.close(); }
 });

@@ -44,6 +44,7 @@ export type ConversationRepositoryErrorCode =
   | 'MEMBER_NOT_FOUND'
   | 'MESSAGE_NOT_FOUND'
   | 'MESSAGE_NOT_TRANSITIONABLE'
+  | 'MESSAGE_VERSION_CONFLICT'
   | 'SETTINGS_CONFLICT'
   | 'SEQUENCE_CONFLICT'
   | 'PERSISTENCE_FAILED';
@@ -182,6 +183,22 @@ export interface BindMessageReferencesInput {
   readonly taskId?: string;
   readonly runId?: string;
   readonly boundAt: string;
+}
+
+interface MessageRevisionRow {
+  id: string;
+  message_id: string;
+  revision: number;
+  content: string;
+  edited_at: string;
+}
+
+export interface MessageRevisionRecord {
+  readonly id: string;
+  readonly messageId: string;
+  readonly revision: number;
+  readonly content: string;
+  readonly editedAt: string;
 }
 
 interface ConversationRow {
@@ -610,7 +627,7 @@ export class ConversationRepository {
         ).get(input.workspaceId, input.messageId) as MessageRow | undefined;
         if (current === undefined) throw new ConversationRepositoryError('MESSAGE_NOT_FOUND');
         if (current.version !== input.expectedVersion) {
-          throw new ConversationRepositoryError('PERSISTENCE_FAILED');
+          throw new ConversationRepositoryError('MESSAGE_VERSION_CONFLICT');
         }
         const nextRevision = (this.db.prepare(
           'SELECT COALESCE(MAX(revision), 0) + 1 AS next FROM cr_message_revisions WHERE message_id = ?',
@@ -621,6 +638,62 @@ export class ConversationRepository {
         this.db.prepare(
           'UPDATE cr_messages SET content = ?, status = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
         ).run(input.content, 'edited', input.editedAt, input.workspaceId, input.messageId, input.expectedVersion);
+        return this.requireMessage(input.workspaceId, input.messageId);
+      });
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * Append-only edit history for one Message. The Message row is workspace
+   * scoped; revisions are keyed by message_id only, so existence is proven
+   * through the parent Message before listing.
+   */
+  listMessageRevisions(workspaceId: string, messageId: string): MessageRevisionRecord[] {
+    if (!nonBlank(workspaceId) || !nonBlank(messageId)) return [];
+    const rows = this.db.prepare(`
+      SELECT r.id, r.message_id, r.revision, r.content, r.edited_at
+      FROM cr_message_revisions r
+      JOIN cr_messages m ON m.id = r.message_id
+      WHERE m.workspace_id = ? AND r.message_id = ?
+      ORDER BY r.revision ASC
+    `).all(workspaceId, messageId) as MessageRevisionRow[];
+    return rows.map(toMessageRevisionRecord);
+  }
+
+  /**
+   * Soft delete under optimistic concurrency: the Message row is kept (history
+   * is never lost) and only its status moves to 'deleted'. A repeated delete
+   * with the already-bumped version converges on the current row instead of
+   * conflicting, matching the idempotent write paths.
+   */
+  deleteMessage(input: {
+    readonly workspaceId: string;
+    readonly messageId: string;
+    readonly expectedVersion: number;
+    readonly deletedAt: string;
+  }): MessageRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.messageId)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
+      || !nonBlank(input.deletedAt)) {
+      throw new ConversationRepositoryError('INPUT_INVALID');
+    }
+    try {
+      return inTransaction(this.db, () => {
+        const current = this.db.prepare(
+          'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
+        ).get(input.workspaceId, input.messageId) as MessageRow | undefined;
+        if (current === undefined) throw new ConversationRepositoryError('MESSAGE_NOT_FOUND');
+        if (current.status === 'deleted' && current.version === input.expectedVersion) {
+          return this.hydrateMessage(current);
+        }
+        if (current.version !== input.expectedVersion) {
+          throw new ConversationRepositoryError('MESSAGE_VERSION_CONFLICT');
+        }
+        this.db.prepare(
+          'UPDATE cr_messages SET status = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+        ).run('deleted', input.deletedAt, input.workspaceId, input.messageId, input.expectedVersion);
         return this.requireMessage(input.workspaceId, input.messageId);
       });
     } catch (error) {
@@ -939,6 +1012,16 @@ function toMessageRecord(row: MessageRow, attachments: readonly ConversationAtta
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function toMessageRevisionRecord(row: MessageRevisionRow): MessageRevisionRecord {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    revision: row.revision,
+    content: row.content,
+    editedAt: row.edited_at,
   };
 }
 
