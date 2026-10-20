@@ -10,6 +10,7 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@agentos/api-client": "workspace:*",
     "@agentos/shared": "workspace:*",
     "@tanstack/react-virtual": "^3.13.12",
     "apple-liquid-glass-webgl": "^2.5.0",

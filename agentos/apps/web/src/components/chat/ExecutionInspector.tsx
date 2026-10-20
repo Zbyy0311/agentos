@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, ExecutionEvent, ExecutionStatus, RunStep } from '@agentos/shared';
+import { createAgentOSClient } from '@agentos/api-client';
 import { getElapsedSeconds, shouldRefreshElapsed } from '@/lib/executionElapsed';
 import { summarizeExecutionInspector } from '@/lib/executionInspector';
 import { RunTaskTree } from '@/components/runs/RunTaskTree';
@@ -51,6 +52,7 @@ export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = 
     return () => window.clearInterval(timer);
   }, [activeStatus, elapsedStartedAt, latest?.status]);
   const elapsed = elapsedStartedAt ? getElapsedSeconds({ startedAt: elapsedStartedAt, completedAt: elapsedCompletedAt }) : 0;
+  const runtimeClient = useMemo(() => apiBase === undefined ? undefined : createAgentOSClient({ baseUrl: apiBase }), [apiBase]);
   const summary = summarizeExecutionInspector({ status, startedAt: elapsedStartedAt, completedAt: elapsedCompletedAt, events, runtimeEvents });
   const permissions = agent?.permissions ?? [];
   const hasExecutionEvidence = Boolean(status || latest || events.length || runtimeEvents.length || steps.length);
@@ -63,7 +65,7 @@ export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = 
       <section className="mb-6"><h3 className="signal-section-label mb-3">权限</h3><div className="space-y-2 text-xs ui-text-soft">{(['read', 'write', 'review'] as const).map(permission => <div key={permission} className="flex items-center gap-2"><span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${permissions.includes(permission) ? 'bg-[color:var(--app-success)]/20 text-[var(--app-success)]' : 'bg-[var(--app-surface-soft)] ui-dim'}`}>{permissions.includes(permission) ? '✓' : '·'}</span>{permission === 'read' ? '读取项目文件' : permission === 'write' ? '修改项目文件' : '代码审查'}</div>)}</div></section>
     </> : <div className="text-sm leading-6 ui-dim">选择 Agent 或群聊查看执行状态。</div>}
     {(agent || groupTitle) && <>
-      {apiBase && workspaceId && activeRunId ? <RuntimeApprovalPanel apiBase={apiBase} workspaceId={workspaceId} runId={activeRunId} onResolved={onRuntimeApprovalResolved} /> : null}
+      {runtimeClient && workspaceId && activeRunId ? <RuntimeApprovalPanel client={runtimeClient} workspaceId={workspaceId} runId={activeRunId} onResolved={onRuntimeApprovalResolved} /> : null}
       {runHistory.length > 1 && onOpenRunDetails && <section className="mb-5 border-t ui-border pt-5" aria-label="历史运行"><div className="mb-3 flex items-center justify-between"><h3 className="signal-section-label">历史运行</h3><span className="text-[11px] ui-dim">{runHistory.length} 次</span></div><div className="space-y-1.5">{(historyExpanded ? runHistory : runHistory.slice(0, 6)).map(run => <button key={run.id} type="button" onClick={() => onOpenRunDetails(run.id)} className="ui-button-ghost flex w-full min-w-0 items-center gap-2 rounded-lg border ui-border px-2.5 py-2 text-left text-xs"><span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: statusColorForRun(run.status) }} /><span className="min-w-0 flex-1 truncate">{run.objective || '未命名 Run'}</span><span className="shrink-0 ui-dim">{runStatusLabel(run.status)}</span></button>)}</div>{runHistory.length > 6 && <button type="button" className="ui-button-ghost mt-2 rounded px-1.5 py-0.5 text-[11px]" aria-expanded={historyExpanded} onClick={() => setHistoryExpanded(current => !current)}>{historyExpanded ? '收起历史' : '查看全部历史'}</button>}</section>}
       {hasExecutionEvidence ? <>
       <section className="border-t ui-border pt-5"><div className="mb-4 flex items-center justify-between"><h3 className="signal-section-label">当前动作</h3></div><div className="rounded-xl border ui-border bg-[var(--app-surface-raised)] p-3" aria-label="当前动作"><div className="flex items-center gap-2 text-xs font-semibold ui-text"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: actionTone(summary.currentAction.state) }} />{summary.currentAction.label}</div><div className="mt-2 text-xs leading-5 ui-text-soft">{summary.currentAction.detail}{summary.currentAction.target ? '：' : ''}</div>{summary.currentAction.target && <code className="mt-1 block break-all rounded-md bg-[var(--app-bg)] px-2 py-1 text-[10px] leading-4 ui-accent">{summary.currentAction.target}</code>}</div></section>

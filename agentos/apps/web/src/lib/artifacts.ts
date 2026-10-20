@@ -1,3 +1,4 @@
+import { createAgentOSClient } from '@agentos/api-client';
 import type { RuntimeArtifact } from '@agentos/shared';
 
 export function normalizeArtifacts(artifacts: RuntimeArtifact[]): RuntimeArtifact[] {
@@ -15,8 +16,7 @@ export function getChatVisibleArtifacts(artifacts: RuntimeArtifact[]): RuntimeAr
 }
 
 export function getArtifactContentUrl(apiBase: string, artifact: RuntimeArtifact): string | undefined {
-  if (!artifact.contentAvailable) return undefined;
-  return `${apiBase}/api/workspaces/${encodeURIComponent(artifact.workspaceId)}/artifacts/${encodeURIComponent(artifact.id)}/content`;
+  return createAgentOSClient({ baseUrl: apiBase }).artifactContentUrl(artifact);
 }
 
 export function getArtifactIcon(type: RuntimeArtifact['type']): string {

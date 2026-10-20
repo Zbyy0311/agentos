@@ -44,7 +44,7 @@ function ArtifactCard({ artifact, apiBase }: { artifact: RuntimeArtifact; apiBas
         ? <><button type="button" onClick={() => setPreviewOpen(true)} className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">预览</button><a href={url} target="_blank" rel="noreferrer" className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">打开</a></>
         : <span className="text-xs ui-dim">仅元数据</span>}
     </div>
-    {previewOpen && url && <ArtifactPreviewDialog artifact={artifact} url={url} onClose={() => setPreviewOpen(false)} />}
+    {previewOpen && url && <ArtifactPreviewDialog artifact={artifact} apiBase={apiBase} onClose={() => setPreviewOpen(false)} />}
   </article>;
 }
 
