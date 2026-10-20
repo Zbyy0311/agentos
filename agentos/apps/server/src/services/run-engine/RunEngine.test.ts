@@ -1178,12 +1178,10 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentW
       assert.deepEqual(operationState(fixture), beforeOperations);
       assert.deepEqual(eventsForRun(fixture), []);
       assert.deepEqual(outboxesForRun(fixture), []);
-      assert.equal(
-        fixture.db.prepare(
-          `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${schedulerTableName}'`,
-        ).get(),
-        undefined,
-      );
+      const scheduledRows = fixture.db.prepare(
+        `SELECT COUNT(*) AS count FROM '${schedulerTableName}'`,
+      ).get() as { count: number };
+      assert.equal(scheduledRows.count, 0);
       assertIntegrity(fixture.db);
     });
   });

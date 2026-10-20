@@ -8,6 +8,7 @@ import type { ProviderLaunchPlan } from '@agentos/agent-core/providers';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { RuntimeApprovalRepository, RuntimeApprovalRepositoryError, type RuntimeApprovalRequestRecord } from '../store/RuntimeApprovalRepository.js';
 import { ApprovalDecisionRepository } from '../store/ApprovalDecisionRepository.js';
+import { AuditRecordRepository } from '../store/AuditRecordRepository.js';
 import { PolicyRepository, type PolicyDecisionValue } from '../store/PolicyRepository.js';
 import { PolicyEngine, type PolicyEvaluation, type PolicyEvaluationInput } from './policy/PolicyEngine.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
@@ -66,6 +67,7 @@ export class RuntimeApprovalGate {
   private readonly emitter: MemoryRuntimeEventEmitter;
   private readonly policyDecisions: PolicyRepository;
   private readonly policyEngineInstance: LaunchPolicyEngine;
+  private readonly audit: AuditRecordRepository | undefined;
 
   constructor(
     private readonly store: SqliteStore,
@@ -84,6 +86,7 @@ export class RuntimeApprovalGate {
     this.policyDecisions = new PolicyRepository(db);
     this.policyEngineInstance = options.policyEngine
       ?? new PolicyEngine(this.policyDecisions, { now: () => this.now() });
+    this.audit = store.auditRecordRepository?.();
     this.emitter = new MemoryRuntimeEventEmitter({
       store,
       factWriter: store.runtimeEventOutboxWriter(),
@@ -286,6 +289,22 @@ export class RuntimeApprovalGate {
       decision: input.decision === 'approve_once' ? 'allow_once' : 'deny', decidedBy: input.decidedBy,
       decidedAt: now, createdAt: now,
     });
+    // §83 audit trail: the user/system approval resolution is appended to
+    // the immutable audit_records row set in the same transaction.
+    this.audit?.append({
+      id: createEntityId('auditRecord'),
+      workspaceId: input.workspaceId,
+      runId: request.runId,
+      actorType: input.decidedBy === 'system' ? 'system' : 'user',
+      actorId: input.decidedBy,
+      actionType: 'approval.resolve',
+      resourceType: 'approval_request',
+      resourceId: request.id,
+      result: decisionRecord.decision,
+      summary: `Approval request ${request.id} resolved: ${decisionRecord.decision}`,
+      detail: { stageId: request.stageId, riskLevel: request.riskLevel, actionFingerprint: request.actionFingerprint },
+      createdAt: now,
+    });
     const decided = this.requests.markDecisionWithinTransaction({
       workspaceId: input.workspaceId, id: request.id, expectedVersion: request.version, now,
       status: input.decision === 'approve_once' ? 'approved' : 'rejected',
@@ -451,7 +470,7 @@ export class RuntimeApprovalGate {
     const evaluation = policy.evaluation;
     const matchedRuleIds = evaluation?.matchedRuleIds ?? [];
     const profileId = evaluation?.profileId ?? null;
-    this.policyDecisions.insertDecision({
+    const decisionRecord = this.policyDecisions.insertDecision({
       id: createEntityId('policyDecision'),
       workspaceId: input.workspaceId,
       runId: input.runId,
@@ -462,6 +481,22 @@ export class RuntimeApprovalGate {
       matchedRuleIds,
       ...(profileId === null ? {} : { profileId }),
       evaluatedAt: evaluation?.evaluatedAt ?? timestamp,
+    });
+    // §83 audit trail: the policy decision lands in the append-only
+    // audit_records row set with the same transaction as policy_decisions.
+    this.audit?.append({
+      id: createEntityId('auditRecord'),
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      actorType: 'system',
+      actorId: 'policy-engine',
+      actionType: 'policy.evaluate',
+      resourceType: 'policy_decision',
+      resourceId: decisionRecord.id,
+      result: decisionRecord.decision,
+      summary: `Policy evaluation for provider.launch on run ${input.runId}: ${decisionRecord.decision}`,
+      detail: { stageId: input.stageId, action: 'provider.launch', matchedRuleIds },
+      createdAt: evaluation?.evaluatedAt ?? timestamp,
     });
     if (profileId !== null) {
       const writer = this.store.runtimeEventOutboxWriter();

@@ -305,7 +305,7 @@ async function bootstrap(): Promise<void> {
     for (const issue of worktreeManager.getLegacyImportReport()) {
       console.warn('[AgentOS Worktree] legacy lease import unresolved: ' + JSON.stringify(issue));
     }
-    const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository());
+    const worktreeMergeService = new WorktreeMergeService(worktreeManager, store.worktreeMergeRepository(), undefined, store.runtimeLockRepository());
     const refRecovery = await recoverWorktreeRefUpdates(worktreeManager, store.worktreeMergeRepository());
     diagLog(`WORKTREE_REF_RECOVERY completed=${refRecovery.completed} preserved=${refRecovery.preserved}`);
     const workspaceManager = new WorkspaceManager(store);

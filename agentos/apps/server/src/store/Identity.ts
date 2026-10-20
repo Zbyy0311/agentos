@@ -37,6 +37,10 @@ export const ENTITY_ID_PREFIXES = {
   operation: 'op',
   import: 'imp',
   usageRecord: 'urec',
+  runtimeLock: 'rlock',
+  schedulerJob: 'sjob',
+  auditRecord: 'audit',
+  retentionPolicy: 'rpol',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;

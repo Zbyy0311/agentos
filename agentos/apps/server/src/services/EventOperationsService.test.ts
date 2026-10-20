@@ -21,6 +21,7 @@ import { inTransaction, type TransactionDatabase } from '../store/Transaction.js
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { EventPayloadOffloadService } from './EventPayloadOffloadService.js';
 import { EventOperationsService, type EventRetentionPolicy } from './EventOperationsService.js';
+import { RetentionPolicyRepository } from '../store/RetentionPolicyRepository.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => TransactionDatabase & { close(): void };
@@ -561,6 +562,59 @@ test('§58: retention never deletes event.corrected / event.compacted audit fact
     assert.equal(remaining.filter(r => r.type === 'event.corrected').length, 1);
     assert.equal(remaining.filter(r => r.type === 'event.compacted').length, 0);
     assert.ok(result.deletedEvents >= 0);
+  } finally {
+    close(s, db);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// §116 retention policy table
+// ---------------------------------------------------------------------------
+
+test('§116: enforceRetention reads retention_policies table (scoped > global > default)', () => {
+  const db = seededDb();
+  const s = stack(db);
+  try {
+    const policies = new RetentionPolicyRepository(db);
+    const withPolicies = new EventOperationsService(db, s.events, s.writer, s.offloader, s.outbox, policies);
+    const day = (n: number): string => new Date(Date.parse(NOW) - n * 24 * 3600 * 1000).toISOString();
+    const now = new Date(Date.parse(NOW));
+    appendRaw(s, 'stream.text_delta', { channel: 'assistant', delta: 'old stream' }, day(10));
+
+    // No policy row: built-in defaults apply (rawStream = 7 days).
+    let result = withPolicies.enforceRetention(WS, undefined, now);
+    assert.equal(result.deletedByCategory.rawStream, 1);
+    assert.equal(result.deletedEvents, 1);
+
+    // A workspace-scoped policy widens the raw-stream horizon to 30 days.
+    appendRaw(s, 'stream.text_delta', { channel: 'assistant', delta: 'old stream 2' }, day(10));
+    policies.save({
+      id: createEntityId('retentionPolicy'), workspaceId: WS, domain: 'runtime_events', name: 'default',
+      policy: { rawStreamRetentionDays: 30 }, now: NOW,
+    });
+    result = withPolicies.enforceRetention(WS, undefined, now);
+    assert.equal(result.deletedEvents, 0);
+
+    // Disabling the scoped row falls back to the global row.
+    policies.save({
+      id: createEntityId('retentionPolicy'), workspaceId: '', domain: 'runtime_events', name: 'default',
+      policy: { rawStreamRetentionDays: 30 }, now: NOW,
+    });
+    result = withPolicies.enforceRetention(WS, undefined, now);
+    assert.equal(result.deletedEvents, 0);
+
+    // Disabling both leaves the built-in default again.
+    policies.save({
+      id: createEntityId('retentionPolicy'), workspaceId: WS, domain: 'runtime_events', name: 'default',
+      policy: { rawStreamRetentionDays: 30 }, enabled: false, now: NOW,
+    });
+    policies.save({
+      id: createEntityId('retentionPolicy'), workspaceId: '', domain: 'runtime_events', name: 'default',
+      policy: { rawStreamRetentionDays: 30 }, enabled: false, now: NOW,
+    });
+    result = withPolicies.enforceRetention(WS, undefined, now);
+    assert.equal(result.deletedByCategory.rawStream, 1);
+    assert.equal(result.deletedEvents, 1);
   } finally {
     close(s, db);
   }
