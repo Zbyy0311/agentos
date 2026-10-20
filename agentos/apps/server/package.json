@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:workspace-deps": "tsc -b ../../packages/shared/tsconfig.json ../../packages/process-runtime/tsconfig.json ../../packages/agent-core/tsconfig.json",
+    "build:workspace-deps": "tsc -b ../../packages/shared/tsconfig.json ../../packages/process-runtime/tsconfig.json ../../packages/agent-core/tsconfig.json ../../packages/api-client/tsconfig.json",
     "dev": "pnpm run build:workspace-deps && node --disable-warning=ExperimentalWarning -e \"process.argv.splice(1, 0, 'tsx'); import('tsx/cli')\" -- watch --exclude \"../../workspace/**\" --exclude \"../../.agentos/**\" --exclude \"../../agent-memory/**\" src/index.ts",
     "dev:stable": "pnpm run build:workspace-deps && node --disable-warning=ExperimentalWarning --import tsx src/index.ts",
     "build": "tsc -b && node scripts/write-build-identity.mjs",
