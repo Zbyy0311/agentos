@@ -31,6 +31,7 @@ import type {
 import {
   NATIVE_STDIN_MAX_CHUNK_BYTES,
   ProcessTimers,
+  SecretScanner,
   SystemClock,
   redactArgs,
 } from '@agentos/process-runtime';
@@ -66,6 +67,7 @@ import type {
   RuntimeProviderAdapter,
 } from '@agentos/agent-core/providers';
 import type { DurableSessionRepositoryAdapter } from '../../store/process-runtime-adapters.js';
+import { secretValuesFromEnvironment } from '../EventRedactionService.js';
 
 export interface StageExecutionInput {
   readonly workspaceId: string;
@@ -222,6 +224,9 @@ interface LiveAttemptRendezvous {
   captureStopped: boolean;
   stdoutDrain?: Promise<void>;
   stderrDrain?: Promise<void>;
+  /** §55.3 scan-mode redaction: bytes are scanned before any sink append. */
+  stdoutScanner?: SecretScanner;
+  stderrScanner?: SecretScanner;
   stdinDelivery?: Promise<void>;
   stdoutDecoder?: TextDecoder;
   stderrDecoder?: TextDecoder;
@@ -543,7 +548,7 @@ export class StageExecutionCoordinator {
         };
         const handle = await this.driver.spawn(launch);
         entry.handle = handle;
-        this.startOutputDrains(entry);
+        this.startOutputDrains(entry, plan.environment);
         if (plan.stdinMode === 'prompt' && plan.promptDelivery === 'stdin') {
           entry.stdinDelivery = this.deliverPrompt(handle, input.prompt);
           // The coordinator observes the task at process exit. This handler
@@ -1025,8 +1030,14 @@ export class StageExecutionCoordinator {
     }
   }
 
-  private startOutputDrains(entry: LiveAttemptRendezvous): void {
+  private startOutputDrains(entry: LiveAttemptRendezvous, environment: Readonly<Record<string, string | undefined>> = {}): void {
     if (entry.stdoutDrain !== undefined || entry.stderrDrain !== undefined) return;
+    // Raw Output Artifact redaction (§55.3): the provider launch environment
+    // credential values are the scan patterns; only redacted bytes ever reach
+    // the restricted sink. No credential-shaped env values -> passthrough.
+    const patterns = secretValuesFromEnvironment(environment);
+    entry.stdoutScanner = new SecretScanner(patterns);
+    entry.stderrScanner = new SecretScanner(patterns);
     const stdoutDecoder = new TextDecoder('utf-8');
     const stderrDecoder = new TextDecoder('utf-8');
     entry.stdoutDecoder = stdoutDecoder;
@@ -1048,6 +1059,7 @@ export class StageExecutionCoordinator {
     const handle = entry.handle;
     if (handle === undefined) return;
     const iterator = handle.streams.stdout[Symbol.asyncIterator]();
+    const scanner = entry.stdoutScanner ?? new SecretScanner([]);
     let offset = 0;
     for (;;) {
       const nextPromise = iterator.next().then(result => ({ kind: 'next' as const, result }));
@@ -1059,7 +1071,12 @@ export class StageExecutionCoordinator {
         try { void iterator.return?.(); } catch { /* best effort interruption */ }
         return;
       }
-      if (winner.result.done || entry.captureStopped) return;
+      if (winner.result.done) {
+        // Natural end: flush the scanner carry below; a stop-driven break
+        // must NOT append afterwards (the writers may already be aborted).
+        break;
+      }
+      if (entry.captureStopped) return;
       const bytes = toBytes(winner.result.value);
       const text = decoder.decode(bytes, { stream: true });
       if (text.length > 0) {
@@ -1067,17 +1084,37 @@ export class StageExecutionCoordinator {
       }
       if (entry.captureStopped) return;
       offset += bytes.length;
+      // §55.3 scan mode: only redacted bytes reach the restricted sink;
+      // source offsets/counters stay in raw source units.
+      const redacted = scanner.push(bytes);
       const outcome = await entry.stdoutWriter.append({
         stream: 'stdout',
         sequence: offset,
         sourceOffset: offset - bytes.length,
         sourceBytes: bytes.length,
-        bytes,
+        bytes: redacted,
         text,
         binary: false,
       });
       requireAppend(outcome, 'STDOUT_APPEND');
       entry.timers.notifyActivity();
+    }
+    // Flush the bounded scanner carry so a secret split across the final
+    // chunk boundary is redacted, never emitted raw.
+    const carrySourceBytes = scanner.carryLength;
+    const tail = scanner.flush();
+    if (tail.length > 0) {
+      offset += carrySourceBytes;
+      const outcome = await entry.stdoutWriter.append({
+        stream: 'stdout',
+        sequence: offset,
+        sourceOffset: offset - carrySourceBytes,
+        sourceBytes: carrySourceBytes,
+        bytes: tail,
+        text: '',
+        binary: false,
+      });
+      requireAppend(outcome, 'STDOUT_APPEND');
     }
   }
 
@@ -1085,6 +1122,7 @@ export class StageExecutionCoordinator {
     const handle = entry.handle;
     if (handle === undefined) return;
     const iterator = handle.streams.stderr[Symbol.asyncIterator]();
+    const scanner = entry.stderrScanner ?? new SecretScanner([]);
     let offset = 0;
     for (;;) {
       const nextPromise = iterator.next().then(result => ({ kind: 'next' as const, result }));
@@ -1096,23 +1134,42 @@ export class StageExecutionCoordinator {
         try { void iterator.return?.(); } catch { /* best effort interruption */ }
         return;
       }
-      if (winner.result.done || entry.captureStopped) return;
+      if (winner.result.done) break;
+      if (entry.captureStopped) return;
       const bytes = toBytes(winner.result.value);
       const text = decoder.decode(bytes, { stream: true });
       entry.stderrText = boundedAppend(entry.stderrText, text, this.stderrRetainedBytes);
       if (entry.captureStopped) return;
       offset += bytes.length;
+      // §55.3 scan mode: only redacted bytes reach the restricted sink;
+      // source offsets/counters stay in raw source units.
+      const redacted = scanner.push(bytes);
       const outcome = await entry.stderrWriter.append({
         stream: 'stderr',
         sequence: offset,
         sourceOffset: offset - bytes.length,
         sourceBytes: bytes.length,
-        bytes,
+        bytes: redacted,
         text,
         binary: false,
       });
       requireAppend(outcome, 'STDERR_APPEND');
       entry.timers.notifyActivity();
+    }
+    const carrySourceBytes = scanner.carryLength;
+    const tail = scanner.flush();
+    if (tail.length > 0) {
+      offset += carrySourceBytes;
+      const outcome = await entry.stderrWriter.append({
+        stream: 'stderr',
+        sequence: offset,
+        sourceOffset: offset - carrySourceBytes,
+        sourceBytes: carrySourceBytes,
+        bytes: tail,
+        text: '',
+        binary: false,
+      });
+      requireAppend(outcome, 'STDERR_APPEND');
     }
   }
 

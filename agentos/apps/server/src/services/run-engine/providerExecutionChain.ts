@@ -10,6 +10,7 @@ import {
   NodeProcessProbePort,
 } from '@agentos/process-runtime';
 import type { ProcessProbePort } from '@agentos/process-runtime';
+import type { ProcessStopResult } from '@agentos/process-runtime';
 import {
   CodexProviderAdapter,
   CustomCliAdapter,
@@ -72,6 +73,16 @@ export interface ProviderExecutionChain {
    * externally running in the recovery layer.
    */
   readonly reattachProcess: DurableProcessCoordinator['reattachProcess'];
+  /**
+   * §87 minimal control surface: accept/join the one graceful stop ticket for
+   * a Process via the ProcessCancelCoordinator. Idempotent per Process
+   * (stable idempotency key); terminal Processes join as a no-op result.
+   */
+  readonly stopProcess: (input: {
+    readonly workspaceId: string;
+    readonly processId: string;
+    readonly reason?: string;
+  }) => Promise<ProcessStopResult>;
   /** Replays only granted, durable resume-fallback Child Starts. */
   readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
   /** Prepares, admits, and dispatches one explicitly accepted fallback Child. */
@@ -139,6 +150,34 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     resumeFallbackQueue.resumeGrantedChildren(workspaceId);
   const resumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
     resumeFallbackQueue.resumeChild(workspaceId, runId);
+  // §87 control surface: read the current claim fence, then accept (or join)
+  // the one stop ticket. The stable idempotency key makes repeated API calls
+  // idempotent; a terminal Process joins as a natural-terminal no-op.
+  const stopProcess: ProviderExecutionChain['stopProcess'] = async (input) => {
+    const process = await processAdapter.getProcess(input.workspaceId, input.processId);
+    if (process === null) {
+      const error = new Error('PROCESS_NOT_FOUND: ' + input.processId) as Error & { code?: string };
+      error.code = 'PROCESS_NOT_FOUND';
+      throw error;
+    }
+    const timestamp = new Date().toISOString();
+    const ticket = await durableCoordinator.processCancelCoordinator.acceptStop({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      reason: input.reason ?? 'api-stop',
+      idempotencyKey: 'api-stop:' + process.processId,
+      timestamp,
+      eventContext: {
+        correlationId: 'corr_api_stop_' + process.processId,
+        causationId: 'cause_api_stop_' + process.processId,
+      },
+      stopOrigin: 'EXPLICIT_CANCEL',
+    });
+    if (ticket.stopAccepted) await ticket.startCleanup();
+    return ticket.result;
+  };
   const approvalGate = new RuntimeApprovalGate(store, {
     continueRun: async (workspaceId, runId) => {
       if (await options.continueOwnedRun?.(workspaceId, runId)) return;
@@ -286,6 +325,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
     reattachProcess: input => durableCoordinator.reattachProcess(input),
+    stopProcess,
     resumeGrantedResumeFallbackChildren,
     resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,

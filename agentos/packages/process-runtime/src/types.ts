@@ -168,6 +168,7 @@ export type ProcessFactType =
   | 'process.started'
   | 'process.stopping'
   | 'process.output_read_failed'
+  | 'process.output_persistence_failed'
   | 'process.exited'
   | 'process.failed';
 
