@@ -179,6 +179,8 @@ export interface ProviderValidationResult {
   readonly warnings: readonly ProviderValidationWarning[];
   readonly errors: readonly ProviderValidationError[];
   readonly checkedAt: string;
+  /** 04-Provider-Specification §14.5: set when the result was served from the short-term validation cache. */
+  readonly fromCache?: boolean;
 }
 
 export interface ProviderValidationInput {

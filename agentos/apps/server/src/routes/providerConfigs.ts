@@ -1,9 +1,13 @@
 import { Router, type Request, type Response } from 'express';
+import { statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY, normalizeProviderFallbackPolicy } from '../store/ProviderConfigurationRepository.js';
+import { ProviderValidationCacheRepository } from '../store/ProviderValidationCacheRepository.js';
+import { ProviderMetricsService, sharedProviderMetricsService } from '../services/ProviderMetricsService.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 import {
@@ -14,6 +18,9 @@ import {
   OpenCodeProviderAdapter,
   ProviderRegistry,
   ProviderValidationService,
+  computeProviderValidationCacheKey,
+  resolveProviderValidationCacheTtlMs,
+  resolveFrozenProviderIdentity,
 } from '@agentos/agent-core/providers';
 import { NodeProcessProbePort } from '@agentos/process-runtime';
 import type { ProviderValidationResult } from '@agentos/agent-core/providers';
@@ -134,6 +141,24 @@ function isProviderNameUniqueViolation(error: unknown): boolean {
 
 export interface ProviderConfigRouteOptions {
   readonly validationService?: ProviderValidationService;
+  readonly validationCache?: ProviderValidationCacheRepository;
+  readonly metrics?: ProviderMetricsService;
+}
+
+/** Executable mtime (ms) when the configured executable is a stat-able path; null otherwise. */
+function resolveExecutableMtimeMs(executable: string | undefined): number | null {
+  if (!executable) return null;
+  if (!isAbsolute(executable) && !executable.includes('/') && !executable.includes('\\')) return null;
+  try {
+    return Math.trunc(statSync(executable).mtimeMs);
+  } catch {
+    return null;
+  }
+}
+
+function isAuthFailure(validation: ProviderValidationResult): boolean {
+  if (validation.authentication === 'unauthenticated' || validation.authentication === 'expired') return true;
+  return validation.errors.some(error => /AUTH/i.test(error.code));
 }
 
 /**
@@ -159,6 +184,9 @@ export function createProviderConfigRoutes(
 ): Router {
   const router = Router({ mergeParams: true });
   const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+  const validationCache = options.validationCache
+    ?? new ProviderValidationCacheRepository(store.getDatabase() as any);
+  const metrics = options.metrics ?? sharedProviderMetricsService;
   const validationService = options.validationService
     ?? new ProviderValidationService(createDefaultProviderRegistry());
 
@@ -199,11 +227,69 @@ export function createProviderConfigRoutes(
       if (body.forceRefresh !== undefined && typeof body.forceRefresh !== 'boolean') {
         return sendValidationError(req, res, 'forceRefresh must be a boolean');
       }
-      const validation = await validationService.validate(config, {
-        environment: process.env,
-        workspaceRoot: workspace.rootPath,
-        forceRefresh: body.forceRefresh === true,
+      const forceRefresh = body.forceRefresh === true;
+
+      // 04-Provider-Specification §14.5: reuse a short-term validation cache
+      // keyed by config identity + configuration version + executable mtime +
+      // environment profile version + adapter version. Any change misses.
+      const ttlMs = resolveProviderValidationCacheTtlMs();
+      const cacheKey = computeProviderValidationCacheKey({
+        providerConfigId: config.id,
+        configurationVersion: config.version,
+        executableMtimeMs: resolveExecutableMtimeMs(config.executable),
+        environmentProfileVersion: null,
+        adapterVersion: resolveFrozenProviderIdentity(config)?.adapterVersion ?? config.adapterId,
       });
+
+      let validation: ProviderValidationResult | undefined;
+      if (ttlMs > 0 && !forceRefresh) {
+        const cachedJson = validationCache.get(cacheKey, new Date().toISOString());
+        if (cachedJson !== null) {
+          try {
+            validation = { ...JSON.parse(cachedJson) as ProviderValidationResult, fromCache: true };
+          } catch {
+            validation = undefined;
+          }
+        }
+      }
+
+      if (validation === undefined) {
+        const startedAt = Date.now();
+        validation = await validationService.validate(config, {
+          environment: process.env,
+          workspaceRoot: workspace.rootPath,
+          forceRefresh,
+        });
+        const latencyMs = Date.now() - startedAt;
+        if (ttlMs > 0) {
+          validationCache.set({
+            workspaceId: workspace.id,
+            providerConfigId: config.id,
+            cacheKey,
+            configurationVersion: config.version,
+            resultJson: JSON.stringify(validation),
+            now: new Date().toISOString(),
+            ttlMs,
+          });
+        }
+        metrics.recordValidation({
+          workspaceId: workspace.id,
+          providerConfigId: config.id,
+          valid: validation.valid,
+          authFailure: isAuthFailure(validation),
+          fromCache: false,
+          latencyMs,
+        });
+      } else {
+        metrics.recordValidation({
+          workspaceId: workspace.id,
+          providerConfigId: config.id,
+          valid: validation.valid,
+          authFailure: isAuthFailure(validation),
+          fromCache: true,
+          latencyMs: 0,
+        });
+      }
       return res.status(200).json({
         providerConfigId: config.id,
         workspaceId: workspace.id,

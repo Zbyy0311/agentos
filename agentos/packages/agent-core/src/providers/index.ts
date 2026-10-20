@@ -84,3 +84,9 @@ export type {
   ProviderFallbackPolicy,
   ProviderFallbackPolicyV1,
 } from './fallback.js';
+export {
+  computeProviderValidationCacheKey,
+  resolveProviderValidationCacheTtlMs,
+  DEFAULT_PROVIDER_VALIDATION_CACHE_TTL_MS,
+} from './validationCache.js';
+export type { ProviderValidationCacheKeyParts } from './validationCache.js';
