@@ -142,7 +142,22 @@ const RUN_ALLOWED_TRANSITIONS: Record<V2RunStatus, V2RunStatus[]> = {
 };
 
 export class RunRepository {
+  #hasPriorityColumn: boolean | undefined;
+
   constructor(private readonly db: TransactionDatabase) {}
+
+  // Legacy schemas predating migration 065 have no runs.priority column;
+  // probing once per repository instance keeps those databases writable
+  // (the value is dropped only there, mirroring the provider-config pattern).
+  #hasPriority(): boolean {
+    if (this.#hasPriorityColumn === undefined) {
+      const row = this.db.prepare(
+        "SELECT name FROM pragma_table_info('runs') WHERE name = 'priority'",
+      ).get();
+      this.#hasPriorityColumn = row !== undefined;
+    }
+    return this.#hasPriorityColumn;
+  }
 
   insert(input: InsertRunInput): Run {
     const id = createEntityId('run');
@@ -177,26 +192,48 @@ export class RunRepository {
       throw new RunValidationError('priority must be an integer between -1000000 and 1000000');
     }
     try {
-      this.db.prepare(`
-        INSERT INTO runs (
-          id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
-          objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
-          started_at, completed_at, created_by, created_at, updated_at, version, priority
-        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1, ?)
-      `).run(
-        id,
-        input.workspaceId,
-        input.taskId,
-        parentRunId,
-        rootRunId,
-        reason,
-        input.origin,
-        input.objective ?? null,
-        input.createdBy,
-        now,
-        now,
-        priority,
-      );
+      if (this.#hasPriority()) {
+        this.db.prepare(`
+          INSERT INTO runs (
+            id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
+            objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
+            started_at, completed_at, created_by, created_at, updated_at, version, priority
+          ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1, ?)
+        `).run(
+          id,
+          input.workspaceId,
+          input.taskId,
+          parentRunId,
+          rootRunId,
+          reason,
+          input.origin,
+          input.objective ?? null,
+          input.createdBy,
+          now,
+          now,
+          priority,
+        );
+      } else {
+        this.db.prepare(`
+          INSERT INTO runs (
+            id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
+            objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
+            started_at, completed_at, created_by, created_at, updated_at, version
+          ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1)
+        `).run(
+          id,
+          input.workspaceId,
+          input.taskId,
+          parentRunId,
+          rootRunId,
+          reason,
+          input.origin,
+          input.objective ?? null,
+          input.createdBy,
+          now,
+          now,
+        );
+      }
     } catch (err) {
       if (err instanceof Error && err.message.includes('UNIQUE constraint failed: runs.task_id')) {
         throw new RunActiveExistsError(input.taskId);
