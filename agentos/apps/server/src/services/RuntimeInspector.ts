@@ -18,6 +18,17 @@ import type {
 } from '../store/WorkspaceAdmissionRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import {
+  groupTimelineItems,
+  projectTimelineItems,
+  TIMELINE_GROUPS,
+  TIMELINE_MODES,
+  type InspectorTimelineGroup,
+  type InspectorTimelineItem,
+  type TimelineEventInput,
+  type TimelineGroup,
+  type TimelineMode,
+} from './RuntimeTimeline.js';
 import type { OperationService } from './OperationService.js';
 import {
   projectConversationCompaction,
@@ -44,6 +55,7 @@ export type RuntimeInspectorErrorCode =
   | 'INPUT_INVALID'
   | 'RUN_NOT_FOUND'
   | 'SNAPSHOT_MISSING'
+  | 'CURSOR_EXPIRED'
   | 'READ_FAILED';
 
 export class RuntimeInspectorError extends Error {
@@ -258,6 +270,49 @@ export interface RuntimeInspectorQuery {
 
 const DEFAULT_MAX_EVENTS = 200;
 const MAX_MAX_EVENTS = 1000;
+const DEFAULT_TIMELINE_LIMIT = 200;
+const MAX_TIMELINE_LIMIT = 1000;
+
+/**
+ * §39-46 Timeline projection query. The Lite single projection (`inspect`)
+ * stays unchanged; this is a separate, read-only view over the same canonical
+ * Events with mode/group/filter semantics.
+ */
+export interface RuntimeInspectorTimelineQuery {
+  readonly workspaceId: string;
+  readonly runId: string;
+  /** Summary (aggregated) | Detailed (one item per Event) | Raw (+ payload digest). */
+  readonly mode?: TimelineMode;
+  /** none (flat, default) | stage | correlation | domain. */
+  readonly group?: TimelineGroup;
+  /** Exact canonical Event types to keep (§44). */
+  readonly types?: readonly string[];
+  /** Severities to keep (§44). */
+  readonly severities?: readonly string[];
+  /** Keep one Stage (§44). */
+  readonly stageId?: string;
+  /** Include Events with `sequence > afterSequence` (default 0). */
+  readonly afterSequence?: number;
+  /** Maximum Events read for the page; defaults to 200, caps at 1000. */
+  readonly limit?: number;
+}
+
+export interface InspectorTimelineProjection {
+  readonly runId: string;
+  readonly mode: TimelineMode;
+  readonly group: TimelineGroup;
+  /** Flat items when group=none. */
+  readonly items: readonly InspectorTimelineItem[];
+  /** Populated when group is stage|correlation|domain. */
+  readonly groups: readonly InspectorTimelineGroup[];
+  /** Highest Event sequence considered by this page. */
+  readonly highWatermark: number;
+  /** Cursor for the next page: last raw Event sequence of this page. */
+  readonly nextAfterSequence: number;
+  readonly hasMore: boolean;
+  /** True when the Event read exceeded the requested limit. */
+  readonly truncated: boolean;
+}
 
 interface ProcessRow {
   id: string;
@@ -432,6 +487,98 @@ export class RuntimeInspector {
       highWatermark,
       memoryContext,
       compaction: toCompactionSummary(this.db, query.workspaceId, query.runId),
+      truncated,
+    };
+  }
+
+  /**
+   * §39-46 Timeline projection: a mode/group/filter view over the same
+   * canonical Events as `inspect`, never a new source of facts. Pagination is
+   * stable: the limit bounds raw Events (before aggregation), so a Summary
+   * page never hides unbounded high-frequency tail Events behind an item cap.
+   */
+  timeline(query: RuntimeInspectorTimelineQuery): InspectorTimelineProjection {
+    if (typeof query !== 'object' || query === null
+      || !nonBlank(query.workspaceId) || !nonBlank(query.runId)) {
+      throw new RuntimeInspectorError('INPUT_INVALID');
+    }
+    const mode: TimelineMode = query.mode ?? 'summary';
+    if (!TIMELINE_MODES.includes(mode)) throw new RuntimeInspectorError('INPUT_INVALID');
+    const group: TimelineGroup = query.group ?? 'none';
+    if (!TIMELINE_GROUPS.includes(group)) throw new RuntimeInspectorError('INPUT_INVALID');
+    const afterSequence = query.afterSequence ?? 0;
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+      throw new RuntimeInspectorError('INPUT_INVALID');
+    }
+    const limit = query.limit ?? DEFAULT_TIMELINE_LIMIT;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_TIMELINE_LIMIT) {
+      throw new RuntimeInspectorError('INPUT_INVALID');
+    }
+    const types = query.types === undefined ? undefined
+      : new Set(query.types.filter(entry => nonBlank(entry)));
+    const severities = query.severities === undefined ? undefined
+      : new Set(query.severities.filter(entry => nonBlank(entry)));
+    if ((types !== undefined && types.size === 0)
+      || (severities !== undefined && severities.size === 0)) {
+      throw new RuntimeInspectorError('INPUT_INVALID');
+    }
+    const stageId = query.stageId === undefined ? undefined
+      : nonBlank(query.stageId) ? query.stageId : undefined;
+
+    const run = this.runs.findById(query.workspaceId, query.runId);
+    if (run === undefined) throw new RuntimeInspectorError('RUN_NOT_FOUND');
+    // §135: a cursor that claims Events past the Run's durable tail can never
+    // be reconciled incrementally; the client must fully resync.
+    if (afterSequence > run.nextEventSequence - 1) {
+      throw new RuntimeInspectorError('CURSOR_EXPIRED');
+    }
+
+    let records;
+    try {
+      records = this.events.listByRunAfterSequence(query.runId, afterSequence);
+    } catch (error) {
+      if (error instanceof RuntimeEventRepositoryError) throw new RuntimeInspectorError('READ_FAILED');
+      throw new RuntimeInspectorError('READ_FAILED');
+    }
+    const page = records.slice(0, limit);
+    const truncated = records.length > limit;
+    const highWatermark = records.length === 0
+      ? afterSequence
+      : Math.max(...records.map(record => record.event.sequence));
+    const nextAfterSequence = page.length === 0
+      ? afterSequence
+      : page[page.length - 1]!.event.sequence;
+
+    const events: TimelineEventInput[] = page.map(record => {
+      const event = record.event;
+      return {
+        eventId: event.id,
+        runId: event.runId,
+        sequence: event.sequence,
+        type: event.type,
+        timestamp: event.timestamp,
+        severity: event.severity,
+        visibility: event.visibility,
+        source: event.source,
+        stageId: event.stageId,
+        processId: event.processId,
+        artifactId: event.artifactId,
+        approvalRequestId: event.approvalRequestId,
+        correlationId: event.correlationId,
+        payload: event.payload,
+      };
+    });
+
+    const items = projectTimelineItems({ events, mode, filter: { types, severities, stageId } });
+    return {
+      runId: run.id,
+      mode,
+      group,
+      items: group === 'none' ? items : [],
+      groups: groupTimelineItems(items, group),
+      highWatermark,
+      nextAfterSequence,
+      hasMore: truncated,
       truncated,
     };
   }
