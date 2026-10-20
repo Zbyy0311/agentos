@@ -196,6 +196,7 @@ describe('M2.4 migration 005/006 schema', () => {
         'id', 'workspace_id', 'task_id', 'parent_run_id', 'root_run_id', 'status', 'reason', 'origin',
         'objective', 'failure_code', 'failure_message', 'cancellation_requested_at', 'next_event_sequence',
         'started_at', 'completed_at', 'created_by', 'created_at', 'updated_at', 'version', 'recovery_required',
+        'priority',
       ]);
       const byName = new Map(cols.map(c => [c.name, c]));
       assert.equal(byName.get('workspace_id')!.notnull, 1);
