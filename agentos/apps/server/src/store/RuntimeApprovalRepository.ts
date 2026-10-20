@@ -8,6 +8,7 @@ export interface RuntimeApprovalRequestRecord {
   readonly id: string;
   readonly workspaceId: string;
   readonly runId: string;
+  readonly conversationId: string | null;
   readonly runSnapshotId: string;
   readonly stageId: string | null;
   readonly stageAttempt: number;

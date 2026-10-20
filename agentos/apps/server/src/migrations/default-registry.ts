@@ -64,6 +64,7 @@ import { migration063 } from './migrations/063-conversation-search-readstate.js'
 import { migration064 } from './migrations/064-p5a-event-operations.js';
 import { migration065 } from './migrations/065-system-domain.js';
 import { migration066 } from './migrations/066-provider-validation-cache.js';
+import { migration067 } from './migrations/067-conversation-summaries-notifications.js';
 import { migration068 } from './migrations/068-run-priority-concurrency.js';
 import type { Migration } from './types.js';
 
@@ -196,5 +197,6 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration064,
   migration065,
   migration066,
+  migration067,
   migration068,
 ];
