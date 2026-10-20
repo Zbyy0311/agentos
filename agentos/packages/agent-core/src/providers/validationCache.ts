@@ -5,9 +5,9 @@ import { createHash } from 'node:crypto';
  *
  * The cache key is a canonical hash over every input that can change the
  * validation outcome: the Provider configuration identity, its optimistic
- * configuration version, the resolved executable mtime, the environment
- * profile version and the frozen adapter version. Any change must produce a
- * different key, so stale results can never be replayed.
+ * configuration version, the resolved executable mtime and path identity, the
+ * environment profile version and the frozen adapter version. Any change must
+ * produce a different key, so stale results can never be replayed.
  */
 
 export interface ProviderValidationCacheKeyParts {
@@ -15,7 +15,11 @@ export interface ProviderValidationCacheKeyParts {
   readonly configurationVersion: number;
   /** Executable file mtime in ms since epoch; null when it cannot be resolved. */
   readonly executableMtimeMs: number | null;
-  /** Environment profile version; null when no profile is attached or it is unversioned. */
+  /** Canonical resolved executable path, kept only inside the hashed cache key. */
+  readonly executablePath?: string | null;
+  /** Stable filesystem identity used to detect same-mtime replacements. */
+  readonly executableFingerprint?: string | null;
+  /** Environment profile version; callers must bypass caching for an attached unversioned profile. */
   readonly environmentProfileVersion: number | null;
   readonly adapterVersion: string;
 }
@@ -25,6 +29,8 @@ export function computeProviderValidationCacheKey(parts: ProviderValidationCache
     providerConfigId: parts.providerConfigId,
     configurationVersion: parts.configurationVersion,
     executableMtimeMs: parts.executableMtimeMs,
+    executablePath: parts.executablePath ?? null,
+    executableFingerprint: parts.executableFingerprint ?? null,
     environmentProfileVersion: parts.environmentProfileVersion,
     adapterVersion: parts.adapterVersion,
   });

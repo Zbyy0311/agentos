@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
@@ -21,6 +21,9 @@ import {
   computeProviderValidationCacheKey,
   resolveProviderValidationCacheTtlMs,
   resolveFrozenProviderIdentity,
+  KIMICODE_DEFAULT_EXECUTABLE,
+  CODEX_DEFAULT_EXECUTABLE,
+  OPENCODE_DEFAULT_EXECUTABLE,
 } from '@agentos/agent-core/providers';
 import { NodeProcessProbePort } from '@agentos/process-runtime';
 import type { ProviderValidationResult } from '@agentos/agent-core/providers';
@@ -145,15 +148,119 @@ export interface ProviderConfigRouteOptions {
   readonly metrics?: ProviderMetricsService;
 }
 
-/** Executable mtime (ms) when the configured executable is a stat-able path; null otherwise. */
-function resolveExecutableMtimeMs(executable: string | undefined): number | null {
+interface ExecutableCacheIdentity {
+  readonly path: string;
+  readonly mtimeMs: number;
+  readonly fingerprint: string;
+}
+
+/**
+ * Resolves only executable forms whose validation identity can be proven from
+ * the current adapter rules. Relative paths and cwd-shadowed bare commands are
+ * deliberately uncached because adapters probe them with differing cwd rules.
+ */
+function resolveExecutableCacheIdentity(
+  config: ProviderConfiguration,
+  environment: NodeJS.ProcessEnv,
+): ExecutableCacheIdentity | null {
+  if (config.environmentProfileId?.trim()) return null;
+  const frozenIdentity = resolveFrozenProviderIdentity(config);
+  if (!frozenIdentity) return null;
+
+  const providerType = String(config.providerType);
+  const configured = config.executable;
+  let executable: string | undefined;
+  let defaultExecutable: string | undefined;
+  let override: string | undefined;
+  if (providerType === 'codex' && frozenIdentity.adapterId === 'builtin.codex') {
+    override = environment.AGENTOS_CODEX_CLI;
+    defaultExecutable = CODEX_DEFAULT_EXECUTABLE;
+  } else if ((providerType === 'kimicode' || providerType === 'kimi')
+    && frozenIdentity.adapterId === 'builtin.kimicode') {
+    override = environment.AGENTOS_KIMICODE_CLI ?? environment.AGENTOS_KIMI_CLI;
+    defaultExecutable = KIMICODE_DEFAULT_EXECUTABLE;
+  } else if (providerType === 'opencode' && frozenIdentity.adapterId === 'builtin.opencode') {
+    override = environment.AGENTOS_OPENCODE_CLI;
+    defaultExecutable = OPENCODE_DEFAULT_EXECUTABLE;
+  } else if (providerType === 'custom-cli' && frozenIdentity.adapterId === 'builtin.custom-cli') {
+    override = environment.AGENTOS_CUSTOM_CLI;
+  } else {
+    return null;
+  }
+
+  // Adapter discovery treats an explicitly configured command as authoritative.
+  // Keep its blank/whitespace edge cases uncached rather than guessing fallback behavior.
+  if (configured !== undefined) {
+    if (!configured.trim() || configured !== configured.trim()) return null;
+    executable = configured;
+  } else if (override !== undefined) {
+    if (!override.trim() || override !== override.trim()) return null;
+    executable = override;
+  } else {
+    executable = defaultExecutable;
+  }
   if (!executable) return null;
-  if (!isAbsolute(executable) && !executable.includes('/') && !executable.includes('\\')) return null;
+
+  if (isAbsolute(executable)) return statExecutableIdentity(executable);
+  if (executable.includes('/') || executable.includes('\\')) return null;
+  // Kimi's discovery only PATH-resolves its built-in default; configured or
+  // environment override candidates are checked as-is and may stay unresolved.
+  if ((providerType === 'kimicode' || providerType === 'kimi')
+    && (configured !== undefined || override !== undefined)) return null;
+
+  // Adapter discovery first checks a bare command relative to the server cwd.
+  // Such a result can be interpreted against another cwd by the probe port.
   try {
-    return Math.trunc(statSync(executable).mtimeMs);
+    statSync(resolve(process.cwd(), executable));
+    return null;
+  } catch {
+    // No cwd-local candidate; continue with the adapter's PATH search.
+  }
+
+  const pathValue = environment.PATH ?? environment.Path ?? '';
+  const extensions = process.platform === 'win32'
+    ? (environment.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').map(extension => extension.toLowerCase())
+    : [''];
+  for (const directory of pathValue.split(delimiter).filter(Boolean)) {
+    // Check every PATHEXT entry in its adapter-defined order.
+    for (const extension of extensions) {
+      const pathCandidate = join(directory, `${executable}${extension}`);
+      try {
+        statSync(pathCandidate);
+      } catch {
+        continue;
+      }
+      if (!isAbsolute(pathCandidate)) return null;
+      return statExecutableIdentity(pathCandidate);
+    }
+  }
+
+  if (configured === undefined && override === undefined && defaultExecutable === KIMICODE_DEFAULT_EXECUTABLE) {
+    const home = environment.USERPROFILE ?? environment.HOME;
+    if (home) {
+      return statExecutableIdentity(join(home, '.kimi-code', 'bin', process.platform === 'win32' ? 'kimi.exe' : 'kimi'));
+    }
+  }
+  return null;
+}
+
+function statExecutableIdentity(path: string): ExecutableCacheIdentity | null {
+  try {
+    const resolvedPath = resolve(path);
+    const stat = statSync(resolvedPath, { bigint: true });
+    if (!stat.isFile()) return null;
+    return {
+      path: resolvedPath,
+      mtimeMs: Number(stat.mtimeMs),
+      fingerprint: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(value => value.toString()).join(':'),
+    };
   } catch {
     return null;
   }
+}
+
+function sameExecutableCacheIdentity(left: ExecutableCacheIdentity, right: ExecutableCacheIdentity): boolean {
+  return left.path === right.path && left.mtimeMs === right.mtimeMs && left.fingerprint === right.fingerprint;
 }
 
 function isAuthFailure(validation: ProviderValidationResult): boolean {
@@ -230,25 +337,33 @@ export function createProviderConfigRoutes(
       const forceRefresh = body.forceRefresh === true;
 
       // 04-Provider-Specification §14.5: reuse a short-term validation cache
-      // keyed by config identity + configuration version + executable mtime +
-      // environment profile version + adapter version. Any change misses.
+      // keyed by config identity + configuration version + executable identity +
+      // environment profile version + adapter version. Unprovable identities bypass reuse.
       const ttlMs = resolveProviderValidationCacheTtlMs();
-      const cacheKey = computeProviderValidationCacheKey({
+      const executableIdentity = ttlMs > 0 ? resolveExecutableCacheIdentity(config, process.env) : null;
+      const cacheKey = executableIdentity === null ? null : computeProviderValidationCacheKey({
         providerConfigId: config.id,
         configurationVersion: config.version,
-        executableMtimeMs: resolveExecutableMtimeMs(config.executable),
+        executableMtimeMs: executableIdentity.mtimeMs,
+        executablePath: executableIdentity.path,
+        executableFingerprint: executableIdentity.fingerprint,
         environmentProfileVersion: null,
-        adapterVersion: resolveFrozenProviderIdentity(config)?.adapterVersion ?? config.adapterId,
+        adapterVersion: resolveFrozenProviderIdentity(config)!.adapterVersion,
       });
 
       let validation: ProviderValidationResult | undefined;
-      if (ttlMs > 0 && !forceRefresh) {
+      if (cacheKey !== null && !forceRefresh) {
         const cachedJson = validationCache.get(cacheKey, new Date().toISOString());
         if (cachedJson !== null) {
-          try {
-            validation = { ...JSON.parse(cachedJson) as ProviderValidationResult, fromCache: true };
-          } catch {
-            validation = undefined;
+          const currentExecutableIdentity = resolveExecutableCacheIdentity(config, process.env);
+          if (currentExecutableIdentity !== null
+            && executableIdentity !== null
+            && sameExecutableCacheIdentity(executableIdentity, currentExecutableIdentity)) {
+            try {
+              validation = { ...JSON.parse(cachedJson) as ProviderValidationResult, fromCache: true };
+            } catch {
+              validation = undefined;
+            }
           }
         }
       }
@@ -261,16 +376,26 @@ export function createProviderConfigRoutes(
           forceRefresh,
         });
         const latencyMs = Date.now() - startedAt;
-        if (ttlMs > 0) {
-          validationCache.set({
-            workspaceId: workspace.id,
-            providerConfigId: config.id,
-            cacheKey,
-            configurationVersion: config.version,
-            resultJson: JSON.stringify(validation),
-            now: new Date().toISOString(),
-            ttlMs,
-          });
+        if (cacheKey !== null && executableIdentity !== null) {
+          const afterProbeIdentity = resolveExecutableCacheIdentity(config, process.env);
+          const reportedExecutableIdentity = validation.executableResolved === undefined
+            ? null
+            : statExecutableIdentity(validation.executableResolved);
+          const reportedExecutableMatches = validation.executableResolved === undefined
+            || (reportedExecutableIdentity !== null && reportedExecutableIdentity.path === executableIdentity.path);
+          if (afterProbeIdentity !== null
+            && sameExecutableCacheIdentity(executableIdentity, afterProbeIdentity)
+            && reportedExecutableMatches) {
+            validationCache.set({
+              workspaceId: workspace.id,
+              providerConfigId: config.id,
+              cacheKey,
+              configurationVersion: config.version,
+              resultJson: JSON.stringify(validation),
+              now: new Date().toISOString(),
+              ttlMs,
+            });
+          }
         }
         metrics.recordValidation({
           workspaceId: workspace.id,

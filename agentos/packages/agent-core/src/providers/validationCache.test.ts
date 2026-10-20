@@ -11,6 +11,8 @@ describe('provider validation cache key', () => {
       providerConfigId: 'provider-1',
       configurationVersion: 3,
       executableMtimeMs: 1234,
+      executablePath: 'C:/tools/provider.exe',
+      executableFingerprint: 'dev:ino:size:mtime:ctime',
       environmentProfileVersion: null,
       adapterVersion: 'builtin.custom-cli@1',
     });
@@ -18,6 +20,8 @@ describe('provider validation cache key', () => {
       providerConfigId: 'provider-1',
       configurationVersion: 3,
       executableMtimeMs: 1234,
+      executablePath: 'C:/tools/provider.exe',
+      executableFingerprint: 'dev:ino:size:mtime:ctime',
       environmentProfileVersion: null,
       adapterVersion: 'builtin.custom-cli@1',
     });
@@ -30,6 +34,8 @@ describe('provider validation cache key', () => {
       providerConfigId: 'provider-1',
       configurationVersion: 3,
       executableMtimeMs: 1234,
+      executablePath: 'C:/tools/provider.exe',
+      executableFingerprint: 'dev:ino:size:mtime:ctime',
       environmentProfileVersion: null,
       adapterVersion: 'builtin.custom-cli@1',
     };
@@ -39,6 +45,8 @@ describe('provider validation cache key', () => {
       { ...base, configurationVersion: 4 },
       { ...base, executableMtimeMs: 5678 },
       { ...base, executableMtimeMs: null },
+      { ...base, executablePath: 'D:/other/provider.exe' },
+      { ...base, executableFingerprint: 'dev:replacement:size:mtime:ctime' },
       { ...base, environmentProfileVersion: 2 },
       { ...base, adapterVersion: 'builtin.custom-cli@2' },
     ];
