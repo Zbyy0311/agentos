@@ -601,7 +601,7 @@ test('Migration 012 exposes exact immutable FK, index and trigger structures', (
       (db.prepare('PRAGMA index_info(runtime_events_run_correlation_sequence)').all() as Array<{ seqno: number; name: string }>).map(row => row.name),
       ['run_id', 'correlation_id', 'sequence'],
     );
-    assert.equal(tableExists(db, 'scheduler_jobs'), false);
+    assert.equal(tableExists(db, 'scheduler_jobs'), true);
     assert.equal(columns(db, 'run_stages').filter(column => column === 'version').length, 1);
 
     const outboxTrigger = triggerSql(db, 'outbox_messages_identity_immutable');
