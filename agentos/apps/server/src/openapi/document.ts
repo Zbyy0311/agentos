@@ -381,6 +381,79 @@ export const OPENAPI_DOCUMENT = {
         },
       }),
     },
+    '/api/workspaces/{workspaceId}/runs/{runId}/processes': {
+      get: v2Operation('List run processes', 'Process Runtime query (§86): the runtime_processes rows of one Run, workspace-bounded. Read-only; never mutates, never spawns.', {
+        parameters: [WORKSPACE_ID_PARAMETER, RUN_ID_PARAMETER],
+        responses: {
+          '200': jsonResponse(200, 'Process list', { type: 'object' }),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or RUN_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/processes/{processId}': {
+      get: v2Operation('Get process', 'Process Runtime query (§86): one runtime_processes snapshot, workspace-bounded.', {
+        parameters: [WORKSPACE_ID_PARAMETER, pathParameter('processId', 'Canonical process identifier')],
+        responses: {
+          '200': jsonResponse(200, 'Process snapshot', { type: 'object' }),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or PROCESS_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/processes/{processId}/tree': {
+      get: v2Operation('Get process tree', 'Process Runtime query (§86): parent/child hierarchy built from the runtime_processes parent relation of the process Run.', {
+        parameters: [WORKSPACE_ID_PARAMETER, pathParameter('processId', 'Canonical process identifier')],
+        responses: {
+          '200': jsonResponse(200, 'Process tree', { type: 'object' }),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or PROCESS_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/processes/{processId}/events': {
+      get: v2Operation('Get process events', 'Process Runtime query (§86): durable runtime_events bound to this Process, ascending sequence, bounded page (default limit 50, capped at 200).', {
+        parameters: [
+          WORKSPACE_ID_PARAMETER,
+          pathParameter('processId', 'Canonical process identifier'),
+          queryParameter('afterSequence', 'Exclusive lower sequence bound. Defaults to 0.', { type: 'integer', minimum: 0, default: 0 }),
+          queryParameter('limit', 'Page size. Defaults to 50; maximum 200.', { type: 'integer', minimum: 1, maximum: 200, default: 50 }),
+        ],
+        responses: {
+          '200': jsonResponse(200, 'Process event page', { type: 'object' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or PROCESS_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/processes/{processId}/output': {
+      get: v2Operation('Get process output', 'Raw Output Artifact read (§55/§86): paged stdout/stderr from the restricted artifact sink. Without an artifact the response is an explicitly marked fallback page (source memory/none plus a warning), never a fabricated buffer.', {
+        parameters: [
+          WORKSPACE_ID_PARAMETER,
+          pathParameter('processId', 'Canonical process identifier'),
+          queryParameter('stream', 'stdout or stderr.', { type: 'string', enum: ['stdout', 'stderr'] }),
+          queryParameter('offset', 'Byte offset into the retained artifact. Defaults to 0.', { type: 'integer', minimum: 0, default: 0 }),
+          queryParameter('limit', 'Page size in bytes. Defaults to 65536; maximum 1048576.', { type: 'integer', minimum: 1, maximum: 1048576, default: 65536 }),
+        ],
+        responses: {
+          '200': jsonResponse(200, 'Output page (artifact or marked fallback)', { type: 'object' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or PROCESS_NOT_FOUND'),
+        },
+      }),
+    },
+    '/api/workspaces/{workspaceId}/processes/{processId}/stop': {
+      post: v2Operation('Stop process', 'Process Runtime control (§87, minimal): graceful stop through the ProcessCancelCoordinator. Idempotent per Process (stable idempotency key); terminal Processes join as a no-op. Pause/resume stay on the Run API; cleanup stays in the maintenance domain.', {
+        parameters: [WORKSPACE_ID_PARAMETER, pathParameter('processId', 'Canonical process identifier')],
+        requestBody: jsonBody({
+          type: 'object',
+          properties: { reason: { type: 'string' } },
+        }, false),
+        responses: {
+          '200': jsonResponse(200, 'Stop accepted (or already terminal)', { type: 'object' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '404': problemResponse(404, 'WORKSPACE_NOT_FOUND or PROCESS_NOT_FOUND'),
+          '409': problemResponse(409, 'PROCESS_CLAIM_CONFLICT'),
+        },
+      }),
+    },
     '/api/tasks/{taskId}/runs': {
       post: canonicalOperation('Create run', 'Canonical run creation (M3 P4B). Delegates to the same TaskRunService application behavior and durable idempotency chain as the current-v2 route; the owning workspace is resolved from the opaque taskId. Returns the created queued run (201).', {
         parameters: [TASK_ID_PARAMETER, IDEMPOTENCY_KEY_PARAMETER],

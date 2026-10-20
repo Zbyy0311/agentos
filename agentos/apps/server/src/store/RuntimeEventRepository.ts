@@ -732,6 +732,21 @@ export class RuntimeEventRepository {
     return rows.map(row => this.consumeRow(row)!);
   }
 
+  /**
+   * Process-scoped event page (spec 05 §86): durable events carrying this
+   * Process binding, ascending sequence, bounded page.
+   */
+  listByProcess(workspaceId: string, processId: string, afterSequence = 0, limit = 200): RuntimeEventConsumptionResult[] {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_READ_FAILED', 'Process event query is invalid');
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM runtime_events WHERE workspace_id = ? AND process_id = ? AND sequence > ?
+        AND durability = 'durable' ORDER BY sequence ASC LIMIT ?
+    `).all(workspaceId, processId, afterSequence, limit) as RuntimeEventRow[];
+    return rows.map(row => this.consumeRow(row)!);
+  }
+
   queryByRun(input: RuntimeEventRunQuery): RuntimeEventRunQueryResult {
     if (!Number.isSafeInteger(input.afterSequence) || input.afterSequence < 0
       || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200

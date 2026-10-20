@@ -24,6 +24,20 @@ export interface EventRedactionResult {
   readonly redactedFields: number;
 }
 
+/**
+ * Raw-output redaction patterns: the string values of environment entries
+ * whose key names a credential. Shared by the event redactor and the Raw
+ * Output Artifact writers (spec 05 §55.3 scan mode) so a secret printed to
+ * stdout/stderr never reaches the restricted artifact sink unredacted.
+ */
+export function secretValuesFromEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  return Object.entries(environment)
+    .filter(([key, value]) => SECRET_ENVIRONMENT_KEY.test(key) && typeof value === 'string')
+    .map(([, value]) => value as string);
+}
+
 /** Which detection lane matched: a registered workspace secret or a generic shape. */
 export type SecretMatchKind = 'known-value' | 'generic-pattern';
 
@@ -58,9 +72,7 @@ export class EventRedactionService implements EventPayloadRedactor {
   readonly #secretsByWorkspace = new Map<string, Set<string>>();
 
   registerEnvironmentSecrets(workspaceId: string, environment: Readonly<Record<string, string | undefined>>): void {
-    this.registerValues(workspaceId, Object.entries(environment)
-      .filter(([key, value]) => SECRET_ENVIRONMENT_KEY.test(key) && typeof value === 'string')
-      .map(([, value]) => value as string), 1);
+    this.registerValues(workspaceId, secretValuesFromEnvironment(environment), 1);
   }
 
   registerSecrets(workspaceId: string, values: readonly string[]): void {

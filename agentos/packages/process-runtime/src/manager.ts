@@ -21,7 +21,7 @@ import {
   PROCESS_OUTPUT_BUDGET_BYTES,
   ProcessOutputBudget,
 } from './streams.js';
-import type { StreamLimits, StreamName } from './streams.js';
+import type { StreamChunk, StreamLimits, StreamName } from './streams.js';
 import { ProcessTimers } from './timeouts.js';
 import type { ProcessTimerKind } from './timeouts.js';
 import {
@@ -63,8 +63,32 @@ export interface ProcessManagerOptions {
   readonly clock?: Clock;
   readonly streamLimits?: Partial<StreamLimits>;
   readonly outputBudgetBytes?: number;
+  /**
+   * Optional Raw Output persistence seam (spec 05 §55). When present, every
+   * Process streams its already-redacted stdout/stderr chunks to the
+   * recorder, which owns crash-safe append + finalize. May be async; a
+   * recorder failure degrades to the in-memory bounded buffer only.
+   */
+  readonly outputRecorder?: ProcessOutputRecorder;
   /** Terminal-observation reclaim tuning (defaults below). */
   readonly reclaim?: TerminalReclaimOptions;
+}
+
+/**
+ * One per-stream Raw Output persistence handle. `append` receives ONLY
+ * P1 persist-safe StreamChunks (redacted by the BoundedProcessStream
+ * SecretScanner); `finalize` runs exactly once after the final chunk.
+ */
+export interface ProcessOutputRecorderHandle {
+  append(chunk: StreamChunk): Promise<void>;
+  finalize(): Promise<void>;
+}
+
+export interface ProcessOutputRecorder {
+  begin(
+    processId: ProcessId,
+    stream: StreamName,
+  ): Promise<ProcessOutputRecorderHandle> | ProcessOutputRecorderHandle;
 }
 
 /** Reclaim policy for terminal Processes: bounded observation, then release. */
@@ -203,6 +227,12 @@ export class ProcessManager {
   readonly #clock: Clock;
   readonly #streamLimits: Partial<StreamLimits> | undefined;
   readonly #outputBudgetBytes: number;
+  readonly #outputRecorder: ProcessOutputRecorder | undefined;
+  /** Per-Process per-stream recorder begin promises (P1 has no run context). */
+  readonly #outputPersistence = new Map<
+    ProcessId,
+    ReadonlyMap<StreamName, Promise<ProcessOutputRecorderHandle | null>>
+  >();
   readonly #store = new InMemoryProcessStore();
   readonly #registry = new ProcessHandleRegistry();
   readonly #streams = new Map<
@@ -224,6 +254,7 @@ export class ProcessManager {
     this.#clock = options.clock ?? new SystemClock();
     this.#streamLimits = options.streamLimits;
     this.#outputBudgetBytes = options.outputBudgetBytes ?? PROCESS_OUTPUT_BUDGET_BYTES;
+    this.#outputRecorder = options.outputRecorder;
     this.#reclaimTtlMs = Math.max(0, options.reclaim?.ttlMs ?? TERMINAL_OBSERVATION_TTL_MS);
     this.#reclaimSweepIntervalMs = Math.max(
       1,
@@ -889,6 +920,7 @@ export class ProcessManager {
    */
   #reclaimTerminalLocked(record: ProcessRecord): void {
     this.#streams.delete(record.id);
+    this.#outputPersistence.delete(record.id);
     const internal = this.#stops.get(record.id);
     if (internal !== undefined) {
       // Already resolved at conclusion; resolving again is a no-op and keeps
@@ -1070,8 +1102,26 @@ export class ProcessManager {
       onOverflow: (stream) => this.#onStreamOverflow(id, stream),
     });
     this.#streams.set(id, { stdout, stderr });
-    void this.#drain(stdout);
-    void this.#drain(stderr);
+    if (this.#outputRecorder !== undefined) {
+      const pending = new Map<StreamName, Promise<ProcessOutputRecorderHandle | null>>();
+      for (const name of ['stdout', 'stderr'] as const) {
+        const recorder = this.#outputRecorder;
+        pending.set(name, Promise.resolve()
+          .then(() => recorder.begin(id, name))
+          .catch(() => {
+            this.#store.withLock(() => {
+              const failed = this.#store.getRecord(id);
+              if (failed !== undefined) {
+                this.#store.appendFact(failed, 'process.output_persistence_failed', this.#clock.now());
+              }
+            });
+            return null;
+          }));
+      }
+      this.#outputPersistence.set(id, pending);
+    }
+    void this.#drain(id, stdout);
+    void this.#drain(id, stderr);
     void this.#pump(id, handle.streams.stdout, stdout);
     void this.#pump(id, handle.streams.stderr, stderr);
     void handle.waitExit().then(
@@ -1087,9 +1137,37 @@ export class ProcessManager {
     timers.armFromNativeStart();
   }
 
-  async #drain(stream: BoundedProcessStream): Promise<void> {
-    while ((await stream.next()) !== null) {
-      // Internal consumer keeps pending bounded; persistence is a later phase.
+  async #drain(id: ProcessId, stream: BoundedProcessStream): Promise<void> {
+    // Raw Output persistence (§55): the stream hands over only persist-safe,
+    // already-redacted StreamChunks; each is appended to the recorder and
+    // finalize runs exactly once after the final chunk. A recorder failure
+    // degrades to the in-memory bounded buffer only: the handle is dropped,
+    // the failure is recorded as a fact, and the drain itself never breaks.
+    const pending = this.#outputPersistence.get(id)?.get(stream.name);
+    let recorder = pending === undefined ? null : await pending;
+    for (;;) {
+      const chunk = await stream.next();
+      if (chunk === null) break;
+      if (recorder === null) continue;
+      try {
+        await recorder.append(chunk);
+      } catch {
+        recorder = null;
+        this.#store.withLock(() => {
+          const failed = this.#store.getRecord(id);
+          if (failed !== undefined) {
+            this.#store.appendFact(failed, 'process.output_persistence_failed', this.#clock.now());
+          }
+        });
+      }
+    }
+    if (recorder !== null) {
+      try {
+        await recorder.finalize();
+      } catch {
+        // Persistence must never extend or break the terminal observation
+        // window; the in-memory retained pages stay authoritative.
+      }
     }
   }
 
