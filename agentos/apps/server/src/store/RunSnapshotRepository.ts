@@ -303,7 +303,7 @@ function validateProvider(value: unknown, path: string): void {
   assertString(provider.providerConfigId, `${path}.providerConfigId`, true);
   assertString(provider.name, `${path}.name`, true);
   assertEnum(provider.providerType, `${path}.providerType`, [
-    'codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote',
+    'codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote', 'mock',
   ] as const);
   assertString(provider.adapterId, `${path}.adapterId`, true);
   assertEnum(provider.runtimeMode, `${path}.runtimeMode`, ['cli', 'api', 'ssh', 'container'] as const);

@@ -861,7 +861,11 @@ export type ProviderTypeV1 =
   | 'opencode'
   | 'gemini-cli'
   | 'custom-cli'
-  | 'remote';
+  | 'remote'
+  // P57 §57.2: mock provider for Runtime development, E2E, CI and failure
+  // injection. Only usable when a configuration explicitly selects it; never
+  // part of the production default path.
+  | 'mock';
 
 export type RuntimeModeV1 = 'cli' | 'api' | 'ssh' | 'container';
 
