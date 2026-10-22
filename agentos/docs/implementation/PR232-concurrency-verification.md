@@ -115,3 +115,10 @@ excludes only that exact two-line runtime warning; all application diagnostics
 and the real SQLite-close/late-terminal assertions remain enforced. The full
 16-file affected gate again passed **185 tests, 5 configured Provider skips,
 0 failures**. This test-only correction requires a fresh exact-head CI run.
+
+The next Windows run passed the warning assertion but timed out the first queue
+test after a 13.1-second cold fixture bootstrap under its 10-second whole-test
+deadline. The bootstrap budget is now 30 seconds; the production shutdown grace
+stays 5 seconds and every deferred-cleanup/closed-store assertion is retained.
+That same run also hit the unchanged P2 restart fixture's request timeout, which
+is tracked separately from the queue ownership implementation.

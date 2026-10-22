@@ -17,6 +17,10 @@ function deferred() {
 }
 
 const nextTurn = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
+// A cold Windows CI fixture applies the complete SQLite migration chain before
+// exercising the queue. Keep its bootstrap budget separate from the production
+// shutdown grace (5 seconds below) and from the deterministic drain assertions.
+const QUEUE_TEST_TIMEOUT_MS = 30_000;
 
 function isSqliteRuntimeWarning(args: readonly unknown[]): boolean {
   // Node 22 can emit this deferred process warning through console.error after
@@ -61,7 +65,7 @@ async function fixture() {
   };
 }
 
-test('closeQueues waits for a deferred committed terminal hook before SQLite closes and rejects later queue work', { timeout: 10_000 }, async t => {
+test('closeQueues waits for a deferred committed terminal hook before SQLite closes and rejects later queue work', { timeout: QUEUE_TEST_TIMEOUT_MS }, async t => {
   const fx = await fixture();
   const entered = deferred();
   const release = deferred();
@@ -98,7 +102,7 @@ test('closeQueues waits for a deferred committed terminal hook before SQLite clo
   } finally { release.resolve(); await fx.close(); }
 });
 
-test('closeQueues owns a pump drive after claim resolution and drains its later reentrant terminal cleanup', { timeout: 10_000 }, async t => {
+test('closeQueues owns a pump drive after claim resolution and drains its later reentrant terminal cleanup', { timeout: QUEUE_TEST_TIMEOUT_MS }, async t => {
   const fx = await fixture();
   const driveStarted = deferred();
   const finishDrive = deferred();
@@ -143,7 +147,7 @@ test('closeQueues owns a pump drive after claim resolution and drains its later 
   } finally { finishDrive.resolve(); finishTerminal.resolve(); await fx.close(); }
 });
 
-test('runtime shutdown keeps SQLite open for queue cleanup after canonical activity is already terminal', { timeout: 10_000 }, async t => {
+test('runtime shutdown keeps SQLite open for queue cleanup after canonical activity is already terminal', { timeout: QUEUE_TEST_TIMEOUT_MS }, async t => {
   const fx = await fixture();
   const entered = deferred();
   const release = deferred();
@@ -178,7 +182,7 @@ test('runtime shutdown keeps SQLite open for queue cleanup after canonical activ
   } finally { release.resolve(); await fx.close(); }
 });
 
-test('shutdown accepts a late terminal commit from an existing mutation and seals its cleanup only after all owners drain', { timeout: 10_000 }, async t => {
+test('shutdown accepts a late terminal commit from an existing mutation and seals its cleanup only after all owners drain', { timeout: QUEUE_TEST_TIMEOUT_MS }, async t => {
   const fx = await fixture();
   const barrier = new MaintenanceBarrier();
   const releaseMutation = barrier.enterMutation()!;
