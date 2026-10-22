@@ -1,4 +1,5 @@
 import type { TransactionDatabase } from '../store/Transaction.js';
+import type { ProviderMetricsService, ProviderMetricSnapshot } from './ProviderMetricsService.js';
 
 /**
  * 14-Roadmap §181-185 minimal metrics surface. Every value is derived from
@@ -42,6 +43,20 @@ export interface EventMetricsSummary {
   readonly legacyAgentEventsAppended: number;
 }
 
+/** 04-Provider-Specification §61 — per-Provider validation/startup metrics. */
+export interface ProviderMetricsEntry {
+  readonly providerConfigId: string;
+  readonly validationCount: number;
+  readonly validationSuccessCount: number;
+  /** validationSuccessCount / validationCount; null when no validation ran. */
+  readonly validationSuccessRate: number | null;
+  readonly authFailureCount: number;
+  readonly cacheHitCount: number;
+  readonly averageValidationLatencyMs: number | null;
+  /** Average usage_records duration_ms for this Provider config; null when absent. */
+  readonly averageStartupLatencyMs: number | null;
+}
+
 export interface WorkspaceMetricsSummary {
   readonly workspaceId: string;
   readonly generatedAt: string;
@@ -49,6 +64,7 @@ export interface WorkspaceMetricsSummary {
   readonly outbox: OutboxMetricsSummary;
   readonly database: DatabaseMetricsSummary;
   readonly events: EventMetricsSummary;
+  readonly providers: ProviderMetricsEntry[];
 }
 
 interface RunCountRow {
@@ -62,12 +78,14 @@ interface RunCountRow {
 
 export class WorkspaceMetricsService {
   private readonly now: () => string;
+  private readonly providerMetrics?: ProviderMetricsService;
 
   constructor(
     private readonly db: TransactionDatabase,
-    options: { readonly now?: () => string } = {},
+    options: { readonly now?: () => string; readonly providerMetrics?: ProviderMetricsService } = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
+    this.providerMetrics = options.providerMetrics;
   }
 
   get transactionDatabase(): TransactionDatabase {
@@ -131,6 +149,45 @@ export class WorkspaceMetricsService {
         AND (? IS NULL OR timestamp <= ?)
     `).get(workspaceId, from ?? null, from ?? null, to ?? null, to ?? null) as { count: number };
 
+    const startupLatencyRows = this.db.prepare(`
+      SELECT provider_config_id, AVG(duration_ms) AS avg_duration_ms
+      FROM usage_records
+      WHERE workspace_id = ?
+        AND provider_config_id IS NOT NULL
+        AND duration_ms IS NOT NULL
+        AND (? IS NULL OR recorded_at >= ?)
+        AND (? IS NULL OR recorded_at <= ?)
+      GROUP BY provider_config_id
+    `).all(workspaceId, from ?? null, from ?? null, to ?? null, to ?? null) as Array<{
+      provider_config_id: string;
+      avg_duration_ms: number | null;
+    }>;
+    const startupLatencyByConfig = new Map(startupLatencyRows
+      .filter(row => row.avg_duration_ms !== null)
+      .map(row => [row.provider_config_id, Math.round(row.avg_duration_ms as number)]));
+
+    const validationByConfig = new Map<string, ProviderMetricSnapshot>();
+    for (const snapshot of this.providerMetrics?.snapshotForWorkspace(workspaceId) ?? []) {
+      validationByConfig.set(snapshot.providerConfigId, snapshot);
+    }
+    const providerConfigIds = [...new Set([
+      ...startupLatencyByConfig.keys(),
+      ...validationByConfig.keys(),
+    ])].sort();
+    const providers: ProviderMetricsEntry[] = providerConfigIds.map(providerConfigId => {
+      const validation = validationByConfig.get(providerConfigId);
+      return {
+        providerConfigId,
+        validationCount: validation?.validationCount ?? 0,
+        validationSuccessCount: validation?.validationSuccessCount ?? 0,
+        validationSuccessRate: validation?.validationSuccessRate ?? null,
+        authFailureCount: validation?.authFailureCount ?? 0,
+        cacheHitCount: validation?.cacheHitCount ?? 0,
+        averageValidationLatencyMs: validation?.averageValidationLatencyMs ?? null,
+        averageStartupLatencyMs: startupLatencyByConfig.get(providerConfigId) ?? null,
+      };
+    });
+
     const generatedAt = this.now();
     const oldestDueAt = outbox.oldest_due_at;
     const oldestPendingAgeMs = oldestDueAt === null
@@ -171,6 +228,7 @@ export class WorkspaceMetricsService {
         durableRuntimeEventsAppended: runtimeEventCount.count,
         legacyAgentEventsAppended: agentEventCount.count,
       },
+      providers,
     };
   }
 }

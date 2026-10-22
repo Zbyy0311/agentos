@@ -3,6 +3,7 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { sendProblem } from '../problemDetails.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceMetricsService } from '../services/WorkspaceMetricsService.js';
+import { sharedProviderMetricsService, type ProviderMetricsService } from '../services/ProviderMetricsService.js';
 
 /**
  * 14-Roadmap §181-185 minimal monitoring metrics surface (read-only).
@@ -15,10 +16,16 @@ function isValidTimestampParam(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value);
 }
 
-export function createMetricsRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+export function createMetricsRoutes(
+  store: SqliteStore,
+  workspaceManager: WorkspaceManager,
+  options: { readonly providerMetrics?: ProviderMetricsService } = {},
+): Router {
   const router = Router({ mergeParams: true });
   const usageRepository = store.usageRepository();
-  const metricsService = new WorkspaceMetricsService(usageRepository.transactionDatabase);
+  const metricsService = new WorkspaceMetricsService(usageRepository.transactionDatabase, {
+    providerMetrics: options.providerMetrics ?? sharedProviderMetricsService,
+  });
 
   const requireWorkspace = (req: Request, res: Response, workspaceId: string): boolean => {
     if (workspaceManager.get(workspaceId)) return true;

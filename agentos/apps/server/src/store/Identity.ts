@@ -41,6 +41,7 @@ export const ENTITY_ID_PREFIXES = {
   schedulerJob: 'sjob',
   auditRecord: 'audit',
   retentionPolicy: 'rpol',
+  providerValidationCache: 'pvcache',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
