@@ -88,6 +88,7 @@ interface RunRow {
   failure_message: string | null;
   cancellation_requested_at: string | null;
   recovery_required?: number | null;
+  priority?: number | null;
   next_event_sequence: number;
   started_at: string | null;
   completed_at: string | null;
@@ -114,8 +115,10 @@ function mapRow(row: RunRow): Run {
     ...(row.recovery_required === undefined || row.recovery_required === null
       ? {}
       : { recoveryRequired: row.recovery_required === 1 }),
-    nextEventSequence: row.next_event_sequence,
-    startedAt: row.started_at ?? undefined,
+    // §8.3 scheduling priority: omitted from the mapped Run when 0 so the
+    // public Run shape stays unchanged for the vast majority of Runs.
+    ...(row.priority ? { priority: row.priority } : {}),
+    nextEventSequence: row.next_event_sequence,    startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -139,7 +142,22 @@ const RUN_ALLOWED_TRANSITIONS: Record<V2RunStatus, V2RunStatus[]> = {
 };
 
 export class RunRepository {
+  #hasPriorityColumn: boolean | undefined;
+
   constructor(private readonly db: TransactionDatabase) {}
+
+  // Legacy schemas predating migration 068 have no runs.priority column;
+  // probing once per repository instance keeps those databases writable
+  // (the value is dropped only there, mirroring the provider-config pattern).
+  #hasPriority(): boolean {
+    if (this.#hasPriorityColumn === undefined) {
+      const row = this.db.prepare(
+        "SELECT name FROM pragma_table_info('runs') WHERE name = 'priority'",
+      ).get();
+      this.#hasPriorityColumn = row !== undefined;
+    }
+    return this.#hasPriorityColumn;
+  }
 
   insert(input: InsertRunInput): Run {
     const id = createEntityId('run');
@@ -169,26 +187,53 @@ export class RunRepository {
     }
 
     const now = new Date().toISOString();
+    const priority = input.priority ?? 0;
+    if (!Number.isSafeInteger(priority) || priority < -1_000_000 || priority > 1_000_000) {
+      throw new RunValidationError('priority must be an integer between -1000000 and 1000000');
+    }
     try {
-      this.db.prepare(`
-        INSERT INTO runs (
-          id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
-          objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
-          started_at, completed_at, created_by, created_at, updated_at, version
-        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1)
-      `).run(
-        id,
-        input.workspaceId,
-        input.taskId,
-        parentRunId,
-        rootRunId,
-        reason,
-        input.origin,
-        input.objective ?? null,
-        input.createdBy,
-        now,
-        now,
-      );
+      if (this.#hasPriority()) {
+        this.db.prepare(`
+          INSERT INTO runs (
+            id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
+            objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
+            started_at, completed_at, created_by, created_at, updated_at, version, priority
+          ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1, ?)
+        `).run(
+          id,
+          input.workspaceId,
+          input.taskId,
+          parentRunId,
+          rootRunId,
+          reason,
+          input.origin,
+          input.objective ?? null,
+          input.createdBy,
+          now,
+          now,
+          priority,
+        );
+      } else {
+        this.db.prepare(`
+          INSERT INTO runs (
+            id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
+            objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence,
+            started_at, completed_at, created_by, created_at, updated_at, version
+          ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL, ?, ?, ?, 1)
+        `).run(
+          id,
+          input.workspaceId,
+          input.taskId,
+          parentRunId,
+          rootRunId,
+          reason,
+          input.origin,
+          input.objective ?? null,
+          input.createdBy,
+          now,
+          now,
+        );
+      }
     } catch (err) {
       if (err instanceof Error && err.message.includes('UNIQUE constraint failed: runs.task_id')) {
         throw new RunActiveExistsError(input.taskId);

@@ -4,6 +4,7 @@ import { sendProblem } from '../problemDetails.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceMetricsService } from '../services/WorkspaceMetricsService.js';
 import { sharedProviderMetricsService, type ProviderMetricsService } from '../services/ProviderMetricsService.js';
+import { concurrencyLimitsFromEnvironment } from '../services/RunConcurrencyScheduler.js';
 
 /**
  * 14-Roadmap §181-185 minimal monitoring metrics surface (read-only).
@@ -25,6 +26,7 @@ export function createMetricsRoutes(
   const usageRepository = store.usageRepository();
   const metricsService = new WorkspaceMetricsService(usageRepository.transactionDatabase, {
     providerMetrics: options.providerMetrics ?? sharedProviderMetricsService,
+    concurrencyLimits: concurrencyLimitsFromEnvironment(process.env),
   });
 
   const requireWorkspace = (req: Request, res: Response, workspaceId: string): boolean => {

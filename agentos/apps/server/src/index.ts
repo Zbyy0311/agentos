@@ -54,6 +54,7 @@ import { createPreferenceRoutes } from './routes/preferences.js';
 import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
+import { concurrencyLimitsFromEnvironment } from './services/RunConcurrencyScheduler.js';
 import { WorktreeMergeService } from './services/WorktreeMergeService.js';
 import { WorktreeRuntimeEventEmitter } from './services/WorktreeRuntimeEvents.js';
 import { recoverWorktreeRefUpdates } from './services/WorktreeRefJournal.js';
@@ -179,6 +180,9 @@ let maintenancePaused = false;
 let startBackgroundWorkers: (() => void) | undefined;
 let resumeBackgroundQueueWorkers: (() => void) | undefined;
 let worktreeReconcile: Promise<void> | undefined;
+let closeProviderQueues: (() => Promise<void>) | undefined;
+let stopProviderQueueStarts: (() => void) | undefined;
+let drainProviderQueues: (() => Promise<void>) | undefined;
 let maintenanceCoordinator: MaintenanceCoordinator | undefined;
 let localShutdownControl: import('node:net').Server | undefined;
 const maintenanceBarrier = new MaintenanceBarrier();
@@ -209,6 +213,9 @@ async function resumeProductionQueues(input: {
 }): Promise<void> {
   if (!input.runtimeDispatchEnabled || input.barrier.snapshot.quiescing) return;
   await input.withDispatchPermit(async () => {
+    const released = input.providerExecutionChain.reconcileConcurrencyReservations();
+    if (released > 0) input.diagLog(`RUN_CONCURRENCY_RECOVERY releasedReservations=${released}`);
+    await input.providerExecutionChain.pumpQueuedRuns();
     await input.collaborationService.resumeGrantedQueuedRuns()
       .catch(error => input.diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     await input.providerExecutionChain.resumeGrantedResumeFallbackChildren()
@@ -240,6 +247,10 @@ function resumeBackgroundWorkers(): void {
 }
 
 async function stopOwnedBackgroundWorkers(): Promise<void> {
+  // Stop accepting queue work before awaiting any other worker. SQLite stays
+  // open until full drives and their terminal/recovery continuations settle.
+  stopProviderQueueStarts?.();
+  const providerQueueDrain = drainProviderQueues?.();
   try { await closeLocalShutdownControl(localShutdownControl); }
   catch (error) { diagLog(`SHUTDOWN_CONTROL_CLOSE_FAILED error=${String(error)}`); }
   localShutdownControl = undefined;
@@ -254,6 +265,7 @@ async function stopOwnedBackgroundWorkers(): Promise<void> {
   await worktreeReconcile?.catch(error => {
     diagLog(`SHUTDOWN_WORKTREE_RECONCILE_FAILED error=${String(error)}`);
   });
+  await providerQueueDrain;
 }
 
 const requestRuntimeShutdown = createMaintenanceShutdownController(() => ({
@@ -264,6 +276,7 @@ const requestRuntimeShutdown = createMaintenanceShutdownController(() => ({
     : httpServer ? { counts: {}, unknown: true } : { counts: {} },
   server: httpServer,
   stopBackgroundWorkers: stopOwnedBackgroundWorkers,
+  beforeCloseStore: () => closeProviderQueues?.(),
   closeStore: () => {
     if (!store) return;
     try { store.close(); } catch (error) { diagLog(`SHUTDOWN_STORE_CLOSE_FAILED error=${String(error)}`); }
@@ -301,7 +314,12 @@ async function bootstrap(): Promise<void> {
     phase = 'store';
     store = new SqliteStore(DATA_ROOT);
     const worktreeEvents = new WorktreeRuntimeEventEmitter(store.getDatabase(), store.runtimeEventOutboxWriter(), { onAudit: diagLog });
-    const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'), store.worktreeRepository(), worktreeEvents);
+    const worktreeManager = new WorktreeManager(
+      process.env.AGENTOS_WORKTREE_ROOT ?? join(DATA_ROOT, '.agentos', 'worktrees'),
+      store.worktreeRepository(),
+      worktreeEvents,
+      { creationConcurrencyLimit: concurrencyLimitsFromEnvironment(process.env).worktreeCreation },
+    );
     for (const issue of worktreeManager.getLegacyImportReport()) {
       console.warn('[AgentOS Worktree] legacy lease import unresolved: ' + JSON.stringify(issue));
     }
@@ -339,6 +357,9 @@ async function bootstrap(): Promise<void> {
         completedStage: input => collaborationService.completedStage(input),
       },
     });
+    closeProviderQueues = () => providerExecutionChain.closeQueues();
+    stopProviderQueueStarts = () => providerExecutionChain.stopQueueStarts();
+    drainProviderQueues = () => providerExecutionChain.drainQueues();
     collaborationService = new CollaborationWorkflowService({
       store,
       verifiedMemoryFacts: () => providerExecutionChain.verifiedMemoryFacts,
@@ -773,6 +794,9 @@ async function bootstrap(): Promise<void> {
     startBackgroundWorkers();
     if (runtimeDispatchEnabled && !maintenanceBarrier.snapshot.quiescing) {
       void withDispatchPermit(async () => {
+        const released = providerExecutionChain.reconcileConcurrencyReservations();
+        if (released > 0) diagLog(`RUN_CONCURRENCY_RECOVERY releasedReservations=${released}`);
+        await providerExecutionChain.pumpQueuedRuns();
         await collaborationService.resumeGrantedQueuedRuns()
           .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
         await providerExecutionChain.resumeGrantedResumeFallbackChildren()

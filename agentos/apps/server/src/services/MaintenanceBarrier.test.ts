@@ -46,8 +46,20 @@ test('production entry installs write fence before routes and guards canonical, 
   assert.ok(handlerTracking > lastMiddleware && handlerTracking < listen, 'all production router handlers must be tracked before accepting requests');
   assert.match(source, /dispatchRun:\s*async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
   assert.match(source, /runtimeDispatch:\s*\{\s*enabled: runtimeDispatchEnabled,\s*drive: async\s*\([^)]*\)\s*=>\s*\{\s*await withDispatchPermit\(\(\) => providerExecutionChain\.dispatcher\.driveSafely/u);
-  assert.match(source, /if \(!input\.runtimeDispatchEnabled \|\| input\.barrier\.snapshot\.quiescing\) return;[\s\S]*?await input\.withDispatchPermit\(async \(\) => \{\s*await input\.collaborationService\.resumeGrantedQueuedRuns/u);
+  // Reservation recovery and the global queue now precede the specialized
+  // queues; every dispatch path must remain inside the same permit.
+  assert.match(source, /if \(!input\.runtimeDispatchEnabled \|\| input\.barrier\.snapshot\.quiescing\) return;[\s\S]*?await input\.withDispatchPermit\(async \(\) => \{\s*const released = input\.providerExecutionChain\.reconcileConcurrencyReservations\(\);[\s\S]*?await input\.providerExecutionChain\.pumpQueuedRuns\(\);\s*await input\.collaborationService\.resumeGrantedQueuedRuns/u);
   assert.match(source, /await input\.providerExecutionChain\.resumeGrantedResumeFallbackChildren\(\)[\s\S]*?await input\.providerExecutionChain\.approvalGate\.resumeApprovedUnconsumed\(\)/u);
   assert.match(source, /resumeBackgroundQueueWorkers = resumeQueueWorkers/u);
-  assert.match(source, /if \(runtimeDispatchEnabled && !maintenanceBarrier\.snapshot\.quiescing\) \{\s*void withDispatchPermit\(async \(\) => \{\s*await collaborationService\.resumeGrantedQueuedRuns/u);
+  assert.match(source, /if \(runtimeDispatchEnabled && !maintenanceBarrier\.snapshot\.quiescing\) \{\s*void withDispatchPermit\(async \(\) => \{\s*const released = providerExecutionChain\.reconcileConcurrencyReservations\(\);[\s\S]*?await providerExecutionChain\.pumpQueuedRuns\(\);\s*await collaborationService\.resumeGrantedQueuedRuns/u);
+});
+
+test('production shutdown stops and drains owned Provider queues before SQLite closes', () => {
+  const source = readFileSync(new URL('../index.ts', import.meta.url), 'utf8');
+  assert.match(source, /closeProviderQueues = \(\) => providerExecutionChain\.closeQueues\(\)/u);
+  const workers = source.slice(source.indexOf('async function stopOwnedBackgroundWorkers()'), source.indexOf('const requestRuntimeShutdown'));
+  assert.match(workers, /stopProviderQueueStarts\?\.\(\);\s*const providerQueueDrain = drainProviderQueues\?\.\(\);/u);
+  assert.match(workers, /await providerQueueDrain;/u);
+  assert.ok(workers.indexOf('stopProviderQueueStarts?.()') < workers.indexOf('await closeLocalShutdownControl'));
+  assert.match(source, /stopBackgroundWorkers: stopOwnedBackgroundWorkers,\s*beforeCloseStore: \(\) => closeProviderQueues\?\.\(\),\s*closeStore: \(\) =>/u);
 });

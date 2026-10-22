@@ -17,15 +17,15 @@ export class ResumeFallbackQueueRecovery {
     private readonly prepareChild?: (workspaceId: string, runId: string) => Promise<void>,
   ) {}
 
-  async resumeChild(workspaceId: string, runId: string): Promise<void> {
-    await this.resumeEligibleChildren(workspaceId, runId);
+  async resumeChild(workspaceId: string, runId: string, dispatch = this.dispatch): Promise<void> {
+    await this.resumeEligibleChildren(workspaceId, runId, dispatch);
   }
 
   async resumeGrantedChildren(workspaceId?: string): Promise<void> {
     await this.resumeEligibleChildren(workspaceId);
   }
 
-  private async resumeEligibleChildren(workspaceId?: string, onlyRunId?: string): Promise<void> {
+  private async resumeEligibleChildren(workspaceId?: string, onlyRunId?: string, dispatch = this.dispatch): Promise<void> {
     const rows = this.store.getDatabase().prepare(`
       SELECT r.workspace_id AS workspaceId, r.id AS runId, r.parent_run_id AS parentRunId
       FROM runs r
@@ -89,7 +89,7 @@ export class ResumeFallbackQueueRecovery {
         }
 
         const granted = await this.requestAdmission({ workspaceId: row.workspaceId, runId: row.runId });
-        if (granted) await this.dispatch(row.workspaceId, row.runId);
+        if (granted) await dispatch(row.workspaceId, row.runId);
       } finally {
         this.inFlight.delete(key);
       }

@@ -139,6 +139,19 @@ function optionalString(value: unknown): string | undefined {
 }
 
 /**
+ * §8.3 optional Run scheduling priority. Absent stays `undefined` (default 0);
+ * anything present must be an integer in [-1000000, 1000000]. The error never
+ * echoes the supplied value.
+ */
+export function parseOptionalRunPriority(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < -1_000_000 || value > 1_000_000) {
+    throw new V2ValidationError('priority must be an integer between -1000000 and 1000000');
+  }
+  return value;
+}
+
+/**
  * M2.6 P4 optional optimistic-concurrency body field. Absent stays
  * `undefined`; anything present must be a positive safe integer. The error
  * message never echoes the supplied value.
@@ -209,12 +222,14 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     if (body.parentRunId !== undefined && typeof body.parentRunId !== 'string') {
       throw new V2ValidationError('parentRunId must be a string');
     }
+    const priority = parseOptionalRunPriority(body.priority);
     const normalizedKey = parseIdempotencyKey(req);
     const result = service.createRunForV2(workspaceId, {
       taskId,
       reason: body.reason as V2RunReason | undefined,
       parentRunId: body.parentRunId as string | undefined,
       objective: optionalString(body.objective),
+      ...(priority === undefined ? {} : { priority }),
       createdBy: optionalString(body.createdBy) ?? 'v2_api',
     }, normalizedKey);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');

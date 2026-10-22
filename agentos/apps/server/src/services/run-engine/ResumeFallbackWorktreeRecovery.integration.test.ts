@@ -14,7 +14,7 @@ import { ResumeFallbackWorktreePreparer } from '../ResumeFallbackWorktreePrepare
 import { WorkflowTemplateService } from '../WorkflowTemplateService.js';
 import { WorktreeManager } from '../WorktreeManager.js';
 import { WorktreeRuntimeEventEmitter } from '../WorktreeRuntimeEvents.js';
-import { createProviderExecutionChain } from './providerExecutionChain.js';
+import { createProviderExecutionChain, type ProviderExecutionChain } from './providerExecutionChain.js';
 
 const NOW = '2026-10-12T00:00:00.000Z';
 const REQUEST_KEY = 'required-resume-fallback-restart-key';
@@ -57,6 +57,11 @@ async function requiredChildFixture() {
   mkdirSync(join(root, 'workspace-data'), { recursive: true });
   writeFileSync(join(root, 'workspace-data', 'workspaces.json'), '{"workspaces":[]}');
   let store = new SqliteStore(root);
+  const chains = new Set<ProviderExecutionChain>();
+  const closeQueues = async (): Promise<void> => {
+    await Promise.all([...chains].map(chain => chain.closeQueues()));
+    chains.clear();
+  };
   try {
     const workspace = await new WorkspaceManager(store).create(
       'Resume fallback isolated workspace',
@@ -148,12 +153,18 @@ async function requiredChildFixture() {
       childRunId: child.id,
       worktreeRoot,
       get store() { return store; },
-      reopenStore() {
+      ownChain(chain: ProviderExecutionChain): ProviderExecutionChain {
+        chains.add(chain);
+        return chain;
+      },
+      async reopenStore() {
+        await closeQueues();
         store.close();
         store = new SqliteStore(root);
         return store;
       },
-      close() {
+      async close() {
+        await closeQueues();
         try {
           const leases = store.worktreeRepository().list();
           for (const lease of leases) {
@@ -218,7 +229,7 @@ function createRealProviderChain(
   registeredPaths: Map<string, string>,
   probeCalls: { value: number },
 ) {
-  return createProviderExecutionChain({
+  return fx.ownChain(createProviderExecutionChain({
     store: fx.store,
     artifactRoot: join(fx.root, 'artifacts'),
     workspaceRootFor: () => fx.workspace.rootPath,
@@ -228,8 +239,27 @@ function createRealProviderChain(
       probeCalls.value += 1;
       return { stdout: 'v22.0.0', stderr: '', exitCode: 0, signal: null };
     } },
-  });
+  }));
 }
+
+test('§8.3 global queue pump prepares a required Child before the real Custom CLI dispatcher starts', async () => {
+  const fx = await requiredChildFixture();
+  try {
+    const worktrees = createPersistedWorktreeManager(fx.store, fx.worktreeRoot);
+    const paths = new Map<string, string>();
+    const preparer = createPreparer(fx.store, fx.workspace.id, fx.workspace.rootPath, worktrees, paths);
+    const chain = createRealProviderChain(fx, preparer, paths, { value: 0 });
+    await chain.pumpQueuedRuns();
+    // Claim completion is earlier than Provider completion. Closing must own
+    // and drain the real process plus terminal cleanup before the DB can close.
+    await chain.closeQueues();
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, fx.childRunId)?.status, 'completed');
+    const ownedPath = paths.get(fx.childRunId);
+    assert.ok(ownedPath);
+    assert.equal(readFileSync(join(ownedPath, CHILD_RECEIPT), 'utf8'), ownedPath);
+    assert.equal(chain.concurrencyScheduler.counts().globalInFlight, 0);
+  } finally { await fx.close(); }
+});
 
 test('required fallback Child reuses its persisted owned lease after restart and executes the frozen Custom CLI Stage', async () => {
   const fx = await requiredChildFixture();
@@ -248,7 +278,7 @@ test('required fallback Child reuses its persisted owned lease after restart and
     // source edit must neither invalidate nor redirect that owned checkout.
     const sourceOnlyFile = join(fx.workspace.rootPath, 'after-lease-source-only.txt');
     writeFileSync(sourceOnlyFile, 'must not be visible to the Child checkout\n');
-    fx.reopenStore();
+    await fx.reopenStore();
     const restartedWorktrees = createPersistedWorktreeManager(fx.store, fx.worktreeRoot);
     const reconciliation = await restartedWorktrees.reconcile([fx.workspace.rootPath]);
     assert.ok(!reconciliation.failed.includes(initialLease.id));
@@ -311,7 +341,7 @@ test('required fallback Child reuses its persisted owned lease after restart and
       'a repeated startup sweep does not dispatch a second Provider process');
     assert.equal(restartedWorktrees.listLeases().filter(lease => lease.runId === fx.childRunId).length, 1);
   } finally {
-    fx.close();
+    await fx.close();
   }
 });
 
@@ -359,7 +389,7 @@ for (const replacement of ['wrong-branch', 'different-repository'] as const) {
       assert.equal(existsSync(preservedPath), true, 'ownership failure preserves the original or replacement checkout');
       assert.equal(worktrees.getLease(lease.id)?.status, 'active', 'attestation failure preserves lease state for explicit recovery');
     } finally {
-      fx.close();
+      await fx.close();
     }
   });
 }

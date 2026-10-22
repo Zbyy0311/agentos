@@ -24,6 +24,7 @@ import { WorkspaceAdmissionRepository } from '../../store/WorkspaceAdmissionRepo
 import { OutboxRepository } from '../../store/OutboxRepository.js';
 import { RuntimeEventOutboxWriter, RuntimeEventRepository } from '../../store/RuntimeEventRepository.js';
 import { RunSequenceAllocator } from '../../store/RunSequenceAllocator.js';
+import { createEntityId } from '../../store/Identity.js';
 import { DurableAtomicSeamImpl } from '../../store/DurableAtomicSeam.js';
 import { DurableOutputReferenceRepositoryAdapter, DurableProcessRepositoryAdapter, DurableSessionRepositoryAdapter } from '../../store/process-runtime-adapters.js';
 import { inTransaction } from '../../store/Transaction.js';
@@ -46,6 +47,7 @@ import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapsh
 import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
+import { RunConcurrencyScheduler, type ConcurrencyLimits } from '../RunConcurrencyScheduler.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { all(...params: unknown[]): unknown[]; get(...params: unknown[]): unknown; run(...params: unknown[]): unknown; }; close(): void; } };
 type Db = InstanceType<typeof DatabaseSync>;
@@ -125,8 +127,8 @@ const FRESH_READ_ONLY_FACTS: WorkspaceAdmissionEvidenceFactsV1 = {
 let ORIGIN: 'v2_api' | 'legacy_pipeline' = 'v2_api';
 const STAGE_KEYS = ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review'] as const;
 
-function migratedDb(): Db {
-  const db = new DatabaseSync(':memory:');
+function migratedDb(path = ':memory:'): Db {
+  const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON');
   new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
   seed(db);
@@ -248,6 +250,55 @@ function seedAdmission(db: Db, input: {
     createdAt: NOW,
     updatedAt: NOW,
     version: 1,
+  });
+}
+
+function seedAdditionalRun(db: Db, input: { workspaceId: string; taskId: string; runId: string; operationId: string; firstAgentId?: string }): void {
+  const { workspaceId, taskId, runId } = input;
+  const operationId = createEntityId('operation');
+  db.prepare(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(workspaceId, workspaceId, `/tmp/${workspaceId}`, `/tmp/${workspaceId}`, NOW, NOW, NOW);
+  db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, 'open', 'normal', 'test', ?, ?)`).run(taskId, workspaceId, taskId, NOW, NOW);
+  const configId = `pcfg_${runId}`;
+  db.prepare(`INSERT INTO provider_configurations (id, workspace_id, name, provider_type, adapter_id, runtime_mode, capabilities_json, timeout_policy_json, created_at, updated_at)
+    VALUES (?, ?, 'M4 extra provider', 'kimicode', 'builtin.kimicode', 'cli', '{}', '{}', ?, ?)`)
+    .run(configId, workspaceId, NOW, NOW);
+  db.prepare(`INSERT INTO agent_profiles (workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at)
+    VALUES (?, 'agent_m4', 'Agent', 'worker', 'Worker', '', '[]', 1, 'agent', '[]', ?, ?)`)
+    .run(workspaceId, NOW, NOW);
+  db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, next_event_sequence, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'queued', 'initial', ?, 1, 'test', ?, ?)`).run(runId, workspaceId, taskId, runId, ORIGIN, NOW, NOW);
+  db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version)
+    VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(operationId, workspaceId, runId, runId, operationId, NOW, NOW);
+  const metadata = db.prepare(`SELECT workspace_id AS workspaceId, task_id AS taskId, origin, reason,
+    parent_run_id AS parentRunId, root_run_id AS rootRunId FROM runs WHERE workspace_id = ? AND id = ?`)
+    .get(workspaceId, runId) as RunSnapshotPayloadV2['run'];
+  const payload = snapshotPayload(5000, DEFAULT_STAGE_PROMPT, metadata);
+  for (const stage of payload.workflow.stages) {
+    stage.provider!.providerConfigId = configId;
+    stage.agent!.providerConfigId = configId;
+  }
+  if (input.firstAgentId !== undefined) {
+    db.prepare(`INSERT INTO agent_profiles (workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at)
+      VALUES (?, ?, 'Agent', 'worker', 'Worker', '', '[]', 1, 'agent', '[]', ?, ?)`)
+      .run(workspaceId, input.firstAgentId, NOW, NOW);
+    payload.workflow.stages[0]!.agent!.agentId = input.firstAgentId;
+  }
+  const snapshot = new RunSnapshotRepository(db).insert({
+    workspaceId, runId, workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+    payload,
+  });
+  STAGE_KEYS.forEach((key, index) => {
+    db.prepare(`INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?, ?, 1)`)
+      .run(`stage_${runId}_${index}`, workspaceId, runId, snapshot.id, key, key, index + 1, NOW, NOW);
+  });
+  new WorkspaceAdmissionRepository(db).insertAdmission({
+    id: `adm_${runId}`, workspaceId, subjectKind: 'CANONICAL_RUN', canonicalRunId: runId, legacyRunId: null,
+    requestedMutationClass: 'MODIFYING', effectiveMutationClass: 'MODIFYING', enforcementEvidenceJson: null,
+    requestOrder: 1, state: 'GRANTED', queueReason: null, releaseReason: null,
+    requestedAt: NOW, grantedAt: NOW, releasedAt: null, createdAt: NOW, updatedAt: NOW, version: 1,
   });
 }
 
@@ -381,6 +432,9 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly deferApprovalContinuation?: boolean;
   readonly approvalNow?: { current: string };
   readonly noOwnedWorktree?: boolean;
+  readonly concurrencyLimits?: ConcurrencyLimits;
+  readonly databasePath?: string;
+  readonly existingDatabase?: boolean;
   readonly memoryTaskObjective?: string;
   readonly priorMemoryFailure?: {
     readonly workflowStageKey: string;
@@ -392,24 +446,32 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   // that identity itself instead of inheriting whatever a real gate left behind.
   REAL_EXECUTABLE = KIMI_EXE;
   REAL_PROVIDER_TYPE = 'kimicode';
-  const db = migratedDb();
-  if (behavior.priorMemoryFailure !== undefined) {
-    const parentRunId = seedPriorFailedStage(db, behavior.priorMemoryFailure);
-    db.prepare(`
-      UPDATE runs SET parent_run_id = ?, root_run_id = ?, reason = 'retry', objective = ?
-      WHERE workspace_id = ? AND id = ?
-    `).run(parentRunId, parentRunId, behavior.memoryTaskObjective ?? null, WS, RUN);
-  } else if (behavior.memoryTaskObjective !== undefined) {
-    db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
-      .run(behavior.memoryTaskObjective, WS, RUN);
+  if (behavior.existingDatabase === true && behavior.databasePath === undefined) {
+    throw new Error('existingDatabase requires databasePath');
   }
-  seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
-  seedAdmission(db, {
-    state: behavior.admissionState ?? 'GRANTED',
-    requestedMutationClass: behavior.admissionRequestedMutationClass,
-    effectiveMutationClass: behavior.admissionEffectiveMutationClass,
-    enforcementEvidenceJson: behavior.admissionEvidenceJson,
-  });
+  const db = behavior.existingDatabase === true
+    ? new DatabaseSync(behavior.databasePath!)
+    : migratedDb(behavior.databasePath ?? ':memory:');
+  db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000');
+  if (behavior.existingDatabase !== true) {
+    if (behavior.priorMemoryFailure !== undefined) {
+      const parentRunId = seedPriorFailedStage(db, behavior.priorMemoryFailure);
+      db.prepare(`
+        UPDATE runs SET parent_run_id = ?, root_run_id = ?, reason = 'retry', objective = ?
+        WHERE workspace_id = ? AND id = ?
+      `).run(parentRunId, parentRunId, behavior.memoryTaskObjective ?? null, WS, RUN);
+    } else if (behavior.memoryTaskObjective !== undefined) {
+      db.prepare('UPDATE runs SET objective = ? WHERE workspace_id = ? AND id = ?')
+        .run(behavior.memoryTaskObjective, WS, RUN);
+    }
+    seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
+    seedAdmission(db, {
+      state: behavior.admissionState ?? 'GRANTED',
+      requestedMutationClass: behavior.admissionRequestedMutationClass,
+      effectiveMutationClass: behavior.admissionEffectiveMutationClass,
+      enforcementEvidenceJson: behavior.admissionEvidenceJson,
+    });
+  }
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(db, events);
@@ -481,6 +543,9 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   }, { now: () => NOW });
   const operationService = new OperationService(db, { now: () => NOW, lifecycleTransactionService: lifecycle });
+  const concurrencyScheduler = behavior.concurrencyLimits === undefined
+    ? undefined
+    : new RunConcurrencyScheduler({ getDatabase: () => db as never, limits: behavior.concurrencyLimits });
   const engine = new RunEngine({
     runRepository: runRepo, operationService, lifecycleTransactionService: lifecycle,
     snapshotRepository: runSnapshotRepo, runStageRepository: runStageRepo,
@@ -498,6 +563,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
       evidenceCollector: behavior.admissionEvidenceCollector,
       now: () => new Date(NOW),
     }),
+    ...(concurrencyScheduler === undefined ? {} : { concurrencyGate: concurrencyScheduler }),
     ...(behavior.memoryContextResolver === undefined ? {} : { memoryContextResolver: behavior.memoryContextResolver }),
     ...(behavior.memoryCandidateGenerator === undefined ? {} : { memoryCandidateGenerator: behavior.memoryCandidateGenerator }),
     ...(behavior.onCandidateGenerationError === undefined ? {} : { onCandidateGenerationError: behavior.onCandidateGenerationError }),
@@ -505,8 +571,17 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     onDispatchFailure: report => { dispatchFailures.push(report); },
   });
   dispatcher = assignedDispatcher;
+  if (concurrencyScheduler !== undefined) {
+    const backfill = (workspaceId: string, runId: string): void => {
+      const run = runRepo.findById(workspaceId, runId);
+      if (!run || !['completed', 'failed', 'cancelled'].includes(run.status)) return;
+      concurrencyScheduler.releaseRun(workspaceId, runId);
+      void concurrencyScheduler.pumpQueuedRuns((ws, candidateRun) => dispatcher.schedule(ws, candidateRun));
+    };
+    lifecycle.setRunTerminalCommittedHandler(input => backfill(input.workspaceId, input.runId));
+  }
   return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService,
-    coordinatorCalls, capturedInputs, dispatchFailures, approvalGate, continuations,
+    coordinatorCalls, capturedInputs, dispatchFailures, approvalGate, continuations, concurrencyScheduler, lifecycle,
     setApprovalContinuationDeferred: (value: boolean) => { deferApprovalContinuation = value; } };
 }
 
@@ -1553,5 +1628,229 @@ describe('RunEngineProviderDispatcher E2E', () => {
       );
       assert.equal(errors.length, 1);
     } finally { close(fx); }
+  });
+
+  it('§8.4 persistent dispatcher claim prevents global=1 oversubscription across workspaces, then cancel backfills globally', async () => {
+    const databaseRoot = mkdtempSync(join(tmpdir(), 'agentos-run-capacity-global-'));
+    const databasePath = join(databaseRoot, 'runtime.sqlite');
+    const fx = fixture(new FakeDriver(null), false, {
+      concurrencyLimits: { global: 1 }, databasePath, returnActive: true,
+      cancelOutcome: {
+        kind: 'stopped',
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+        proven: true, stopOrigin: 'EXPLICIT_CANCEL', processId: 'process-global-capacity',
+      },
+    });
+    try {
+      seedAdditionalRun(fx.db, { workspaceId: 'ws_extra', taskId: 'task_extra', runId: 'run_extra', operationId: 'op_extra' });
+      await Promise.all([
+        fx.dispatcher.driveSafely(WS, RUN),
+        fx.dispatcher.driveSafely('ws_extra', 'run_extra'),
+      ]);
+      const persisted = [
+        fx.runRepo.findById(WS, RUN)!,
+        fx.runRepo.findById('ws_extra', 'run_extra')!,
+      ];
+      assert.equal(persisted.filter(run => ['starting', 'running', 'waiting_approval', 'paused'].includes(run.status)).length, 1);
+      assert.equal(persisted.filter(run => run.status === 'queued').length, 1);
+      assert.equal(fx.coordinatorCalls.count, 1, 'only the transactionally claimed Run reaches the real dispatcher stage loop');
+
+      const active = persisted.find(run => run.status === 'running')!;
+      const cancel = fx.operationService.create({ workspaceId: active.workspaceId, runId: active.id, type: 'run.cancel' });
+      const evidence = await fx.dispatcher.cancelRun({
+        workspaceId: active.workspaceId, runId: active.id, correlationId: cancel.correlationId,
+      });
+      const currentCancel = fx.operationService.findById(active.workspaceId, cancel.id);
+      fx.operationService.cancel({
+        workspaceId: active.workspaceId, operationId: cancel.id,
+        expectedVersion: currentCancel.version, evidence,
+      });
+      await waitForCondition(() => {
+        const queued = persisted.find(run => run.status === 'queued')!;
+        return fx.runRepo.findById(queued.workspaceId === WS ? WS : 'ws_extra', queued.id)?.status === 'running';
+      });
+      assert.equal(fx.runRepo.findById(active.workspaceId, active.id)?.status, 'cancelled');
+      assert.equal(fx.concurrencyScheduler?.counts().globalInFlight, 1);
+    } finally {
+      close(fx);
+      rmSync(databaseRoot, { recursive: true, force: true });
+    }
+  });
+
+  for (const dimension of ['global', 'perProvider'] as const) {
+    it(`§8.4 two SQLite connections and real coordinators enforce ${dimension}=1 before Process spawn`, async () => {
+      const databaseRoot = mkdtempSync(join(tmpdir(), 'agentos-real-capacity-'));
+      const databasePath = join(databaseRoot, 'runtime.sqlite');
+      let release!: (exit: ExitEvidence) => void;
+      const exit = new Promise<ExitEvidence>(resolve => { release = resolve; });
+      const lines = ['{"type":"assistant","role":"assistant","content":"done"}\n'];
+      const firstDriver = new FakeDriver(new FakeHandle(lines, 0, exit));
+      const secondDriver = new FakeDriver(new FakeHandle(lines));
+      const limits = { global: dimension === 'global' ? 1 : 4, ...(dimension === 'perProvider' ? { perProvider: 1 } : {}) };
+      const first = fixture(firstDriver, false, { databasePath, concurrencyLimits: limits, useRealCoordinator: true });
+      seedAdditionalRun(first.db, { workspaceId: 'ws_real', taskId: 'task_real', runId: 'run_real', operationId: 'unused' });
+      const second = fixture(secondDriver, false, { databasePath, existingDatabase: true, concurrencyLimits: limits, useRealCoordinator: true });
+      const firstDrive = first.dispatcher.driveSafely(WS, RUN);
+      let secondDrive: Promise<void> | undefined;
+      try {
+        await waitForCondition(() => firstDriver.spawnCalls === 1);
+        secondDrive = second.dispatcher.driveSafely('ws_real', 'run_real');
+        if (dimension === 'global') await secondDrive;
+        else await waitForCondition(() => ['starting', 'running'].includes(second.runRepo.findById('ws_real', 'run_real')?.status ?? ''));
+        await new Promise<void>(resolve => setTimeout(resolve, 150));
+        assert.equal(secondDriver.spawnCalls, 0);
+        const processes = first.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number };
+        assert.equal(processes.count, 1, 'the denied attempt creates no durable Process');
+        assert.equal(first.concurrencyScheduler!.counts().globalInFlight, dimension === 'global' ? 1 : 2);
+        release({ exitCode: 0, signal: null, exitedAt: Date.now() });
+        await firstDrive;
+        await secondDrive;
+        await waitForCondition(() => second.runRepo.findById('ws_real', 'run_real')?.status === 'completed');
+        assert.equal(first.runRepo.findById(WS, RUN)?.status, 'completed');
+        assert.equal(firstDriver.spawnCalls + secondDriver.spawnCalls, 8, 'all eight actual coordinator attempts finish exactly once');
+        assert.deepEqual([...first.dispatchFailures, ...second.dispatchFailures], []);
+      } finally {
+        release({ exitCode: 0, signal: null, exitedAt: Date.now() });
+        await Promise.allSettled([firstDrive, ...(secondDrive ? [secondDrive] : [])]);
+        close(second); close(first);
+        rmSync(databaseRoot, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it('§8.4 a later Stage waits for its actual Agent across SQLite connections', async () => {
+    const databaseRoot = mkdtempSync(join(tmpdir(), 'agentos-stage-agent-capacity-'));
+    const databasePath = join(databaseRoot, 'runtime.sqlite');
+    let release!: (exit: ExitEvidence) => void;
+    const exit = new Promise<ExitEvidence>(resolve => { release = resolve; });
+    const lines = ['{"type":"assistant","role":"assistant","content":"done"}\n'];
+    const firstDriver = new FakeDriver(new FakeHandle(lines, 0, exit));
+    const secondDriver = new FakeDriver(new FakeHandle(lines));
+    const limits = { global: 4, perAgent: 1 };
+    const first = fixture(firstDriver, false, { databasePath, concurrencyLimits: limits, useRealCoordinator: true });
+    seedAdditionalRun(first.db, { workspaceId: 'ws_later', taskId: 'task_later', runId: 'run_later', operationId: 'unused', firstAgentId: 'agent_first_only' });
+    const second = fixture(secondDriver, false, { databasePath, existingDatabase: true, concurrencyLimits: limits, useRealCoordinator: true });
+    const firstDrive = first.dispatcher.driveSafely(WS, RUN);
+    let secondDrive: Promise<void> | undefined;
+    try {
+      await waitForCondition(() => firstDriver.spawnCalls === 1);
+      secondDrive = second.dispatcher.driveSafely('ws_later', 'run_later');
+      await waitForCondition(() => second.runStageRepo.listByRun('ws_later', 'run_later')[0]?.status === 'completed');
+      await new Promise<void>(resolve => setTimeout(resolve, 150));
+      assert.equal(secondDriver.spawnCalls, 1, 'only the first Stage with its different Agent can spawn');
+      release({ exitCode: 0, signal: null, exitedAt: Date.now() });
+      await Promise.all([firstDrive, secondDrive]);
+      assert.equal(second.runRepo.findById('ws_later', 'run_later')?.status, 'completed');
+      assert.equal(secondDriver.spawnCalls, 4);
+      assert.deepEqual([...first.dispatchFailures, ...second.dispatchFailures], []);
+    } finally {
+      release({ exitCode: 0, signal: null, exitedAt: Date.now() });
+      await Promise.allSettled([firstDrive, ...(secondDrive ? [secondDrive] : [])]);
+      close(second); close(first);
+      rmSync(databaseRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('§8.4 a duplicate drive during Artifact finalization cannot leak capacity into the next Stage', async () => {
+    let release!: () => void;
+    let capturing = false;
+    const captured = new Promise<void>(resolve => { release = resolve; });
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"done"}\n']));
+    const fx = fixture(driver, false, {
+      concurrencyLimits: { global: 4, perProvider: 1 }, useRealCoordinator: true,
+      artifactResults: { capture: async () => {
+        if (!capturing) { capturing = true; await captured; }
+        return [];
+      } },
+    });
+    const drive = fx.dispatcher.driveSafely(WS, RUN);
+    try {
+      await waitForCondition(() => capturing);
+      const owned = fx.db.prepare("SELECT COUNT(*) AS count FROM runtime_locks WHERE purpose = 'run-concurrency-stage' AND released_at IS NULL")
+        .get() as { count: number };
+      assert.equal(owned.count, 1, 'finalization still owns capacity');
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(driver.spawnCalls, 1, 'the duplicate joins the original durable Process');
+      release();
+      await drive;
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.equal(driver.spawnCalls, 4);
+      assert.deepEqual(fx.dispatchFailures, []);
+    } finally { release(); await drive; close(fx); }
+  });
+
+  it('§8.4 terminal callbacks wait for the caller-owned SQLite commit and vanish on rollback', async () => {
+    const fx = fixture(new FakeDriver(null), false, { returnActive: true });
+    const terminal: string[] = [];
+    fx.lifecycle.setRunTerminalCommittedHandler(({ runId }) => terminal.push(runId));
+    try {
+      assert.throws(() => inTransaction(fx.db, () => {
+        fx.operationService.cancelWithinTransaction({ workspaceId: WS, operationId: OP, expectedVersion: 1 });
+        assert.deepEqual(terminal, []);
+        throw new Error('rollback-test');
+      }), /rollback-test/);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.deepEqual(terminal, []);
+      inTransaction(fx.db, () => {
+        fx.operationService.cancelWithinTransaction({ workspaceId: WS, operationId: OP, expectedVersion: 1 });
+        assert.deepEqual(terminal, []);
+      });
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'cancelled');
+      assert.deepEqual(terminal, [RUN]);
+    } finally { close(fx); }
+  });
+
+  it('§8.3 startup pump fills all available slots in global priority order', async () => {
+    const fx = fixture(new FakeDriver(null), false, { concurrencyLimits: { global: 2 }, returnActive: true });
+    try {
+      seedAdditionalRun(fx.db, { workspaceId: 'ws_high', taskId: 'task_high', runId: 'run_high', operationId: 'unused' });
+      seedAdditionalRun(fx.db, { workspaceId: 'ws_middle', taskId: 'task_middle', runId: 'run_middle', operationId: 'unused' });
+      fx.db.prepare("UPDATE runs SET priority = 9 WHERE id = 'run_high'").run();
+      fx.db.prepare("UPDATE runs SET priority = 5 WHERE id = 'run_middle'").run();
+      const order: string[] = [];
+      await fx.concurrencyScheduler!.pumpQueuedRuns(async (workspaceId, runId) => {
+        order.push(runId);
+        await fx.dispatcher.schedule(workspaceId, runId);
+      });
+      await waitForCondition(() => fx.coordinatorCalls.count === 2);
+      assert.deepEqual(order, ['run_high', 'run_middle']);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.equal(fx.concurrencyScheduler!.counts().globalInFlight, 2);
+    } finally { close(fx); }
+  });
+
+  it('§8.4 persistent reservations reconcile after restart and refill a queued Run through the real dispatcher', async () => {
+    const databaseRoot = mkdtempSync(join(tmpdir(), 'agentos-run-capacity-restart-'));
+    const databasePath = join(databaseRoot, 'runtime.sqlite');
+    let first = fixture(new FakeDriver(null), false, {
+      concurrencyLimits: { global: 1 }, databasePath, returnActive: true,
+    });
+    let second: ReturnType<typeof fixture> | undefined;
+    try {
+      seedAdditionalRun(first.db, { workspaceId: 'ws_extra', taskId: 'task_extra', runId: 'run_extra', operationId: 'op_extra' });
+      await first.dispatcher.driveSafely(WS, RUN);
+      assert.equal(first.runRepo.findById(WS, RUN)?.status, 'running');
+      assert.equal(first.runRepo.findById('ws_extra', 'run_extra')?.status, 'queued');
+      // Simulate a terminal commit whose process died before queue backfill.
+      first.db.prepare("UPDATE runs SET status = 'cancelled', version = version + 1 WHERE workspace_id = ? AND id = ?")
+        .run(WS, RUN);
+      close(first);
+
+      second = fixture(new FakeDriver(null), false, {
+        concurrencyLimits: { global: 1 }, databasePath, existingDatabase: true, returnActive: true,
+      });
+      assert.ok((second.concurrencyScheduler?.reconcileReservations() ?? 0) >= 1);
+      await second.concurrencyScheduler?.pumpQueuedRuns((workspaceId, runId) => second!.dispatcher.schedule(workspaceId, runId));
+      await waitForCondition(() => second!.runRepo.findById('ws_extra', 'run_extra')?.status === 'running');
+      assert.equal(second.coordinatorCalls.count, 1);
+      assert.equal(second.concurrencyScheduler?.counts().globalInFlight, 1);
+    } finally {
+      if (second !== undefined) close(second);
+      else {
+        try { first.db.close(); } catch { /* already closed */ }
+        rmSync(first.root, { recursive: true, force: true });
+      }
+      rmSync(databaseRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -6,7 +6,7 @@ import { RunNotFoundError } from '../store/RunRepository.js';
 import { TaskNotFoundError } from '../store/TaskRepository.js';
 import type { RunLifecycleDispatchOptions } from './runLifecycle.js';
 import { buildV2RunDetailResponse, parseV2RunInclude } from './v2RunApi.js';
-import { parseOptionalExpectedVersion, respondV2, V2ValidationError } from './v2Tasks.js';
+import { parseOptionalExpectedVersion, parseOptionalRunPriority, respondV2, V2ValidationError } from './v2Tasks.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
 import {
   formatVersionETag,
@@ -125,12 +125,14 @@ export function createCanonicalRunRoutes(
     if (body.parentRunId !== undefined && typeof body.parentRunId !== 'string') {
       throw new V2ValidationError('parentRunId must be a string');
     }
+    const priority = parseOptionalRunPriority(body.priority);
     const normalizedKey = parseIdempotencyKey(req);
     const result = service.createRunForV2(workspaceId, {
       taskId,
       reason: body.reason as V2RunReason | undefined,
       parentRunId: body.parentRunId as string | undefined,
       objective: optionalString(body.objective),
+      ...(priority === undefined ? {} : { priority }),
       createdBy: optionalString(body.createdBy) ?? 'v2_api',
     }, normalizedKey);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');

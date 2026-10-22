@@ -32,6 +32,7 @@ import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { ResumeFallbackQueueRecovery } from './ResumeFallbackQueueRecovery.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
+import { RunConcurrencyScheduler, concurrencyLimitsFromEnvironment } from '../RunConcurrencyScheduler.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
 import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
@@ -86,10 +87,21 @@ export interface ProviderExecutionChain {
   }) => Promise<ProcessStopResult>;
   /** Replays only granted, durable resume-fallback Child Starts. */
   readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
+  /** Reconcile persistent capacity locks and restart the global queued-Run pump. */
+  readonly reconcileConcurrencyReservations: () => number;
+  readonly pumpQueuedRuns: () => Promise<void>;
+  /** Await all accepted queue work, including drives that outlive their claim. */
+  readonly drainQueues: () => Promise<void>;
+  /** Reject new queue work and drain accepted work before closing SQLite. */
+  readonly closeQueues: () => Promise<void>;
+  /** Stop admissions while already-accepted HTTP/dispatcher owners finish. */
+  readonly stopQueueStarts: () => void;
   /** Prepares, admits, and dispatches one explicitly accepted fallback Child. */
   readonly resumeFallbackChild: (workspaceId: string, runId: string) => Promise<void>;
   readonly memoryContextResolver: MemoryContextResolver;
   readonly approvalGate: RuntimeApprovalGate;
+  /** §8.4 in-process concurrency gate over durable Run state. */
+  readonly concurrencyScheduler: RunConcurrencyScheduler;
   /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
   readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
   /** Adds verified low-risk facts to the same terminal Run candidate trigger. */
@@ -100,7 +112,41 @@ export interface ProviderExecutionChain {
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
   const store = options.store;
+  const queueJobs = new Set<Promise<void>>();
+  let queueState: 'open' | 'closing' | 'closed' = 'open';
+  let queueClose: Promise<void> | undefined;
+  const ownQueueJob = (operation: () => Promise<void>): Promise<void> => {
+    const job = Promise.resolve().then(operation);
+    queueJobs.add(job);
+    const settled = (): void => { queueJobs.delete(job); };
+    void job.then(settled, settled);
+    return job;
+  };
+  const acceptQueueJob = (operation: () => Promise<void>): Promise<void> =>
+    queueState === 'open' ? ownQueueJob(operation) : Promise.resolve();
+  // Cleanup of an already-running drive is accepted during closing. It may
+  // release durable ownership, but cannot start more queue dispatches.
+  const acceptTerminalJob = (operation: () => Promise<void>): Promise<void> =>
+    queueState !== 'closed' ? ownQueueJob(operation) : Promise.resolve();
+  const drainQueueJobs = async (close: boolean): Promise<void> => {
+    while (queueJobs.size > 0) await Promise.allSettled([...queueJobs]);
+    // No await between observing quiescence and sealing the terminal hook.
+    if (close) queueState = 'closed';
+  };
+  const drainQueues = (): Promise<void> => drainQueueJobs(false);
+  const stopQueueStarts = (): void => { if (queueState === 'open') queueState = 'closing'; };
+  const closeQueues = (): Promise<void> => {
+    if (queueClose === undefined) {
+      stopQueueStarts();
+      queueClose = drainQueueJobs(true);
+    }
+    return queueClose;
+  };
   const admissionAuthority = new WorkspaceAdmissionAuthority({ store });
+  const concurrencyScheduler = new RunConcurrencyScheduler({
+    getDatabase: () => store.getDatabase(),
+    limits: concurrencyLimitsFromEnvironment(options.environment ?? process.env),
+  });
   const driver = new NodeProcessDriver();
   const probe = options.probe ?? new NodeProcessProbePort();
   const seam = store.atomicSeam();
@@ -129,6 +175,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     store,
     input => admissionAuthority.requestCanonicalRun(input),
     async (workspaceId, runId) => {
+      if (queueState !== 'open') return;
       const drive = () => dispatcher.driveSafely(workspaceId, runId);
       if (options.withDispatchPermit) {
         await options.withDispatchPermit(drive);
@@ -151,9 +198,38 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     },
   );
   const resumeGrantedResumeFallbackChildren = (workspaceId?: string): Promise<void> =>
-    resumeFallbackQueue.resumeGrantedChildren(workspaceId);
+    acceptQueueJob(() => resumeFallbackQueue.resumeGrantedChildren(workspaceId));
+  const pumpQueuedRuns = (): Promise<void> => acceptQueueJob(async () => {
+    await concurrencyScheduler.pumpQueuedRuns((workspaceId, runId) => {
+      if (queueState !== 'open') return Promise.resolve();
+      return new Promise<void>(resolve => {
+        // Claim completion advances the pump; ownership lasts until the full
+        // drive (including terminal cleanup and the dispatch permit) finishes.
+        const drive = async (): Promise<void> => {
+          const run = store.runRepository().findById(workspaceId, runId);
+          const dispatch = (ws: string, id: string) => dispatcher.driveSafely(ws, id, resolve);
+          if (run?.status === 'queued' && run.reason === 'resume-fallback') {
+            // Accepted required-worktree Children retain their preparation and
+            // Admission protocol when selected by the global priority pump.
+            await resumeFallbackQueue.resumeChild(workspaceId, runId, dispatch);
+          } else {
+            await dispatch(workspaceId, runId);
+          }
+        };
+        const execution = acceptQueueJob(async () => {
+          if (options.withDispatchPermit) await options.withDispatchPermit(drive);
+          else await drive();
+        });
+        void execution.catch(error => {
+          console.error(`RUN_QUEUE_DISPATCH_FAILED run=${runId}:`, error);
+        }).finally(resolve);
+      });
+    });
+  });
+  const reconcileConcurrencyReservations = (): number =>
+    queueState === 'open' ? concurrencyScheduler.reconcileReservations() : 0;
   const resumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
-    resumeFallbackQueue.resumeChild(workspaceId, runId);
+    acceptQueueJob(() => resumeFallbackQueue.resumeChild(workspaceId, runId));
   // §87 control surface: read the current claim fence, then accept (or join)
   // the one stop ticket. The stable idempotency key makes repeated API calls
   // idempotent; a terminal Process joins as a natural-terminal no-op.
@@ -183,7 +259,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     return ticket.result;
   };
   const approvalGate = new RuntimeApprovalGate(store, {
-    continueRun: async (workspaceId, runId) => {
+    continueRun: (workspaceId, runId) => acceptQueueJob(async () => {
       if (await options.continueOwnedRun?.(workspaceId, runId)) return;
       const drive = () => dispatcher.driveSafely(workspaceId, runId);
       if (options.withDispatchPermit) {
@@ -191,7 +267,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
       } else {
         await drive();
       }
-    },
+    }),
   });
   const runEventObservation: CanonicalRunEventObservationPort = {
     subscribe: input => store.runStreamService().subscribe({
@@ -295,6 +371,10 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     engine,
     coordinator,
     admissionGate: admissionAuthority,
+    concurrencyGate: concurrencyScheduler,
+    onConcurrencyDeferred: report => {
+      console.error(`RUN_DISPATCH_DEFERRED run=${report.runId} workspace=${report.workspaceId} dimension=${report.dimension} current=${report.current} limit=${report.limit} reason=${report.reason}`);
+    },
     memoryContextResolver,
     // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
     // the terminal commit; failures surface on stderr and never affect the Run.
@@ -322,16 +402,40 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     listProviderFallbackChain: (workspaceId, runId) =>
       store.providerFallbackChainRepository().listByRun(workspaceId, runId),
     onRunTerminal: async ({ workspaceId, runId }) => {
-      await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
-      await resumeGrantedResumeFallbackChildren(workspaceId);
+      await acceptTerminalJob(() => dispatcherTerminalAfterCommit({ workspaceId, runId }));
     },
   });
+  store.lifecycleTransactionService().setRunTerminalCommittedHandler(({ workspaceId, runId }) => {
+    void acceptTerminalJob(() => dispatcherTerminalAfterCommit({ workspaceId, runId })).catch(error => {
+      console.error(`RUN_TERMINAL_QUEUE_RECOVERY_FAILED run=${runId}:`, error);
+    });
+  });
+
+  async function dispatcherTerminalAfterCommit(input: { workspaceId: string; runId: string }): Promise<void> {
+    const run = store.runRepository().findById(input.workspaceId, input.runId);
+    if (!run || !['completed', 'failed', 'cancelled'].includes(run.status)) return;
+    concurrencyScheduler.releaseRun(input.workspaceId, input.runId);
+    try {
+      await admissionAuthority.releaseCanonicalRun(input);
+      // Schedule ordinary Runs in global priority order before Child recovery
+      // attempts, which must pass the same atomic capacity gate.
+    } finally {
+      await pumpQueuedRuns();
+    }
+    await resumeGrantedResumeFallbackChildren(input.workspaceId);
+  }
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
     reattachProcess: input => durableCoordinator.reattachProcess(input),
     stopProcess,
     resumeGrantedResumeFallbackChildren,
+    reconcileConcurrencyReservations,
+    pumpQueuedRuns,
+    drainQueues,
+    closeQueues,
+    stopQueueStarts,
     resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
+    concurrencyScheduler,
   };
 }

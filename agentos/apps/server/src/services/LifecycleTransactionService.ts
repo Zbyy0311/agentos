@@ -3,6 +3,7 @@ import {
   getM3RunTransitionEventContract,
   getM3StageTransitionEventContract,
 } from '@agentos/shared';
+import { registerAfterCommit } from '../store/Transaction.js';
 import type {
   AgentSnapshotV1,
   ApiProblem,
@@ -460,6 +461,11 @@ export class LifecycleTransactionService {
   private readonly now: () => string;
   private readonly createEventId: () => string;
   private readonly createOutboxId: (eventId: string) => string;
+  private onRunTerminalCommitted: ((input: { workspaceId: string; runId: string }) => void) | undefined;
+
+  setRunTerminalCommittedHandler(handler: (input: { workspaceId: string; runId: string }) => void): void {
+    this.onRunTerminalCommitted = handler;
+  }
 
   constructor(
     private readonly dependencies: LifecycleTransactionDependencies,
@@ -1864,7 +1870,13 @@ export class LifecycleTransactionService {
       payload,
       ...(metadata === undefined ? {} : { metadata }),
     };
-    return this.dependencies.runtimeEventRepository.appendWithinTransaction(draft);
+    const event = this.dependencies.runtimeEventRepository.appendWithinTransaction(draft);
+    if (type === 'run.completed' || type === 'run.failed' || type === 'run.cancelled') {
+      registerAfterCommit(this.dependencies.runtimeEventRepository.transactionDatabase, () => {
+        this.onRunTerminalCommitted?.({ workspaceId: run.workspaceId, runId: run.id });
+      });
+    }
+    return event;
   }
 
   private insertOutbox(event: RuntimeEventEnvelope, timestamp: string): OutboxMessage {

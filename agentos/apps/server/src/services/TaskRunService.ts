@@ -351,6 +351,7 @@ export class TaskRunService {
           reason: input.reason ?? 'initial',
           parentRunId: input.parentRunId ?? null,
           objective: input.objective ?? null,
+          priority: input.priority ?? null,
           createdBy: input.createdBy,
         },
         expectedVersion: null,
@@ -1032,6 +1033,7 @@ export class TaskRunService {
       origin: 'v2_api',
       reason: 'retry',
       objective: parent.objective,
+      priority: parent.priority ?? 0,
       createdBy: parent.createdBy,
     });
     let persisted;
@@ -1527,6 +1529,7 @@ export class TaskRunService {
       origin: 'v2_api',
       reason: 'resume-fallback',
       objective: run.objective,
+      priority: run.priority ?? 0,
       createdBy: run.createdBy,
     });
     let persisted;
