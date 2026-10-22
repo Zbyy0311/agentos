@@ -50,3 +50,33 @@ Main fetched for integration: `ed09913b5d723b7bbe87750a038cc45307f9a3c5`
 (PR235, migration 066). The final verification must preserve 065, 066, 068 and
 the full Registry/Identity contracts. No push, PR creation or GitHub merge is
 authorized for this task.
+
+## Main integration and final source freeze
+
+- Before-main implementation checkpoint:
+  `0dbb68241720c82c2909051eaac2c9b80aa34393`, also retained on local branch
+  `codex/pr232-pre-main-20261022`.
+- Rebased implementation checkpoint:
+  `4778aaa674ab623503ff0a85cc8f770f404dd24c`, with main
+  `ed09913b5d723b7bbe87750a038cc45307f9a3c5` as an ancestor.
+- Integration resolutions retain 066 and 068 together in the exact migration
+  registry, retain both Provider validation and concurrency metrics, and leave
+  Identity implementation and contracts identical to main.
+- At the rebased checkpoint, the expanded focused gate passed 78 tests with
+  5 explicit skips; the related gate plus main's cache/metrics regressions
+  passed 645/645. The agent-core validation-cache suite passed 5/5.
+- One final Stage-finalization regression then proved that capacity must remain
+  reserved across asynchronous Artifact capture until the lifecycle commit.
+  The real-coordinator duplicate-drive regression passes. This repair is
+  included in the final source freeze.
+
+The final committed source is checked again with the combined 30-file server
+gate, recorded in `apps/server/concurrency-frozen.log`, and server TypeScript
+build, recorded in `apps/server/concurrency-frozen-tsc.log`. These final receipts
+supersede the earlier checkpoint runs. The server gate includes the six focused
+files and all 24 related files above, including 065/066/068 fresh/upgrade
+registration, Identity, cache metrics and persistent cache tests.
+
+Known validation limits: five external model CLI gates require explicit local
+environment opt-in and are skipped. This task provides local runtime/SQLite and
+local Custom CLI execution evidence, without a new remote CI run or publication.

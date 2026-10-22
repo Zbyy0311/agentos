@@ -851,142 +851,144 @@ export class RunEngineProviderDispatcher {
       let outcome: StageExecutionOutcome | undefined;
       try {
         outcome = await this.coordinator.execute(input);
-      } finally {
-        // Active/approval-paused attempts still own their durable capacity.
-        if (capacity.reservation && outcome?.kind !== 'active' && outcome?.kind !== 'waiting-approval') {
-          this.concurrencyGate?.releaseProviderStage?.(capacity.reservation);
+        if (outcome.kind === 'stopped') {
+          // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
+          // any later proven cancellation hand-off to canonical Run/Stage state.
+          return 'stopped';
         }
-      }
-      if (outcome.kind === 'stopped') {
-        // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
-        // any later proven cancellation hand-off to canonical Run/Stage state.
-        return 'stopped';
-      }
-      const freshRun = this.requireRun(workspaceId, runId);
-      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
-      const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
-      if (freshStage === undefined) {
-        throw new Error('RUN_ENGINE_STAGE_NOT_FOUND: provider stage disappeared');
-      }
-      const failStage = async (code: string, message: string, retryable: boolean): Promise<void> => {
-        await this.lifecycleTransactionService.transitionStage({
-          workspaceId,
-          runId,
-          stageId: stage.id,
-          expectedVersion: freshStage.version,
-          expectedFrom: 'running',
-          to: 'failed',
-          errorCode: code,
-          message,
-          retryable,
-          retryScheduled: false,
-          correlationId: operation.id,
-        });
-      };
-      if (outcome.kind === 'active') {
-        // Converged on an existing authority claim; never re-dispatch.
-        return 'active';
-      }
-      if (outcome.kind === 'completed') {
-        if (isCollaborationRun && this.collaborationStageHooks) {
-          await this.collaborationStageHooks.completedStage({
-            workspaceId,
-            runId,
-            stage: freshStage,
-            agentId: stageDefinition.agent.agentId,
-            role: collaborationProgressRole(stage.workflowStageKey),
-            ...(outcome.output === undefined ? {} : { output: outcome.output }),
-          });
+        const freshRun = this.requireRun(workspaceId, runId);
+        if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
+        const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
+        if (freshStage === undefined) {
+          throw new Error('RUN_ENGINE_STAGE_NOT_FOUND: provider stage disappeared');
         }
-        this.preparedCollaborationStages.delete(`${workspaceId}:${runId}:${stage.id}`);
-        const resultArtifacts = this.artifactResults && !isCollaborationRun ? await this.artifactResults.capture({ workspaceId, runId,
-          stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
-          agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
-        const artifactIds = [...outcome.artifactIds, ...resultArtifacts];
-        const othersComplete = stages.every(
-          candidate => candidate.id === stage.id || candidate.status === 'completed' || candidate.status === 'skipped',
-        );
-        if (othersComplete) {
-          await this.lifecycleTransactionService.completeRun({
-            workspaceId,
-            runId,
-            stageId: stage.id,
-            expectedRunVersion: freshRun.version,
-            expectedStageVersion: freshStage.version,
-            correlationId: operation.id,
-            durationMs: outcome.durationMs,
-            artifactIds,
-            outputContractSatisfied: outcome.outputContractSatisfied,
-          });
-          this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
-        } else {
+        const failStage = async (code: string, message: string, retryable: boolean): Promise<void> => {
           await this.lifecycleTransactionService.transitionStage({
             workspaceId,
             runId,
             stageId: stage.id,
             expectedVersion: freshStage.version,
             expectedFrom: 'running',
-            to: 'completed',
+            to: 'failed',
+            errorCode: code,
+            message,
+            retryable,
+            retryScheduled: false,
             correlationId: operation.id,
-            durationMs: outcome.durationMs,
-            artifactIds,
-            outputContractSatisfied: outcome.outputContractSatisfied,
           });
+        };
+        if (outcome.kind === 'active') {
+          // Converged on an existing authority claim; never re-dispatch.
+          return 'active';
         }
-        return 'progressed';
-      }
-      if (outcome.kind === 'waiting-approval') {
-        return 'waiting-approval';
-      }
-
-      // outcome.kind === 'failed'. P5D §42: fall back only when the frozen
-      // policy lists this normalized error code, the per-stage budget remains,
-      // and a valid same-workspace enabled candidate exists. Otherwise the
-      // Stage fails with the ORIGINAL provider failure (§42.1 保留原 Provider
-      // Failure) — the fallback chain never rewrites the primary error.
-      const triggerCode = outcome.problem.code;
-      const chain = this.fallbackChain(workspaceId, runId, stage.id);
-      const mayFallback = fallbackPolicy !== undefined
-        && this.providerConfigurations !== undefined
-        && isFallbackTriggerCode(fallbackPolicy, triggerCode)
-        && !fallbackBudgetExhausted(fallbackPolicy, chain, stage.id);
-      const target = mayFallback
-        ? this.resolveFallbackTarget(
-          workspaceId, stage.id, primaryProviderSnapshot.providerConfigId, chain, fallbackPolicy!,
-          stageWorkspaceRoot, isCollaborationRun,
-        )
-        : undefined;
-      if (target === undefined) {
-        await failStage(outcome.problem.code, outcome.problem.detail, outcome.problem.retryable ?? false);
-        return 'progressed';
-      }
-      const descriptor = {
-        workspaceId, runId, stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
-        fromProviderConfigId: primaryProviderSnapshot.providerConfigId,
-        toProviderConfigId: target.providerConfigId,
-        triggerErrorCode: triggerCode,
-        attempt: chain.length + 1,
-      };
-      if (this.providerSwitchApproval !== undefined && fallbackPolicy!.requireUserApproval) {
-        // No Silent Fallback + approval gate: a high-risk target must hold a
-        // durable approved request before the switch commits; the Stage waits
-        // in waiting_approval exactly like a launch approval.
-        const gate = this.providerSwitchApproval.gateSwitch(descriptor, stageDefinition.agent, target, true);
-        if (gate.kind === 'deny') {
-          await failStage(gate.code, gate.message, false);
+        if (outcome.kind === 'completed') {
+          if (isCollaborationRun && this.collaborationStageHooks) {
+            await this.collaborationStageHooks.completedStage({
+              workspaceId,
+              runId,
+              stage: freshStage,
+              agentId: stageDefinition.agent.agentId,
+              role: collaborationProgressRole(stage.workflowStageKey),
+              ...(outcome.output === undefined ? {} : { output: outcome.output }),
+            });
+          }
+          this.preparedCollaborationStages.delete(`${workspaceId}:${runId}:${stage.id}`);
+          const resultArtifacts = this.artifactResults && !isCollaborationRun ? await this.artifactResults.capture({ workspaceId, runId,
+            stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+            agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
+          const artifactIds = [...outcome.artifactIds, ...resultArtifacts];
+          const othersComplete = stages.every(
+            candidate => candidate.id === stage.id || candidate.status === 'completed' || candidate.status === 'skipped',
+          );
+          if (othersComplete) {
+            await this.lifecycleTransactionService.completeRun({
+              workspaceId,
+              runId,
+              stageId: stage.id,
+              expectedRunVersion: freshRun.version,
+              expectedStageVersion: freshStage.version,
+              correlationId: operation.id,
+              durationMs: outcome.durationMs,
+              artifactIds,
+              outputContractSatisfied: outcome.outputContractSatisfied,
+            });
+            this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
+          } else {
+            await this.lifecycleTransactionService.transitionStage({
+              workspaceId,
+              runId,
+              stageId: stage.id,
+              expectedVersion: freshStage.version,
+              expectedFrom: 'running',
+              to: 'completed',
+              correlationId: operation.id,
+              durationMs: outcome.durationMs,
+              artifactIds,
+              outputContractSatisfied: outcome.outputContractSatisfied,
+            });
+          }
           return 'progressed';
         }
-        if (gate.kind === 'wait') {
+        if (outcome.kind === 'waiting-approval') {
           return 'waiting-approval';
         }
+
+        // outcome.kind === 'failed'. P5D §42: fall back only when the frozen
+        // policy lists this normalized error code, the per-stage budget remains,
+        // and a valid same-workspace enabled candidate exists. Otherwise the
+        // Stage fails with the ORIGINAL provider failure (§42.1 保留原 Provider
+        // Failure) — the fallback chain never rewrites the primary error.
+        const triggerCode = outcome.problem.code;
+        const chain = this.fallbackChain(workspaceId, runId, stage.id);
+        const mayFallback = fallbackPolicy !== undefined
+          && this.providerConfigurations !== undefined
+          && isFallbackTriggerCode(fallbackPolicy, triggerCode)
+          && !fallbackBudgetExhausted(fallbackPolicy, chain, stage.id);
+        const target = mayFallback
+          ? this.resolveFallbackTarget(
+            workspaceId, stage.id, primaryProviderSnapshot.providerConfigId, chain, fallbackPolicy!,
+            stageWorkspaceRoot, isCollaborationRun,
+          )
+          : undefined;
+        if (target === undefined) {
+          await failStage(outcome.problem.code, outcome.problem.detail, outcome.problem.retryable ?? false);
+          return 'progressed';
+        }
+        const descriptor = {
+          workspaceId, runId, stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+          fromProviderConfigId: primaryProviderSnapshot.providerConfigId,
+          toProviderConfigId: target.providerConfigId,
+          triggerErrorCode: triggerCode,
+          attempt: chain.length + 1,
+        };
+        if (this.providerSwitchApproval !== undefined && fallbackPolicy!.requireUserApproval) {
+          // No Silent Fallback + approval gate: a high-risk target must hold a
+          // durable approved request before the switch commits; the Stage waits
+          // in waiting_approval exactly like a launch approval.
+          const gate = this.providerSwitchApproval.gateSwitch(descriptor, stageDefinition.agent, target, true);
+          if (gate.kind === 'deny') {
+            await failStage(gate.code, gate.message, false);
+            return 'progressed';
+          }
+          if (gate.kind === 'wait') {
+            return 'waiting-approval';
+          }
+        }
+        const approved = this.providerSwitchApproval?.findApprovedSwitch(workspaceId, runId, stage.id);
+        this.commitProviderSwitch(descriptor, snapshot.id, approved?.id);
+        currentProviderSnapshot = target;
+        claimAttemptOffset += 1;
+        // Loop: execute the fallback provider under a fresh Session/Process
+        // claim attempt; the failed provider Session is never overwritten (§97
+        // invariant 28).
+      } finally {
+        // Finalization can await Artifact capture. Keep capacity until the
+        // Stage transition commits so a duplicate drive cannot reacquire an
+        // already-finished attempt and strand the next Stage behind its lock.
+        if (capacity.reservation && outcome?.kind !== 'active' && outcome?.kind !== 'waiting-approval') {
+          this.concurrencyGate?.releaseProviderStage?.(capacity.reservation);
+        }
       }
-      const approved = this.providerSwitchApproval?.findApprovedSwitch(workspaceId, runId, stage.id);
-      this.commitProviderSwitch(descriptor, snapshot.id, approved?.id);
-      currentProviderSnapshot = target;
-      claimAttemptOffset += 1;
-      // Loop: execute the fallback provider under a fresh Session/Process
-      // claim attempt; the failed provider Session is never overwritten (§97
-      // invariant 28).
     }
   }
 

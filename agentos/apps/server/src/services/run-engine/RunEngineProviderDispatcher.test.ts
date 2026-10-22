@@ -1751,6 +1751,34 @@ describe('RunEngineProviderDispatcher E2E', () => {
     }
   });
 
+  it('§8.4 a duplicate drive during Artifact finalization cannot leak capacity into the next Stage', async () => {
+    let release!: () => void;
+    let capturing = false;
+    const captured = new Promise<void>(resolve => { release = resolve; });
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"done"}\n']));
+    const fx = fixture(driver, false, {
+      concurrencyLimits: { global: 4, perProvider: 1 }, useRealCoordinator: true,
+      artifactResults: { capture: async () => {
+        if (!capturing) { capturing = true; await captured; }
+        return [];
+      } },
+    });
+    const drive = fx.dispatcher.driveSafely(WS, RUN);
+    try {
+      await waitForCondition(() => capturing);
+      const owned = fx.db.prepare("SELECT COUNT(*) AS count FROM runtime_locks WHERE purpose = 'run-concurrency-stage' AND released_at IS NULL")
+        .get() as { count: number };
+      assert.equal(owned.count, 1, 'finalization still owns capacity');
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(driver.spawnCalls, 1, 'the duplicate joins the original durable Process');
+      release();
+      await drive;
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.equal(driver.spawnCalls, 4);
+      assert.deepEqual(fx.dispatchFailures, []);
+    } finally { release(); await drive; close(fx); }
+  });
+
   it('§8.4 terminal callbacks wait for the caller-owned SQLite commit and vanish on rollback', async () => {
     const fx = fixture(new FakeDriver(null), false, { returnActive: true });
     const terminal: string[] = [];
