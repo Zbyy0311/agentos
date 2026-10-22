@@ -8,6 +8,8 @@ export interface MaintenanceShutdownInput {
   readonly inspectActivity: () => MaintenanceActivitySnapshot;
   readonly server?: Server;
   readonly stopBackgroundWorkers?: () => void | Promise<void>;
+  /** Final asynchronous drain after HTTP and runtime mutation owners settle. */
+  readonly beforeCloseStore?: () => void | Promise<void>;
   readonly closeStore?: () => void;
   readonly releaseOwnership?: () => void | Promise<void>;
   readonly onFinished: () => void;
@@ -42,6 +44,9 @@ export async function shutdownMaintenanceRuntime(input: MaintenanceShutdownInput
   let finished = false;
   const finalize = async (): Promise<void> => {
     if (finished) return;
+    // An accepted HTTP mutation can commit a terminal hook after the early
+    // background drain. Seal that final work only after all owners settle.
+    await input.beforeCloseStore?.();
     finished = true;
     try { input.closeStore?.(); } catch (error) { input.onError(error); }
     try { await input.releaseOwnership?.(); } catch (error) { input.onError(error); }

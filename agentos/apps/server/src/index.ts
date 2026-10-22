@@ -180,6 +180,9 @@ let maintenancePaused = false;
 let startBackgroundWorkers: (() => void) | undefined;
 let resumeBackgroundQueueWorkers: (() => void) | undefined;
 let worktreeReconcile: Promise<void> | undefined;
+let closeProviderQueues: (() => Promise<void>) | undefined;
+let stopProviderQueueStarts: (() => void) | undefined;
+let drainProviderQueues: (() => Promise<void>) | undefined;
 let maintenanceCoordinator: MaintenanceCoordinator | undefined;
 let localShutdownControl: import('node:net').Server | undefined;
 const maintenanceBarrier = new MaintenanceBarrier();
@@ -244,6 +247,10 @@ function resumeBackgroundWorkers(): void {
 }
 
 async function stopOwnedBackgroundWorkers(): Promise<void> {
+  // Stop accepting queue work before awaiting any other worker. SQLite stays
+  // open until full drives and their terminal/recovery continuations settle.
+  stopProviderQueueStarts?.();
+  const providerQueueDrain = drainProviderQueues?.();
   try { await closeLocalShutdownControl(localShutdownControl); }
   catch (error) { diagLog(`SHUTDOWN_CONTROL_CLOSE_FAILED error=${String(error)}`); }
   localShutdownControl = undefined;
@@ -258,6 +265,7 @@ async function stopOwnedBackgroundWorkers(): Promise<void> {
   await worktreeReconcile?.catch(error => {
     diagLog(`SHUTDOWN_WORKTREE_RECONCILE_FAILED error=${String(error)}`);
   });
+  await providerQueueDrain;
 }
 
 const requestRuntimeShutdown = createMaintenanceShutdownController(() => ({
@@ -268,6 +276,7 @@ const requestRuntimeShutdown = createMaintenanceShutdownController(() => ({
     : httpServer ? { counts: {}, unknown: true } : { counts: {} },
   server: httpServer,
   stopBackgroundWorkers: stopOwnedBackgroundWorkers,
+  beforeCloseStore: () => closeProviderQueues?.(),
   closeStore: () => {
     if (!store) return;
     try { store.close(); } catch (error) { diagLog(`SHUTDOWN_STORE_CLOSE_FAILED error=${String(error)}`); }
@@ -348,6 +357,9 @@ async function bootstrap(): Promise<void> {
         completedStage: input => collaborationService.completedStage(input),
       },
     });
+    closeProviderQueues = () => providerExecutionChain.closeQueues();
+    stopProviderQueueStarts = () => providerExecutionChain.stopQueueStarts();
+    drainProviderQueues = () => providerExecutionChain.drainQueues();
     collaborationService = new CollaborationWorkflowService({
       store,
       verifiedMemoryFacts: () => providerExecutionChain.verifiedMemoryFacts,

@@ -22,6 +22,8 @@ import { recoverInterruptedRuns } from '../runRecovery.js';
 import { RunEngine } from './run-engine/RunEngine.js';
 import { StageExecutor } from './run-engine/StageExecutor.js';
 import { ResumeFallbackQueueRecovery } from './run-engine/ResumeFallbackQueueRecovery.js';
+import { ResumeFallbackWorktreePreparer } from './ResumeFallbackWorktreePreparer.js';
+import { RunConcurrencyScheduler } from './RunConcurrencyScheduler.js';
 import { WorktreeManager } from './WorktreeManager.js';
 import { WorkspaceGitRootRegistry } from './WorkspaceGitRootRegistry.js';
 
@@ -276,10 +278,32 @@ export function productionServiceFor(
   beforeApplicationRelease?: (input: { workspaceId: string; controlId: string }) => void,
 ) {
   const slices = productionCollaborationSlices();
+  const workspaceManager = new WorkspaceManager(fx.store);
+  const worktreeManager = new WorktreeManager(join(fx.root, 'worktrees'));
+  const workspaceGitRoots = new WorkspaceGitRootRegistry(fx.dataRoot, fx.store, workspaceManager, worktreeManager);
+  const paths = new Map<string, string>();
+  const preparer = new ResumeFallbackWorktreePreparer({
+    store: fx.store, worktrees: worktreeManager,
+    workspaceGitRootFor: workspaceId => workspaceGitRoots.rootPathFor(workspaceId),
+    registerWorktreePath: (_workspaceId, runId, path) => paths.set(runId, path),
+  });
   const authority = new WorkspaceAdmissionAuthority({ store: fx.store });
+  const scheduler = new RunConcurrencyScheduler({ getDatabase: () => fx.store.getDatabase() });
+  const collaborations = new CollaborationRepository(fx.store.getDatabase());
+  let service!: CollaborationWorkflowService;
+  const dispatchGrantedRun = async (workspaceId: string, runId: string): Promise<void> => {
+    if (!(await authority.authorizeCanonicalRun({ workspaceId, runId })).authorized) return;
+    if (fx.store.runRepository().findById(workspaceId, runId)?.status !== 'queued') return;
+    const starts = fx.store.operationService().listByRun(workspaceId, runId)
+      .filter(operation => operation.type === 'run.start');
+    if (starts.length !== 1 || starts[0]?.status !== 'queued') return;
+    // The scripted native boundary below uses the real Engine to claim once.
+    await dispatchRun(workspaceId, runId);
+  };
   const fallbackRecovery = new ResumeFallbackQueueRecovery(fx.store,
-    input => authority.requestCanonicalRun(input), dispatchRun,
-    input => authority.releaseCanonicalRun(input));
+    input => authority.requestCanonicalRun(input), dispatchGrantedRun,
+    input => authority.releaseCanonicalRun(input),
+    (workspaceId, runId) => preparer.prepare(workspaceId, runId));
   let approvalResumes = 0;
   const chain = {
     admissionAuthority: {
@@ -292,19 +316,30 @@ export function productionServiceFor(
       },
     },
     dispatcher: { driveSafely: dispatchRun, cancelRun: async () => { assert.fail('no native cancellation is allowed in the startup fixture'); } },
+    reconcileConcurrencyReservations: () => scheduler.reconcileReservations(),
+    pumpQueuedRuns: async () => {
+      await scheduler.pumpQueuedRuns(async (workspaceId, runId) => {
+        // The fixture scripts native dispatch only. Keep the real global
+        // scheduler and each workflow owner's Admission/preparation protocol.
+        if (collaborations.findByCanonicalRun(workspaceId, runId)) {
+          await service.resumeGrantedQueuedRuns(workspaceId);
+        } else if (fx.store.runRepository().findById(workspaceId, runId)?.reason === 'resume-fallback') {
+          await fallbackRecovery.resumeChild(workspaceId, runId);
+        } else {
+          await dispatchGrantedRun(workspaceId, runId);
+        }
+      });
+    },
     resumeGrantedResumeFallbackChildren: (workspaceId?: string) => fallbackRecovery.resumeGrantedChildren(workspaceId),
     approvalGate: { resumeApprovedUnconsumed: async () => { approvalResumes++; } },
   };
   const environment = { env: { AGENTOS_RUNTIME_DISPATCH_ENABLED: runtimeValue } };
   const compile = (source: string) => ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const withDispatchPermit = async (operation: () => Promise<void>) => { await operation(); return true; };
-  const workspaceManager = new WorkspaceManager(fx.store);
-  const worktreeManager = new WorktreeManager(join(fx.root, 'worktrees'));
-  const workspaceGitRoots = new WorkspaceGitRootRegistry(fx.dataRoot, fx.store, workspaceManager, worktreeManager);
   const construct = new Function('store', 'workspaceManager', 'worktreeManager', 'providerExecutionChain', 'collaborationWorktreePaths', 'CollaborationWorkflowService', 'process', 'withDispatchPermit', 'workspaceGitRoots',
     compile(`${slices.flag}\nlet collaborationService;\n${slices.construction}\nreturn collaborationService;`));
-  const service = construct(fx.store, workspaceManager, worktreeManager, chain,
-    new Map<string, string>(), CollaborationWorkflowService, environment, withDispatchPermit, workspaceGitRoots) as CollaborationWorkflowService;
+  service = construct(fx.store, workspaceManager, worktreeManager, chain,
+    paths, CollaborationWorkflowService, environment, withDispatchPermit, workspaceGitRoots) as CollaborationWorkflowService;
   return { service, authority, approvalResumes: () => approvalResumes,
     async startProductionBackground(quiescing = false): Promise<void> {
       const pending: Promise<void>[] = [];
@@ -337,6 +372,8 @@ export function admitFollowerToApproval(store: SqliteStore, workspaceId: string,
     snapshotRepository: store.runSnapshotRepository(), runStageRepository: store.runStageRepository(), runInTransaction: fn => store.runInTransaction(fn),
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })) });
   assert.equal(engine.tick({ workspaceId, runId }).outcome, 'claimed');
+  assert.equal((store.getDatabase().prepare("SELECT COUNT(*) AS n FROM runtime_events WHERE run_id = ? AND type = 'run.dequeued'")
+    .get(runId) as { n: number }).n, 1, 'the real generic dispatcher and specialized queue share one canonical claim');
   const start = store.operationService().listByRun(workspaceId, runId).find(operation => operation.type === 'run.start')!;
   assert.ok(start);
   for (let step = 0; step < 12; step++) {

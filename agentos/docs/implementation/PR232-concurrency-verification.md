@@ -80,3 +80,31 @@ registration, Identity, cache metrics and persistent cache tests.
 Known validation limits: five external model CLI gates require explicit local
 environment opt-in and are skipped. This task provides local runtime/SQLite and
 local Custom CLI execution evidence, without a new remote CI run or publication.
+
+## Exact-head CI follow-up
+
+The first remote CI on `5594cfec` failed shard 7 in the source-structure
+MaintenanceBarrier assertion: it required the collaboration queue to be the
+first statement inside the dispatch permit. Reservation reconciliation and the
+new global queue now correctly run first, inside that same permit. Both startup
+and maintenance-resume assertions were updated to require the new ordering and
+retain the permit boundary. No production fencing or ownership guard changed.
+
+Shard 3 also exposed an outdated production-startup fixture missing the new
+reservation-recovery/global-pump methods. The fixture now uses the real
+scheduler, Admission authorization and required-Child preparation; it asserts a
+single canonical dequeue rather than substituting no-op queue methods.
+
+The follow-up also owns asynchronous queue/terminal jobs until SQLite can close.
+Shutdown first stops new queue starts. It continues accepting cleanup from
+already-owned HTTP/dispatcher mutations, then performs a final queue seal/drain
+after those owners settle and before database close. A regression commits a
+terminal fact after the early drain and proves SQLite remains open until its
+delayed cleanup completes.
+
+Parent verification of the final follow-up: 16-file affected gate **185 passed,
+5 opt-in Provider tests skipped, 0 failed**; it includes both previously failed
+CI files, actual required-Child Custom CLI execution, queue shutdown, maintenance,
+fallback and scheduling. No `database is not open` diagnostic remained. Server
+TypeScript build passed. The earlier 724-test receipt remains tied to `5594cfec`;
+the new follow-up requires a new complete remote CI run.
