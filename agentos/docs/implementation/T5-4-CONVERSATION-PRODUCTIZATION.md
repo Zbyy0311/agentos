@@ -60,7 +60,7 @@ The parent T5-11 task owns migration 073, global `/api/conversations/:id/stream`
 
 067 remains `conversation-summaries-notifications`; no migration number was reassigned. It adds Summary/Notification/product-event tables and nullable approval conversation_id. Chain triggers reject missing/cross-Conversation/skipped predecessor links and UPDATEs. Fresh install, supported full-registry upgrade, direct 065→067 upgrade preserving Messages/read positions/approvals, repeat apply, prerequisites, foreign keys and integrity are covered.
 
-The current independent registry retains 001–065 plus 067. Main `ed09913b5d723b7bbe87750a038cc45307f9a3c5` with PR235/066 was reported by the parent during this task; this local delivery has not been rebased onto it. Before any future PR, integrate main and retain the union of 065 + 066 + 067 (and other parent-owned migrations), full registry expectations and all Identity prefixes. This task adds `conversationSummary: csum` and `conversationNotification: cnot`; preserve main's cache identities when resolving Identity/test conflicts.
+The parent rebased this implementation onto main `ed09913b5d723b7bbe87750a038cc45307f9a3c5` on 2026-10-23. The registry retains 001–067, including 065 system tables, 066 validation cache and 067 productization; Identity retains all 42 kinds, including the cache identity and `conversationSummary: csum` / `conversationNotification: cnot`. The 068 scheduling branch is independent and will be integrated after its own verified merge.
 
 067 is still an unpublished branch migration, and its final schema/checksum differs from the interrupted checkpoint. Supported upgrade evidence starts before 067. A disposable database that recorded the old draft 067 checksum requires explicit reconciliation; this work does not bypass MigrationRunner checksum validation or rewrite an existing migration ledger.
 
@@ -83,4 +83,15 @@ node --import tsx --test --test-concurrency=1 @taskTests
 
 Local receipts live under `logs/t5-4/` (Git-ignored): final-test-manifest.txt, tested-source-hashes.json, product-final-focused.log, final-regression.log, final-tsc.log and verification-summary.json. Earlier unsuccessful command/fixture runs remain distinguishable in separate logs. The opt-in real Provider approval gate requires `M4_P4_REAL_APPROVAL_GATE=1` and provider configuration; its skip must not be reported as real Provider success. Some existing negative-path tests deliberately print COMPACTION_SUMMARIZER_UNAVAILABLE; their pass/fail status is determined by the test assertions.
 
-Delivery is a local commit only. No push, PR, GitHub merge, latest-main integration, or parent realtime integration is included in this receipt.
+After main integration, the parent aligned migration/Identity contracts with
+066+067 and retained the Summary safety contract's User/Agent source labels.
+Windows on this host allocates ephemeral TCP ports in 1024–15000; a route fixture
+hit a Fetch-restricted service port. Conversation/approval HTTP fixtures now use
+the repository's existing `listenFetchSafe` helper without changing OS settings
+or weakening any response assertion.
+
+The final rebased 25-file gate passed **261 tests, 1 explicitly opt-in real
+Provider test skipped, 0 failed** (262 total). Workspace dependencies and server
+TypeScript build passed. Receipts are `conversation-final-verified.log` in the
+parent task evidence directory. No GitHub merge or parent realtime/index
+integration is implied by these local receipts.

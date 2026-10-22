@@ -42,7 +42,7 @@ test('067 fresh schema and reapply preserve 065, reserved slots, foreign keys, a
     seed(db);
     const summaries = new ConversationSummaryService(db, () => NOW);
     const first = summaries.createVersion({ workspaceId: 'ws', conversationId: 'conversation-a', trigger: 'manual' }).summary!;
-    assert.deepEqual(first.openQuestions, ['must retain this message?']);
+    assert.deepEqual(first.openQuestions, ['User: must retain this message?']);
     assert.deepEqual(first.sourceMessageIds, ['message-conversation-a']);
     const clone = (id: string, conversationId: string, from: number, to: number, previous: string | null, version: number) => db.prepare(`
       INSERT INTO conversation_summaries (id,conversation_id,from_sequence,to_sequence,summary,
@@ -64,7 +64,8 @@ test('067 fresh schema and reapply preserve 065, reserved slots, foreign keys, a
     assert.equal(summaries.list('ws', 'conversation-a').length, 2);
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS.find(item => item.id === '067')?.checksum, migration067Checksum);
     assert.ok(DEFAULT_REGISTRY_MIGRATIONS.some(item => item.id === '065'));
-    assert.ok(!DEFAULT_REGISTRY_MIGRATIONS.some(item => item.id === '066' || item.id === '068'));
+    assert.equal(DEFAULT_REGISTRY_MIGRATIONS.filter(item => item.id === '066').length, 1);
+    assert.equal(DEFAULT_REGISTRY_MIGRATIONS.find(item => item.id === '066')?.name, 'provider-validation-cache');
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'scheduler_jobs'").get());
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     assert.equal((db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
