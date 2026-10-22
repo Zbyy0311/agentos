@@ -19,6 +19,7 @@ import type { EventPayloadOffloader } from '../services/EventPayloadOffloadServi
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import type { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import type { OutboxMessage, OutboxRepository } from './OutboxRepository.js';
+import { ConversationNotificationService } from '../services/ConversationNotificationService.js';
 
 export class RuntimeEventRepositoryError extends Error {
   constructor(
@@ -521,13 +522,17 @@ function toRecord(row: RuntimeEventRow): Record<string, unknown> {
 }
 
 export class RuntimeEventRepository {
+  private readonly conversationNotifications: ConversationNotificationService;
+
   constructor(
     private readonly db: TransactionDatabase,
     private readonly registry: CentralRuntimeEventRegistry,
     private readonly notifier?: RuntimeEventNotifier,
     private readonly redactor?: EventPayloadRedactor,
     private readonly payloadOffloader?: EventPayloadOffloader,
-  ) {}
+  ) {
+    this.conversationNotifications = new ConversationNotificationService(db);
+  }
 
   /**
    * Exposes the bound transaction DB so a composing writer can prove the
@@ -662,6 +667,14 @@ export class RuntimeEventRepository {
         'Runtime Event could not be persisted',
       );
     }
+    this.conversationNotifications.notifyFromRuntimeEvent({
+      type: event.type,
+      workspaceId: event.workspaceId,
+      conversationId: event.conversationId,
+      runId: event.runId,
+      approvalRequestId: event.approvalRequestId,
+      payload: event.payload as Record<string, unknown>,
+    });
     if (this.notifier) {
       const registered = registerAfterCommit(this.db, () => {
         this.notifier!.publish({

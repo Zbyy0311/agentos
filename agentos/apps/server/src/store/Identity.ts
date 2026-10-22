@@ -27,6 +27,8 @@ export const ENTITY_ID_PREFIXES = {
   approval: 'approval',
   grant: 'grant',
   conversation: 'conv',
+  conversationSummary: 'csum',
+  conversationNotification: 'cnot',
   message: 'msg',
   turn: 'turn',
   checkpoint: 'cp',

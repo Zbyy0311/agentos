@@ -1,5 +1,7 @@
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { inTransaction } from '../store/Transaction.js';
+import { conversationIdsForRun } from '../store/ConversationRunResolver.js';
+import { ConversationEventRepository } from '../store/ConversationEventRepository.js';
 
 /**
  * Conversation message search (SQLite FTS5) and per-user Read State.
@@ -80,6 +82,8 @@ export class ConversationSearchReadStateError extends Error {
 }
 
 export class ConversationSearchReadStateService {
+  private approvalConversationColumnAvailable: boolean | undefined;
+
   constructor(private readonly db: TransactionDatabase) {}
 
   private hasFts(): boolean {
@@ -181,6 +185,8 @@ export class ConversationSearchReadStateService {
       ).get(input.workspaceId, input.conversationId) as { max: number }).max;
       const target = input.latest === true ? maxSequence : input.lastReadMessageSequence!;
       if (target > maxSequence) throw new ConversationSearchReadStateError('INPUT_INVALID');
+      const previous = this.db.prepare(`SELECT last_read_message_sequence FROM conversation_read_states
+        WHERE conversation_id = ? AND user_id = ?`).get(input.conversationId, input.userId) as { last_read_message_sequence: number } | undefined;
       // Atomic monotone advance: only rows whose stored position is behind the
       // target move. A conflicting writer either wins the lock or re-reads.
       this.db.prepare(`
@@ -198,7 +204,15 @@ export class ConversationSearchReadStateService {
       const row = this.db.prepare(
         'SELECT * FROM conversation_read_states WHERE conversation_id = ? AND user_id = ?',
       ).get(input.conversationId, input.userId) as ReadStateRow;
-      return this.snapshot(input.workspaceId, input.userId, row, input.now);
+      const snapshot = this.snapshot(input.workspaceId, input.userId, row, input.now);
+      if (previous === undefined || previous.last_read_message_sequence < target) {
+        new ConversationEventRepository(this.db).appendWithinTransaction({
+          workspaceId: input.workspaceId, conversationId: input.conversationId, userId: input.userId,
+          type: 'conversation.read_state_updated', dedupeKey: `read:${input.userId}:${target}`, timestamp: input.now,
+          payload: { readState: snapshot },
+        });
+      }
+      return snapshot;
     });
   }
 
@@ -211,11 +225,12 @@ export class ConversationSearchReadStateService {
       'SELECT * FROM conversation_read_states WHERE conversation_id = ? AND user_id = ?',
     ).get(conversationId, userId) as ReadStateRow | undefined;
     if (row === undefined) {
+      const counts = this.countUnread(workspaceId, conversationId, 0);
       return {
         conversationId, userId, lastReadMessageSequence: 0, lastReadMessageId: null, lastReadAt: now,
-        unreadCount: this.countUnread(workspaceId, conversationId, 0).unreadCount,
-        mentionCount: this.countUnread(workspaceId, conversationId, 0).mentionCount,
-        approvalCount: 0,
+        unreadCount: counts.unreadCount,
+        mentionCount: counts.mentionCount,
+        approvalCount: this.countPendingApprovals(workspaceId, conversationId, now),
       };
     }
     return this.snapshot(workspaceId, userId, row, now);
@@ -241,8 +256,30 @@ export class ConversationSearchReadStateService {
     return { unreadCount: rows.length, mentionCount };
   }
 
+  private countPendingApprovals(workspaceId: string, conversationId: string, now: string): number {
+    if (this.approvalConversationColumnAvailable === undefined) {
+      const table = this.db.prepare(
+        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'runtime_approval_requests'",
+      ).get();
+      const columns = table === undefined
+        ? []
+        : this.db.prepare('PRAGMA table_info(runtime_approval_requests)').all() as Array<{ name: string }>;
+      this.approvalConversationColumnAvailable = columns.some(column => column.name === 'conversation_id');
+    }
+    const hasApprovals = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runtime_approval_requests'").get();
+    if (hasApprovals === undefined) return 0;
+    const binding = this.approvalConversationColumnAvailable ? 'conversation_id' : 'NULL';
+    const pending = this.db.prepare(`
+      SELECT ${binding} AS conversationId, run_id AS runId FROM runtime_approval_requests
+      WHERE workspace_id = ? AND status = 'pending' AND expires_at > ?
+    `).all(workspaceId, now) as Array<{ conversationId: string | null; runId: string }>;
+    return pending.filter(approval => approval.conversationId === conversationId
+      || conversationIdsForRun(this.db, workspaceId, approval.runId).includes(conversationId)).length;
+  }
+
   private snapshot(workspaceId: string, userId: string, row: ReadStateRow, now: string): ConversationReadStateSnapshot {
     const counts = this.countUnread(workspaceId, row.conversation_id, row.last_read_message_sequence);
+    const approvalCount = this.countPendingApprovals(workspaceId, row.conversation_id, now);
     const lastReadMessage = row.last_read_message_sequence > 0
       ? (this.db.prepare(
         'SELECT id FROM cr_messages WHERE workspace_id = ? AND conversation_id = ? AND sequence = ?',
@@ -255,7 +292,7 @@ export class ConversationSearchReadStateService {
       SET unread_count = ?, mention_count = ?, approval_count = ?, updated_at = ?,
         last_read_message_id = COALESCE(?, last_read_message_id)
       WHERE conversation_id = ? AND user_id = ?
-    `).run(counts.unreadCount, counts.mentionCount, 0, now, lastReadMessage?.id ?? null, row.conversation_id, userId);
+    `).run(counts.unreadCount, counts.mentionCount, approvalCount, now, lastReadMessage?.id ?? null, row.conversation_id, userId);
     return {
       conversationId: row.conversation_id,
       userId: row.user_id,
@@ -264,7 +301,7 @@ export class ConversationSearchReadStateService {
       lastReadAt: row.last_read_at,
       unreadCount: counts.unreadCount,
       mentionCount: counts.mentionCount,
-      approvalCount: 0,
+      approvalCount,
     };
   }
 }

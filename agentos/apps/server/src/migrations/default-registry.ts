@@ -128,6 +128,7 @@ import type { Migration } from './types.js';
  * 065: System-domain foundation tables (runtime_locks, scheduler_jobs,
  *      audit_records, retention_policies)
  * 066: Short-term provider validation cache
+ * 067: Conversation Summary versions, notifications, and Conversation product events
  * 068: Run scheduling priority and queue ordering index
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [

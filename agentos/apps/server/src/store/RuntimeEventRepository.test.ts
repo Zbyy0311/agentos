@@ -10,6 +10,8 @@ import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { SqliteStore } from './SqliteStore.js';
 import { inTransaction } from './Transaction.js';
+import { createEntityId } from './Identity.js';
+import { ConversationNotificationService } from '../services/ConversationNotificationService.js';
 
 async function fixture(): Promise<{ store: SqliteStore; root: string; workspaceId: string; taskId: string; runId: string; stageId: string }> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5a-runtime-events-'));
@@ -248,4 +250,57 @@ test('P5B-G06/G07/G08 Runtime Event hints register after insert and publish FIFO
   } finally {
     close(fx);
   }
+});
+
+test('registered run.completed Runtime Event creates one workspace Conversation notification', async () => {
+  const fx = await fixture();
+  try {
+    const conversationId = createEntityId('conversation');
+    fx.store.conversationRepository().createConversation({
+      id: conversationId, workspaceId: fx.workspaceId, kind: 'direct', title: 'Run completion',
+      createdAt: '2026-08-10T00:00:00.000Z',
+    });
+    fx.store.conversationRepository().appendMessage({
+      id: createEntityId('message'), workspaceId: fx.workspaceId, conversationId,
+      senderType: 'user', kind: 'text', status: 'final', content: 'Run this task',
+      runId: fx.runId, createdAt: '2026-08-10T00:00:00.000Z',
+    });
+    const draft: RuntimeEventDraft = {
+      ...knownDraft(fx, 2),
+      id: createEntityId('event'),
+      type: 'run.completed',
+      source: 'run-engine',
+      sequence: 2,
+      timestamp: '2026-08-10T00:01:00.000Z',
+      payload: { durationMs: 1000, completedStageIds: [], artifactIds: [] },
+    };
+    inTransaction(fx.store.getDatabase(), () => fx.store.runtimeEventRepository().appendWithinTransaction(draft));
+    inTransaction(fx.store.getDatabase(), () => fx.store.runtimeEventRepository().appendWithinTransaction({
+      ...draft, id: createEntityId('event'), sequence: 3,
+    }));
+    const notifications = new ConversationNotificationService(fx.store.getDatabase());
+    assert.equal(notifications.list({ workspaceId: fx.workspaceId, userId: 'default' }).length, 1);
+    const notification = notifications.list({ workspaceId: fx.workspaceId, userId: 'default' })[0]!;
+    assert.equal(notification.type, 'run-completed');
+    assert.equal(notification.conversationId, conversationId);
+    assert.equal((fx.store.getDatabase().prepare(`SELECT COUNT(*) AS n FROM conversation_events
+      WHERE conversation_id = ? AND type = 'conversation.notification_created'`).get(conversationId) as { n: number }).n, 1);
+    assert.equal(notifications.list({ workspaceId: 'workspace_missing', userId: 'default' }).length, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('a legacy or unresolved Conversation hint cannot prevent a canonical Run event from committing', async () => {
+  const fx = await fixture();
+  try {
+    const draft: RuntimeEventDraft = {
+      ...knownDraft(fx, 2), id: createEntityId('event'), type: 'run.completed', source: 'run-engine',
+      conversationId: 'legacy-conversation-with-no-forward-binding',
+      payload: { durationMs: 1, completedStageIds: [], artifactIds: [] },
+    };
+    inTransaction(fx.store.getDatabase(), () => fx.store.runtimeEventRepository().appendWithinTransaction(draft));
+    assert.ok(fx.store.runtimeEventRepository().findById(draft.id));
+    assert.deepEqual(new ConversationNotificationService(fx.store.getDatabase()).list({ workspaceId: fx.workspaceId, userId: 'default' }), []);
+  } finally { close(fx); }
 });
