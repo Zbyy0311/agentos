@@ -151,6 +151,7 @@ test('063 upgrades a database with 062 and 064 already applied without rerunning
     });
     assert.equal(marked.lastReadMessageSequence, 1);
     assert.equal(marked.unreadCount, 0);
+    assert.equal(marked.approvalCount, 0, 'pre-067 schema with no linked pending approvals returns zero');
     assert.equal((db.prepare("SELECT COUNT(*) AS n FROM conversation_read_states WHERE conversation_id = 'conv-1' AND user_id = 'user-1'").get() as { n: number }).n, 1);
 
     // Migration 063 leaves the 064 delete gate intact and keeps its event row.

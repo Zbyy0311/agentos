@@ -1,5 +1,11 @@
 import { isTransactionActive, type TransactionDatabase } from './Transaction.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import { conversationIdsForRun } from './ConversationRunResolver.js';
+import { ConversationEventRepository } from './ConversationEventRepository.js';
+import {
+  ConversationNotificationService,
+  DEFAULT_CONVERSATION_NOTIFICATION_USER_ID,
+} from '../services/ConversationNotificationService.js';
 
 export type RuntimeApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 export type RuntimeApprovalResolution = 'approve_once' | 'approve_run' | 'approve_workspace' | 'reject' | 'cancel_run';
@@ -8,6 +14,7 @@ export interface RuntimeApprovalRequestRecord {
   readonly id: string;
   readonly workspaceId: string;
   readonly runId: string;
+  readonly conversationId: string | null;
   readonly runSnapshotId: string;
   readonly stageId: string | null;
   readonly stageAttempt: number;
@@ -50,7 +57,7 @@ export class RuntimeApprovalRepositoryError extends Error {
 }
 
 type CreateRuntimeApprovalInput = Omit<RuntimeApprovalRequestRecord,
-  'status' | 'resolution' | 'decisionRecordId' | 'approvalRequiredEventId' | 'approvalResolvedEventId'
+  'conversationId' | 'status' | 'resolution' | 'decisionRecordId' | 'approvalRequiredEventId' | 'approvalResolvedEventId'
   | 'candidateId' | 'candidateEventId' | 'decidedBy' | 'decidedAt' | 'consumedAt' | 'version'>;
 
 const HASH = /^[a-f0-9]{64}$/;
@@ -59,50 +66,84 @@ const RISKS = new Set(['low', 'medium', 'high', 'critical']);
 const RESOLUTIONS = new Set(['approve_once', 'approve_run', 'approve_workspace', 'reject', 'cancel_run']);
 
 export class RuntimeApprovalRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  private conversationIdColumnAvailable: boolean | undefined;
+  private readonly notifications: ConversationNotificationService;
+
+  constructor(private readonly db: TransactionDatabase) {
+    this.notifications = new ConversationNotificationService(db);
+  }
 
   createWithinTransaction(input: CreateRuntimeApprovalInput): RuntimeApprovalRequestRecord {
     this.assertTransaction();
     this.assertIdentity(input);
+    const conversationIds = conversationIdsForRun(this.db, input.workspaceId, input.runId);
+    const conversationId = conversationIds[0] ?? null;
     try {
-      this.db.prepare(`INSERT INTO runtime_approval_requests (
-        id, workspace_id, run_id, run_snapshot_id, stage_id, stage_attempt, operation_id, source_key, request_round,
-        category, risk_level, title, description, action_fingerprint, agent_snapshot_hash, provider_snapshot_hash,
-        launch_plan_hash, request_snapshot_json, snapshot_hash,
-        policy_version, status, requested_at, expires_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(
-        input.id, input.workspaceId, input.runId, input.runSnapshotId, input.stageId, input.stageAttempt, input.operationId,
-        input.sourceKey, input.requestRound, input.category, input.riskLevel, input.title, input.description,
-        input.actionFingerprint, input.agentSnapshotHash, input.providerSnapshotHash, input.launchPlanHash,
-        input.requestSnapshotJson, input.snapshotHash, input.policyVersion,
-        input.requestedAt, input.expiresAt, input.createdAt, input.updatedAt,
-      );
+      if (this.hasConversationIdColumn()) {
+        this.db.prepare(`INSERT INTO runtime_approval_requests (
+          id, workspace_id, run_id, conversation_id, run_snapshot_id, stage_id, stage_attempt, operation_id, source_key, request_round,
+          category, risk_level, title, description, action_fingerprint, agent_snapshot_hash, provider_snapshot_hash,
+          launch_plan_hash, request_snapshot_json, snapshot_hash,
+          policy_version, status, requested_at, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(
+          input.id, input.workspaceId, input.runId, conversationId, input.runSnapshotId, input.stageId, input.stageAttempt, input.operationId,
+          input.sourceKey, input.requestRound, input.category, input.riskLevel, input.title, input.description,
+          input.actionFingerprint, input.agentSnapshotHash, input.providerSnapshotHash, input.launchPlanHash,
+          input.requestSnapshotJson, input.snapshotHash, input.policyVersion,
+          input.requestedAt, input.expiresAt, input.createdAt, input.updatedAt,
+        );
+      } else {
+        this.db.prepare(`INSERT INTO runtime_approval_requests (
+          id, workspace_id, run_id, run_snapshot_id, stage_id, stage_attempt, operation_id, source_key, request_round,
+          category, risk_level, title, description, action_fingerprint, agent_snapshot_hash, provider_snapshot_hash,
+          launch_plan_hash, request_snapshot_json, snapshot_hash,
+          policy_version, status, requested_at, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(
+          input.id, input.workspaceId, input.runId, input.runSnapshotId, input.stageId, input.stageAttempt, input.operationId,
+          input.sourceKey, input.requestRound, input.category, input.riskLevel, input.title, input.description,
+          input.actionFingerprint, input.agentSnapshotHash, input.providerSnapshotHash, input.launchPlanHash,
+          input.requestSnapshotJson, input.snapshotHash, input.policyVersion,
+          input.requestedAt, input.expiresAt, input.createdAt, input.updatedAt,
+        );
+      }
     } catch (error) {
       if (/UNIQUE/.test(String(error))) throw new RuntimeApprovalRepositoryError('CONFLICT');
       if (/RUNTIME_APPROVAL_SOURCE_INVALID/.test(String(error))) throw new RuntimeApprovalRepositoryError('SOURCE_INVALID');
       throw error;
     }
-    return this.requireById(input.workspaceId, input.id);
+    const created = this.requireById(input.workspaceId, input.id);
+    for (const conversationId of conversationIds) {
+      this.notifications.notify({
+        workspaceId: input.workspaceId,
+        userId: DEFAULT_CONVERSATION_NOTIFICATION_USER_ID,
+        conversationId,
+        type: 'approval',
+        source: { kind: 'approval', requestId: input.id },
+        payload: { approvalRequestId: input.id },
+      });
+    }
+    this.publishReadStateChange(created);
+    return created;
   }
 
   findById(workspaceId: string, id: string): RuntimeApprovalRequestRecord | undefined {
-    return this.db.prepare(`SELECT ${COLUMNS} FROM runtime_approval_requests WHERE workspace_id = ? AND id = ?`)
+    return this.db.prepare(`SELECT ${this.columns()} FROM runtime_approval_requests WHERE workspace_id = ? AND id = ?`)
       .get(workspaceId, id) as RuntimeApprovalRequestRecord | undefined;
   }
 
   findLatestBySourceKey(workspaceId: string, sourceKey: string): RuntimeApprovalRequestRecord | undefined {
-    return this.db.prepare(`SELECT ${COLUMNS} FROM runtime_approval_requests
+    return this.db.prepare(`SELECT ${this.columns()} FROM runtime_approval_requests
       WHERE workspace_id = ? AND source_key = ? ORDER BY request_round DESC, requested_at DESC LIMIT 1`)
       .get(workspaceId, sourceKey) as RuntimeApprovalRequestRecord | undefined;
   }
 
   listForWorkspace(workspaceId: string): RuntimeApprovalRequestRecord[] {
-    return this.db.prepare(`SELECT ${COLUMNS} FROM runtime_approval_requests WHERE workspace_id = ?
+    return this.db.prepare(`SELECT ${this.columns()} FROM runtime_approval_requests WHERE workspace_id = ?
       ORDER BY requested_at, id`).all(workspaceId) as unknown as RuntimeApprovalRequestRecord[];
   }
 
   listApprovedUnconsumed(): RuntimeApprovalRequestRecord[] {
-    return this.db.prepare(`SELECT ${COLUMNS} FROM runtime_approval_requests
+    return this.db.prepare(`SELECT ${this.columns()} FROM runtime_approval_requests
       WHERE status = 'approved' AND consumed_at IS NULL ORDER BY decided_at, id`).all() as unknown as RuntimeApprovalRequestRecord[];
   }
 
@@ -183,6 +224,34 @@ export class RuntimeApprovalRepository {
       input.now, input.workspaceId, input.id, input.expectedVersion,
     ) as { changes?: number | bigint };
     if (Number(changed.changes ?? 0) !== 1) throw new RuntimeApprovalRepositoryError('CONFLICT');
+    this.publishReadStateChange(this.requireById(input.workspaceId, input.id));
+  }
+
+  private publishReadStateChange(approval: RuntimeApprovalRequestRecord): void {
+    const conversationIds = new Set(conversationIdsForRun(this.db, approval.workspaceId, approval.runId));
+    if (approval.conversationId !== null) conversationIds.add(approval.conversationId);
+    for (const conversationId of conversationIds) new ConversationEventRepository(this.db).appendWithinTransaction({
+      workspaceId: approval.workspaceId, conversationId, userId: DEFAULT_CONVERSATION_NOTIFICATION_USER_ID,
+      type: 'conversation.read_state_updated', dedupeKey: `approval-count:${approval.id}:${approval.version}`,
+      timestamp: approval.updatedAt,
+      payload: { conversationId, approvalRequestId: approval.id, approvalCountChanged: true },
+    });
+  }
+
+  private columns(): string {
+    const conversationId = this.hasConversationIdColumn()
+      ? 'conversation_id AS conversationId'
+      : 'NULL AS conversationId';
+    return conversationId + ', ' + COLUMNS;
+  }
+
+  private hasConversationIdColumn(): boolean {
+    if (this.conversationIdColumnAvailable === undefined) {
+      const table = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runtime_approval_requests'").get();
+      const columns = table === undefined ? [] : this.db.prepare('PRAGMA table_info(runtime_approval_requests)').all() as Array<{ name: string }>;
+      this.conversationIdColumnAvailable = columns.some(column => column.name === 'conversation_id');
+    }
+    return this.conversationIdColumnAvailable;
   }
 
   private requireById(workspaceId: string, id: string): RuntimeApprovalRequestRecord {

@@ -2,12 +2,13 @@ import { eventRedactionServiceForDatabase } from '../services/EventRedactionServ
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenFetchSafe } from '../test-support/listenFetchSafe.js';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
@@ -34,12 +35,11 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const app = express();
-  const server = app.listen(0);
+  const server = createServer(app);
   try {
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
-    await new Promise<void>(resolve => server.once('listening', resolve));
-    const address = server.address() as AddressInfo;
+    const address = await listenFetchSafe(server);
     await run(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime`, store);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -305,9 +305,8 @@ test('LITE-00-002 Conversation and Message records survive a restart and a recon
     const app = express();
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
-    const server = app.listen(0);
-    await new Promise<void>(resolve => server.once('listening', resolve));
-    const address = server.address() as AddressInfo;
+    const server = createServer(app);
+    const address = await listenFetchSafe(server);
     return { server, baseUrl: `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime` };
   };
   const closeServer = async (server: Server | undefined): Promise<void> => {

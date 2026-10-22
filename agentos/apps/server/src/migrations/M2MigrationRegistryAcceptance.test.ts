@@ -19,7 +19,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052', '053', '054', '055', '056', '057', '058', '059', '060', '061', '062', '063', '064', '065', '066', '068'] as const;
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035', '036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046', '047', '048', '049', '050', '051', '052', '053', '054', '055', '056', '057', '058', '059', '060', '061', '062', '063', '064', '065', '066', '067', '068'] as const;
 const FINAL_P2_INTEGRATION_SEQUENCE = ['049', '050', '051', '052', '053', '054', '055', '056', '057', '058'] as const;
 test('P2 Migration Registry contains exactly the registered migrations in contract order', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id);
@@ -32,6 +32,7 @@ test('P2 Migration Registry contains exactly the registered migrations in contra
   assert.ok(ids.includes('055'), 'Policy core migration 055 must be registered');
   assert.ok(ids.includes('057'), 'Run pause/resume migration 057 must be registered');
   assert.ok(ids.includes('060'), 'Worktree artifact bindings migration 060 must be registered');
+  assert.ok(ids.includes('067'), 'Conversation productization migration 067 must be registered');
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);
   for (const migration of DEFAULT_REGISTRY_MIGRATIONS) {
     assert.match(migration.id, /^\d{3}$/);
@@ -57,11 +58,11 @@ test('P2 recovery 054 follows relevance, owner actor, accumulation, and preview 
   const integrationStart = ids.indexOf(FINAL_P2_INTEGRATION_SEQUENCE[0]);
   assert.ok(integrationStart >= 0);
   assert.deepEqual(ids.slice(integrationStart, integrationStart + FINAL_P2_INTEGRATION_SEQUENCE.length), FINAL_P2_INTEGRATION_SEQUENCE);
-  // Preserve all eight entries from 059 through 066 plus run priority 068.
+  // Preserve all ten entries from 059 through 068.
   assert.equal(DEFAULT_REGISTRY_MIGRATIONS.at(-1)?.id, '068');
   assert.deepEqual(
     DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)
-      .slice(-(FINAL_P2_INTEGRATION_SEQUENCE.length + 9), -9),
+      .slice(-(FINAL_P2_INTEGRATION_SEQUENCE.length + 10), -10),
     FINAL_P2_INTEGRATION_SEQUENCE,
   );
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
@@ -116,6 +117,19 @@ test('LITE-10-001 fresh install and supported upgrade both apply the complete re
         .map(row => row.migration_id);
       assert.deepEqual(freshIds, expectedIds);
       assert.deepEqual(upgradedIds, expectedIds);
+      for (const database of [fresh, upgrade]) {
+        const conversationProductTables = (database.prepare(`
+          SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name IN ('conversation_summaries', 'conversation_notifications', 'conversation_events')
+          ORDER BY name
+        `).all() as Array<{ name: string }>).map(row => row.name);
+        assert.deepEqual(conversationProductTables, ['conversation_events', 'conversation_notifications', 'conversation_summaries']);
+        assert.ok((database.prepare('PRAGMA table_info(runtime_approval_requests)').all() as Array<{ name: string }>)
+          .some(column => column.name === 'conversation_id'));
+        assert.ok(database.prepare(`
+          SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'runtime_approval_requests_conversation_pending'
+        `).get());
+      }
       assert.equal((fresh.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
       assert.equal((upgrade.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
       assert.deepEqual(fresh.prepare('PRAGMA foreign_key_check').all(), []);

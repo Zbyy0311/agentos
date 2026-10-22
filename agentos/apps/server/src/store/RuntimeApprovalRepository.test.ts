@@ -8,6 +8,9 @@ import { inTransaction } from './Transaction.js';
 import { RuntimeApprovalRepository, RuntimeApprovalRepositoryError } from './RuntimeApprovalRepository.js';
 import { ApprovalDecisionRepository } from './ApprovalDecisionRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
+import { createEntityId } from './Identity.js';
+import { ConversationSearchReadStateService } from '../services/ConversationSearchReadStateService.js';
+import { ConversationEventRepository } from './ConversationEventRepository.js';
 
 const NOW = '2026-09-12T10:30:00.000Z';
 const LATER = '2026-09-12T10:31:00.000Z';
@@ -50,6 +53,7 @@ test('LITE-08-005/006: request creation, source proof, replay uniqueness and dec
   try {
     const created = inTransaction(fx.db, () => fx.approvals.createWithinTransaction(input()));
     assert.equal(created.status, 'pending');
+    assert.equal(created.conversationId, null, 'an unlinked Run keeps the optional Conversation binding empty');
     assert.equal(created.version, 1);
     assert.throws(() => inTransaction(fx.db, () => fx.approvals.createWithinTransaction(input())), /RUNTIME_APPROVAL_CONFLICT/);
     assert.throws(() => inTransaction(fx.db, () => fx.approvals.createWithinTransaction({ ...input(2), id: 'approval_bad', operationId: 'missing' })), /RUNTIME_APPROVAL_SOURCE_INVALID/);
@@ -91,5 +95,78 @@ test('LITE-08-007: expiry is durable and a consumed/expired action requires the 
     const second = inTransaction(fx.db, () => fx.approvals.createWithinTransaction({ ...input(2), id: 'approval_2' }));
     assert.equal(second.requestRound, 2);
     assert.equal(fx.approvals.findLatestBySourceKey(WS, 'source')?.id, second.id);
+  } finally { fx.close(); }
+});
+
+test('conversation approval count is linked to the Run and approval notification is persisted at creation', () => {
+  const fx = fixture();
+  try {
+    const conversationId = createEntityId('conversation');
+    const conversations = fx.store.conversationRepository();
+    conversations.createConversation({ id: conversationId, workspaceId: WS, kind: 'direct', title: 'Approval', createdAt: NOW });
+    conversations.appendMessage({
+      id: createEntityId('message'), workspaceId: WS, conversationId, senderType: 'user', kind: 'text',
+      status: 'final', content: 'Please run the task', runId: 'run', createdAt: NOW,
+    });
+
+    const approvals = inTransaction(fx.db, () => fx.approvals.createWithinTransaction(input()));
+    assert.equal(approvals.conversationId, conversationId);
+    assert.equal(approvals.approvalRequiredEventId, null, 'creation must notify before the approval.required event is linked');
+    assert.equal(new ConversationSearchReadStateService(fx.db).readState(WS, conversationId, 'default', NOW)?.approvalCount, 1);
+    const notifications = fx.db.prepare(`
+      SELECT type, status FROM conversation_notifications WHERE conversation_id = ? AND user_id = 'default'
+    `).all(conversationId) as Array<{ type: string; status: string }>;
+    assert.deepEqual(notifications.map(row => [row.type, row.status]), [['approval', 'unread']]);
+
+    const afterDecision = inTransaction(fx.db, () => fx.approvals.markExpiredWithinTransaction({
+      workspaceId: WS, id: approvals.id, expectedVersion: 1, now: '2026-09-12T10:36:00.000Z',
+    }));
+    assert.equal(afterDecision.status, 'expired');
+    assert.equal(new ConversationSearchReadStateService(fx.db).readState(WS, conversationId, 'default', NOW)?.approvalCount, 0);
+    const events = new ConversationEventRepository(fx.db).listAfter(WS, conversationId, 'default');
+    assert.equal(events.filter(event => event.type === 'conversation.notification_created').length, 1);
+    assert.equal(events.filter(event => event.type === 'conversation.read_state_updated').length, 2);
+  } finally { fx.close(); }
+});
+
+for (const binding of ['turn', 'task-source', 'task-message'] as const) {
+  test(`approval association resolves ${binding} evidence and counts legacy NULL bindings`, () => {
+    const fx = fixture();
+    try {
+      const conversationId = createEntityId('conversation');
+      const conversations = fx.store.conversationRepository();
+      conversations.createConversation({ id: conversationId, workspaceId: WS, kind: 'direct', title: binding, createdAt: NOW });
+      if (binding === 'turn') fx.db.prepare(`INSERT INTO cr_agent_turns
+        (id,conversation_id,workspace_id,agent_id,status,run_id,created_at,updated_at)
+        VALUES (?,?,?,'agent','created','run',?,?)`).run(createEntityId('turn'), conversationId, WS, NOW, NOW);
+      if (binding === 'task-source') fx.db.prepare('UPDATE tasks SET source_conversation_id = ? WHERE workspace_id = ? AND id = ?')
+        .run(conversationId, WS, 'task');
+      if (binding === 'task-message') conversations.appendMessage({ id: createEntityId('message'), workspaceId: WS,
+        conversationId, senderType: 'user', kind: 'text', status: 'final', content: 'Task context', taskId: 'task', createdAt: NOW });
+      const approval = inTransaction(fx.db, () => fx.approvals.createWithinTransaction(input()));
+      assert.equal(approval.conversationId, conversationId);
+      fx.db.prepare('UPDATE runtime_approval_requests SET conversation_id = NULL WHERE id = ?').run(approval.id);
+      const readState = new ConversationSearchReadStateService(fx.db);
+      assert.equal(readState.readState(WS, conversationId, 'default', NOW)?.approvalCount, 1);
+      assert.equal(readState.readState(WS, conversationId, 'default', '2026-09-12T10:36:00.000Z')?.approvalCount, 0,
+        'pending status alone does not count an already expired request');
+      assert.equal((fx.db.prepare(`SELECT COUNT(*) AS n FROM conversation_notifications WHERE conversation_id = ?
+        AND type = 'approval'`).get(conversationId) as { n: number }).n, 1);
+    } finally { fx.close(); }
+  });
+}
+
+test('an approval and its immediate notification/events roll back as one write', () => {
+  const fx = fixture();
+  try {
+    const conversationId = createEntityId('conversation');
+    fx.store.conversationRepository().createConversation({ id: conversationId, workspaceId: WS, kind: 'direct', title: 'Rollback', createdAt: NOW });
+    fx.db.prepare('UPDATE tasks SET source_conversation_id = ? WHERE id = ?').run(conversationId, 'task');
+    fx.db.exec(`CREATE TRIGGER fail_approval_notification BEFORE INSERT ON conversation_events
+      BEGIN SELECT RAISE(ABORT, 'injected approval event failure'); END`);
+    assert.throws(() => inTransaction(fx.db, () => fx.approvals.createWithinTransaction(input())));
+    assert.equal(fx.approvals.findById(WS, input().id), undefined);
+    assert.deepEqual(fx.db.prepare('SELECT * FROM conversation_notifications').all(), []);
+    assert.deepEqual(fx.db.prepare('SELECT * FROM conversation_events').all(), []);
   } finally { fx.close(); }
 });

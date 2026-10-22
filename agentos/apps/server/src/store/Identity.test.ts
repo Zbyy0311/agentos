@@ -37,6 +37,8 @@ const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
   approval: 'approval',
   grant: 'grant',
   conversation: 'conv',
+  conversationSummary: 'csum',
+  conversationNotification: 'cnot',
   message: 'msg',
   turn: 'turn',
   checkpoint: 'cp',
@@ -60,7 +62,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 40);
+    assert.equal(kinds.length, 42);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -318,7 +320,8 @@ describe('Identity — M2.6 idempotency kind', () => {
   it('all pre-import kinds remain unchanged', () => {
     // 'worktreeMerge' is a PR-3B additive kind, like 'operation'/'import' before it.
     const priorKinds = kinds.filter((kind) => kind !== 'import' && kind !== 'operation' && kind !== 'worktreeMerge' && kind !== 'usageRecord' && kind !== 'providerFallback'
-      && kind !== 'runtimeLock' && kind !== 'schedulerJob' && kind !== 'auditRecord' && kind !== 'retentionPolicy' && kind !== 'providerValidationCache');
+      && kind !== 'runtimeLock' && kind !== 'schedulerJob' && kind !== 'auditRecord' && kind !== 'retentionPolicy'
+      && kind !== 'providerValidationCache' && kind !== 'conversationSummary' && kind !== 'conversationNotification');
     assert.equal(priorKinds.length, 30);
     assert.ok(priorKinds.includes('idempotency'));
     assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);

@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import { createHash } from 'node:crypto';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
+import { ConversationEventRepository } from '../store/ConversationEventRepository.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { GroupInteractionRepository } from '../store/GroupInteractionRepository.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
@@ -46,6 +47,15 @@ import {
   ConversationSearchReadStateError,
   ConversationSearchReadStateService,
 } from '../services/ConversationSearchReadStateService.js';
+import {
+  ConversationNotificationError,
+  ConversationNotificationService,
+  CONVERSATION_NOTIFICATION_STATUSES,
+} from '../services/ConversationNotificationService.js';
+import {
+  ConversationSummaryError,
+  ConversationSummaryService,
+} from '../services/ConversationSummaryService.js';
 
 /**
  * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
@@ -74,7 +84,7 @@ function mapError(error: unknown): ErrorMapping {
   }
   if (/NOT_FOUND/.test(code)) return { status: 404, code };
   if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
-  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE|DISCUSSION_ACTIVE/.test(code)) {
+  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE|DISCUSSION_ACTIVE|ACTIVE_STREAM/.test(code)) {
     return { status: 409, code };
   }
   return { status: 500, code };
@@ -389,6 +399,8 @@ export function createConversationRuntimeRoutes(
   // Registered BEFORE /conversations/:conversationId so the literal segments
   // win over the path parameter.
   const searchReadState = new ConversationSearchReadStateService(store.getDatabase());
+  const summaries = new ConversationSummaryService(store.getDatabase());
+  const notifications = new ConversationNotificationService(store.getDatabase());
   const readStateUserId = (req: Request): string => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     return typeof body.userId === 'string' && body.userId.trim().length > 0
@@ -397,6 +409,164 @@ export function createConversationRuntimeRoutes(
         ? req.query.userId.trim()
         : store.getDefaultUserProfile().id;
   };
+
+  // Productization facts and their replay cursors commit with the source rows.
+  // Read committed SQLite pages so reconnect/restart and missed wakeups converge.
+  router.get('/conversations/:conversationId/stream', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversationId = req.params.conversationId;
+    if (!conversations().findConversationById(workspace.id, conversationId)) {
+      sendProblem(req, res, { status: 404, code: 'CONVERSATION_NOT_FOUND', detail: 'Conversation not found' });
+      return;
+    }
+    const cursor = req.get('Last-Event-ID') ?? req.query.afterCursor ?? req.query.afterRuntimeEventSequence ?? '0';
+    if (typeof cursor !== 'string' || !/^\d+$/u.test(cursor) || !Number.isSafeInteger(Number(cursor))) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'SSE cursor must be a nonnegative safe integer' });
+      return;
+    }
+    const events = new ConversationEventRepository(store.getDatabase());
+    const userId = readStateUserId(req);
+    let afterSequence = Number(cursor);
+    let blocked = false;
+    let closed = false;
+    let timer: ReturnType<typeof setInterval>;
+    let heartbeat: ReturnType<typeof setInterval>;
+    const cleanup = () => {
+      closed = true;
+      clearInterval(timer);
+      clearInterval(heartbeat);
+      res.off('drain', onDrain);
+    };
+    const flush = () => {
+      if (closed || blocked || res.writableEnded) return;
+      try {
+        for (const event of events.listAfter(workspace.id, conversationId, userId, afterSequence)) {
+          const transportType = event.type.startsWith('conversation.notification_') ? 'notification'
+            : event.type === 'conversation.read_state_updated' ? 'read-state-updated' : 'conversation-updated';
+          const accepted = res.write(`id: ${event.sequence}\nevent: ${transportType}\ndata: ${JSON.stringify(event)}\n\n`);
+          afterSequence = event.sequence;
+          if (!accepted) { blocked = true; break; }
+        }
+      } catch {
+        cleanup();
+        res.end();
+      }
+    };
+    const onDrain = () => { blocked = false; flush(); };
+    res.status(200).set({
+      'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache',
+      Connection: 'keep-alive', 'X-Accel-Buffering': 'no',
+    });
+    res.on('close', cleanup);
+    res.on('drain', onDrain);
+    res.flushHeaders();
+    timer = setInterval(flush, 250);
+    heartbeat = setInterval(() => {
+      if (!closed && !blocked && !res.writableEnded) blocked = !res.write(': heartbeat\n\n');
+    }, 15000);
+    flush();
+  });
+
+  router.get('/conversations/notifications', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const status = req.query.status;
+    if (status !== undefined && (typeof status !== 'string'
+      || !CONVERSATION_NOTIFICATION_STATUSES.includes(status as typeof CONVERSATION_NOTIFICATION_STATUSES[number]))) {
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'status must be unread, read, or dismissed' });
+      return;
+    }
+    try {
+      res.json({ notifications: notifications.list({
+        workspaceId: workspace.id,
+        userId: readStateUserId(req),
+        ...(typeof req.query.conversationId === 'string' ? { conversationId: req.query.conversationId } : {}),
+        ...(typeof status === 'string' ? { status: status as typeof CONVERSATION_NOTIFICATION_STATUSES[number] } : {}),
+      }) });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationNotificationError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.post('/conversations/notifications/:notificationId/read', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const notification = notifications.markRead(workspace.id, readStateUserId(req), req.params.notificationId);
+      if (notification === null) {
+        sendProblem(req, res, { status: 404, code: 'NOTIFICATION_NOT_FOUND', detail: 'Notification not found' });
+        return;
+      }
+      res.json({ notification });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationNotificationError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.post('/conversations/notifications/:notificationId/dismiss', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const notification = notifications.dismiss(workspace.id, readStateUserId(req), req.params.notificationId);
+      if (notification === null) {
+        sendProblem(req, res, { status: 404, code: 'NOTIFICATION_NOT_FOUND', detail: 'Notification not found' });
+        return;
+      }
+      res.json({ notification });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationNotificationError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.get('/conversations/:conversationId/summaries/latest', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const summary = summaries.latest(workspace.id, req.params.conversationId);
+      res.json({ summary, activeSummaryId: summary?.id ?? null });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSummaryError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.get('/conversations/:conversationId/summaries', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const summaryList = summaries.list(workspace.id, req.params.conversationId);
+      res.json({ summaries: summaryList, activeSummaryId: summaryList[0]?.id ?? null });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSummaryError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
+
+  router.post('/conversations/:conversationId/summaries', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    try {
+      const result = summaries.createVersion({
+        workspaceId: workspace.id,
+        conversationId: req.params.conversationId,
+        trigger: 'manual',
+      });
+      res.status(result.created ? 201 : 200).json({ ...result, activeSummaryId: result.summary?.id ?? null });
+    } catch (error) {
+      fail(req, res, error instanceof ConversationSummaryError
+        ? Object.assign(new Error(error.code), { code: error.code })
+        : error);
+    }
+  });
 
   router.get('/conversations/search', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);

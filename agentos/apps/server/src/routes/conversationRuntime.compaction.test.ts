@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenFetchSafe } from '../test-support/listenFetchSafe.js';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
@@ -27,15 +28,14 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const app = express();
-  const server = app.listen(0);
+  const server = createServer(app);
   try {
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
     // LITE-13-101: the Run-scoped Inspector is mounted beside the Conversation
     // runtime so one test can prove both surfaces read the same durable rows.
     app.use('/api/workspaces/:workspaceId/runtime', createRuntimeInspectorRoutes(store, new WorkspaceManager(store)));
-    await new Promise<void>(resolve => server.once('listening', resolve));
-    const address = server.address() as AddressInfo;
+    const address = await listenFetchSafe(server);
     await run(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime`, store);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));

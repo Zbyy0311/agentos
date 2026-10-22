@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
+import { createServer } from 'node:http';
+import { listenFetchSafe } from '../test-support/listenFetchSafe.js';
 import { mkdtempSync, rmSync } from 'node:fs';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -70,12 +71,8 @@ async function withServer(run: (fixture: RouteFixture) => Promise<void>): Promis
   const app = express();
   app.use(express.json());
   app.use('/api/workspaces/:workspaceId', createRuntimeApprovalRoutes(store, workspaceManager, gate));
-  const server = app.listen(0, '127.0.0.1');
-  await new Promise<void>((resolve, reject) => {
-    server.once('listening', resolve);
-    server.once('error', reject);
-  });
-  const address = server.address() as AddressInfo;
+  const server = createServer(app);
+  const address = await listenFetchSafe(server);
   if (!address || typeof address.port !== 'number' || address.port <= 0) throw new Error('test server did not acquire a port');
   const fixture: RouteFixture = {
     root,

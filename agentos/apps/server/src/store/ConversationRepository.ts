@@ -24,14 +24,16 @@ import {
   type ThinkingEffort,
 } from '@agentos/shared';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
+import { ConversationNotificationService } from '../services/ConversationNotificationService.js';
+import { ConversationSummaryService } from '../services/ConversationSummaryService.js';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 
 /**
  * CR-1 forward Conversation persistence.
  *
- * This is a narrow persistence seam ONLY. It contains no streaming, Event
- * projection, Task/Run bridge, group orchestration, API, or UI; those belong to
- * later Conversation Runtime slices.
+ * T5-4 derives Summary and Notification facts atomically when a Message is
+ * appended/finalized. Streaming, Task/Run orchestration and HTTP remain in
+ * their composing services.
  *
  * Frozen design: `docs/implementation/milestones/CR1-schema-authorization.md`.
  */
@@ -323,7 +325,13 @@ function validateAddMemberInput(input: AddMemberInput): void {
 }
 
 export class ConversationRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  private readonly notifications: ConversationNotificationService;
+  private readonly summaries: ConversationSummaryService;
+
+  constructor(private readonly db: TransactionDatabase) {
+    this.notifications = new ConversationNotificationService(db);
+    this.summaries = new ConversationSummaryService(db);
+  }
 
   createConversation(input: CreateConversationInput): ConversationRecord {
     validateCreateConversationInput(input);
@@ -600,7 +608,29 @@ export class ConversationRepository {
         );
       }
     }
-    return this.requireMessage(input.workspaceId, input.id);
+    const message = this.requireMessage(input.workspaceId, input.id);
+    this.notifications.notifyForMessage({
+      workspaceId: message.workspaceId,
+      conversationId: message.conversationId,
+      messageId: message.id,
+      senderType: message.senderType,
+      status: message.status,
+      content: message.content,
+    });
+    if (message.status === 'final') {
+      this.notifications.notifyForMessage({
+        workspaceId: message.workspaceId,
+        conversationId: message.conversationId,
+        messageId: message.id,
+        senderType: message.senderType,
+        status: message.status,
+        content: message.content,
+      });
+    }
+    if (message.status !== 'draft' && message.status !== 'streaming') {
+      this.summaries.maybeAutoSummarize(message.workspaceId, message.conversationId);
+    }
+    return message;
   }
 
   /**
@@ -823,7 +853,21 @@ export class ConversationRepository {
       input.to, input.content ?? null, input.changedAt,
       input.workspaceId, input.messageId, input.expectedVersion,
     );
-    return this.requireMessage(input.workspaceId, input.messageId);
+    const message = this.requireMessage(input.workspaceId, input.messageId);
+    if (message.status === 'final') {
+      this.notifications.notifyForMessage({
+        workspaceId: message.workspaceId, conversationId: message.conversationId, messageId: message.id,
+        senderType: message.senderType, status: message.status, content: message.content,
+      });
+    }
+    // A completed/failed/deleted stream may have been holding back an
+    // otherwise-ready threshold Summary. Recheck once it leaves a mutable
+    // draft/streaming state so the threshold does not wait for an unrelated
+    // later message.
+    if (message.status !== 'draft' && message.status !== 'streaming') {
+      this.summaries.maybeAutoSummarize(message.workspaceId, message.conversationId);
+    }
+    return message;
   }
 
   private validateMessageInput(input: AppendMessageInput): void {
