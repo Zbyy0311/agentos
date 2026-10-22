@@ -18,6 +18,13 @@ function deferred() {
 
 const nextTurn = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
+function isSqliteRuntimeWarning(args: readonly unknown[]): boolean {
+  // Node 22 can emit this deferred process warning through console.error after
+  // the fixture opens SQLite. Keep every application diagnostic observable.
+  return args.length === 1 && typeof args[0] === 'string'
+    && /^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)$/.test(args[0]);
+}
+
 async function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'agentos-owned-queue-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
@@ -59,7 +66,7 @@ test('closeQueues waits for a deferred committed terminal hook before SQLite clo
   const entered = deferred();
   const release = deferred();
   const diagnostics: unknown[][] = [];
-  t.mock.method(console, 'error', (...args: unknown[]) => { diagnostics.push(args); });
+  t.mock.method(console, 'error', (...args: unknown[]) => { if (!isSqliteRuntimeWarning(args)) diagnostics.push(args); });
   const releaseCanonicalRun = fx.chain.admissionAuthority.releaseCanonicalRun.bind(fx.chain.admissionAuthority);
   t.mock.method(fx.chain.admissionAuthority, 'releaseCanonicalRun', async (input: Parameters<typeof releaseCanonicalRun>[0]) => {
     entered.resolve();
@@ -98,7 +105,7 @@ test('closeQueues owns a pump drive after claim resolution and drains its later 
   const terminalEntered = deferred();
   const finishTerminal = deferred();
   const diagnostics: unknown[][] = [];
-  t.mock.method(console, 'error', (...args: unknown[]) => { diagnostics.push(args); });
+  t.mock.method(console, 'error', (...args: unknown[]) => { if (!isSqliteRuntimeWarning(args)) diagnostics.push(args); });
   const releaseCanonicalRun = fx.chain.admissionAuthority.releaseCanonicalRun.bind(fx.chain.admissionAuthority);
   t.mock.method(fx.chain.admissionAuthority, 'releaseCanonicalRun', async (input: Parameters<typeof releaseCanonicalRun>[0]) => {
     terminalEntered.resolve();

@@ -108,3 +108,10 @@ CI files, actual required-Child Custom CLI execution, queue shutdown, maintenanc
 fallback and scheduling. No `database is not open` diagnostic remained. Server
 TypeScript build passed. The earlier 724-test receipt remains tied to `5594cfec`;
 the new follow-up requires a new complete remote CI run.
+
+The `cc33c47e` CI shard 8 additionally exposed Node 22's deferred SQLite
+experimental warning entering the test's `console.error` mock. The capture now
+excludes only that exact two-line runtime warning; all application diagnostics
+and the real SQLite-close/late-terminal assertions remain enforced. The full
+16-file affected gate again passed **185 tests, 5 configured Provider skips,
+0 failures**. This test-only correction requires a fresh exact-head CI run.
