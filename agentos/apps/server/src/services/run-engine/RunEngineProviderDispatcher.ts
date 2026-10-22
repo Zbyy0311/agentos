@@ -19,7 +19,7 @@ import type { RunStageRepository } from '../../store/RunStageRepository.js';
 import type { OperationCancellationEvidence, OperationService } from '../OperationService.js';
 import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { RunEngine } from './RunEngine.js';
-import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
+import { StageExecutionCoordinator, type StageExecutionInput, type StageExecutionOutcome } from './StageExecutionCoordinator.js';
 import type { ResolveRunMemoryContextInput, ResolvedMemoryContext } from '../MemoryContextResolver.js';
 import { ARTIFACT_RESULT_INSTRUCTION, type CanonicalArtifactResultInput } from '../CanonicalArtifactResultService.js';
 import type { CollaborationStageHooks, CollaborationStagePreparation } from '../CollaborationStageHooks.js';
@@ -34,6 +34,10 @@ import type { ProviderFallbackChainEntryV1, ProviderFallbackPolicyV1 } from '@ag
 import type { ProviderConfigurationRepository } from '../../store/ProviderConfigurationRepository.js';
 import type { ProviderSwitchApprovalGate, ProviderSwitchDescriptor } from './providerFallback.js';
 import { providerSnapshotFromConfiguration } from './providerFallback.js';
+import type {
+  ProviderStageCapacityInput,
+  ProviderStageCapacityReservation,
+} from '../RunConcurrencyScheduler.js';
 
 export interface CanonicalRunAdmissionGate {
   authorizeCanonicalRun(input: {
@@ -43,6 +47,7 @@ export interface CanonicalRunAdmissionGate {
     readonly authorized: boolean;
     readonly reason: 'ADMISSION_GRANTED' | 'ADMISSION_NOT_GRANTED' | 'ADMISSION_AUTHORITY_UNAVAILABLE';
   }>;
+  releaseCanonicalRun?(input: { readonly workspaceId: string; readonly runId: string }): Promise<unknown> | unknown;
 }
 
 /**
@@ -67,6 +72,25 @@ export interface RunConcurrencyGate {
     readonly limit?: number;
     readonly reason?: string;
   };
+  /** Called synchronously inside RunEngine.tick's queued → starting transaction. */
+  reserveRun?(input: { readonly workspaceId: string; readonly runId: string }): {
+    readonly allowed: boolean;
+    readonly dimension?: string;
+    readonly current?: number;
+    readonly limit?: number;
+    readonly reason?: string;
+  };
+  reserveProviderStage?(input: ProviderStageCapacityInput):
+    | { readonly allowed: true; readonly reservation: ProviderStageCapacityReservation }
+    | {
+        readonly allowed: false;
+        readonly dimension: 'perProvider' | 'perProviderConfig' | 'perAgent';
+        readonly current: number;
+        readonly limit: number;
+        readonly reason: string;
+        readonly sameStageAlreadyReserved?: boolean;
+      };
+  releaseProviderStage?(reservation: ProviderStageCapacityReservation): void;
 }
 
 /**
@@ -360,19 +384,11 @@ export class RunEngineProviderDispatcher {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
-  async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
+  async drive(workspaceId: string, runId: string, onClaimSettled?: () => void): Promise<RunEngineProviderDriveResult> {
     if (this.concurrencyGate !== undefined) {
       const concurrency = await this.concurrencyGate.authorizeRun({ workspaceId, runId });
       if (!concurrency.allowed) {
-        // §8.4: the Run stays queued; the denial is observable, never silent.
-        this.onConcurrencyDeferred?.({
-          workspaceId,
-          runId,
-          dimension: concurrency.dimension ?? 'unknown',
-          current: concurrency.current ?? -1,
-          limit: concurrency.limit ?? -1,
-          reason: concurrency.reason ?? 'concurrency limit reached',
-        });
+        this.reportConcurrencyDeferred(workspaceId, runId, concurrency);
         return { outcome: 'noop', reason: `concurrency-limited:${concurrency.dimension ?? 'unknown'}` };
       }
     }
@@ -386,7 +402,23 @@ export class RunEngineProviderDispatcher {
       return { outcome: 'noop', reason: `WORKSPACE_${authorization.reason}` };
     }
     if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return { outcome: 'noop', reason: 'collaboration-control-fenced' };
-    const claim = this.engine.tick({ workspaceId, runId });
+    let claimAdmission: ReturnType<NonNullable<RunConcurrencyGate['reserveRun']>> | undefined;
+    const claim = this.engine.tick({
+      workspaceId,
+      runId,
+      ...(this.concurrencyGate?.reserveRun === undefined ? {} : {
+        beforeClaim: () => {
+          claimAdmission = this.concurrencyGate!.reserveRun!({ workspaceId, runId });
+          return claimAdmission.allowed;
+        },
+      }),
+    });
+    if (claim.outcome === 'noop' && claim.reason === 'claim-deferred') {
+      this.reportConcurrencyDeferred(workspaceId, runId, claimAdmission ?? {
+        allowed: false, dimension: 'unknown', current: -1, limit: -1, reason: 'Run admission deferred',
+      });
+      return { outcome: 'noop', reason: `concurrency-limited:${claimAdmission?.dimension ?? 'unknown'}` };
+    }
     if (claim.outcome !== 'claimed') {
       const current = this.runRepository.findById(workspaceId, runId);
       if (claim.reason !== 'run-not-queued' || current?.status !== 'running') {
@@ -395,6 +427,7 @@ export class RunEngineProviderDispatcher {
       // Approval continuation: the original run.start authorization is already
       // completed; continue that Run instead of claiming or creating another.
     }
+    onClaimSettled?.();
     for (let step = 0; step < this.maxDispatchSteps; step += 1) {
       if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) break;
       const run = this.requireRun(workspaceId, runId);
@@ -450,6 +483,21 @@ export class RunEngineProviderDispatcher {
     return { outcome: 'claimed-and-progressed' };
   }
 
+  private reportConcurrencyDeferred(
+    workspaceId: string,
+    runId: string,
+    concurrency: { readonly dimension?: string; readonly current?: number; readonly limit?: number; readonly reason?: string },
+  ): void {
+    this.onConcurrencyDeferred?.({
+      workspaceId,
+      runId,
+      dimension: concurrency.dimension ?? 'unknown',
+      current: concurrency.current ?? -1,
+      limit: concurrency.limit ?? -1,
+      reason: concurrency.reason ?? 'concurrency limit reached',
+    });
+  }
+
   /**
    * P6-M1 Production dispatch entry point. Wraps drive() so the production
    * trigger can never crash the route/process or silently strand a run:
@@ -464,19 +512,30 @@ export class RunEngineProviderDispatcher {
    * CAS claim fences, replay-no-respawn, finalizeAttemptOnce, the
    * ProcessCancelCoordinator, and LifecycleTransactionService guarantees.
    */
-  async driveSafely(workspaceId: string, runId: string): Promise<void> {
+  /** Resolve when claim finishes; Provider work remains failure-contained. */
+  schedule(workspaceId: string, runId: string): Promise<void> {
+    return new Promise(resolve => {
+      void this.driveSafely(workspaceId, runId, resolve).catch(error => {
+        console.error(`RUN_QUEUE_DISPATCH_FAILED run=${runId}:`, error);
+        resolve();
+      });
+    });
+  }
+
+  async driveSafely(workspaceId: string, runId: string, onClaimSettled?: () => void): Promise<void> {
     let claimed = false;
     try {
       // Detect whether the claim CAS has happened by observing the run state
       // before/after; drive() claims via engine.tick() internally.
       const before = this.runRepository.findById(workspaceId, runId);
-      const result = await this.drive(workspaceId, runId);
+      const result = await this.drive(workspaceId, runId, onClaimSettled);
       claimed = result.outcome === 'claimed-and-progressed'
         || (before !== undefined && before.status !== this.requireRun(workspaceId, runId).status);
       return;
     } catch (error) {
       await this.containDispatchFailure(workspaceId, runId, claimed, error);
     } finally {
+      onClaimSettled?.();
       const finalRun = this.runRepository.findById(workspaceId, runId);
       if (finalRun !== undefined && isTerminalRun(finalRun.status) && this.onRunTerminal) {
         try {
@@ -774,7 +833,30 @@ export class RunEngineProviderDispatcher {
     for (;;) {
       const input = buildInput(currentProviderSnapshot, claimAttemptOffset);
       if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) return 'stopped';
-      const outcome = await this.coordinator.execute(input);
+      const capacity = await this.waitForProviderCapacity({
+        workspaceId,
+        runId,
+        stageId: stage.id,
+        stageAttempt: stage.attempt,
+        providerAttempt: input.providerClaimAttempt,
+        providerType: currentProviderSnapshot.providerType,
+        providerConfigId: currentProviderSnapshot.providerConfigId,
+        agentId: stageDefinition.agent.agentId,
+      });
+      if (capacity.kind !== 'acquired') return capacity.kind === 'already-running' ? 'active' : 'stopped';
+      if (this.collaborationStageHooks?.canDispatch?.(workspaceId, runId) === false) {
+        if (capacity.reservation) this.concurrencyGate?.releaseProviderStage?.(capacity.reservation);
+        return 'stopped';
+      }
+      let outcome: StageExecutionOutcome | undefined;
+      try {
+        outcome = await this.coordinator.execute(input);
+      } finally {
+        // Active/approval-paused attempts still own their durable capacity.
+        if (capacity.reservation && outcome?.kind !== 'active' && outcome?.kind !== 'waiting-approval') {
+          this.concurrencyGate?.releaseProviderStage?.(capacity.reservation);
+        }
+      }
       if (outcome.kind === 'stopped') {
         // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
         // any later proven cancellation hand-off to canonical Run/Stage state.
@@ -905,6 +987,29 @@ export class RunEngineProviderDispatcher {
       // Loop: execute the fallback provider under a fresh Session/Process
       // claim attempt; the failed provider Session is never overwritten (§97
       // invariant 28).
+    }
+  }
+
+  private async waitForProviderCapacity(input: ProviderStageCapacityInput): Promise<
+    | { readonly kind: 'acquired'; readonly reservation?: ProviderStageCapacityReservation }
+    | { readonly kind: 'already-running' | 'stopped' }
+  > {
+    const reserve = this.concurrencyGate?.reserveProviderStage;
+    if (reserve === undefined) return { kind: 'acquired' };
+    let reported = false;
+    for (;;) {
+      const run = this.runRepository.findById(input.workspaceId, input.runId);
+      if (run === undefined || isTerminalRun(run.status) || run.status === 'paused' || run.status === 'waiting_approval') {
+        return { kind: 'stopped' };
+      }
+      const result = reserve.call(this.concurrencyGate, input);
+      if (result.allowed) return { kind: 'acquired', reservation: result.reservation };
+      if (result.sameStageAlreadyReserved) return { kind: 'already-running' };
+      if (!reported) {
+        this.reportConcurrencyDeferred(input.workspaceId, input.runId, result);
+        reported = true;
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
     }
   }
 

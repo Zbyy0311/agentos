@@ -210,6 +210,9 @@ async function resumeProductionQueues(input: {
 }): Promise<void> {
   if (!input.runtimeDispatchEnabled || input.barrier.snapshot.quiescing) return;
   await input.withDispatchPermit(async () => {
+    const released = input.providerExecutionChain.reconcileConcurrencyReservations();
+    if (released > 0) input.diagLog(`RUN_CONCURRENCY_RECOVERY releasedReservations=${released}`);
+    await input.providerExecutionChain.pumpQueuedRuns();
     await input.collaborationService.resumeGrantedQueuedRuns()
       .catch(error => input.diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     await input.providerExecutionChain.resumeGrantedResumeFallbackChildren()
@@ -779,6 +782,9 @@ async function bootstrap(): Promise<void> {
     startBackgroundWorkers();
     if (runtimeDispatchEnabled && !maintenanceBarrier.snapshot.quiescing) {
       void withDispatchPermit(async () => {
+        const released = providerExecutionChain.reconcileConcurrencyReservations();
+        if (released > 0) diagLog(`RUN_CONCURRENCY_RECOVERY releasedReservations=${released}`);
+        await providerExecutionChain.pumpQueuedRuns();
         await collaborationService.resumeGrantedQueuedRuns()
           .catch(error => diagLog(`COLLABORATION_QUEUE_RESUME_ERROR error=${error instanceof Error ? error.message : String(error)}`));
         await providerExecutionChain.resumeGrantedResumeFallbackChildren()

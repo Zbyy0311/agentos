@@ -27,6 +27,8 @@ import { WorkflowExecutor, type WorkflowExecutorInput } from './WorkflowExecutor
 export interface RunEngineTickInput {
   readonly workspaceId: string;
   readonly runId: string;
+  /** Synchronous admission check run inside the queued → starting transaction. */
+  readonly beforeClaim?: () => boolean;
 }
 
 export type RunEngineTickResult =
@@ -39,7 +41,7 @@ export type RunEngineTickResult =
     }
   | {
       readonly outcome: 'noop';
-      readonly reason: 'run-not-queued' | 'no-authorization';
+      readonly reason: 'run-not-queued' | 'no-authorization' | 'claim-deferred';
       readonly runId: string;
     };
 
@@ -904,6 +906,13 @@ export class RunEngine {
         'RUN_ENGINE_AUTHORIZATION_BINDING_INVALID',
         `Authorization ${authorization.id} is not bound to Run ${run.id}`,
       );
+    }
+
+    // Capacity reservation and the Run claim share this transaction. A
+    // concurrent dispatcher can only observe either the queued Run with no
+    // reservation, or the committed starting Run with its reservation.
+    if (input.beforeClaim !== undefined && !input.beforeClaim()) {
+      return { outcome: 'noop', reason: 'claim-deferred', runId: run.id };
     }
 
     const operation = this.dependencies.operationService.transitionWithinTransaction({

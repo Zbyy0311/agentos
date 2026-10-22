@@ -9,6 +9,8 @@ import { CollaborationSnapshotGitContext } from './CollaborationSnapshotGitConte
 import type { WorktreeEventSink, WorktreeLeaseEventType, WorktreeOrphanObservation } from './WorktreeRuntimeEvents.js';
 import { NOOP_WORKTREE_EVENT_SINK } from './WorktreeRuntimeEvents.js';
 import { inTransaction, isTransactionActive, registerAfterCommit, type TransactionDatabase } from '../store/Transaction.js';
+import { RuntimeLockRepository } from '../store/RuntimeLockRepository.js';
+import { createEntityId } from '../store/Identity.js';
 import type { WorktreeLeaseRecord } from '../store/WorktreeRepository.js';
 import { WorktreeLeaseIdentityConflictError, WorktreeRepository } from '../store/WorktreeRepository.js';
 
@@ -53,11 +55,9 @@ export interface WorktreeInspectReport {
 export class WorktreeError extends Error { constructor(public readonly code: string, message: string) { super(message); } }
 
 /**
- * §8.4 worktreeCreation concurrency: createLease is a genuine in-process
- * concurrency point (git worktree add runs concurrently), so the limit is a
- * fail-fast in-process gate, not a queue: when the cap is reached the caller
- * receives this typed error and can retry. Callers that must not fail (Run
- * dispatch) treat it exactly like any other creation-time failure.
+ * §8.4 worktreeCreation concurrency. Saturated callers wait for a persistent
+ * capacity reservation instead of turning an already-accepted Run into a
+ * terminal failure. The old error remains exported for source compatibility.
  */
 export class WorktreeConcurrencyLimitedError extends WorktreeError {
   constructor(limit: number) {
@@ -87,6 +87,14 @@ export interface LegacyLeaseImportIssue {
 export type LegacyLeaseImportReport = readonly LegacyLeaseImportIssue[];
 
 const LEGACY_LEASE_STATUSES = new Set(['creating', 'active', 'completed', 'cleanup_pending', 'cleaned', 'failed']);
+const WORKTREE_CAPACITY_LOCK_PURPOSE = 'worktree-creation-capacity';
+const WORKTREE_REQUEST_LOCK_PURPOSE = 'worktree-creation-request';
+
+function creationProcessIsAlive(value: unknown): boolean {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return true;
+  try { process.kill(value, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+}
 const LEGACY_LEASE_REQUIRED_STRINGS = [
   'id', 'workspaceId', 'runId', 'executionId', 'agentId', 'branchName', 'pathLabel',
   'baseCommit', 'status', 'createdAt', 'updatedAt', 'absolutePath', 'workspaceRoot',
@@ -203,17 +211,7 @@ export class WorktreeManager {
       .some(value => typeof value !== 'string' || value.trim().length === 0)) {
       throw new WorktreeError('invalid_identity', 'workspaceId, runId, executionId and agentId are required');
     }
-    // §8.4 worktreeCreation gate: fail fast when the in-process cap is full.
-    if (this.creationConcurrencyLimit !== undefined
-      && this.inFlightCreations >= this.creationConcurrencyLimit) {
-      throw new WorktreeConcurrencyLimitedError(this.creationConcurrencyLimit);
-    }
-    this.inFlightCreations += 1;
-    try {
-      return await this.createLeaseInner(input);
-    } finally {
-      this.inFlightCreations -= 1;
-    }
+    return await this.createLeaseInner(input);
   }
 
   private async createLeaseInner(input: CreateInput): Promise<WorktreeLease> {
@@ -234,10 +232,13 @@ export class WorktreeManager {
     const record: LeaseRecord = { id, ...identity, branchName, pathLabel: `worktree/${segment(input.workspaceId)}/${segment(input.runId)}/${segment(input.executionId)}`, baseCommit, status: 'creating', createdAt: now, updatedAt: now, absolutePath, workspaceRoot: input.workspaceRoot };
     // Reserve durable identity before Git can create a branch or checkout.
     // Startup reconciliation can then classify any interrupted creation.
-    this.leases.set(id, record);
-    this.persistRecordWithEvent(record, 'worktree.reserved');
+    const releaseRequest = this.reserveCreationRequest(record);
+    let releaseCapacity = (): void => undefined;
     let context: CollaborationSnapshotGitContext | undefined;
     try {
+      this.leases.set(id, record);
+      this.persistRecordWithEvent(record, 'worktree.reserved');
+      releaseCapacity = await this.waitForCreationCapacity(input);
       context = controlled ? await CollaborationSnapshotGitContext.create(input.workspaceRoot) : undefined;
       if (context) {
         const paths = (await context.sourceMetadata(['ls-tree', '-r', '--name-only', '-z', baseCommit])).toString('utf8').split('\0').filter(Boolean);
@@ -266,7 +267,96 @@ export class WorktreeManager {
         this.persist();
       }
       throw error;
-    } finally { await context?.dispose(); }
+    } finally {
+      try { await context?.dispose(); }
+      finally {
+        try { releaseCapacity(); }
+        finally { releaseRequest(); }
+      }
+    }
+  }
+
+  private reserveCreationRequest(record: LeaseRecord): () => void {
+    const db = this.transactionDatabase;
+    if (db === undefined) return () => undefined;
+    const locks = new RuntimeLockRepository(db);
+    const ownerId = randomUUID();
+    const lockKey = `worktree-request:${record.id}`;
+    locks.tryAcquire({
+      id: createEntityId('runtimeLock'), lockKey, ownerId, purpose: WORKTREE_REQUEST_LOCK_PURPOSE,
+      now: new Date().toISOString(),
+      metadata: { leaseId: record.id, processId: process.pid },
+    });
+    return () => { locks.release(lockKey, ownerId, new Date().toISOString()); };
+  }
+
+  private async waitForCreationCapacity(input: CreateInput): Promise<() => void> {
+    const limit = this.creationConcurrencyLimit;
+    if (limit === undefined) return () => undefined;
+    const repository = this.repository;
+    if (repository === undefined) {
+      while (this.inFlightCreations >= limit) await new Promise<void>(resolve => setTimeout(resolve, 50));
+      this.inFlightCreations += 1;
+      return () => { this.inFlightCreations = Math.max(0, this.inFlightCreations - 1); };
+    }
+
+    const db = repository.transactionDatabase;
+    const runtimeLocks = new RuntimeLockRepository(db);
+    const ownerId = `worktree-create:${process.pid}:${randomUUID()}`;
+    const lockKey = `worktree-creation:${createHash('sha256')
+      .update(`${input.workspaceId}\0${input.runId}\0${input.executionId}\0${ownerId}`)
+      .digest('hex')}`;
+    for (;;) {
+      const run = db.prepare('SELECT status FROM runs WHERE workspace_id = ? AND id = ?')
+        .get(input.workspaceId, input.runId) as { status: string } | undefined;
+      if (run && ['completed', 'failed', 'cancelled'].includes(run.status)) {
+        throw new WorktreeError('run_terminal', 'worktree creation stopped because its Run is terminal');
+      }
+      if (run?.status === 'paused' || run?.status === 'waiting_approval') {
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+        continue;
+      }
+      const acquired = inTransaction(db, () => {
+        const now = new Date().toISOString();
+        // Recover a crashed creator even without restarting this instance.
+        for (const lock of runtimeLocks.listActive(now)) {
+          if (lock.purpose === WORKTREE_CAPACITY_LOCK_PURPOSE && !creationProcessIsAlive(lock.metadata?.processId)) {
+            runtimeLocks.release(lock.lockKey, lock.ownerId, now);
+          }
+        }
+        const active = runtimeLocks.listActive(now)
+          .filter(lock => lock.purpose === WORKTREE_CAPACITY_LOCK_PURPOSE).length;
+        if (active >= limit) return false;
+        return runtimeLocks.tryAcquire({
+          id: createEntityId('runtimeLock'), lockKey, ownerId, purpose: WORKTREE_CAPACITY_LOCK_PURPOSE, now,
+          metadata: {
+            kind: 'worktree-creation', workspaceId: input.workspaceId, runId: input.runId,
+            executionId: input.executionId, processId: process.pid,
+          },
+        }) !== null;
+      });
+      if (acquired) {
+        return () => {
+          inTransaction(db, () => runtimeLocks.release(lockKey, ownerId, new Date().toISOString()));
+        };
+      }
+      // Polling crosses process boundaries: another manager may own the slot,
+      // so a local release callback alone cannot wake this accepted request.
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+    }
+  }
+
+  private releasePriorProcessCreationReservations(): void {
+    const db = this.transactionDatabase;
+    if (db === undefined) return;
+    inTransaction(db, () => {
+      const runtimeLocks = new RuntimeLockRepository(db);
+      const now = new Date().toISOString();
+      for (const lock of runtimeLocks.listActive(now)) {
+        if (lock.purpose !== WORKTREE_CAPACITY_LOCK_PURPOSE && lock.purpose !== WORKTREE_REQUEST_LOCK_PURPOSE) continue;
+        if (!creationProcessIsAlive(lock.metadata?.processId)) runtimeLocks.release(lock.lockKey, lock.ownerId, now);
+      }
+    });
   }
 
   /**
@@ -580,13 +670,19 @@ export class WorktreeManager {
    * persisted Run scope being scanned.
    */
   async reconcile(workspaceRoots: readonly string[] = []): Promise<WorktreeReconcileReport> {
+    this.releasePriorProcessCreationReservations();
+    const liveRequests = this.transactionDatabase === undefined ? new Set<unknown>() : new Set(
+      new RuntimeLockRepository(this.transactionDatabase).listActive(new Date().toISOString())
+        .filter(lock => lock.purpose === WORKTREE_REQUEST_LOCK_PURPOSE)
+        .map(lock => lock.metadata?.leaseId),
+    );
     const configuredRoot = resolve(this.worktreeRoot);
     let realRoot: string;
     let realRootVerified = false;
     try { realRoot = await realpath(configuredRoot); realRootVerified = true; } catch { realRoot = configuredRoot; }
     const report: WorktreeReconcileReport = { activated: [], failed: [], incompleteCreations: [], missingGitRegistration: [], orphaned: [] };
     const tracked = [...this.leases.values()].filter(record =>
-      record.status === 'creating' || record.status === 'active' || record.status === 'cleanup_pending');
+      !liveRequests.has(record.id) && (record.status === 'creating' || record.status === 'active' || record.status === 'cleanup_pending'));
 
     // §57 recovery_started per distinct (workspace, run) scope, before any scan.
     const scopes = new Map<string, { workspaceId: string; runId: string; scannedCount: number }>();
@@ -709,7 +805,11 @@ export class WorktreeManager {
     // Status write-back + lifecycle events in one transaction when a store
     // connection is available (SQLite mode).
     const emitPending = (): void => {
-      this.persist();
+      if (this.repository) {
+        for (const record of tracked) this.repository.save(record);
+      } else {
+        this.persist();
+      }
       for (const scope of scopes.values()) {
         this.events.emitRecoveryStarted(scope);
       }

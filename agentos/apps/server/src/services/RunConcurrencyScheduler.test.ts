@@ -9,6 +9,7 @@ import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { RunRepository } from '../store/RunRepository.js';
+import { inTransaction } from '../store/Transaction.js';
 import {
   DEFAULT_CONCURRENCY_LIMITS,
   RunConcurrencyScheduler,
@@ -202,22 +203,30 @@ describe('RunConcurrencyScheduler.authorizeRun', () => {
     } finally { cleanup(h); }
   });
 
-  test('per-provider / per-provider-config / per-agent limits key off the frozen Run snapshot', () => {
+  test('per-provider / per-provider-config / per-agent limits reserve actual Stage calls', () => {
     const h = harness({ global: 100, perProvider: 1, perProviderConfig: 1, perAgent: 1 });
     try {
       addWorkspace(h.db, 'ws_a');
-      const busy = addRun(h, 'ws_a', { status: 'running' });
-      addSnapshot(h, 'ws_a', busy, { providerType: 'kimi-code', providerConfigId: 'pc_1', agentId: 'ag_1' });
-      const queued = addRun(h, 'ws_a');
-      addSnapshot(h, 'ws_a', queued, { providerType: 'kimi-code', providerConfigId: 'pc_1', agentId: 'ag_1' });
-      const denied = h.scheduler.authorizeRun({ workspaceId: 'ws_a', runId: queued });
+      const busy = h.scheduler.reserveProviderStage({
+        workspaceId: 'ws_a', runId: 'run_busy', stageId: 'stage_busy', stageAttempt: 1,
+        providerType: 'kimi-code', providerConfigId: 'pc_1', agentId: 'ag_1',
+      });
+      assert.equal(busy.allowed, true);
+      const denied = h.scheduler.reserveProviderStage({
+        workspaceId: 'ws_a', runId: 'run_queued', stageId: 'stage_queued', stageAttempt: 1,
+        providerType: 'kimi-code', providerConfigId: 'pc_1', agentId: 'ag_1',
+      });
       assert.equal(denied.allowed, false);
-      assert.ok(denied.dimension === 'perProvider' || denied.dimension === 'perProviderConfig' || denied.dimension === 'perAgent');
-      // A queued Run on a different provider/agent combination is admitted.
-      const other = addRun(h, 'ws_a');
-      addSnapshot(h, 'ws_a', other, { providerType: 'codex', providerConfigId: 'pc_2', agentId: 'ag_2' });
-      const allowed = h.scheduler.authorizeRun({ workspaceId: 'ws_a', runId: other });
+      assert.equal(denied.dimension, 'perProvider');
+      // A Stage on a different provider/config/agent is admitted.
+      const other = h.scheduler.reserveProviderStage({
+        workspaceId: 'ws_a', runId: 'run_other', stageId: 'stage_other', stageAttempt: 1,
+        providerType: 'codex', providerConfigId: 'pc_2', agentId: 'ag_2',
+      });
+      const allowed = other;
       assert.equal(allowed.allowed, true);
+      if (busy.allowed) h.scheduler.releaseProviderStage(busy.reservation);
+      if (other.allowed) h.scheduler.releaseProviderStage(other.reservation);
     } finally { cleanup(h); }
   });
 
@@ -238,6 +247,22 @@ describe('RunConcurrencyScheduler.authorizeRun', () => {
       addAdmission(h, 'ws_a', queuedReader, 'READ_ONLY', 'QUEUED');
       const allowed = h.scheduler.authorizeRun({ workspaceId: 'ws_a', runId: queuedReader });
       assert.equal(allowed.allowed, true);
+    } finally { cleanup(h); }
+  });
+
+  test('Run reservation requires the claim transaction and is persisted with its owner', () => {
+    const h = harness({ global: 1 });
+    try {
+      addWorkspace(h.db, 'ws_a');
+      const queued = addRun(h, 'ws_a');
+      assert.throws(() => h.scheduler.reserveRun({ workspaceId: 'ws_a', runId: queued }), /CLAIM_TRANSACTION/);
+      const result = inTransaction(h.db as never, () => h.scheduler.reserveRun({ workspaceId: 'ws_a', runId: queued }));
+      assert.equal(result.allowed, true);
+      const lock = h.db.prepare("SELECT purpose, released_at FROM runtime_locks WHERE purpose = 'run-concurrency-run'").get() as { purpose: string; released_at: string | null };
+      assert.deepEqual({ ...lock }, { purpose: 'run-concurrency-run', released_at: null });
+      h.scheduler.releaseRun('ws_a', queued);
+      const released = h.db.prepare("SELECT released_at FROM runtime_locks WHERE purpose = 'run-concurrency-run'").get() as { released_at: string | null };
+      assert.notEqual(released.released_at, null);
     } finally { cleanup(h); }
   });
 
@@ -277,7 +302,7 @@ describe('RunConcurrencyScheduler §8.3 queue order and backfill', () => {
     } finally { cleanup(h); }
   });
 
-  test('pumpQueuedRuns drives queued Runs that fit and skips denied ones without dropping them', () => {
+  test('pumpQueuedRuns drives queued Runs that fit and skips denied ones without dropping them', async () => {
     const h = harness({ global: 100, perWorkspace: 1 });
     try {
       addWorkspace(h.db, 'ws_a'); addWorkspace(h.db, 'ws_b');
@@ -289,7 +314,7 @@ describe('RunConcurrencyScheduler §8.3 queue order and backfill', () => {
         driven.push(runId);
         h.db.prepare("UPDATE runs SET status = 'running' WHERE workspace_id = ? AND id = ?").run(ws, runId);
       };
-      const dispatched = h.scheduler.pumpQueuedRuns(claim);
+      const dispatched = await h.scheduler.pumpQueuedRuns(claim);
       assert.deepEqual(dispatched.map(candidate => candidate.runId), [freeB]);
       assert.deepEqual(driven, [freeB]);
       // The denied Run stays queued and remains visible for the next pump.
@@ -297,7 +322,7 @@ describe('RunConcurrencyScheduler §8.3 queue order and backfill', () => {
       assert.equal(h.scheduler.listQueuedCandidates('ws_a').some(candidate => candidate.runId === blockedA), true);
       // Release capacity, pump again: the previously blocked Run is admitted in order.
       h.db.prepare("UPDATE runs SET status = 'completed' WHERE id = ?").run(busy);
-      const second = h.scheduler.pumpQueuedRuns(claim);
+      const second = await h.scheduler.pumpQueuedRuns(claim);
       assert.deepEqual(second.map(candidate => candidate.runId), [blockedA]);
     } finally { cleanup(h); }
   });

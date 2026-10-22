@@ -1,14 +1,12 @@
 /**
  * 02-Runtime-Lifecycle §8.3/§8.4 Run concurrency scheduling.
  *
- * The scheduler is a pure in-process admission gate over durable Run state:
- * it never mutates Runs and never owns dispatch. RunEngineProviderDispatcher
- * calls authorizeRun() before claiming a queued Run; on denial the Run simply
- * stays queued (the dispatcher reports a noop reason and a diagnostic is
- * logged, never a silent drop). When a Run reaches a terminal state the
- * execution chain calls pumpQueuedRuns(), which re-evaluates queued Runs in
- * §8.3 order (priority DESC, created_at ASC) and re-drives the first ones
- * that now fit — that is the release/backfill point.
+ * authorizeRun() is a read-only preflight. reserveRun() is called from the
+ * RunEngine claim transaction, where the capacity check, durable runtime lock,
+ * and queued → starting transition commit together. Provider dimensions are
+ * reserved around each actual StageExecutionCoordinator call, using that
+ * Stage's frozen Agent and the current primary/fallback Provider snapshot.
+ * Terminal release and startup reconciliation repair the persistent locks.
  *
  * Limits are runtime configuration only (AGENTOS_CONCURRENCY_* environment
  * variables); there is no policy table. Every limit is optional: an absent
@@ -17,7 +15,10 @@
  * WorkspaceAdmissionAuthority; the modifyingRuns limit here is the §8.4
  * cross-workspace aggregate on top of it.
  */
-import type { TransactionDatabase } from '../store/Transaction.js';
+import { createHash } from 'node:crypto';
+import { createEntityId } from '../store/Identity.js';
+import { RuntimeLockRepository } from '../store/RuntimeLockRepository.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
 
 export type ConcurrencyLimitDimension =
   | 'global'
@@ -106,9 +107,48 @@ interface QueuedRow {
   readonly created_at: string;
 }
 
+export interface ProviderStageCapacityInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly stageId: string;
+  readonly stageAttempt: number;
+  readonly providerAttempt?: number;
+  readonly providerType: string;
+  readonly providerConfigId: string;
+  readonly agentId: string;
+}
+
+export interface ProviderStageCapacityReservation {
+  readonly ownerId: string;
+  readonly locks: readonly { readonly lockKey: string; readonly ownerId: string }[];
+}
+
+export type ProviderStageCapacityResult =
+  | { readonly allowed: true; readonly reservation: ProviderStageCapacityReservation }
+  | {
+      readonly allowed: false;
+      readonly dimension: 'perProvider' | 'perProviderConfig' | 'perAgent';
+      readonly current: number;
+      readonly limit: number;
+      readonly reason: string;
+      readonly sameStageAlreadyReserved?: boolean;
+    };
+
+const RUN_LOCK_PURPOSE = 'run-concurrency-run';
+const STAGE_LOCK_PURPOSE = 'run-concurrency-stage';
+const SCHEDULER_LOCK_PURPOSES = [RUN_LOCK_PURPOSE, STAGE_LOCK_PURPOSE] as const;
+
+function stableKey(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function parseLockMetadata(value: Record<string, unknown> | null): Record<string, unknown> | undefined {
+  return value ?? undefined;
+}
+
 const IN_FLIGHT_STATUSES = "('starting','running','waiting_approval','paused')";
 
-/** Extract dispatch dimensions from one Run Snapshot payload (§8.4 keys). */
+/** Extract the first configured Stage dimensions for diagnostics and legacy callers. */
 export function dimensionsFromSnapshotJson(snapshotJson: string | null): Omit<RunDispatchDimensions, 'modifying'> {
   const empty = { providerType: null, providerConfigId: null, agentId: null };
   if (snapshotJson === null) return empty;
@@ -152,6 +192,8 @@ export interface ConcurrencyCounts {
 export class RunConcurrencyScheduler {
   private readonly getDatabase: () => TransactionDatabase;
   private readonly limits: ConcurrencyLimits;
+  private pump: Promise<{ readonly workspaceId: string; readonly runId: string }[]> | undefined;
+  private pumpRequested = false;
 
   constructor(options: RunConcurrencySchedulerOptions) {
     this.getDatabase = options.getDatabase;
@@ -167,11 +209,11 @@ export class RunConcurrencyScheduler {
     const rows = (workspaceId === undefined
       ? this.getDatabase().prepare(
           `SELECT workspace_id, id AS run_id, priority, created_at FROM runs
-           WHERE status = 'queued' ORDER BY priority DESC, created_at ASC, id ASC`,
+           WHERE status = 'queued' AND COALESCE(recovery_required, 0) = 0 ORDER BY priority DESC, created_at ASC, id ASC`,
         ).all()
       : this.getDatabase().prepare(
           `SELECT workspace_id, id AS run_id, priority, created_at FROM runs
-           WHERE status = 'queued' AND workspace_id = ? ORDER BY priority DESC, created_at ASC, id ASC`,
+           WHERE status = 'queued' AND COALESCE(recovery_required, 0) = 0 AND workspace_id = ? ORDER BY priority DESC, created_at ASC, id ASC`,
         ).all(workspaceId)) as unknown as QueuedRow[];
     return rows.map(row => ({ workspaceId: row.workspace_id, runId: row.run_id }));
   }
@@ -185,10 +227,7 @@ export class RunConcurrencyScheduler {
     const db = this.getDatabase();
     const candidate = this.candidateRow(db, input.workspaceId, input.runId);
     // Terminal Runs never need admission; missing Runs are not this gate's job.
-    if (candidate === undefined
-      || candidate.status === 'completed'
-      || candidate.status === 'failed'
-      || candidate.status === 'cancelled') {
+    if (candidate === undefined || candidate.status !== 'queued') {
       return { allowed: true, reason: 'run-not-queued' };
     }
     const candidateDims: RunDispatchDimensions = {
@@ -219,36 +258,223 @@ export class RunConcurrencyScheduler {
       limited('global', globalCount, true),
       limited('perWorkspace', workspaceCount, true),
       limited('modifyingRuns', modifyingCount, candidateDims.modifying),
-      this.countDimension(inFlight, 'perProvider', candidateDims.providerType),
-      this.countDimension(inFlight, 'perProviderConfig', candidateDims.providerConfigId),
-      this.countDimension(inFlight, 'perAgent', candidateDims.agentId),
     ].find(result => result !== undefined);
     return denial ?? { allowed: true };
   }
 
   /**
+   * Persist the Run-level reservation in the same transaction that claims the
+   * Run. This method intentionally refuses to open its own transaction: a
+   * separate check/claim transaction would reintroduce the await race.
+   */
+  reserveRun(input: { readonly workspaceId: string; readonly runId: string }): ConcurrencyAuthorization {
+    const db = this.getDatabase();
+    if (!isTransactionActive(db)) {
+      throw new Error('RUN_CONCURRENCY_RESERVATION_REQUIRES_CLAIM_TRANSACTION');
+    }
+    const authorization = this.authorizeRun(input);
+    if (!authorization.allowed) return authorization;
+    const candidate = this.candidateRow(db, input.workspaceId, input.runId);
+    if (candidate?.status !== 'queued') return { allowed: true, reason: 'run-not-queued' };
+
+    const ownerId = this.runOwnerId(input.workspaceId, input.runId);
+    const lockKey = `run-concurrency:run:${stableKey(`${input.workspaceId}\0${input.runId}`)}`;
+    const acquired = new RuntimeLockRepository(db).tryAcquire({
+      id: createEntityId('runtimeLock'), lockKey, ownerId, purpose: RUN_LOCK_PURPOSE,
+      now: new Date().toISOString(),
+      metadata: { kind: 'run', workspaceId: input.workspaceId, runId: input.runId },
+    });
+    if (!acquired) {
+      return {
+        allowed: false, dimension: 'global', current: this.counts().globalInFlight,
+        limit: this.limits.global ?? Number.MAX_SAFE_INTEGER,
+        reason: 'Run concurrency reservation is held by another claimant',
+      };
+    }
+    return authorization;
+  }
+
+  /** Atomically reserve limits for the exact Stage/provider attempt about to run. */
+  reserveProviderStage(input: ProviderStageCapacityInput): ProviderStageCapacityResult {
+    const db = this.getDatabase();
+    return inTransaction(db, () => {
+      const now = new Date().toISOString();
+      const lockRepository = new RuntimeLockRepository(db);
+      const ownerId = `stage:${stableKey([
+        input.workspaceId, input.runId, input.stageId, String(input.stageAttempt),
+        String(input.providerAttempt ?? input.stageAttempt),
+      ].join('\0'))}`;
+      const dimensions = [
+        { dimension: 'perProvider' as const, value: input.providerType },
+        { dimension: 'perProviderConfig' as const, value: input.providerConfigId },
+        { dimension: 'perAgent' as const, value: input.agentId },
+      ].flatMap(item => {
+        const limit = this.limits[item.dimension];
+        return limit === undefined ? [] : [{ ...item, limit, capacityKey: `${item.dimension}:${item.value}` }];
+      });
+      const reservationKeys = dimensions.map(item => ({
+        ...item,
+        lockKey: `run-concurrency:stage:${stableKey(`${item.capacityKey}\0${ownerId}`)}`,
+      }));
+
+      const ownedKeys = reservationKeys.filter(item => {
+        const held = lockRepository.findByKey(item.lockKey);
+        return held !== undefined && held.releasedAt === null
+          && (held.expiresAt === null || held.expiresAt > now);
+      });
+      if (ownedKeys.length === reservationKeys.length) {
+        // Replaying/resuming the same attempt joins its durable Provider claim.
+        // In particular an `active` result must retain capacity until completion.
+        return { allowed: true, reservation: { ownerId, locks: reservationKeys.map(item => ({ lockKey: item.lockKey, ownerId })) } };
+      }
+
+      const active = lockRepository.listActive(now).filter(lock => lock.purpose === STAGE_LOCK_PURPOSE);
+      if (active.some(lock => lock.ownerId !== ownerId
+        && lock.metadata?.workspaceId === input.workspaceId && lock.metadata?.runId === input.runId
+        && lock.metadata?.stageId === input.stageId && lock.metadata?.stageAttempt === input.stageAttempt)) {
+        return {
+          allowed: false, dimension: reservationKeys[0]?.dimension ?? 'perProvider',
+          current: 1, limit: reservationKeys[0]?.limit ?? 1,
+          reason: 'Another Provider attempt for this Stage still owns capacity', sameStageAlreadyReserved: true,
+        };
+      }
+      for (const item of reservationKeys) {
+        const current = active.filter(lock => {
+          const metadata = parseLockMetadata(lock.metadata);
+          return metadata?.capacityKey === item.capacityKey && lock.ownerId !== ownerId;
+        }).length;
+        if (current >= item.limit) {
+          return {
+            allowed: false, dimension: item.dimension, current, limit: item.limit,
+            reason: `${item.dimension} concurrency limit reached (${current}/${item.limit})`,
+          };
+        }
+      }
+
+      const acquired: { lockKey: string; ownerId: string }[] = [];
+      for (const item of reservationKeys) {
+        const result = lockRepository.tryAcquire({
+          id: createEntityId('runtimeLock'), lockKey: item.lockKey, ownerId, purpose: STAGE_LOCK_PURPOSE,
+          now,
+          metadata: {
+            kind: 'stage', workspaceId: input.workspaceId, runId: input.runId,
+            stageId: input.stageId, stageAttempt: input.stageAttempt,
+            providerAttempt: input.providerAttempt ?? input.stageAttempt,
+            dimension: item.dimension, capacityKey: item.capacityKey,
+          },
+        });
+        if (!result) {
+          for (const held of acquired) lockRepository.release(held.lockKey, held.ownerId, now);
+          const current = lockRepository.listActive(now).filter(lock => {
+            const metadata = lock.metadata;
+            return lock.purpose === STAGE_LOCK_PURPOSE && metadata?.capacityKey === item.capacityKey;
+          }).length;
+          return {
+            allowed: false, dimension: item.dimension, current, limit: item.limit,
+            reason: `${item.dimension} reservation was concurrently acquired (${current}/${item.limit})`,
+          };
+        }
+        acquired.push({ lockKey: item.lockKey, ownerId });
+      }
+      return { allowed: true, reservation: { ownerId, locks: acquired } };
+    });
+  }
+
+  releaseProviderStage(reservation: ProviderStageCapacityReservation): void {
+    const db = this.getDatabase();
+    inTransaction(db, () => {
+      const repository = new RuntimeLockRepository(db);
+      const now = new Date().toISOString();
+      for (const lock of reservation.locks) repository.release(lock.lockKey, reservation.ownerId, now);
+    });
+  }
+
+  /** Release all Run and Stage reservations after a committed terminal transition. */
+  releaseRun(workspaceId: string, runId: string): void {
+    const db = this.getDatabase();
+    inTransaction(db, () => {
+      const repository = new RuntimeLockRepository(db);
+      const rows = db.prepare(
+        `SELECT lock_key, owner_id, metadata_json FROM runtime_locks
+         WHERE purpose IN (?, ?) AND released_at IS NULL`,
+      ).all(...SCHEDULER_LOCK_PURPOSES) as Record<string, unknown>[];
+      const now = new Date().toISOString();
+      for (const row of rows) {
+        let metadata: Record<string, unknown> | null = null;
+        try { metadata = row.metadata_json == null ? null : JSON.parse(row.metadata_json as string) as Record<string, unknown>; }
+        catch { continue; }
+        if (metadata?.workspaceId === workspaceId && metadata?.runId === runId) {
+          repository.release(row.lock_key as string, row.owner_id as string, now);
+        }
+      }
+    });
+  }
+
+  /** Drop locks made obsolete by terminal/recovered Stage state after restart. */
+  reconcileReservations(): number {
+    const db = this.getDatabase();
+    return inTransaction(db, () => {
+      const rows = db.prepare(
+        `SELECT lock_key, owner_id, purpose, metadata_json FROM runtime_locks
+         WHERE purpose IN (?, ?) AND released_at IS NULL`,
+      ).all(...SCHEDULER_LOCK_PURPOSES) as Record<string, unknown>[];
+      const repository = new RuntimeLockRepository(db);
+      let released = 0;
+      const now = new Date().toISOString();
+      for (const row of rows) {
+        let metadata: Record<string, unknown> | null = null;
+        try { metadata = row.metadata_json == null ? null : JSON.parse(row.metadata_json as string) as Record<string, unknown>; }
+        catch { continue; }
+        const workspaceId = metadata?.workspaceId;
+        const runId = metadata?.runId;
+        if (typeof workspaceId !== 'string' || typeof runId !== 'string') continue;
+        const run = db.prepare('SELECT status FROM runs WHERE workspace_id = ? AND id = ?').get(workspaceId, runId) as { status: string } | undefined;
+        let stale = run === undefined || !['starting', 'running', 'waiting_approval', 'paused'].includes(run.status);
+        if (!stale && row.purpose === STAGE_LOCK_PURPOSE) {
+          const stageId = metadata?.stageId;
+          const attempt = metadata?.stageAttempt;
+          const stage = typeof stageId === 'string' && typeof attempt === 'number'
+            ? db.prepare('SELECT status FROM run_stages WHERE workspace_id = ? AND run_id = ? AND id = ? AND attempt = ?')
+              .get(workspaceId, runId, stageId, attempt) as { status: string } | undefined
+            : undefined;
+          stale = stage === undefined || !['starting', 'running', 'waiting_approval', 'paused'].includes(stage.status);
+        }
+        if (stale && repository.release(row.lock_key as string, row.owner_id as string, now)) released += 1;
+      }
+      return released;
+    });
+  }
+
+  /**
    * Release/backfill point: after a Run leaves the active set, re-scan the
-   * queued Runs in §8.3 order and re-drive the FIRST candidate that now
-   * passes the gate. One freed slot admits exactly one Run — drives are
-   * asynchronous, so admitting more than one per pass could overshoot a
-   * dimension limit before any claim lands. drive implementations own
-   * claim/CAS/failure containment; the pump never awaits execution and
-   * never throws. Additional free slots are filled by their own release
-   * events and by every individually gated start-route drive.
+   * queued Runs in §8.3 order. `schedule` resolves after admission/claim,
+   * without waiting for Provider execution. Serial claims preserve priority
+   * across asynchronous workspace authorization and fill every available slot.
+   * Overlapping release notifications request another scan of the global queue.
    */
   pumpQueuedRuns(
-    drive: (workspaceId: string, runId: string) => Promise<unknown>,
-    workspaceId?: string,
-  ): { readonly workspaceId: string; readonly runId: string }[] {
-    for (const candidate of this.listQueuedCandidates(workspaceId)) {
-      const authorization = this.authorizeRun(candidate);
-      if (!authorization.allowed) continue;
-      void drive(candidate.workspaceId, candidate.runId).catch(() => {
-        // Containment backstop only; drive contains its own failures.
-      });
-      return [candidate];
-    }
-    return [];
+    schedule: (workspaceId: string, runId: string) => Promise<unknown>,
+  ): Promise<{ readonly workspaceId: string; readonly runId: string }[]> {
+    this.pumpRequested = true;
+    if (this.pump !== undefined) return this.pump;
+    this.pump = Promise.resolve().then(async () => {
+      const dispatched: { readonly workspaceId: string; readonly runId: string }[] = [];
+      do {
+        this.pumpRequested = false;
+        for (const candidate of this.listQueuedCandidates()) {
+          if (!this.authorizeRun(candidate).allowed) continue;
+          try {
+            await schedule(candidate.workspaceId, candidate.runId);
+            dispatched.push(candidate);
+          } catch (error) {
+            // One failed admission cannot strand other Workspaces.
+            console.error(`RUN_QUEUE_SCHEDULE_FAILED run=${candidate.runId}:`, error);
+          }
+        }
+      } while (this.pumpRequested);
+      return dispatched;
+    }).finally(() => { this.pump = undefined; });
+    return this.pump;
   }
 
   /** Observability for the metrics summary: why-queued counters. */
@@ -266,21 +492,8 @@ export class RunConcurrencyScheduler {
     return { globalInFlight, workspaceInFlight, queued };
   }
 
-  private countDimension(
-    inFlight: readonly InFlightRow[],
-    dimension: 'perProvider' | 'perProviderConfig' | 'perAgent',
-    key: string | null,
-  ): ConcurrencyAuthorization | undefined {
-    if (key === null) return undefined;
-    const limit = this.limits[dimension];
-    if (limit === undefined) return undefined;
-    const attribute = (row: InFlightRow): string | null =>
-      dimensionsFromSnapshotJson(row.snapshot_json)[
-        dimension === 'perProvider' ? 'providerType' : dimension === 'perProviderConfig' ? 'providerConfigId' : 'agentId'
-      ];
-    const current = inFlight.filter(row => attribute(row) === key).length;
-    if (current < limit) return undefined;
-    return { allowed: false, dimension, current, limit, reason: `${dimension} concurrency limit reached (${current}/${limit})` };
+  private runOwnerId(workspaceId: string, runId: string): string {
+    return `run:${stableKey(`${workspaceId}\0${runId}`)}`;
   }
 
   private inFlightRows(db: TransactionDatabase): InFlightRow[] {

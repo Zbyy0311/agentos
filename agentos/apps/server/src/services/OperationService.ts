@@ -7,7 +7,7 @@ import type {
 import { M3_OPERATION_STATUSES } from '@agentos/shared';
 import { isCanonicalUtcTimestamp } from '../store/CanonicalTimestamp.js';
 import { createEntityId } from '../store/Identity.js';
-import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, registerAfterCommit, type TransactionDatabase } from '../store/Transaction.js';
 import { VersionConflictError } from '../store/Version.js';
 import {
   NON_TERMINAL_OPERATION_STATUSES,
@@ -173,6 +173,7 @@ export class OperationService {
   private readonly repository: OperationRepository;
   private readonly now: () => string;
   private readonly lifecycleTransactionService: OperationServiceOptions['lifecycleTransactionService'];
+  private onRunTerminalCommitted: ((input: { readonly workspaceId: string; readonly runId: string }) => void) | undefined;
 
   constructor(
     private readonly db: TransactionDatabase,
@@ -273,6 +274,13 @@ export class OperationService {
     return inTransaction(this.db, () => this.cancelWithinTransaction(input));
   }
 
+  /** Register a post-commit hook for canonical Run cancellation backfill. */
+  setRunTerminalCommittedHandler(
+    handler: (input: { readonly workspaceId: string; readonly runId: string }) => void,
+  ): void {
+    this.onRunTerminalCommitted = handler;
+  }
+
   cancelWithinTransaction(input: CancelOperationInput): ApiOperation {
     if (!isNonEmptyString(input.workspaceId) || !isNonEmptyString(input.operationId)) {
       throw new OperationValidationError('workspaceId and operationId are required');
@@ -305,6 +313,13 @@ export class OperationService {
     if (input.evidence !== undefined) validateCancellationEvidence(input.evidence);
 
     const timestamp = assertTimestamp(this.now());
+    registerAfterCommit(this.db, () => {
+      const run = this.db.prepare('SELECT status FROM runs WHERE workspace_id = ? AND id = ?')
+        .get(current.workspaceId, current.runId) as { status: string } | undefined;
+      if (run && ['completed', 'failed', 'cancelled'].includes(run.status)) {
+        this.onRunTerminalCommitted?.({ workspaceId: current.workspaceId, runId: current.runId });
+      }
+    });
     const updated = this.repository.update({
       workspaceId: input.workspaceId,
       operationId: input.operationId,

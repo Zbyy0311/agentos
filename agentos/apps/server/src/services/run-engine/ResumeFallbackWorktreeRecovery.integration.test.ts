@@ -231,6 +231,27 @@ function createRealProviderChain(
   });
 }
 
+test('§8.3 global queue pump prepares a required Child before the real Custom CLI dispatcher starts', async () => {
+  const fx = await requiredChildFixture();
+  try {
+    const worktrees = createPersistedWorktreeManager(fx.store, fx.worktreeRoot);
+    const paths = new Map<string, string>();
+    const preparer = createPreparer(fx.store, fx.workspace.id, fx.workspace.rootPath, worktrees, paths);
+    const chain = createRealProviderChain(fx, preparer, paths, { value: 0 });
+    await chain.pumpQueuedRuns();
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const run = fx.store.runRepository().findById(fx.workspace.id, fx.childRunId)!;
+      if (['completed', 'failed', 'cancelled'].includes(run.status)) break;
+      await new Promise<void>(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, fx.childRunId)?.status, 'completed');
+    const ownedPath = paths.get(fx.childRunId);
+    assert.ok(ownedPath);
+    assert.equal(readFileSync(join(ownedPath, CHILD_RECEIPT), 'utf8'), ownedPath);
+    assert.equal(chain.concurrencyScheduler.counts().globalInFlight, 0);
+  } finally { fx.close(); }
+});
+
 test('required fallback Child reuses its persisted owned lease after restart and executes the frozen Custom CLI Stage', async () => {
   const fx = await requiredChildFixture();
   try {

@@ -87,6 +87,9 @@ export interface ProviderExecutionChain {
   }) => Promise<ProcessStopResult>;
   /** Replays only granted, durable resume-fallback Child Starts. */
   readonly resumeGrantedResumeFallbackChildren: (workspaceId?: string) => Promise<void>;
+  /** Reconcile persistent capacity locks and restart the global queued-Run pump. */
+  readonly reconcileConcurrencyReservations: () => number;
+  readonly pumpQueuedRuns: () => Promise<void>;
   /** Prepares, admits, and dispatches one explicitly accepted fallback Child. */
   readonly resumeFallbackChild: (workspaceId: string, runId: string) => Promise<void>;
   readonly memoryContextResolver: MemoryContextResolver;
@@ -159,6 +162,28 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   );
   const resumeGrantedResumeFallbackChildren = (workspaceId?: string): Promise<void> =>
     resumeFallbackQueue.resumeGrantedChildren(workspaceId);
+  const pumpQueuedRuns = async (): Promise<void> => {
+    await concurrencyScheduler.pumpQueuedRuns((workspaceId, runId) => new Promise<void>(resolve => {
+      // Keep the dispatch permit for the full execution while allowing the
+      // priority pump to proceed as soon as the atomic claim has settled.
+      const drive = async (): Promise<void> => {
+        const run = store.runRepository().findById(workspaceId, runId);
+        const dispatch = (ws: string, id: string) => dispatcher.driveSafely(ws, id, resolve);
+        if (run?.status === 'queued' && run.reason === 'resume-fallback') {
+          // Accepted required-worktree Children retain their preparation and
+          // Admission protocol when selected by the global priority pump.
+          await resumeFallbackQueue.resumeChild(workspaceId, runId, dispatch);
+        } else {
+          await dispatch(workspaceId, runId);
+        }
+      };
+      const execution = options.withDispatchPermit ? options.withDispatchPermit(drive) : drive();
+      void execution.catch(error => {
+        console.error(`RUN_QUEUE_DISPATCH_FAILED run=${runId}:`, error);
+      }).finally(resolve);
+    }));
+  };
+  const reconcileConcurrencyReservations = (): number => concurrencyScheduler.reconcileReservations();
   const resumeFallbackChild = (workspaceId: string, runId: string): Promise<void> =>
     resumeFallbackQueue.resumeChild(workspaceId, runId);
   // §87 control surface: read the current claim fence, then accept (or join)
@@ -333,21 +358,35 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     listProviderFallbackChain: (workspaceId, runId) =>
       store.providerFallbackChainRepository().listByRun(workspaceId, runId),
     onRunTerminal: async ({ workspaceId, runId }) => {
-      await admissionAuthority.releaseCanonicalRun({ workspaceId, runId });
-      await resumeGrantedResumeFallbackChildren(workspaceId);
-      // §8.4 release/backfill: a terminal Run freed capacity — re-drive the
-      // queued Runs (priority DESC, created_at ASC) that now fit the limits.
-      concurrencyScheduler.pumpQueuedRuns((ws, run) => {
-        const drive = () => dispatcher.driveSafely(ws, run);
-        return options.withDispatchPermit ? options.withDispatchPermit(drive) : drive();
-      }, workspaceId);
+      await dispatcherTerminalAfterCommit({ workspaceId, runId });
     },
   });
+  store.lifecycleTransactionService().setRunTerminalCommittedHandler(({ workspaceId, runId }) => {
+    const run = store.runRepository().findById(workspaceId, runId);
+    if (!run || !['completed', 'failed', 'cancelled'].includes(run.status)) return;
+    void dispatcherTerminalAfterCommit({ workspaceId, runId }).catch(error => {
+      console.error(`RUN_TERMINAL_QUEUE_RECOVERY_FAILED run=${runId}:`, error);
+    });
+  });
+
+  async function dispatcherTerminalAfterCommit(input: { workspaceId: string; runId: string }): Promise<void> {
+    concurrencyScheduler.releaseRun(input.workspaceId, input.runId);
+    try {
+      await admissionAuthority.releaseCanonicalRun(input);
+      // Schedule ordinary Runs in global priority order before Child recovery
+      // attempts, which must pass the same atomic capacity gate.
+    } finally {
+      await pumpQueuedRuns();
+    }
+    await resumeGrantedResumeFallbackChildren(input.workspaceId);
+  }
   return {
     admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
     reattachProcess: input => durableCoordinator.reattachProcess(input),
     stopProcess,
     resumeGrantedResumeFallbackChildren,
+    reconcileConcurrencyReservations,
+    pumpQueuedRuns,
     resumeFallbackChild,
     memoryContextResolver, approvalGate, terminalCandidateGenerator, terminalCandidateGeneratorWithFacts, verifiedMemoryFacts,
     concurrencyScheduler,

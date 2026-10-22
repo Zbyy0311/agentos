@@ -40,6 +40,7 @@ import type { StageExecutionCoordinator } from './StageExecutionCoordinator.js';
 import type { StageExecutionInput, StageExecutionOutcome } from './StageExecutionCoordinator.js';
 import { ProviderSwitchApprovalGate, emitProviderSwitchEvent } from './providerFallback.js';
 import type { SqliteStore } from '../../store/SqliteStore.js';
+import { RunConcurrencyScheduler, type ConcurrencyLimits } from '../RunConcurrencyScheduler.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { all(...params: unknown[]): unknown[]; get(...params: unknown[]): unknown; run(...params: unknown[]): unknown; }; close(): void; } };
 type Db = InstanceType<typeof DatabaseSync>;
@@ -70,6 +71,7 @@ const TIMEOUT_POLICY = {
 } as const;
 
 interface Behavior {
+  readonly concurrencyLimits?: ConcurrencyLimits;
   readonly permissions?: readonly ('read' | 'write' | 'review')[];
   readonly policy?: Partial<{
     enabled: boolean;
@@ -238,6 +240,7 @@ interface Fixture {
   runStageRepo: RunStageRepository;
   runSnapshotRepo: RunSnapshotRepository;
   events: RuntimeEventRepository;
+  scheduler: RunConcurrencyScheduler | undefined;
 }
 
 function fixture(behavior: Behavior): Fixture {
@@ -255,6 +258,9 @@ function fixture(behavior: Behavior): Fixture {
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   }, { now: () => NOW });
   const operationService = new OperationService(db, { now: () => NOW, lifecycleTransactionService: lifecycle });
+  const scheduler = behavior.concurrencyLimits === undefined ? undefined : new RunConcurrencyScheduler({
+    getDatabase: () => db, limits: behavior.concurrencyLimits,
+  });
   const engine = new RunEngine({
     runRepository: runRepo, operationService, lifecycleTransactionService: lifecycle,
     snapshotRepository: runSnapshotRepo, runStageRepository: runStageRepo,
@@ -298,6 +304,7 @@ function fixture(behavior: Behavior): Fixture {
   dispatcher = new RunEngineProviderDispatcher({
     engine,
     coordinator: stubCoordinator,
+    ...(scheduler === undefined ? {} : { concurrencyGate: scheduler }),
     admissionGate: {
       authorizeCanonicalRun: async () => ({ authorized: true as const, reason: 'ADMISSION_GRANTED' as const }),
     },
@@ -332,9 +339,54 @@ function fixture(behavior: Behavior): Fixture {
   void continuations;
   return {
     db, dispatcher, approvalGate: undefined, calls, trace, switchEvents, dispatchFailures,
-    runRepo, runStageRepo, runSnapshotRepo, events,
+    runRepo, runStageRepo, runSnapshotRepo, events, scheduler,
   };
 }
+
+it('§8.4 fallback waits for its real target configuration and retains capacity while active', async () => {
+  const fx = fixture({
+    concurrencyLimits: { global: 4, perProviderConfig: 1 },
+    outcomeFor: configId => configId === PRIMARY_ID ? OUTCOMES.rateLimited() : { kind: 'active' },
+  });
+  const scheduler = fx.scheduler!;
+  const blocker = scheduler.reserveProviderStage({
+    workspaceId: WS, runId: 'capacity_holder', stageId: 'capacity_stage', stageAttempt: 1,
+    providerType: 'custom-cli', providerConfigId: FALLBACK_ID, agentId: 'other_agent',
+  });
+  assert.ok(blocker.allowed);
+  const drive = fx.dispatcher.driveSafely(WS, RUN);
+  try {
+    for (let attempt = 0; attempt < 200 && fx.switchEvents.length === 0; attempt += 1) {
+      await new Promise<void>(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(fx.switchEvents.length, 1);
+    assert.deepEqual(fx.calls.map(call => call.providerSnapshot.providerConfigId), [PRIMARY_ID]);
+    scheduler.releaseProviderStage(blocker.reservation);
+    await drive;
+    assert.deepEqual(fx.calls.map(call => call.providerSnapshot.providerConfigId), [PRIMARY_ID, FALLBACK_ID]);
+    const row = fx.db.prepare("SELECT metadata_json FROM runtime_locks WHERE purpose = 'run-concurrency-stage' AND released_at IS NULL")
+      .get() as { metadata_json: string };
+    const metadata = JSON.parse(row.metadata_json) as Record<string, unknown>;
+    assert.equal(metadata.stageAttempt, 1);
+    assert.equal(metadata.providerAttempt, 2);
+    assert.equal(scheduler.reconcileReservations(), 0, 'fallback Provider attempt 2 still belongs to lifecycle Stage attempt 1');
+    await fx.dispatcher.driveSafely(WS, RUN);
+    assert.equal(fx.calls.length, 2, 'replaying an active fallback cannot launch the primary again');
+    fx.db.prepare('UPDATE runs SET status = ? WHERE workspace_id = ? AND id = ?').run('paused', WS, RUN);
+    assert.equal(scheduler.reconcileReservations(), 0, 'pausing a Run retains its live fallback reservation');
+    const denied = scheduler.reserveProviderStage({
+      workspaceId: WS, runId: 'competing_run', stageId: 'competing_stage', stageAttempt: 1,
+      providerType: 'custom-cli', providerConfigId: FALLBACK_ID, agentId: 'other_agent',
+    });
+    assert.equal(denied.allowed, false);
+    if (!denied.allowed) assert.equal(denied.dimension, 'perProviderConfig');
+    assert.deepEqual(fx.dispatchFailures, []);
+  } finally {
+    scheduler.releaseProviderStage(blocker.reservation);
+    await drive;
+    close(fx);
+  }
+});
 
 function stageRows(fx: Fixture): Array<{ id: string; status: string; failureCode: string | null; attempt: number }> {
   return fx.db.prepare(`
