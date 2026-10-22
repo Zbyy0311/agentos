@@ -95,3 +95,12 @@ Provider test skipped, 0 failed** (262 total). Workspace dependencies and server
 TypeScript build passed. Receipts are `conversation-final-verified.log` in the
 parent task evidence directory. No GitHub merge or parent realtime/index
 integration is implied by these local receipts.
+
+After concurrency PR #232 merged as `653f8cfe`, this branch was rebased again,
+retaining 065/066/067/068 in order and the exact registry/Identity assertions.
+The combined Conversation gate plus owned-queue shutdown and concurrency
+scheduler tests passed **280 tests, 1 configured Provider skip, 0 failures**
+(281 total). Workspace dependencies and server TypeScript build passed again.
+Receipts: `conversation-rebase653-tests.log` and
+`conversation-rebase653-build.log`. The prior 20 successful PR checks belong to
+`2776859a` before this integration; the new candidate requires new full CI.
