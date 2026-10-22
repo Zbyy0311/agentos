@@ -17,6 +17,7 @@ export function createRuntimeInspectorRoutes(store: SqliteStore, workspaceManage
   const router = Router({ mergeParams: true });
 
   router.get('/runs/:runId/inspector', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
       sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
@@ -48,6 +49,7 @@ export function createRuntimeInspectorRoutes(store: SqliteStore, workspaceManage
    * afterSequence/limit pagination over the canonical Event order.
    */
   router.get('/runs/:runId/inspector/timeline', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) {
       sendProblem(req, res, { status: 404, code: 'WORKSPACE_NOT_FOUND', detail: 'Workspace not found' });
@@ -66,6 +68,7 @@ export function createRuntimeInspectorRoutes(store: SqliteStore, workspaceManage
         ...(typeof req.query.group === 'string' ? { group: req.query.group as TimelineGroup } : {}),
         ...(csv(req.query.types) === undefined ? {} : { types: csv(req.query.types) }),
         ...(csv(req.query.severity) === undefined ? {} : { severities: csv(req.query.severity) }),
+        ...(typeof req.query.domain === 'string' ? { domain: req.query.domain } : {}),
         ...(typeof req.query.stageId === 'string' ? { stageId: req.query.stageId } : {}),
         afterSequence: typeof req.query.afterSequence === 'string' ? Number(req.query.afterSequence) : 0,
         ...(typeof req.query.limit === 'string' ? { limit: Number(req.query.limit) } : {}),

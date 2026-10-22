@@ -5,6 +5,8 @@ import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } f
 import type { UiTheme } from '../../lib/uiFoundation';
 import { MemoryExplanationView } from '../memory/MemoryExplanationView';
 import type { MemoryExplanationSnapshotDto } from '../memory/MemoryExplanationView';
+import { RuntimeTimelineView } from './RuntimeTimelineView';
+import type { RuntimeTimelineViewProps } from './RuntimeTimelineView';
 
 /**
  * Lite Runtime Inspector view (13-Runtime-Inspector.md).
@@ -155,6 +157,7 @@ export interface RuntimeInspectorViewProps {
   readonly onRetry?: () => void;
   readonly actionPending?: boolean;
   readonly actionError?: string;
+  readonly timeline?: RuntimeTimelineViewProps;
 }
 
 function Section(props: { readonly title: string; readonly children: ReactNode }) {
@@ -231,7 +234,7 @@ function CompactionBudgetFields(props: { readonly task: InspectorCompactionTaskD
 }
 
 export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
-  const { theme, projection, error, onCancel, onRetry, actionPending = false, actionError } = props;
+  const { theme, projection, error, onCancel, onRetry, actionPending = false, actionError, timeline } = props;
   const { overview, stages, processes, events, memoryContext, compaction } = projection;
   const readOnlyIsProven = overview.mutationClass === 'READ_ONLY'
     && overview.readOnlyEnforcement === 'proven';
@@ -340,21 +343,26 @@ export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
         ))}
       </Section>
 
-      <Section title={`Events (${events.length})`}>
-        {events.length === 0 ? (
-          <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>No events.</p>
-        ) : (
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {events.map(event => (
-              <li key={event.eventId} data-event-seq={event.sequence} style={{ fontSize: 12, padding: `${UI_SPACING_BASE_PX / 2}px 0` }}>
-                <span style={{ color: 'var(--text-tertiary)', fontFamily: UI_FONT_STACK.code }}>#{event.sequence}</span>
-                {' '}<span>{event.type}</span>
-                {' '}<span style={{ color: 'var(--text-tertiary)' }}>{event.severity}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Section>
+      {timeline === undefined ? (
+        <Section title={`Events (${events.length})`}>
+          {events.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>No events.</p>
+          ) : (
+            <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+              {events.map(event => (
+                <li key={event.eventId} data-event-seq={event.sequence} style={{ fontSize: 12, padding: `${UI_SPACING_BASE_PX / 2}px 0` }}>
+                  <span style={{ color: 'var(--text-tertiary)', fontFamily: UI_FONT_STACK.code }}>#{event.sequence}</span>
+                  {' '}<span>{event.type}</span>
+                  {' '}<span style={{ color: 'var(--text-tertiary)' }}>{event.severity}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Section>
+      ) : <RuntimeTimelineView
+        key={JSON.stringify([timeline.timeline.runId, timeline.mode, timeline.filters])}
+        {...timeline}
+      />}
 
       <Section title="Memory Context">
         {memoryContext === null ? (

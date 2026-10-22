@@ -18,6 +18,7 @@ import type {
 } from '../store/WorkspaceAdmissionRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import { eventRedactionServiceForDatabase } from './EventRedactionService.js';
 import {
   groupTimelineItems,
   projectTimelineItems,
@@ -289,6 +290,8 @@ export interface RuntimeInspectorTimelineQuery {
   readonly types?: readonly string[];
   /** Severities to keep (§44). */
   readonly severities?: readonly string[];
+  /** Event domain (first canonical type segment, §44). */
+  readonly domain?: string;
   /** Keep one Stage (§44). */
   readonly stageId?: string;
   /** Include Events with `sequence > afterSequence` (default 0). */
@@ -307,11 +310,15 @@ export interface InspectorTimelineProjection {
   readonly groups: readonly InspectorTimelineGroup[];
   /** Highest Event sequence considered by this page. */
   readonly highWatermark: number;
-  /** Cursor for the next page: last raw Event sequence of this page. */
+  /** Last scanned sequence, including any observed retention gap before the next page. */
   readonly nextAfterSequence: number;
+  /** Event id paired with nextAfterSequence for clients that need an SSE cursor. */
+  readonly nextAfterEventId?: string;
   readonly hasMore: boolean;
   /** True when the Event read exceeded the requested limit. */
   readonly truncated: boolean;
+  /** True when a full history request starts after retained Events were removed. */
+  readonly retentionWarning: boolean;
 }
 
 interface ProcessRow {
@@ -365,6 +372,7 @@ export class RuntimeInspector {
   private readonly memoryContexts: RuntimeInspectorDependencies['memoryContextSnapshots'];
   private readonly operations: RuntimeInspectorDependencies['operationService'];
   private readonly admissions: RuntimeInspectorDependencies['workspaceAdmissions'];
+  private readonly eventRedactor: ReturnType<typeof eventRedactionServiceForDatabase>;
 
   constructor(dependencies: RuntimeInspectorDependencies) {
     this.db = dependencies.store.getDatabase();
@@ -375,6 +383,7 @@ export class RuntimeInspector {
     this.memoryContexts = dependencies.memoryContextSnapshots;
     this.operations = dependencies.operationService;
     this.admissions = dependencies.workspaceAdmissions;
+    this.eventRedactor = eventRedactionServiceForDatabase(this.db);
   }
 
   /** Read-only projection for one Run. Never mutates or executes anything. */
@@ -518,6 +527,8 @@ export class RuntimeInspector {
       : new Set(query.types.filter(entry => nonBlank(entry)));
     const severities = query.severities === undefined ? undefined
       : new Set(query.severities.filter(entry => nonBlank(entry)));
+    const domain = query.domain === undefined ? undefined
+      : nonBlank(query.domain) ? query.domain : undefined;
     if ((types !== undefined && types.size === 0)
       || (severities !== undefined && severities.size === 0)) {
       throw new RuntimeInspectorError('INPUT_INVALID');
@@ -527,27 +538,36 @@ export class RuntimeInspector {
 
     const run = this.runs.findById(query.workspaceId, query.runId);
     if (run === undefined) throw new RuntimeInspectorError('RUN_NOT_FOUND');
-    // §135: a cursor that claims Events past the Run's durable tail can never
-    // be reconciled incrementally; the client must fully resync.
-    if (afterSequence > run.nextEventSequence - 1) {
-      throw new RuntimeInspectorError('CURSOR_EXPIRED');
-    }
+    const runHighWatermark = run.nextEventSequence - 1;
+    if (afterSequence > runHighWatermark) throw new RuntimeInspectorError('INPUT_INVALID');
 
     let records;
     try {
-      records = this.events.listByRunAfterSequence(query.runId, afterSequence);
+      records = this.events.listByRunAfterSequence(query.runId, afterSequence, limit + 1);
     } catch (error) {
       if (error instanceof RuntimeEventRepositoryError) throw new RuntimeInspectorError('READ_FAILED');
       throw new RuntimeInspectorError('READ_FAILED');
     }
+    const firstAvailableSequence = records[0]?.event.sequence;
+    if (afterSequence > 0 && (
+      (firstAvailableSequence !== undefined && firstAvailableSequence > afterSequence + 1)
+      || (firstAvailableSequence === undefined && afterSequence < runHighWatermark)
+    )) {
+      throw new RuntimeInspectorError('CURSOR_EXPIRED');
+    }
     const page = records.slice(0, limit);
     const truncated = records.length > limit;
-    const highWatermark = records.length === 0
-      ? afterSequence
-      : Math.max(...records.map(record => record.event.sequence));
-    const nextAfterSequence = page.length === 0
-      ? afterSequence
-      : page[page.length - 1]!.event.sequence;
+    const hasRetentionGap = (records.length === 0 && afterSequence < runHighWatermark) || (records.length > 0 && (
+      records[0]!.event.sequence > afterSequence + 1
+      || records.some((record, index) => index > 0
+        && record.event.sequence > records[index - 1]!.event.sequence + 1)
+      || (!truncated && records[records.length - 1]!.event.sequence < runHighWatermark)
+    ));
+    // Scan known deleted ranges too. A fresh history walk must not issue an
+    // already-expired next cursor when retention falls on a page boundary.
+    const nextAfterSequence = truncated
+      ? records[limit]!.event.sequence - 1
+      : runHighWatermark;
 
     const events: TimelineEventInput[] = page.map(record => {
       const event = record.event;
@@ -565,21 +585,24 @@ export class RuntimeInspector {
         artifactId: event.artifactId,
         approvalRequestId: event.approvalRequestId,
         correlationId: event.correlationId,
-        payload: event.payload,
+        payload: this.eventRedactor.redactPayload(query.workspaceId, event.payload).value,
       };
     });
 
-    const items = projectTimelineItems({ events, mode, filter: { types, severities, stageId } });
+    const items = projectTimelineItems({ events, mode, filter: { types, severities, stageId, domain } });
     return {
       runId: run.id,
       mode,
       group,
       items: group === 'none' ? items : [],
       groups: groupTimelineItems(items, group),
-      highWatermark,
+      highWatermark: runHighWatermark,
       nextAfterSequence,
+      ...(page.length === 0 || page[page.length - 1]!.event.sequence !== nextAfterSequence
+        ? {} : { nextAfterEventId: page[page.length - 1]!.event.id }),
       hasMore: truncated,
       truncated,
+      retentionWarning: hasRetentionGap,
     };
   }
 }

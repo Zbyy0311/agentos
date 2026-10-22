@@ -3,8 +3,8 @@
  *
  * A Timeline is a user-readable projection of Runtime Events — not a Message
  * Timeline and not a raw log. It supports three modes (Summary / Detailed /
- * Raw), aggregates only high-frequency Event types (stream.text_delta and
- * friends), always keeps terminal/approval/error facts as individual items,
+ * Raw), aggregates only high-frequency stream.text_delta Events,
+ * always keeps terminal/approval/error facts as individual items,
  * and can group items by Stage, Correlation or Domain.
  *
  * Pure projection: no I/O, no store access. The caller supplies already-read
@@ -24,9 +24,6 @@ export const TIMELINE_GROUPS: readonly TimelineGroup[] = ['none', 'stage', 'corr
  */
 export const TIMELINE_AGGREGATABLE_TYPES: readonly string[] = [
   'stream.text_delta',
-  'process.usage.sample',
-  'process.heartbeat',
-  'run.heartbeat',
 ];
 
 /** §41: the Timeline item kind vocabulary. */
@@ -75,6 +72,7 @@ export interface InspectorTimelineItem {
   readonly sourceRefs: readonly TimelineSourceRef[];
   /** False when this is a single Event; an aggregated item is expandable. */
   readonly aggregated: boolean;
+  readonly expandable: boolean;
   /** Number of canonical Events folded into this item. */
   readonly eventCount: number;
   /** Present only in raw mode: a bounded payload digest, never the verbatim payload. */
@@ -112,6 +110,8 @@ export interface TimelineFilter {
   readonly severities?: ReadonlySet<string>;
   /** One Stage to keep (§44 Stage). */
   readonly stageId?: string;
+  /** First canonical Event type segment (§44 Domain). */
+  readonly domain?: string;
 }
 
 export interface TimelineProjectInput {
@@ -168,14 +168,29 @@ export function isAggregatableTimelineType(type: string): boolean {
   return TIMELINE_AGGREGATABLE_TYPES.includes(type);
 }
 
+function isKeyEvent(event: TimelineEventInput): boolean {
+  return event.severity === 'error' || event.severity === 'critical'
+    || /^(approval|recovery)\./u.test(event.type)
+    || /^(run|stage)\.(completed|failed|cancelled|skipped)$/u.test(event.type)
+    || /^policy\.denied$/u.test(event.type)
+    || /^artifact\.finalized$/u.test(event.type)
+    || /^(?:git\.merge_|worktree\.merged$)|(^|\.)merge(\.|$)/u.test(event.type);
+}
+
+const SUMMARY_DOMAINS = new Set([
+  'run', 'stage', 'tool', 'command', 'file', 'approval', 'test', 'artifact',
+  'error', 'recovery', 'stream',
+]);
+
 function payloadSummaryOf(payload: unknown): TimelinePayloadSummary {
-  const record = typeof payload === 'object' && payload !== null && !Array.isArray(payload)
-    ? payload as Record<string, unknown>
+  const safePayload = redactSensitivePayloadFields(payload);
+  const record = typeof safePayload === 'object' && safePayload !== null && !Array.isArray(safePayload)
+    ? safePayload as Record<string, unknown>
     : null;
   const keys = record === null ? [] : Object.keys(record);
   let preview: string;
   try {
-    preview = JSON.stringify(payload ?? null) ?? 'null';
+    preview = JSON.stringify(safePayload ?? null) ?? 'null';
   } catch {
     preview = '[unserializable payload]';
   }
@@ -183,6 +198,29 @@ function payloadSummaryOf(payload: unknown): TimelinePayloadSummary {
     preview = `${preview.slice(0, PAYLOAD_PREVIEW_MAX_CHARS)}…`;
   }
   return { keys, preview };
+}
+
+const SENSITIVE_PAYLOAD_KEY_PARTS = [
+  'secret', 'token', 'password', 'passwd', 'apikey', 'privatekey', 'cookie',
+  'credential', 'authorization', 'authentication', 'environment', 'env', 'args', 'arguments',
+] as const;
+
+function isSensitivePayloadKey(key: string): boolean {
+  const normalized = key.replace(/[^a-z0-9]/giu, '').toLowerCase();
+  return SENSITIVE_PAYLOAD_KEY_PARTS.some(part => normalized === part
+    || normalized.endsWith(part)
+    || (part.length >= 6 && normalized.startsWith(part)));
+}
+
+/** A final field-name guard complements the workspace-aware server redactor. */
+function redactSensitivePayloadFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitivePayloadFields);
+  if (typeof value !== 'object' || value === null) return value;
+  const safe: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    safe[key] = isSensitivePayloadKey(key) ? '[REDACTED]' : redactSensitivePayloadFields(field);
+  }
+  return safe;
 }
 
 function toItem(event: TimelineEventInput, mode: TimelineMode): InspectorTimelineItem {
@@ -204,6 +242,7 @@ function toItem(event: TimelineEventInput, mode: TimelineMode): InspectorTimelin
       ...(nonBlank(event.approvalRequestId) ? [{ resourceType: 'approval' as const, resourceId: event.approvalRequestId }] : []),
     ],
     aggregated: false,
+    expandable: mode === 'raw',
     eventCount: 1,
   };
   const optional: Record<string, unknown> = {};
@@ -225,11 +264,12 @@ function foldAggregatable(run: readonly InspectorTimelineItem[]): InspectorTimel
   const last = run[run.length - 1]!;
   return {
     ...first,
-    id: `agg:${first.type}:${first.stageId ?? ''}:${first.correlationId ?? ''}:${first.firstSequence}`,
+    id: first.id,
     lastSequence: last.lastSequence,
     completedAt: last.startedAt,
     summary: `${run.length} × ${first.type}`,
     aggregated: true,
+    expandable: true,
     eventCount: run.length,
   };
 }
@@ -239,6 +279,7 @@ function applyFilter(event: TimelineEventInput, filter: TimelineFilter | undefin
   if (filter.types !== undefined && !filter.types.has(event.type)) return false;
   if (filter.severities !== undefined && !filter.severities.has(event.severity)) return false;
   if (filter.stageId !== undefined && event.stageId !== filter.stageId) return false;
+  if (filter.domain !== undefined && timelineDomainOf(event.type) !== filter.domain) return false;
   return true;
 }
 
@@ -248,7 +289,8 @@ function applyFilter(event: TimelineEventInput, filter: TimelineFilter | undefin
  * bounded payload digest).
  */
 export function projectTimelineItems(input: TimelineProjectInput): InspectorTimelineItem[] {
-  const filtered = input.events.filter(event => applyFilter(event, input.filter));
+  const filtered = input.events.filter(event => applyFilter(event, input.filter)
+    && (input.mode !== 'summary' || SUMMARY_DOMAINS.has(timelineDomainOf(event.type)) || isKeyEvent(event)));
   if (input.mode !== 'summary') {
     return filtered.map(event => toItem(event, input.mode));
   }
@@ -262,17 +304,24 @@ export function projectTimelineItems(input: TimelineProjectInput): InspectorTime
   for (const event of filtered) {
     const item = toItem(event, input.mode);
     const previous = fold[fold.length - 1];
-    const continues = previous !== undefined
-      && isAggregatableTimelineType(event.type)
+    const aggregatable = isAggregatableTimelineType(event.type) && !isKeyEvent(event);
+    const continues = aggregatable
+      && previous !== undefined
       && previous.type === item.type
       && previous.stageId === item.stageId
-      && previous.correlationId === item.correlationId;
-    if (!continues) {
-      flush();
-      if (isAggregatableTimelineType(event.type)) {
-        fold = [item];
-        continue;
-      }
+      && previous.correlationId === item.correlationId
+      && previous.severity === item.severity
+      && previous.visibility === item.visibility
+      && previous.lastSequence + 1 === item.firstSequence;
+    if (continues) {
+      fold.push(item);
+      continue;
+    }
+
+    flush();
+    if (aggregatable) {
+      fold = [item];
+      continue;
     }
     items.push(item);
   }
