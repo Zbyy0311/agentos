@@ -150,12 +150,17 @@ export function createCanonicalRunEventRoutes(store: CanonicalRunEventStore): Ro
             }
           },
           onOverflow: () => cleanup(),
+          onFailure: () => cleanup(),
         });
       } catch {
         cleanup();
         return;
       }
-      if (closed) return;
+      if (closed) {
+        // Replay can fail synchronously before subscribe returns its handle.
+        unsubscribe();
+        return;
+      }
       stopKeepalive = startRuntimeKeepalive(res, cleanup);
     } catch (error) {
       sendP5Error(req, res, error);

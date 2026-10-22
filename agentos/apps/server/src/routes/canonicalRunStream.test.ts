@@ -598,13 +598,33 @@ test('P5C overflow closes the SSE transport without synthetic frames or durable 
     assert.equal(response.status, 200);
     const frames = await readUntilClosed(response);
     assert.deepEqual(frames, []);
-    assert.equal(overflowCursor, undefined);
+    assert.equal(overflowCursor, -1, 'a synchronous overflow must release the returned subscription');
   } finally {
     await closeServer(server);
   }
 });
 
 // --- Backpressure / write failure ------------------------------------------
+
+test('P5C durable observation failure ends SSE so clients reconnect and releases both synchronous and live subscriptions', async () => {
+  for (const synchronous of [true, false]) {
+    let subscribed: RunStreamSubscriptionInput | undefined;
+    let unsubscribes = 0;
+    const app = buildApp(createStubStore(input => {
+      subscribed = input;
+      if (synchronous) input.onFailure?.('durable-event-mismatch', input.afterSequence);
+      return () => { unsubscribes++; };
+    }));
+    const { server, origin } = await listen(app);
+    try {
+      const response = await fetch(`${origin}/api/runs/${STUB_RUN_ID}/stream`);
+      assert.equal(response.status, 200);
+      if (!synchronous) subscribed!.onFailure?.('durable-event-mismatch', 0);
+      assert.deepEqual(await readUntilClosed(response), []);
+      assert.equal(unsubscribes, 1, 'the transport must not leave a dead subscription or a live heartbeat');
+    } finally { await closeServer(server); }
+  }
+});
 
 async function createBackpressureFixture(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5c-backpressure-'));
