@@ -716,12 +716,17 @@ export class RuntimeEventRepository {
     `).get(workspaceId, runId, sequence) as RuntimeEventRow | undefined);
   }
 
-  listByRunAfterSequence(runId: string, afterSequence: number): RuntimeEventConsumptionResult[] {
+  listByRunAfterSequence(runId: string, afterSequence: number, limit?: number): RuntimeEventConsumptionResult[] {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0
+      || (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 1001))) {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_READ_FAILED', 'Runtime Event cursor is invalid');
+    }
     const rows = this.db.prepare(`
       SELECT * FROM runtime_events
       WHERE run_id = ? AND sequence > ?
       ORDER BY sequence ASC
-    `).all(runId, afterSequence) as RuntimeEventRow[];
+      ${limit === undefined ? '' : 'LIMIT ?'}
+    `).all(...(limit === undefined ? [runId, afterSequence] : [runId, afterSequence, limit])) as RuntimeEventRow[];
     return rows.map(row => this.consumeRow(row)!);
   }
 

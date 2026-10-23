@@ -4,12 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RuntimeInspectorView, type InspectorProjectionDto } from './RuntimeInspectorView';
 import type { UiTheme } from '../../lib/uiFoundation';
 import {
-  buildRunInspectorUrl,
   createInspectorIdempotencyKey,
   runtimeInspectorClient,
 } from '../../lib/runtimeInspectorClient';
+import type { RuntimeTimelineFilters } from './RuntimeTimelineView';
+import { createRuntimeTimelineSync } from '../../lib/runtimeTimelineSync';
+import type {
+  RuntimeTimelineGroup,
+  RuntimeTimelineMode,
+  RuntimeTimelineProjectionDto,
+  RuntimeStreamConnectionState,
+} from '../../lib/runtimeInspectorClient';
 
 const CANCELLABLE_OPERATION_STATUSES = new Set(['queued', 'running', 'waiting_approval', 'paused']);
+export { queueRuntimeTimelineSequence, nextRuntimeTimelineBackfillRequest, mergeRuntimeTimelinePages } from '../../lib/runtimeTimelineSync';
 
 /**
  * Refreshes the Inspector with the latest server-bounded projection.
@@ -32,14 +40,14 @@ export function RunInspectorPanel(props: {
   readonly readOnly?: boolean;
   readonly refreshSignal?: number;
 }) {
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(props.initialRunId ?? '');
   const [createdRunIds, setCreatedRunIds] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
-  const runIds = [...new Set([...props.runIds, ...createdRunIds])];
+  const runIds = useMemo(() => [...new Set([...props.runIds, ...createdRunIds])], [createdRunIds, props.runIds]);
   const runId = runIds.includes(selected) ? selected : runIds[0] ?? '';
   useEffect(() => {
-    if (props.initialRunId && runIds.includes(props.initialRunId) && selected !== props.initialRunId) setSelected(props.initialRunId);
-  }, [props.initialRunId, runIds, selected]);
+    setSelected(props.initialRunId ?? '');
+  }, [props.initialRunId]);
   const refresh = () => setRevision(value => value + 1);
   const controlStyle = { backgroundColor: 'var(--surface-elevated)', color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '4px 6px', maxWidth: '100%' };
@@ -87,6 +95,17 @@ function InspectorRequest(props: {
     [props.apiBase, props.workspaceId],
   );
   const [projection, setProjection] = useState<InspectorProjectionDto | null>(null);
+  const projectionLoadedRef = useRef(false);
+  const [timeline, setTimeline] = useState<RuntimeTimelineProjectionDto | null>(null);
+  const loadMoreRef = useRef<() => Promise<void>>(async () => undefined);
+  const [timelineMode, setTimelineMode] = useState<RuntimeTimelineMode>('summary');
+  const [timelineGroup, setTimelineGroup] = useState<RuntimeTimelineGroup>('none');
+  const [timelineFilters, setTimelineFilters] = useState<RuntimeTimelineFilters>({ type: '', domain: '', severity: '', stageId: '' });
+  const [timelineLoading, setTimelineLoading] = useState(true);
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | undefined>(undefined);
+  const [timelineConnection, setTimelineConnection] = useState<RuntimeStreamConnectionState>('connecting');
+  const [timelineResyncing, setTimelineResyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | undefined>(undefined);
   const [actionPending, setActionPending] = useState(false);
@@ -94,17 +113,79 @@ function InspectorRequest(props: {
 
   useEffect(() => {
     const controller = new AbortController();
-    setProjection(null);
     setError(null);
-    void client.inspectRun(props.runId, controller.signal).then(next => {
-      if (!controller.signal.aborted) {
+    setTimeline(null);
+    setTimelineLoading(true);
+    setTimelineLoadingMore(false);
+    setTimelineError(undefined);
+    setTimelineResyncing(false);
+    setTimelineConnection('connecting');
+
+    const sync = createRuntimeTimelineSync({
+      client,
+      runId: props.runId,
+      signal: controller.signal,
+      query: {
+        mode: timelineMode,
+        ...(timelineFilters.type.trim() ? { types: timelineFilters.type.split(',').map(type => type.trim()).filter(Boolean) } : {}),
+        ...(timelineFilters.domain.trim() ? { domain: timelineFilters.domain.trim() } : {}),
+        ...(timelineFilters.severity ? { severities: [timelineFilters.severity] } : {}),
+        ...(timelineFilters.stageId ? { stageId: timelineFilters.stageId } : {}),
+      },
+      onTimeline: next => { setTimeline(next); setTimelineLoading(false); },
+      onProjection: next => {
+        projectionLoadedRef.current = true;
         setProjection(previous => replaceInspectorProjection(previous, next));
-      }
-    }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Inspector unavailable');
+      },
+      onError: cause => setTimelineError(cause?.message),
+      onResyncing: setTimelineResyncing,
     });
-    return () => controller.abort();
-  }, [client, props.runId, props.refreshSignal]);
+    const loadMore = async (): Promise<void> => {
+      if (controller.signal.aborted) return;
+      setTimelineLoadingMore(true);
+      try {
+        await sync.loadMore();
+      } catch (cause: unknown) {
+        if (!controller.signal.aborted) setTimelineError(cause instanceof Error ? cause.message : 'Could not load Timeline');
+      } finally {
+        if (!controller.signal.aborted) setTimelineLoadingMore(false);
+      }
+    };
+    loadMoreRef.current = loadMore;
+
+    const initializeTimeline = async (): Promise<void> => {
+      await sync.initialize();
+      if (controller.signal.aborted) return;
+      void client.subscribeToRunEvents(
+        props.runId,
+        controller.signal,
+        () => sync.cursor,
+        event => {
+          if (event.runId !== props.runId) return;
+          sync.observe(event.sequence);
+        },
+        () => sync.resync(),
+        state => { if (!controller.signal.aborted) setTimelineConnection(state); },
+        cause => {
+          if (!controller.signal.aborted) setTimelineError(cause.message);
+        },
+      );
+    };
+
+    void initializeTimeline().catch((cause: unknown) => {
+      if (!controller.signal.aborted) {
+        setTimelineError(cause instanceof Error ? cause.message : 'Timeline unavailable');
+        if (!projectionLoadedRef.current) setError(cause instanceof Error ? cause.message : 'Inspector unavailable');
+        setTimelineLoading(false);
+        setTimelineConnection('reconnecting');
+      }
+    });
+
+    return () => {
+      controller.abort();
+      if (loadMoreRef.current === loadMore) loadMoreRef.current = async () => undefined;
+    };
+  }, [client, props.runId, props.refreshSignal, timelineFilters, timelineMode]);
 
   const operation = projection?.operations?.find(item => (
     item.type === 'run.start' && CANCELLABLE_OPERATION_STATUSES.has(item.status)
@@ -157,6 +238,10 @@ function InspectorRequest(props: {
     }
   }, [actionKey, canCancelQueuedRun, canRetry, client, operation, projection, props]);
 
+  const updateTimelineFilter = useCallback((key: keyof RuntimeTimelineFilters, value: string) => {
+    setTimelineFilters(previous => ({ ...previous, [key]: value }));
+  }, []);
+
   if (error) return <p role="alert">{error}</p>;
   if (!projection) return <p role="status">Loading Inspector…</p>;
   return (
@@ -167,6 +252,24 @@ function InspectorRequest(props: {
       {...(canRetry ? { onRetry: () => { void runAction('retry'); } } : {})}
       actionPending={actionPending}
       {...(actionError === undefined ? {} : { actionError })}
+      timeline={{
+        timeline: timeline ?? {
+          runId: props.runId, mode: timelineMode, group: 'none', items: [], groups: [],
+          highWatermark: 0, nextAfterSequence: 0, hasMore: false, truncated: false, retentionWarning: false,
+        },
+        mode: timelineMode,
+        group: timelineGroup,
+        filters: timelineFilters,
+        stages: projection.stages,
+        connectionState: timelineResyncing ? 'resyncing' : timelineConnection,
+        loading: timelineLoading,
+        loadingMore: timelineLoadingMore,
+        ...(timelineError === undefined ? {} : { error: timelineError }),
+        onModeChange: setTimelineMode,
+        onGroupChange: setTimelineGroup,
+        onFilterChange: updateTimelineFilter,
+        onLoadMore: () => { void loadMoreRef.current(); },
+      }}
     />
   );
 }
