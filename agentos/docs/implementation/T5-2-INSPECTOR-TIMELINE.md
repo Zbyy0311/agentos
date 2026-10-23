@@ -42,3 +42,15 @@ synchronous and live failure and retains the existing overflow/Run-state guards.
 
 Local receipts are not remote CI or merge evidence. Publication requires the
 complete exact-head PR checks and separate post-merge main checks.
+
+## Integrated main follow-up
+
+After concurrency #232 and Conversation #236 merged, this branch was rebased to
+main `2f9141aab2647ca83e245afc749d25fcca7d83c9`. The final eight-file server gate
+includes Conversation productization alongside Inspector/Timeline/SSE and
+passed **71/71**. The full Web suite again passed **391/391**; workspace
+dependencies and server TypeScript build passed. Receipts are
+`inspector-rebase2f9-server-tests.log`, `inspector-rebase2f9-web-tests.log`, and
+`inspector-rebase2f9-build.log` in the external task evidence directory.
+The earlier green CI belonged to `c9a5828f`; this integrated candidate requires
+new complete remote checks.
